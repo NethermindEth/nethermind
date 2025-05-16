@@ -9,7 +9,7 @@ namespace Nethermind.Crypto;
 
 public interface IBlobProofsManager
 {
-    abstract ShardBlobNetworkWrapper AllocateWrapper(params ReadOnlySpan<byte[]> blobs);
+    ShardBlobNetworkWrapper AllocateWrapper(params ReadOnlySpan<byte[]> blobs);
 
     byte[][] ComputeHashes(ShardBlobNetworkWrapper wrapper)
     {
@@ -22,8 +22,8 @@ public interface IBlobProofsManager
         return hashes;
     }
 
-    abstract void ComputeProofsAndCommitments(ShardBlobNetworkWrapper preallocatedWrappers);
-    abstract bool ValidateLengths(ShardBlobNetworkWrapper blobs);
+    void ComputeProofsAndCommitments(ShardBlobNetworkWrapper preallocatedWrappers);
+    bool ValidateLengths(ShardBlobNetworkWrapper blobs);
     public bool ValidateHashes(ShardBlobNetworkWrapper blobs, byte[][] blobVersionedHashes)
     {
         Span<byte> hash = stackalloc byte[KzgPolynomialCommitments.BytesPerBlobVersionedHash];
@@ -47,7 +47,7 @@ public interface IBlobProofsManager
         return true;
     }
 
-    abstract bool ValidateProofs(ShardBlobNetworkWrapper blobs);
+    bool ValidateProofs(ShardBlobNetworkWrapper blobs);
 
     static IBlobProofsManager For
         (ProofVersion version) => version switch

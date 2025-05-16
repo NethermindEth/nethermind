@@ -4,6 +4,7 @@
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using System;
+using System.Text;
 
 namespace Nethermind.Specs
 {
@@ -11,24 +12,27 @@ namespace Nethermind.Specs
     {
         public static IReleaseSpec Parse(string specName)
         {
-            specName = specName.Replace("EIP150", "TangerineWhistle");
-            specName = specName.Replace("EIP158", "SpuriousDragon");
-            specName = specName.Replace("DAO", "Dao");
-            specName = specName.Replace("Merged", "Paris");
-            specName = specName.Replace("Merge", "Paris");
-            specName = specName.Replace("London+3540+3670", "Shanghai");
-            specName = specName.Replace("GrayGlacier+3540+3670", "Shanghai");
-            specName = specName.Replace("GrayGlacier+3860", "Shanghai");
-            specName = specName.Replace("GrayGlacier+3855", "Shanghai");
-            specName = specName.Replace("Merge+3540+3670", "Shanghai");
-            specName = specName.Replace("Shanghai+3855", "Shanghai");
-            specName = specName.Replace("Shanghai+3860", "Shanghai");
-            specName = specName.Replace("GrayGlacier+1153", "Cancun");
-            specName = specName.Replace("Merge+1153", "Cancun");
-            specName = specName.Replace("Shanghai+6780", "Cancun");
-            specName = specName.Replace("GrayGlacier+1153", "Cancun");
-            specName = specName.Replace("Merge+1153", "Cancun");
-            return specName switch
+            string unambiguousSpecName = new StringBuilder(specName)
+                .Replace("EIP150", "TangerineWhistle")
+                .Replace("EIP158", "SpuriousDragon")
+                .Replace("DAO", "Dao")
+                .Replace("Merged", "Paris")
+                .Replace("Merge", "Paris")
+                .Replace("London+3540+3670", "Shanghai")
+                .Replace("GrayGlacier+3540+3670", "Shanghai")
+                .Replace("GrayGlacier+3860", "Shanghai")
+                .Replace("GrayGlacier+3855", "Shanghai")
+                .Replace("Merge+3540+3670", "Shanghai")
+                .Replace("Shanghai+3855", "Shanghai")
+                .Replace("Shanghai+3860", "Shanghai")
+                .Replace("GrayGlacier+1153", "Cancun")
+                .Replace("Merge+1153", "Cancun")
+                .Replace("Shanghai+6780", "Cancun")
+                .Replace("GrayGlacier+1153", "Cancun")
+                .Replace("Merge+1153", "Cancun")
+                .ToString();
+
+            return unambiguousSpecName switch
             {
                 "Frontier" => Frontier.Instance,
                 "Homestead" => Homestead.Instance,

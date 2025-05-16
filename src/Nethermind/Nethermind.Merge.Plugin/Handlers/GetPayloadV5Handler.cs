@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -20,13 +19,13 @@ public class GetPayloadV5Handler(
     ISpecProvider specProvider,
     ILogManager logManager,
     CensorshipDetector? censorshipDetector = null)
-    : GetPayloadHandlerBase<GetPayloadV5Result>(5, payloadPreparationService, specProvider, logManager)
+    : GetPayloadHandlerBase<GetPayloadV5Result>(5, payloadPreparationService, specProvider, logManager, censorshipDetector)
 {
     protected override GetPayloadV5Result GetPayloadResultFromBlock(IBlockProductionContext context)
     {
         return new(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV2(context.CurrentBestBlock!), context.CurrentBestBlock!.ExecutionRequests!)
         {
-            ShouldOverrideBuilder = censorshipDetector?.GetCensoredBlocks().Contains(new BlockNumberHash(context.CurrentBestBlock!)) ?? false
+            ShouldOverrideBuilder = ShouldOverrideBuilder(context.CurrentBestBlock!)
         };
     }
 }

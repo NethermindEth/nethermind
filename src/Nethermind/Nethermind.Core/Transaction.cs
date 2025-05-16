@@ -355,13 +355,7 @@ namespace Nethermind.Core
     /// <summary>
     /// Holds network form fields for <see cref="TxType.Blob" /> transactions
     /// </summary>
-    public class ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs, ProofVersion version)
-    {
-        public ProofVersion Version { get; set; } = version;
-        public byte[][] Commitments { get; set; } = commitments;
-        public byte[][] Blobs { get; set; } = blobs;
-        public byte[][] Proofs { get; set; } = proofs;
-    }
+    public record class ShardBlobNetworkWrapper(byte[][] Blobs, byte[][] Commitments, byte[][] Proofs, ProofVersion Version);
 
     public enum ProofVersion : byte
     {

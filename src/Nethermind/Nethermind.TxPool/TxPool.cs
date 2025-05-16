@@ -538,8 +538,7 @@ namespace Nethermind.TxPool
                     cellProofs.AddRange(cellProofsSeparated);
                 }
 
-                wrapper.Proofs = cellProofs.ToArray();
-                wrapper.Version = ProofVersion.V1;
+                tx.NetworkWrapper = wrapper with { Proofs = [.. cellProofs], Version = ProofVersion.V1 };
             }
         }
 
