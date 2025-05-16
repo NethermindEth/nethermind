@@ -43,7 +43,7 @@ public static class PatternSearch
             int currentPos = 0;
             int end = codeLength - patternLength;
 
-            if (Avx2.IsSupported && patternLength >= WindowSizeAvx2)
+            if (Avx2.IsSupported && patternLength <= WindowSizeAvx2)
             {
 
                 Vector256<byte> lastVec = Vector256.Create(last);
