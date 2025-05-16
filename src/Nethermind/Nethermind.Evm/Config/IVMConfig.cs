@@ -21,11 +21,6 @@ using System.Numerics;
 namespace Nethermind.Evm.Config;
 public interface IVMConfig : IConfig
 {
-    static  string DllName(AssemblyBuilder builder)
-    {
-        return $"{builder.GetName()}.Nethermind.g.c.dll";
-    }
-
     [ConfigItem(
         Description = "Set IL-EVM Activated Mode : 0- Il-evm is turned off 1- Pattern mode, 2- Precompilation mode",
         DefaultValue = "0")]

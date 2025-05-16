@@ -43,8 +43,11 @@ public static class Precompiler
     internal static ModuleBuilder? _currentPersistentModBuilder = null;
     internal static ModuleBuilder? _currentDynamicModBuilder = null;
     internal static int _currentBundleSize = 0;
-
     private static string GenerateAssemblyName() => Guid.NewGuid().ToByteArray().ToHexString();
+    internal static string GetTargetFileName()
+    {
+        return $"{Precompiler._currentPersistentAsmBuilder.Value.GetName()}.Nethermind.g.c.dll";
+    }
 
     private static ILExecutionStep? CompileContractInternal(
         ModuleBuilder moduleBuilder,
@@ -108,7 +111,7 @@ public static class Precompiler
             _currentDynamicModBuilder = runtimeAsm.DefineDynamicModule("MainModule");
         }
 
-        if((iledCode = CompileContractInternal(_currentDynamicModBuilder, $"_dynamicAssembly_{contractName}", codeInfo, metadata, config, true)) is null) {
+        if((iledCode = CompileContractInternal(_currentDynamicModBuilder, $"_dynamicAssembly_{(new Random()).Next()}_{contractName}", codeInfo, metadata, config, true)) is null) {
             return false;
         }
 
@@ -130,7 +133,7 @@ public static class Precompiler
     {
         if (_currentPersistentAsmBuilder is null) return;
 
-        var assemblyPath = Path.Combine(config.IlEvmPrecompiledContractsPath, IVMConfig.DllName(_currentPersistentAsmBuilder.Value));
+        var assemblyPath = Path.Combine(config.IlEvmPrecompiledContractsPath, GetTargetFileName());
 
         ((PersistedAssemblyBuilder)_currentPersistentAsmBuilder.Value).Save(assemblyPath);  // or pass filename to save into a file
         ResetEnvironment(false);
@@ -144,6 +147,7 @@ public static class Precompiler
         {
             _currentDynamicModBuilder = null;
         }
+        _currentBundleSize = 0;
     }
 
     public static Emit<ILExecutionStep> EmitMoveNext(Emit<ILExecutionStep> method, CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)

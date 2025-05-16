@@ -83,9 +83,9 @@ public class VirtualMachine : IVirtualMachine
             IlEvmAnalysisThreshold = 2,
             IlEvmContractsPerDllCount = 16,
             IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
-            IlEvmPersistPrecompiledContractsOnDisk = true,
+            IlEvmPersistPrecompiledContractsOnDisk = false,
             IlEvmPrecompiledContractsPath = Path.Combine(Directory.GetCurrentDirectory(), "AotCache"),
-            IsIlEvmAggressiveModeEnabled = true,
+            IsIlEvmAggressiveModeEnabled = false,
             IsILEvmEnabled = true,
             IlEvmAnalysisCoreUsage = 0.5f
         };
@@ -684,7 +684,13 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if (_vmConfig.IsVmOptimizationEnabled && vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
             {
-                vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
+                //vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
+            }
+
+            if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
+            {
+                vmState.Env.CodeInfo.Codehash = Keccak.Compute(env.CodeInfo.MachineCode.Span);
+                IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
             }
         }
 
@@ -725,17 +731,26 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls 
 
                 int programCounter = vmState.ProgramCounter;
-
                 var codeAsSpan = env.CodeInfo.MachineCode.Span; 
-
                 ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
-                chunkExecutionState.ReturnDataBuffer = _returnDataBuffer;
                 fixed(void* codePtr = codeAsSpan, stackPtr = stack.Bytes)
                 {
-                    if (env.CodeInfo.IlInfo.PrecompiledContract(in Unsafe.AsRef<byte>(codePtr),
-                        _specProvider, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, vmState, _state,
-                        ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.Add<Word>(ref Unsafe.AsRef<Word>(stackPtr), stack.Head), _txTracer, _logger,
-                        ref chunkExecutionState))
+                    if  (env.CodeInfo.IlInfo.PrecompiledContract(
+                            in Unsafe.AsRef<byte>(codePtr),
+                            _specProvider,
+                            _blockhashProvider,
+                            vmState.Env.TxExecutionContext.CodeInfoRepository,
+                            vmState,
+                            _state,
+                            _returnDataBuffer,
+                            ref gasAvailable,
+                            ref programCounter,
+                            ref stack.Head,
+                            ref Unsafe.Add<Word>(ref Unsafe.AsRef<Word>(stackPtr), stack.Head),
+                            _txTracer,
+                            _logger,
+                            ref chunkExecutionState)
+                        )
                     {
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head-1);
                         Metrics.IlvmAotPrecompiledCalls--; // this will treat continuations as new calls 
@@ -748,7 +763,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 switch(chunkExecutionState.ContractState)
                 {
                     case ContractState.Return or ContractState.Revert:
-                        return new CallResult(chunkExecutionState.ReturnDataBuffer.ToArray(), null, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
+                        return new CallResult(chunkExecutionState.ReturnData.ToArray(), null, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
                     case ContractState.Failed:
                         return GetFailureReturn<TTracingInstructions>(gasAvailable, chunkExecutionState.ExceptionType);
                     default:
@@ -786,6 +801,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
+        Console.WriteLine("Legacy Call Site Entered");
         int programCounter = vmState.ProgramCounter;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;

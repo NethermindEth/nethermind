@@ -26,7 +26,7 @@ public struct ILChunkExecutionState()
     //ShouldFail || ShouldReturn || ShouldStop || ShouldRevert;
     public readonly bool ShouldFail => ExceptionType != EvmExceptionType.None;
 
-    public ReadOnlyMemory<byte> ReturnDataBuffer;
+    public ReadOnlyMemory<byte> ReturnData;
 
     public ContractState ContractState;
 
