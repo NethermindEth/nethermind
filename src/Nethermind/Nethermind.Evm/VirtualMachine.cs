@@ -85,7 +85,7 @@ public class VirtualMachine : IVirtualMachine
             IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
             IlEvmPersistPrecompiledContractsOnDisk = false,
             IlEvmPrecompiledContractsPath = Path.Combine(Directory.GetCurrentDirectory(), "AotCache"),
-            IsIlEvmAggressiveModeEnabled = true,
+            IsIlEvmAggressiveModeEnabled = false,
             IsILEvmEnabled = true,
             IlEvmAnalysisCoreUsage = 0.5f
         };
@@ -731,17 +731,26 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls 
 
                 int programCounter = vmState.ProgramCounter;
-
                 var codeAsSpan = env.CodeInfo.MachineCode.Span; 
-
                 ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
-                chunkExecutionState.ReturnDataBuffer = _returnDataBuffer;
                 fixed(void* codePtr = codeAsSpan, stackPtr = stack.Bytes)
                 {
-                    if (env.CodeInfo.IlInfo.PrecompiledContract(in Unsafe.AsRef<byte>(codePtr),
-                        _specProvider, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, vmState, _state,
-                        ref gasAvailable, ref programCounter, ref stack.Head, ref Unsafe.Add<Word>(ref Unsafe.AsRef<Word>(stackPtr), stack.Head), _txTracer, _logger,
-                        ref chunkExecutionState))
+                    if  (env.CodeInfo.IlInfo.PrecompiledContract(
+                            in Unsafe.AsRef<byte>(codePtr),
+                            _specProvider,
+                            _blockhashProvider,
+                            vmState.Env.TxExecutionContext.CodeInfoRepository,
+                            vmState,
+                            _state,
+                            _returnDataBuffer,
+                            ref gasAvailable,
+                            ref programCounter,
+                            ref stack.Head,
+                            ref Unsafe.Add<Word>(ref Unsafe.AsRef<Word>(stackPtr), stack.Head),
+                            _txTracer,
+                            _logger,
+                            ref chunkExecutionState)
+                        )
                     {
                         Console.WriteLine("Call Continuation Scheduled");
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head-1);
@@ -756,7 +765,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 switch(chunkExecutionState.ContractState)
                 {
                     case ContractState.Return or ContractState.Revert:
-                        return new CallResult(chunkExecutionState.ReturnDataBuffer.ToArray(), null, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
+                        return new CallResult(chunkExecutionState.ReturnData.ToArray(), null, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
                     case ContractState.Failed:
                         return GetFailureReturn<TTracingInstructions>(gasAvailable, chunkExecutionState.ExceptionType);
                     default:
@@ -827,7 +836,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             Instruction instruction = (Instruction)code[programCounter];
 
-            //Console.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", env.CallDepth, programCounter, instruction.ToString(), gasAvailable, stack.Head, 0);
+            Console.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", env.CallDepth, programCounter, instruction.ToString(), gasAvailable, stack.Head, 0);
 
             if (isCancelable && _txTracer.IsCancelled)
             {

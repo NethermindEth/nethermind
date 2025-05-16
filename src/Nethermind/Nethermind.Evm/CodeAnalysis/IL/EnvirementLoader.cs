@@ -27,7 +27,8 @@ internal static class EnvirementLoader
     public const int OBJ_CODEINFOPROVIDER_INDEX = OBJ_BLOCKHASHPROVIDER_INDEX + 1;
     public const int REF_EVMSTATE_INDEX = OBJ_CODEINFOPROVIDER_INDEX + 1;
     public const int OBJ_WORLDSTATE_INDEX = REF_EVMSTATE_INDEX + 1;
-    public const int REF_GASAVAILABLE_INDEX = OBJ_WORLDSTATE_INDEX + 1;
+    public const int OBJ_RETURNDATABUFFER_INDEX = OBJ_WORLDSTATE_INDEX + 1;
+    public const int REF_GASAVAILABLE_INDEX = OBJ_RETURNDATABUFFER_INDEX + 1;
     public const int REF_PROGRAMCOUNTER_INDEX = REF_GASAVAILABLE_INDEX + 1;
     public const int REF_STACKHEAD_INDEX = REF_PROGRAMCOUNTER_INDEX + 1;
     public const int REF_STACKHEADREF_INDEX = REF_STACKHEAD_INDEX + 1;
@@ -296,13 +297,12 @@ internal static class EnvirementLoader
 
     public static void LoadReturnDataBuffer<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        il.LoadArgument(REF_CURRENT_STATE);
-        il.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ReturnDataBuffer)));
         if(loadAddress)
         {
-            using Local bufferTemp = il.DeclareLocal<ReadOnlyMemory<byte>>(locals.GetLocalName());
-            il.StoreLocal(bufferTemp);
-            il.LoadLocalAddress(bufferTemp);
+            il.LoadArgumentAddress(OBJ_RETURNDATABUFFER_INDEX);
+        } else
+        {
+            il.LoadArgument(OBJ_RETURNDATABUFFER_INDEX);
         }
     }
 

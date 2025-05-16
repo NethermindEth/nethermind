@@ -672,7 +672,7 @@ internal static class OpcodeEmitters
 		method.LoadLocalAddress(locals.uint256A);
 		method.LoadLocalAddress(locals.uint256B);
 		method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Load), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
-		method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnDataBuffer)));
+		method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
 
 		method.LoadResult(locals, true);
 		switch (op)

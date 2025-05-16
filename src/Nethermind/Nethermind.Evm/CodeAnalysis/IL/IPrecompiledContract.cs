@@ -25,6 +25,7 @@ public unsafe delegate bool ILExecutionStep(
         ICodeInfoRepository codeInfoProvider,
         EvmState env,
         IWorldState state,
+        ReadOnlyMemory<byte> returnDataBufffer,
         ref long gasAvailable,
         ref int programCounter,
         ref int stackHead,
