@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.EvmObjectFormat;
 
-namespace Nethermind.EOFParse.Runner;
+namespace Nethermind.EofParse.Runner;
 
 internal class Program
 {
