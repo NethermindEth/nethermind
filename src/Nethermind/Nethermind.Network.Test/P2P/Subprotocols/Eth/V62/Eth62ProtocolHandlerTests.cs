@@ -117,7 +117,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Should_stop_notifying_about_new_blocks_and_new_block_hashes_if_in_PoS()
+        public void Should_ignore_notification_on_new_blocks_and_new_block_hashes_if_in_PoS()
         {
             _gossipPolicy.CanGossipBlocks.Returns(false);
 
@@ -131,7 +131,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _gossipPolicy,
                 LimboLogs.Instance);
 
-            _syncManager.Received().StopNotifyingPeersAboutNewBlocks();
+            _session.ClearReceivedCalls();
+            _handler.NotifyOfNewBlock(Build.A.Block.WithTotalDifficulty(100_000L).TestObject, SendBlockMode.FullBlock);
+            _handler.NotifyOfNewBlock(Build.A.Block.WithNumber(100).TestObject, SendBlockMode.HashOnly);
+            _session.Received(0).DeliverMessage(Arg.Any<P2PMessage>());
         }
 
         [Test]

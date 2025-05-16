@@ -110,7 +110,7 @@ public class Eth69ProtocolHandlerTests
         _handler.ProtocolCode.Should().Be("eth");
         _handler.Name.Should().Be("eth69");
         _handler.ProtocolVersion.Should().Be(69);
-        _handler.MessageIdSpaceSize.Should().Be(17);
+        _handler.MessageIdSpaceSize.Should().Be(18);
         _handler.IncludeInTxPool.Should().BeTrue();
         _handler.ClientId.Should().Be(_session.Node?.ClientId);
         _handler.HeadHash.Should().BeNull();
@@ -122,7 +122,7 @@ public class Eth69ProtocolHandlerTests
     {
         HandleIncomingStatusMessage();
 
-        _handler.TotalDifficulty.Should().Be(0);
+        _handler.TotalDifficulty.Should().Be(null);
     }
 
     [Test] // From Eth62ProtocolHandlerTests
