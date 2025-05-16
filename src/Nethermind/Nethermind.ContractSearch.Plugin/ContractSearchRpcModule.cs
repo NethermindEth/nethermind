@@ -99,27 +99,23 @@ public class ContractBytecodeSearchVisitor(
         ReadOnlySpan<byte> code = _stateReader.GetCode(key);
 
         List<int> matchIndices = [];
-        int count = 0;
 
         foreach (ReadOnlySpan<byte> searchCode in _searchBytecodes)
         {
-            int index = code.IndexOf(searchCode);
-            if (index != -1)
+
+            var match = PatternSearch.SyntacticPatternSearch(code, searchCode);
+            if (match.Count > 0)
             {
-                matchIndices.Add(index);
-                count++;
+                if (_logger.IsInfo) _logger.Info($"Found matching contract at {_currentAddress}");
+                _results.Add(new ContractSearchResult
+                {
+                    Address = _currentAddress,
+                    MatchIndices = [.. matchIndices]
+                });
             }
+
         }
 
-        if (count == _searchBytecodes.Length)
-        {
-            if (_logger.IsInfo) _logger.Info($"Found matching contract at {_currentAddress}");
-            _results.Add(new ContractSearchResult
-            {
-                Address = _currentAddress,
-                MatchIndices = [.. matchIndices]
-            });
-        }
     }
 
 }
