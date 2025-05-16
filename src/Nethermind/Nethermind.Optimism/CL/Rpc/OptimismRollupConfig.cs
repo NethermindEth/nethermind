@@ -58,6 +58,7 @@ public sealed record OptimismRollupConfig
     {
         public required ulong EIP1559Elasticity { get; init; }
         public required ulong EIP1559Denominator { get; init; }
+        public required ulong? EIP1559DenominatorCanyon { get; init; }
     }
 
     public static OptimismRollupConfig Build(
@@ -107,6 +108,7 @@ public sealed record OptimismRollupConfig
             {
                 EIP1559Elasticity = (ulong)chainSpec.Parameters.Eip1559ElasticityMultiplier!.Value,
                 EIP1559Denominator = (ulong)chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator!.Value,
+                EIP1559DenominatorCanyon = (ulong)engineParameters.CanyonBaseFeeChangeDenominator!.Value
             }
         };
     }
