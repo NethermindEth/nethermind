@@ -56,15 +56,12 @@ namespace Nethermind.Network.Discovery
         /// </summary>
         /// <param name="cancellationToken">Cancellation token to stop the operation.</param>
         /// <returns>A task representing the asynchronous operation.</returns>
-        public async Task AddPersistedNodes(CancellationToken cancellationToken)
+        public async Task LoadPersistedNodes(CancellationToken cancellationToken)
         {
             NetworkNode[] nodes = _discoveryStorage.GetPersistedNodes();
             foreach (NetworkNode networkNode in nodes)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
+                if (cancellationToken.IsCancellationRequested) break;
 
                 Node node;
                 try
@@ -106,7 +103,6 @@ namespace Nethermind.Network.Discovery
         /// <summary>
         /// Periodically commits discovered nodes to persistent storage.
         /// </summary>
-        /// <param name="kademlia">The Kademlia instance containing nodes to persist.</param>
         /// <param name="cancellationToken">Cancellation token to stop the operation.</param>
         /// <returns>A task representing the asynchronous operation.</returns>
         public async Task RunDiscoveryPersistenceCommit(CancellationToken cancellationToken)
@@ -114,16 +110,15 @@ namespace Nethermind.Network.Discovery
             if (_logger.IsDebug) _logger.Debug("Starting discovery persistence timer");
             PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_persistenceInterval));
 
-            while (!cancellationToken.IsCancellationRequested
-                   && await timer.WaitForNextTickAsync(cancellationToken))
+            while (!cancellationToken.IsCancellationRequested && await timer.WaitForNextTickAsync(cancellationToken))
             {
                 try
                 {
                     _discoveryStorage.StartBatch();
 
-                    var nodes = _kademlia.IterateNodes().ToArray();
-                    _discoveryStorage.UpdateNodes(nodes.Select(x => new NetworkNode(x.Id, x.Host,
-                        x.Port, _nodeStatsManager.GetNewPersistedReputation(x))).ToArray());
+                    _discoveryStorage.UpdateNodes(_kademlia
+                        .IterateNodes()
+                        .Select(x => new NetworkNode(x.Id, x.Host, x.Port, _nodeStatsManager.GetNewPersistedReputation(x))));
 
                     _discoveryStorage.Commit();
                 }

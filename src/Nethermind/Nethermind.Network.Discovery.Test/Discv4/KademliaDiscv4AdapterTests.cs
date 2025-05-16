@@ -90,13 +90,15 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             builder.WithDiscovery(TestItem.PrivateKeyB);
             _receiverSerializationManager = builder.TestObject;
 
+            INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
+            nodeRecordProvider.Current.Returns(_selfNodeRecord);
 
             _adapter = new KademliaDiscv4Adapter(
                 new Lazy<IKademliaMessageReceiver<PublicKey, Node>>(() => _kademliaMessageReceiver),
                 new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
                 new DiscoveryConfig(),
                 _kademliaConfig,
-                _selfNodeRecord,
+                nodeRecordProvider,
                 Substitute.For<INodeStatsManager>(),
                 _timestamper,
                 Substitute.For<IProcessExitSource>(),

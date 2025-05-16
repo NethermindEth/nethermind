@@ -205,7 +205,7 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
         try
         {
             // Step 1 - read nodes and stats from db
-            await _persistenceManager!.AddPersistedNodes(cancellationToken);
+            await _persistenceManager!.LoadPersistedNodes(cancellationToken);
 
             Task persistenceTask = _persistenceManager.RunDiscoveryPersistenceCommit(cancellationToken);
 
