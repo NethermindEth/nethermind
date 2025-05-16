@@ -20,6 +20,9 @@ public static class PatternSearch
         int codeLength = byteCode.Length;
         int patternLength = pattern.Length;
         List<int> matchIndices = [];
+        // receive the parsed byte code from the caller
+        // borrow code from il-evm with a modification to capture code indexes
+        // compare with match indexes to confirm.
 
         if (patternLength == 0 || codeLength < patternLength)
         {
@@ -43,7 +46,7 @@ public static class PatternSearch
             int currentPos = 0;
             int end = codeLength - patternLength;
 
-            if (Avx2.IsSupported && patternLength <= WindowSizeAvx2)
+            if (Avx2.IsSupported)
             {
 
                 Vector256<byte> lastVec = Vector256.Create(last);
@@ -61,7 +64,6 @@ public static class PatternSearch
 
                         if (pos + patternLength > codeLength)
                         {
-
                             break;
                         }
 
