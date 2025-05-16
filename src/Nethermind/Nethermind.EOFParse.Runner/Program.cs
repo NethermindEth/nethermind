@@ -15,23 +15,23 @@ internal class Program
 {
     public class Options
     {
-        public static CliOption<string> Input { get; } =
+        public static Option<string> Input { get; } =
             new("--input", "-i") { Description = "Set the raw eof test input file or directory. Either 'input' or 'stdin' is required." };
 
-        public static CliOption<bool> Stdin { get; } =
+        public static Option<bool> Stdin { get; } =
             new("--stdin", "-x") { Description = "If stdin is used, the eof runner will read inputs (filenames) from stdin, and continue executing until empty line is read." };
     }
 
     public static async Task<int> Main(params string[] args)
     {
-        CliRootCommand rootCommand =
+        RootCommand rootCommand =
         [
             Options.Input,
             Options.Stdin
         ];
         rootCommand.SetAction(Run);
 
-        CliConfiguration configuration = new(rootCommand);
+        CommandLineConfiguration configuration = new(rootCommand);
 
         return await configuration.InvokeAsync(args);
     }
