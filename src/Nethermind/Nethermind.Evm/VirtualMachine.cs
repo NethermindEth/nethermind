@@ -77,18 +77,7 @@ public class VirtualMachine : IVirtualMachine
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-        _vmConfig = new VMConfig
-        {
-            IlEvmAnalysisQueueMaxSize = 2,
-            IlEvmAnalysisThreshold = 2,
-            IlEvmContractsPerDllCount = 16,
-            IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
-            IlEvmPersistPrecompiledContractsOnDisk = false,
-            IlEvmPrecompiledContractsPath = Path.Combine(Directory.GetCurrentDirectory(), "AotCache"),
-            IsIlEvmAggressiveModeEnabled = false,
-            IsILEvmEnabled = true,
-            IlEvmAnalysisCoreUsage = 0.5f
-        };
+        _vmConfig = vmConfig ?? new VMConfig();
 
         switch (_vmConfig.IlEvmEnabledMode)
         {
@@ -684,13 +673,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if (_vmConfig.IsVmOptimizationEnabled && vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
             {
-                //vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
-            }
-
-            if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
-            {
-                vmState.Env.CodeInfo.Codehash = Keccak.Compute(env.CodeInfo.MachineCode.Span);
-                IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
+                vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
             }
         }
 
@@ -801,7 +784,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
-        Console.WriteLine("Legacy Call Site Entered");
         int programCounter = vmState.ProgramCounter;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
@@ -833,8 +815,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 #endif
 
             Instruction instruction = (Instruction)code[programCounter];
-
-            Console.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", env.CallDepth, programCounter, instruction.ToString(), gasAvailable, stack.Head, 0);
 
             if (isCancelable && _txTracer.IsCancelled)
             {
