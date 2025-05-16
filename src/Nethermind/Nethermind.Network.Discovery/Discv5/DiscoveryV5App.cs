@@ -100,6 +100,7 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithSessionOptions(_sessionOptions)
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
             .WithEnrBuilder(enrBuilder)
+            .WithTalkResponder(new TalkReqAndRespHandler())
             .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
             .WithServices(s =>
             {
