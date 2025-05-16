@@ -105,6 +105,8 @@ public class TrieNodeTests
     {
         TrieNode trieNode = new(NodeType.Leaf);
         trieNode.Value = new byte[] { 1, 2, 3 };
+        trieNode.Key = default;
+
         TreePath emptyPath = TreePath.Empty;
         Assert.Throws<TrieException>(() => trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath));
     }

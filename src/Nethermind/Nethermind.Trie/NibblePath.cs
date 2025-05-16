@@ -502,7 +502,7 @@ public readonly struct NibblePath : IEquatable<NibblePath>
     public override string ToString() => ToHexString();
 
 
-    // TODO: optimize, either by packing the remaining first, or unrolling the loop heaviy + vectors
+    // The only path where it's executed it's an extension check. Extensions are not that long.
     public int CommonPrefixLength(ReadOnlySpan<byte> remaining)
     {
         int max = Math.Min(Length, remaining.Length);
