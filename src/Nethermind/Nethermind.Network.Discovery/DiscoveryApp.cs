@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using System.Net.NetworkInformation;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Autofac.Features.AttributeFilters;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
@@ -9,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
