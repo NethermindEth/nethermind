@@ -324,7 +324,7 @@ public static class Precompiler
                 method.LoadConstant(EvmStack.MaxStackSize);
                 method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackOverflow));
             }
-
+            /*
             using Local depth = method.DeclareLocal<int>();
 
             method.LoadEnv(locals, true);
@@ -344,7 +344,7 @@ public static class Precompiler
             method.StoreLocal(instructionName);
 
             method.WriteLine("Depth: {0}, ProgramCounter: {1}, Opcode: {2}, GasAvailable: {3}, StackOffset: {4}, StackDelta: {5}", depth, pc, instructionName, locals.gasAvailable, locals.stackHeadIdx, stackOffset);
-
+            */
             method.GetOpcodeILEmitter(codeInfo, opcodeInfo.Instruction, config, contractMetadata, currentSubsegment, i, opcodeInfo.Metadata, locals, evmExceptionLabels, (ret, jumpTable, exit));
 
             i += opcodeInfo.Metadata.AdditionalBytes;
