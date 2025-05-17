@@ -22,7 +22,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
     SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
-    private long _gasCapBudget = rpcConfig.GasCap ?? long.MaxValue;
+    private readonly long _gasCapBudget = (rpcConfig.GasCap ?? long.MaxValue) / 2; // In case of eth_simulate we use half of the gas cap to match with other clients
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
     protected override SimulatePayload<TransactionWithSourceDetails> Prepare(SimulatePayload<TransactionForRpc> call)
@@ -31,6 +31,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         {
             TraceTransfers = call.TraceTransfers,
             Validation = call.Validation,
+            GasCap = _gasCapBudget,
             BlockStateCalls = call.BlockStateCalls?.Select(blockStateCall =>
             {
                 if (blockStateCall.BlockOverrides?.GasLimit is not null)
@@ -48,9 +49,6 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                         LegacyTransactionForRpc asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
-                        asLegacy!.EnsureDefaults(_gasCapBudget);
-                        _gasCapBudget -= asLegacy.Gas!.Value;
-                        _gasCapBudget = Math.Max(0, _gasCapBudget);
 
                         Transaction tx = callTransactionModel.ToTransaction();
                         tx.ChainId = _blockchainBridge.GetChainId();
@@ -145,7 +143,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
                         $"Block number out of order {givenNumber} is <= than previous block number of {header.Number}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
 
                 // if the no. of filler blocks are greater than maximum simulate blocks cap
-                if (givenNumber - (ulong)lastBlockNumber > (ulong)_blocksLimit)
+                if (givenNumber - (ulong)header.Number > (ulong)_blocksLimit)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                         $"too many blocks",
                         ErrorCodes.ClientLimitExceededError);
@@ -187,7 +185,8 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
 
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
         SimulatePayload<TransactionWithSourceDetails> toProcess = Prepare(call);
-        return Execute(header.Clone(), toProcess, stateOverride, timeout.Token);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result = Execute(header.Clone(), toProcess, stateOverride, timeout.Token);
+        return result;
     }
 
     protected override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
