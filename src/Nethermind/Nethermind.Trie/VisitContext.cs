@@ -13,7 +13,7 @@ namespace Nethermind.Trie
         public readonly bool IsStorage = isStorage;
         public readonly int? BranchChildIndex = branchChildIndex;
 
-        public OldStyleTrieVisitContext Add(ReadOnlySpan<byte> nibblePath)
+        public OldStyleTrieVisitContext Add(NibblePath nibblePath)
         {
             return new(Level + 1, IsStorage, null);
         }

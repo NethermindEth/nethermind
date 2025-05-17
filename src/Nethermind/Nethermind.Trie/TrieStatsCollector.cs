@@ -30,7 +30,7 @@ namespace Nethermind.Trie
             public readonly bool IsStorage => OldStyleTrieVisitContext.IsStorage;
             public readonly int Level => OldStyleTrieVisitContext.Level;
 
-            public readonly Context Add(ReadOnlySpan<byte> nibblePath)
+            public readonly Context Add(NibblePath nibblePath)
             {
                 return new Context()
                 {

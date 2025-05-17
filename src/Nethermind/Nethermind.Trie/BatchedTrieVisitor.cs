@@ -418,7 +418,7 @@ public class BatchedTrieVisitor<TNodeContext>
                     _visitor.VisitExtension(nodeContext, node);
                     TrieNode child = node.GetChild(nodeResolver, ref emptyPath, 0) ?? throw new InvalidDataException($"Child of an extension {node.Key} should not be null.");
                     child.ResolveKey(nodeResolver, ref emptyPath, false);
-                    TNodeContext childContext = nodeContext.Add(node.Key!);
+                    TNodeContext childContext = nodeContext.Add(node.Key);
                     if (_visitor.ShouldVisit(childContext, child.Keccak!))
                     {
                         trieVisitContext.Level++;
@@ -436,7 +436,7 @@ public class BatchedTrieVisitor<TNodeContext>
 
                     if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                     {
-                        TNodeContext childContext = nodeContext.Add(node.Key!);
+                        TNodeContext childContext = nodeContext.Add(node.Key);
 
                         Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.AsSpan());
                         if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
@@ -490,7 +490,8 @@ public class BatchedTrieVisitor<TNodeContext>
 
 public readonly struct EmptyContext : INodeContext<EmptyContext>
 {
-    public EmptyContext Add(ReadOnlySpan<byte> nibblePath) => this;
+    public EmptyContext Add(NibblePath nibblePath) => this;
+
     public EmptyContext Add(byte nibble) => this;
     public EmptyContext AddStorage(in ValueHash256 storage) => this;
 }
@@ -503,7 +504,7 @@ public struct TreePathContext : INodeContext<TreePathContext>
     {
     }
 
-    public TreePathContext Add(ReadOnlySpan<byte> nibblePath)
+    public TreePathContext Add(NibblePath nibblePath)
     {
         return new TreePathContext()
         {
@@ -540,7 +541,7 @@ public readonly struct TreePathContextWithStorage : ITreePathContextWithStorage,
     {
     }
 
-    public TreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath)
+    public TreePathContextWithStorage Add(NibblePath nibblePath)
     {
         return new TreePathContextWithStorage()
         {
@@ -574,7 +575,7 @@ public readonly struct TreePathContextWithStorage : ITreePathContextWithStorage,
 /// </summary>
 public struct NoopTreePathContextWithStorage : ITreePathContextWithStorage, INodeContext<NoopTreePathContextWithStorage>
 {
-    public readonly NoopTreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath)
+    public readonly NoopTreePathContextWithStorage Add(NibblePath nibblePath)
     {
         return this;
     }
@@ -598,7 +599,7 @@ public interface INodeContext<out TNodeContext>
     // The context needs to be the struct so that it's passed nicely via in and returned from the methods.
     where TNodeContext : struct, INodeContext<TNodeContext>
 {
-    TNodeContext Add(ReadOnlySpan<byte> nibblePath);
+    TNodeContext Add(NibblePath nibblePath);
 
     TNodeContext Add(byte nibble);
     TNodeContext AddStorage(in ValueHash256 storage);
