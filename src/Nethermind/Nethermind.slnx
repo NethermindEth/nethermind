@@ -82,6 +82,7 @@
   </Folder>
   <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
+  <Project Path="Nethermind.Benchmarks.Runner\Nethermind.Benchmarks.Runner.csproj" />
   <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
   <Project Path="Nethermind.Config/Nethermind.Config.csproj" />
   <Project Path="Nethermind.Consensus.AuRa/Nethermind.Consensus.AuRa.csproj" />
