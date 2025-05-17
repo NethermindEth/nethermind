@@ -254,7 +254,6 @@ namespace Nethermind.Core
 
         public ValueHash256 ToAccountPath => KeccakCache.Compute(Bytes);
 
-        [SkipLocalsInit]
         public ValueHash256 ToHash()
         {
             Span<byte> addressBytes = stackalloc byte[Hash256.Size];
