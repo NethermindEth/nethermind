@@ -1645,6 +1645,7 @@ internal static class OpcodeEmitters
 		method.LoadWorldState(locals, false);
 		method.LoadLocal(locals.address);
 		method.LoadSpec(locals, false);
+        method.LoadConstant(false);
 		method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
 		method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
 		method.StoreLocal(locals.localReadOnlyMemory);
@@ -1714,6 +1715,7 @@ internal static class OpcodeEmitters
 		method.LoadWorldState(locals, false);
 		method.LoadLocal(locals.address);
 		method.LoadSpec(locals, false);
+        method.LoadConstant(false);
 		method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
 		method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
 
