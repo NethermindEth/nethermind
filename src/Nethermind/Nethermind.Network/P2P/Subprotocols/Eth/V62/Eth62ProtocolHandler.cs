@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
     public class Eth62ProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler
     {
-        private bool _statusReceived;
+        protected bool _statusReceived;
         private readonly TxFloodController _floodController;
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;
@@ -51,8 +51,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _txGossipPolicy = transactionsGossipPolicy ?? TxPool.ShouldGossip.Instance;
             _handleSlow = HandleSlow;
-
-            EnsureGossipPolicy();
         }
 
         public void DisableTxFiltering()
@@ -62,6 +60,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public override byte ProtocolVersion => EthVersions.Eth62;
         public override string ProtocolCode => Protocol.Eth;
+        public override bool AlwaysNotifyOfNewBlock => false;
         public override int MessageIdSpaceSize => 8;
         public override string Name => "eth62";
         protected override TimeSpan InitTimeout => Timeouts.Eth62Status;
@@ -87,18 +86,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             BlockHeader head = SyncServer.Head;
-            StatusMessage statusMessage = new()
-            {
-                NetworkId = SyncServer.NetworkId,
-                ProtocolVersion = ProtocolVersion,
-                TotalDifficulty = head.TotalDifficulty ?? head.Difficulty,
-                BestHash = head.Hash!,
-                GenesisHash = SyncServer.Genesis.Hash!
-            };
-
-            EnrichStatusMessage(statusMessage);
-
-            Send(statusMessage);
+            NotifyOfStatus(head);
 
             CheckProtocolInitTimeout().ContinueWith(x =>
             {
@@ -209,18 +197,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
-        private bool CanGossip => EnsureGossipPolicy();
-
-        private bool EnsureGossipPolicy()
-        {
-            if (!_gossipPolicy.CanGossipBlocks)
-            {
-                SyncServer.StopNotifyingPeersAboutNewBlocks();
-                return false;
-            }
-
-            return true;
-        }
+        private bool CanGossip => _gossipPolicy.CanGossipBlocks;
 
         private void Handle(StatusMessage status)
         {
@@ -339,6 +316,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 if (Logger.IsDebug) Logger.Debug($"Handling {msg} from {Node:c} failed: " + e.Message);
                 throw;
             }
+        }
+
+        protected virtual void NotifyOfStatus(BlockHeader head)
+        {
+            StatusMessage statusMessage = new()
+            {
+                NetworkId = SyncServer.NetworkId,
+                ProtocolVersion = ProtocolVersion,
+                TotalDifficulty = head.TotalDifficulty ?? head.Difficulty,
+                BestHash = head.Hash!,
+                GenesisHash = SyncServer.Genesis.Hash!
+            };
+
+            EnrichStatusMessage(statusMessage);
+
+            Send(statusMessage);
         }
 
         public override void NotifyOfNewBlock(Block block, SendBlockMode mode)

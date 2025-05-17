@@ -34,6 +34,8 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Network;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -404,7 +406,7 @@ public class BaseMergePluginModule : Module
             .AddSingleton<InvalidChainTracker.InvalidChainTracker>()
                 .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
-
+            .AddSingleton<IBetterPeerStrategy, LastBlockBetterPeerStrategy>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()

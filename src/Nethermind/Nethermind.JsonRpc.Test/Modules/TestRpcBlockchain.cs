@@ -41,6 +41,7 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -56,6 +57,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReceiptFinder ReceiptFinder => Container.Resolve<IReceiptFinder>();
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
         public IOverridableWorldScope OverridableWorldStateManager { get; private set; } = null!;
+        public IProtocolsManager ProtocolsManager { get; private set; } = null!;
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; } =
@@ -182,6 +184,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
+            @this.ProtocolsManager,
             @this.BlocksConfig.SecondsPerSlot);
 
         private readonly Func<TestRpcBlockchain, IDebugRpcModule> _debugRpcModuleBuilder = static @this => new DebugModuleFactory(
