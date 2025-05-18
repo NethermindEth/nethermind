@@ -39,7 +39,7 @@ public class Eip7823Tests
     {
         IReleaseSpec spec = new Prague() { IsEip7823Enabled = isEip7823Enabled };
 
-        byte[] input = new byte[(SizeOfUInt256 + ModExpMaxInputSizeEip7823PlusOne) * 3]; 
+        byte[] input = new byte[(SizeOfUInt256 + ModExpMaxInputSizeEip7823PlusOne) * 3];
         ref byte inputRef = ref MemoryMarshal.GetArrayDataReference(input);
 
         ref uint baseLength = ref Unsafe.As<byte, uint>(ref Unsafe.Add(ref inputRef, SizeOfUInt256 - sizeof(uint)));
