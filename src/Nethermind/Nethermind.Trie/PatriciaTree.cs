@@ -585,7 +585,9 @@ namespace Nethermind.Trie
         private ref readonly CappedArray<byte> TraverseNode(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
         {
             if (node.IsBranch)
+            {
                 return ref TraverseBranches(node, traverseContext, ref path);
+            }
 
             if (_logger.IsTrace) Trace(node, traverseContext);
 
