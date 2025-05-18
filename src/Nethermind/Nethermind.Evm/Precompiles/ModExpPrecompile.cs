@@ -18,6 +18,7 @@ namespace Nethermind.Evm.Precompiles
     public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     {
         public static readonly ModExpPrecompile Instance = new();
+        public const int ModExpMaxInputSizeEip7823 = 1024;
 
         private ModExpPrecompile()
         {
@@ -58,6 +59,14 @@ namespace Nethermind.Evm.Precompiles
                 UInt256 baseLength = new(extendedInput[..32], true);
                 UInt256 expLength = new(extendedInput.Slice(32, 32), true);
                 UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
+
+                if (releaseSpec.IsEip7823Enabled &&
+                    (baseLength > ModExpMaxInputSizeEip7823 ||
+                     expLength > ModExpMaxInputSizeEip7823 ||
+                     modulusLength > ModExpMaxInputSizeEip7823))
+                {
+                    return long.MaxValue;
+                }
 
                 UInt256 complexity = MultComplexity(baseLength, modulusLength);
 
@@ -107,8 +116,15 @@ namespace Nethermind.Evm.Precompiles
             Metrics.ModExpPrecompile++;
 
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
+            if (releaseSpec.IsEip7823Enabled &&
+                (baseLength > ModExpMaxInputSizeEip7823 ||
+                 expLength > ModExpMaxInputSizeEip7823 ||
+                 modulusLength > ModExpMaxInputSizeEip7823))
+            {
+                return IPrecompile.Failure;
+            }
 
-            // if both are 0, than expLenght can be huge, which leads to potential buffer to big exception
+            // if both are 0, than expLength can be huge, which leads to potential buffer to big exception
             if (baseLength == 0 && modulusLength == 0)
             {
                 return (Bytes.Empty, true);
