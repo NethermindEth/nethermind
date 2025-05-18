@@ -579,7 +579,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             candidateSets = new(count);
             while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
             {
-                if (frontSet.BlockNumber == lastBlockBeforeRorgBoundary || _persistenceStrategy.ShouldPersist(frontSet.BlockNumber))
+                if (frontSet.BlockNumber == lastBlockBeforeRorgBoundary || (_persistenceStrategy.ShouldPersist(frontSet.BlockNumber) && frontSet.BlockNumber < lastBlockBeforeRorgBoundary))
                 {
                     candidateSets.Add(frontSet);
                 }
@@ -773,9 +773,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private readonly ILogger _logger;
 
-    private ConcurrentQueue<BlockCommitSet>? _commitSetQueue;
-
-    private ConcurrentQueue<BlockCommitSet> CommitSetQueue => _commitSetQueue ?? CreateQueueAtomic(ref _commitSetQueue);
+    private ConcurrentQueue<BlockCommitSet> _commitSetQueue = new ConcurrentQueue<BlockCommitSet>();
 
     private BlockCommitSet? _lastCommitSet = null;
 
@@ -794,14 +792,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private long LatestCommittedBlockNumber { get; set; }
     public INodeStorage.KeyScheme Scheme => _nodeStorage.Scheme;
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static ConcurrentQueue<BlockCommitSet> CreateQueueAtomic(ref ConcurrentQueue<BlockCommitSet> val)
-    {
-        ConcurrentQueue<BlockCommitSet> instance = new();
-        ConcurrentQueue<BlockCommitSet>? prior = Interlocked.CompareExchange(ref val, instance, null);
-        return prior ?? instance;
-    }
 
     private void VerifyNewCommitSet(long blockNumber)
     {
@@ -823,7 +813,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         VerifyNewCommitSet(blockNumber);
 
         BlockCommitSet commitSet = new(blockNumber);
-        CommitSetQueue.Enqueue(commitSet);
+        _commitSetQueue.Enqueue(commitSet);
 
         _lastCommitSet = commitSet;
 
@@ -831,7 +821,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         // Why are we announcing **before** committing next block??
         // Should it be after commit?
         AnnounceReorgBoundaries();
-        DequeueOldCommitSets();
 
         return commitSet;
     }
@@ -981,24 +970,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                && lastSeen < LatestCommittedBlockNumber - _maxDepth;
     }
 
-    private void DequeueOldCommitSets()
-    {
-        if (_commitSetQueue?.IsEmpty ?? true) return;
-
-        while (_commitSetQueue.TryPeek(out BlockCommitSet blockCommitSet))
-        {
-            if (blockCommitSet.BlockNumber < LatestCommittedBlockNumber - _maxDepth - 1)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {LatestCommittedBlockNumber} - {_maxDepth}");
-                _commitSetQueue.TryDequeue(out _);
-            }
-            else
-            {
-                break;
-            }
-        }
-    }
-
     private void AnnounceReorgBoundaries()
     {
         if (LatestCommittedBlockNumber < 1)
@@ -1076,7 +1047,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             long start = Stopwatch.GetTimestamp();
             // We persist all sealed Commitset causing PruneCache to almost completely clear the cache. Any new block that
             // need existing node will have to read back from db causing copy-on-read mechanism to copy the node.
-            ConcurrentQueue<BlockCommitSet> commitSetQueue = CommitSetQueue;
+            ConcurrentQueue<BlockCommitSet> commitSetQueue = _commitSetQueue;
 
             void ClearCommitSetQueue()
             {
