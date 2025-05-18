@@ -1179,7 +1179,6 @@ namespace Nethermind.Trie
                 ref TreePath updatePathTreePath,
                 in CappedArray<byte> updateValue,
                 bool isUpdate,
-                bool ignoreMissingDelete = true,
                 bool isNodeRead = false)
             {
                 UpdatePath = updatePath;
