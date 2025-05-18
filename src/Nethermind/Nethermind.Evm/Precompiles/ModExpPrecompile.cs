@@ -65,10 +65,7 @@ namespace Nethermind.Evm.Precompiles
                 UInt256 expLength = new(extendedInput.Slice(32, 32), true);
                 UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
 
-                if (releaseSpec.IsEip7823Enabled &&
-                    (baseLength > ModExpMaxInputSizeEip7823 ||
-                     expLength > ModExpMaxInputSizeEip7823 ||
-                     modulusLength > ModExpMaxInputSizeEip7823))
+                if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
                 {
                     return long.MaxValue;
                 }
@@ -88,6 +85,13 @@ namespace Nethermind.Evm.Precompiles
                 return long.MaxValue;
             }
         }
+
+        private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, in UInt256 baseLength, in UInt256 expLength, in UInt256 modulusLength)
+            => releaseSpec.IsEip7823Enabled && ExceedsMaxInputSize(releaseSpec, (int)(uint)baseLength, (int)(uint)expLength, (int)(uint)modulusLength);
+
+        private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, int baseLength, int expLength, int modulusLength)
+            => releaseSpec.IsEip7823Enabled &&
+                (baseLength > ModExpMaxInputSizeEip7823 || expLength > ModExpMaxInputSizeEip7823 || modulusLength > ModExpMaxInputSizeEip7823);
 
         private static mpz_t ImportDataToGmp(byte[] data)
         {
@@ -121,10 +125,7 @@ namespace Nethermind.Evm.Precompiles
             Metrics.ModExpPrecompile++;
 
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
-            if (releaseSpec.IsEip7823Enabled &&
-                (baseLength > ModExpMaxInputSizeEip7823 ||
-                 expLength > ModExpMaxInputSizeEip7823 ||
-                 modulusLength > ModExpMaxInputSizeEip7823))
+            if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
             {
                 return IPrecompile.Failure;
             }
