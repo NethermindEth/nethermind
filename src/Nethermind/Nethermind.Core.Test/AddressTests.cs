@@ -210,7 +210,7 @@ public class AddressTests
             Span<byte> addressBytes = stackalloc byte[Address.Size];
             for (var i = 0; i < Address.Size; i++)
             {
-                addressBytes[i] = (byte)(i + 1);
+                addressBytes[i] = (byte)(i + j);
             }
 
             var address = new Address(addressBytes);
