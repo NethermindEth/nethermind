@@ -212,7 +212,11 @@ namespace Nethermind.TxPool
         }
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
-            if (_headInfo.IsSyncing) return;
+            if (_headInfo.IsSyncing)
+            {
+                DisposeBlockAccountChanges(e.Block);
+                return;
+            }
 
             try
             {
@@ -263,8 +267,8 @@ namespace Nethermind.TxPool
                             // Sequential block, just remove changed accounts from cache
                             _accountCache.RemoveAccounts(accountChanges);
                         }
-                        args.Block.AccountChanges = null;
-                        accountChanges?.Dispose();
+
+                        DisposeBlockAccountChanges(args.Block);
 
                         _lastBlockNumber = args.Block.Number;
                         _lastBlockHash = args.Block.Hash;
@@ -1014,6 +1018,15 @@ Db usage:
 * BlobDb reads:         {Db.Metrics.DbReads.GetValueOrDefault("BlobTransactions"),24:N0}
 ------------------------------------------------
 ");
+        }
+
+        // Cleanup ArrayPoolList AccountChanges as they are not used anywhere else
+        private static void DisposeBlockAccountChanges(Block block)
+        {
+            if (block.AccountChanges == null) return;
+
+            block.AccountChanges.Dispose();
+            block.AccountChanges = null;
         }
     }
 }
