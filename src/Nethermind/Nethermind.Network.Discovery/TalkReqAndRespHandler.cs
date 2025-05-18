@@ -11,12 +11,17 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Network.Discovery;
+
+/// https://github.com/ethereum/devp2p/blob/master/discv5/discv5-wire.md#talkreq-request-0x05
 internal class TalkReqAndRespHandler : ITalkReqAndRespHandler
 {
+    //Must send an empty response if no protocols are matched
+    private static readonly byte[][] EmptyProtocolResponse = [[]];
+
     public byte[][]? HandleRequest(byte[] protocol, byte[] request)
     {
         //We currently don't advertise any supported protocols
-        return [Array.Empty<byte>()];
+        return EmptyProtocolResponse;
     }
 
     public byte[]? HandleResponse(byte[] response)
