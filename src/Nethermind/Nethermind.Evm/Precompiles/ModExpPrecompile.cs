@@ -18,6 +18,11 @@ namespace Nethermind.Evm.Precompiles
     public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     {
         public static readonly ModExpPrecompile Instance = new();
+        /// <summary>
+        /// Maximum input size (in bytes) for the modular exponentiation operation under EIP-7823.
+        /// This constant defines the upper limit for the size of the input data that can be processed.
+        /// For more details, see: https://eips.ethereum.org/EIPS/eip-7823
+        /// </summary>
         public const int ModExpMaxInputSizeEip7823 = 1024;
 
         private ModExpPrecompile()
@@ -124,7 +129,7 @@ namespace Nethermind.Evm.Precompiles
                 return IPrecompile.Failure;
             }
 
-            // if both are 0, than expLength can be huge, which leads to potential buffer to big exception
+            // if both are 0, then expLength can be huge, which leads to a potential buffer too big exception
             if (baseLength == 0 && modulusLength == 0)
             {
                 return (Bytes.Empty, true);
