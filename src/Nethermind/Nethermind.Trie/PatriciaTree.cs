@@ -582,8 +582,11 @@ namespace Nethermind.Trie
             }
         }
 
-        private ref readonly CappedArray<byte> TraverseExtensionOrLeaf(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
+        private ref readonly CappedArray<byte> TraverseNode(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
         {
+            if (node.IsBranch)
+                return ref TraverseBranches(node, traverseContext, ref path);
+
             if (_logger.IsTrace) Trace(node, traverseContext);
 
             if (traverseContext.IsNodeRead && traverseContext.RemainingUpdatePathLength == 0)
@@ -613,20 +616,11 @@ namespace Nethermind.Trie
             {
                 switch (node.NodeType)
                 {
-                    case NodeType.Branch:
-                        return ref TraverseBranch(node);
                     case NodeType.Unknown:
                         return ref TraverseUnknown(node);
                     default:
                         return ref ThrowNotSupported(node);
                 }
-            }
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static ref readonly CappedArray<byte> TraverseBranch(TrieNode node)
-            {
-                throw new InvalidOperationException($"Branch node {node.Keccak} should already be handled");
             }
 
             [DoesNotReturn]
@@ -887,13 +881,6 @@ namespace Nethermind.Trie
                 => throw new InvalidOperationException($"An attempt to set a null node as a child of the {node}");
         }
 
-        private ref readonly CappedArray<byte> TraverseNode(TrieNode node, TraverseContext traverseContext, scoped ref TreePath path)
-        {
-            return ref node.IsBranch ?
-                ref TraverseBranches(node, traverseContext, ref path) :
-                ref TraverseExtensionOrLeaf(node, traverseContext, ref path);
-        }
-
         private ref readonly CappedArray<byte> TraverseBranches(TrieNode node, TraverseContext traverseContext, scoped ref TreePath path)
         {
             while (true)
@@ -921,7 +908,7 @@ namespace Nethermind.Trie
                 traverseContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + 1);
                 if (!childNode.IsBranch)
                 {
-                    return ref TraverseExtensionOrLeaf(childNode, in traverseContext, ref path);
+                    return ref TraverseNode(childNode, in traverseContext, ref path);
                 }
 
                 // Traverse next branch
