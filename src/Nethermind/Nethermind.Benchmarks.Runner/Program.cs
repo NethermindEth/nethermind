@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
 using Nethermind.Core;
@@ -30,6 +32,12 @@ public class SpanZeroingBenchmark
     {
         return Implementations.ToHashWithoutSkipLocals(Address);
     }
+
+    [Benchmark]
+    public ValueHash256 ToHashBensSpecial()
+    {
+        return Implementations.ToHashBensSpecial(Address);
+    }
 }
 
 public static class Implementations
@@ -40,7 +48,7 @@ public static class Implementations
     public static ValueHash256 ToHashWithSkipLocals(Address address)
     {
         Span<byte> addressBytes = stackalloc byte[Hash256.Size];
-        addressBytes[ZeroedPrefixSize..].Clear();
+        addressBytes[..ZeroedPrefixSize].Clear();
         address.Bytes.CopyTo(addressBytes[ZeroedPrefixSize..]);
         return new ValueHash256(addressBytes);
     }
@@ -50,5 +58,26 @@ public static class Implementations
         Span<byte> addressBytes = stackalloc byte[Hash256.Size];
         address.Bytes.CopyTo(addressBytes[ZeroedPrefixSize..]);
         return new ValueHash256(addressBytes);
+    }
+
+    [SkipLocalsInit]
+    public static ValueHash256 ToHashBensSpecial(Address address)
+    {
+        ref byte value = ref MemoryMarshal.GetArrayDataReference(address.Bytes);
+
+        Unsafe.SkipInit(out ValueHash256 result);
+        ref byte bytes = ref Unsafe.As<ValueHash256, byte>(ref result);
+
+        // First 4+8 bytes are zero, zero 16 bytes to maximize write combining
+        Unsafe.As<byte, Vector128<byte>>(ref bytes) = default;
+
+        // 20 bytes which is uint+Vector128
+        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(uint) + sizeof(ulong)))
+            = Unsafe.As<byte, uint>(ref value);
+
+        Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes, sizeof(ulong) + sizeof(ulong)))
+            = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref value, sizeof(uint)));
+
+        return result;
     }
 }
