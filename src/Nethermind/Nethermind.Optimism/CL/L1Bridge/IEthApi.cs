@@ -16,6 +16,7 @@ public interface IEthApi
     Task<L1Block?> GetBlockByNumber(ulong blockNumber, bool fullTxs);
     Task<L1Block?> GetHead(bool fullTxs);
     Task<L1Block?> GetFinalized(bool fullTxs);
+    Task<ulong> GetChainId();
 }
 
 public readonly struct L1Block

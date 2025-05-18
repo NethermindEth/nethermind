@@ -39,6 +39,7 @@ using Nethermind.Consensus.Rewards;
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Timers;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
 
@@ -228,7 +229,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 configurer?.Invoke(builder);
             });
 
-            IFilterStore filterStore = new FilterStore();
+            IFilterStore filterStore = new FilterStore(new TimerFactory());
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
             IReadOnlyBlockTree? roBlockTree = BlockTree!.AsReadOnly();
