@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using System.Net;
 using FluentAssertions;
+using Nethermind.Consensus;
 using Nethermind.Core.Test;
 using Nethermind.Trie;
 
@@ -51,8 +52,10 @@ public class StateSyncDispatcherTests
         _pool.Start();
 
         ISyncFeed<StateSyncBatch>? feed = Substitute.For<ISyncFeed<StateSyncBatch>>();
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.TransitionFinished.Returns(false);
         _dispatcher =
-            new StateSyncDispatcherTester(feed, new StateSyncDownloader(_logManager), _pool, new StateSyncAllocationStrategyFactory(), _logManager);
+            new StateSyncDispatcherTester(feed, new StateSyncDownloader(_logManager), _pool, new StateSyncAllocationStrategyFactory(poSSwitcher), _logManager);
     }
 
     [TearDown]

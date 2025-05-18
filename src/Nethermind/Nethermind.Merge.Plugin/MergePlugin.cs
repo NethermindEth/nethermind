@@ -34,7 +34,6 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
@@ -221,6 +220,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             ArgumentNullException.ThrowIfNull(_api.BlockTree);
             ArgumentNullException.ThrowIfNull(_api.SpecProvider);
             ArgumentNullException.ThrowIfNull(_api.UnclesValidator);
+            ArgumentNullException.ThrowIfNull(_api.ProtocolsManager);
             if (_api.BlockProductionPolicy is null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
             if (_api.SealValidator is null) throw new ArgumentException(nameof(_api.SealValidator));
 
@@ -232,6 +232,11 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
             // Need to do it here because blockprocessor is not available in init
             _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.MainProcessingContext!.BlockchainProcessor!);
+
+            if (_poSSwitcher.TransitionFinished)
+                _api.ProtocolsManager.AddSupportedCapability(new(Protocol.Eth, 69));
+            else
+                _poSSwitcher.Transitioned += (_, _) => _api.ProtocolsManager.AddSupportedCapability(new(Protocol.Eth, 69));
         }
 
         return Task.CompletedTask;
@@ -406,7 +411,6 @@ public class BaseMergePluginModule : Module
             .AddSingleton<InvalidChainTracker.InvalidChainTracker>()
                 .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
-            .AddSingleton<IBetterPeerStrategy, LastBlockBetterPeerStrategy>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()

@@ -2,21 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<SnapSyncBatch>
-    {
-
-        private static readonly IPeerAllocationStrategy DefaultStrategy =
-            // TODO: use TotalDiffStrategy in non-merge chains?
-            new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(new LastBlockStrategy(new BySpeedStrategy(TransferSpeedType.SnapRanges, true), StrategySelectionType.CanBeSlightlyWorse), "snap");
-
-        public SnapSyncAllocationStrategyFactory() : base(DefaultStrategy)
-        {
-        }
-    }
+    public class SnapSyncAllocationStrategyFactory(IPoSSwitcher poSSwitcher) : StaticPeerAllocationStrategyFactory<SnapSyncBatch>(
+        new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(
+            new TransitioningPeerAllocationStrategy(poSSwitcher,
+                new BySpeedStrategy(TransferSpeedType.SnapRanges, true)
+            ), "snap"
+        )
+    );
 }
