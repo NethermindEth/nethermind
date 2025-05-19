@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -26,9 +25,9 @@ namespace Nethermind.Trie;
 /// </remarks>
 public readonly ref struct NibblePath
 {
-    public const int NibblePerByte = 2;
-    public const int NibbleShift = 8 / NibblePerByte;
-    public const int NibbleMask = 15;
+    private const int NibblePerByte = 2;
+    private const int NibbleShift = 8 / NibblePerByte;
+    private const int NibbleMask = 15;
 
     private const int OddBit = 1;
 
@@ -54,19 +53,6 @@ public readonly ref struct NibblePath
 
     private static NibblePath Empty => default;
 
-    public static NibblePath Parse(string hex)
-    {
-        var nibbles = new byte[(hex.Length + 1) / 2];
-        NibblePath path = FromKey(nibbles).SliceTo(hex.Length);
-
-        for (var i = 0; i < hex.Length; i++)
-        {
-            path.UnsafeSetAt(i, byte.Parse(hex.AsSpan(i, 1), NumberStyles.HexNumber));
-        }
-
-        return path;
-    }
-
     public static NibblePath FromKey(ReadOnlySpan<byte> key, int nibbleFrom = 0)
     {
         var count = key.Length * NibblePerByte;
@@ -75,8 +61,11 @@ public readonly ref struct NibblePath
 
     public static NibblePath FromCompact(byte[] compact)
     {
-        if (compact.Length == 1 && compact[0] == 0)
-            return default;
+        if (compact.Length <= 1)
+        {
+            if (compact.Length == 0 || compact[0] == 0)
+                return default;
+        }
 
         byte oddity = (byte)((compact[0] & OddFlag) >> OddFlagShift);
         return new NibblePath(ref compact[1 - oddity], oddity, (byte)((compact.Length - 1) * 2 + oddity));
@@ -132,22 +121,10 @@ public readonly ref struct NibblePath
 
     public byte this[int nibble] => GetAt(nibble);
 
-    public byte GetAt(int nibble) => (byte)((GetRefAt(nibble) >> GetShift(nibble)) & NibbleMask);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private byte GetAt(int nibble) => (byte)((GetRefAt(nibble) >> GetShift(nibble)) & NibbleMask);
 
     private int GetShift(int nibble) => (1 - ((nibble + _odd) & OddBit)) * NibbleShift;
-
-    /// <summary>
-    /// Sets a <paramref name="value"/> of the nibble at the given <paramref name="nibble"/> location.
-    /// This is unsafe. Use only for owned memory.
-    /// </summary>
-    private void UnsafeSetAt(int nibble, byte value)
-    {
-        ref var b = ref GetRefAt(nibble);
-        var shift = GetShift(nibble);
-        var mask = NibbleMask << shift;
-
-        b = (byte)((b & ~mask) | (value << shift));
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ref byte GetRefAt(int nibble) => ref Unsafe.Add(ref _span, (nibble + _odd) / 2);
@@ -262,32 +239,6 @@ public readonly ref struct NibblePath
         }
 
         return new string(path);
-    }
-
-    /// <summary>
-    /// For tests
-    /// </summary>
-    /// <returns></returns>
-    public string ToHexByteString()
-    {
-        if (Length == 0)
-            return "";
-
-        Span<char> path = stackalloc char[Length * 2];
-        ref var ch = ref path[0];
-
-        for (int i = _odd; i < Length + _odd; i++)
-        {
-            var b = Unsafe.Add(ref _span, i / 2);
-            var nibble = (b >> ((1 - (i & OddBit)) * NibbleShift)) & NibbleMask;
-
-            ch = Hex[0];
-            ch = ref Unsafe.Add(ref ch, 1);
-            ch = Hex[nibble];
-            ch = ref Unsafe.Add(ref ch, 1);
-        }
-
-        return new string(path).ToLower();
     }
 
     private static readonly char[] Hex = "0123456789ABCDEF".ToArray();
@@ -442,7 +393,8 @@ public readonly ref struct NibblePath
     }
 
     /// <summary>
-    /// The <see cref="Key"/> uses almost Ethereum encoding for the path.
+    /// The <see cref="Key"/> is a materialized <see cref="NibblePath"/> so that it can be kept in <see cref="INodeWithKey.Key"/>.
+    /// It uses an encoding similar to Ethereum's compact encoding for the path.
     /// This ensures that the amount of allocated memory is as small as possible.
     /// </summary>
     /// <remarks>
@@ -455,6 +407,7 @@ public readonly ref struct NibblePath
     /// - 2 nibbles as 2 bytes
     /// - 3 nibbles as 2 bytes
     /// - 4 nibbles as 3 bytes
+    /// - 5 nibbles as 3 bytes
     ///
     /// As shown above for prefix of length 1 and 2, it's not worse than byte-per-nibble encoding,
     /// gaining more from 3 nibbles forward.
