@@ -25,6 +25,7 @@ using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using Nethermind.Config;
 using System.Collections.Generic;
+using Nethermind.Core.Test;
 
 namespace Nethermind.Evm.Test;
 
@@ -53,7 +54,7 @@ public class TransactionProcessorTests
     public void Setup()
     {
         MemDb stateDb = new();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         PreBlockCaches preBlockCaches = new();
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance, preBlockCaches);
         _worldStateGuard = _stateProvider.BeginScope();

@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Specs;
@@ -33,9 +34,10 @@ namespace Nethermind.Store.Test
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber);
             MemDb stateDb = new();
             WorldState provider =
-                new(new TrieStore(stateDb, Logger), Substitute.For<IDb>(), Logger);
+                new(TestTrieStoreFactory.Build(stateDb, Logger), Substitute.For<IDb>(), Logger);
 
             using var _ = provider.BeginScope();
+
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
@@ -60,7 +62,7 @@ namespace Nethermind.Store.Test
             provider.CommitTree(0);
 
             StateReader reader =
-                new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+                new(TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
 
             Task a = StartTask(reader, stateRoot0, 1);
             Task b = StartTask(reader, stateRoot1, 2);
@@ -76,7 +78,7 @@ namespace Nethermind.Store.Test
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
             MemDb stateDb = new();
-            TrieStore trieStore = new(stateDb, Logger);
+            TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, Logger);
             WorldState provider = new(trieStore, new MemDb(), Logger);
             using var _ = provider.BeginScope();
 
@@ -120,7 +122,7 @@ namespace Nethermind.Store.Test
             Hash256 stateRoot3 = provider.StateRoot;
 
             StateReader reader =
-                new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+                new(TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
 
             Task a = StartStorageTask(reader, stateRoot0, storageCell, new byte[] { 1 });
             Task b = StartStorageTask(reader, stateRoot1, storageCell, new byte[] { 2 });
@@ -137,7 +139,7 @@ namespace Nethermind.Store.Test
             IReleaseSpec spec = MuirGlacier.Instance;
 
             MemDb stateDb = new();
-            TrieStore trieStore = new(stateDb, Logger);
+            TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, Logger);
             WorldState provider = new(trieStore, new MemDb(), Logger);
             using var _ = provider.BeginScope();
 
@@ -153,7 +155,7 @@ namespace Nethermind.Store.Test
             Hash256 stateRoot0 = provider.StateRoot;
 
             StateReader reader =
-                new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+                new(TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
             reader.GetStorage(stateRoot0, _address1, storageCell.Index + 1).ToArray().Should().BeEquivalentTo(new byte[] { 0 });
         }
 
@@ -191,7 +193,7 @@ namespace Nethermind.Store.Test
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new(_address1, UInt256.One);
 
-            TrieStore trieStore = new(dbProvider.StateDb, Logger);
+            TrieStore trieStore = TestTrieStoreFactory.Build(dbProvider.StateDb, Logger);
             WorldState state = new(trieStore, dbProvider.CodeDb, Logger);
             using var _ = state.BeginScope();
 
@@ -208,7 +210,7 @@ namespace Nethermind.Store.Test
             state.CommitTree(2);
 
             StateReader reader = new(
-                new TrieStore(dbProvider.StateDb, LimboLogs.Instance), dbProvider.CodeDb, Logger);
+                TestTrieStoreFactory.Build(dbProvider.StateDb, LimboLogs.Instance), dbProvider.CodeDb, Logger);
 
             var retrieved = reader.GetStorage(state.StateRoot, _address1, storageCell.Index).ToArray();
             retrieved.Should().BeEquivalentTo(initialValue);
@@ -242,7 +244,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_collect_stats()
         {
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
             WorldState provider = new(trieStore, new MemDb(), Logger);
             using var _ = provider.BeginScope();
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
@@ -260,7 +262,7 @@ namespace Nethermind.Store.Test
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
             WorldState sut = new(trieStore, new MemDb(), Logger);
             using var __ = sut.BeginScope();
             sut.CreateAccount(TestItem.AddressA, 0);
@@ -279,7 +281,7 @@ namespace Nethermind.Store.Test
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
             WorldState sut = new(trieStore, new MemDb(), Logger);
             using var _ = sut.BeginScope();
             sut.CreateAccount(TestItem.AddressA, 0);
@@ -297,7 +299,7 @@ namespace Nethermind.Store.Test
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
             WorldState sut = new(trieStore, new MemDb(), Logger);
             using var _ = sut.BeginScope();
             sut.CreateAccount(TestItem.AddressA, 0);
@@ -317,7 +319,7 @@ namespace Nethermind.Store.Test
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
             releaseSpec.IsEip7702Enabled.Returns(true);
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
             WorldState sut = new(trieStore, new MemDb(), Logger);
             using var _ = sut.BeginScope();
             sut.CreateAccount(TestItem.AddressA, 0);
@@ -336,7 +338,7 @@ namespace Nethermind.Store.Test
         {
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
             WorldState sut = new(trieStore, new MemDb(), Logger);
             using var _ = sut.BeginScope();
             sut.CreateAccount(TestItem.AddressA, 0);
@@ -355,7 +357,7 @@ namespace Nethermind.Store.Test
         {
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip7702Enabled.Returns(true);
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
             WorldState sut = new(trieStore, new MemDb(), Logger);
             using var _ = sut.BeginScope();
             sut.CreateAccount(TestItem.AddressA, 0);

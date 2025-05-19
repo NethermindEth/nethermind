@@ -116,6 +116,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_api.WorldStateManager);
         ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
         ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
+        ArgumentNullException.ThrowIfNull(_api.EngineRequestsTracker);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
 
@@ -178,6 +179,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new ExchangeTransitionConfigurationV1Handler(poSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
+            _api.EngineRequestsTracker,
             _api.SpecProvider,
             new GCKeeper(
                 initConfig.DisableGcOnNewPayload

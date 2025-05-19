@@ -12,8 +12,8 @@ namespace Ethereum.Test.Base
 {
     public abstract class EofTestBase
     {
-        private static ILogger _logger = new(TextContextLogger.Instance);
         private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
+        private static ILogger _logger = _logManager.GetClassLogger();
 
         [SetUp]
         public void Setup()
@@ -48,7 +48,7 @@ namespace Ethereum.Test.Base
 
         protected bool RunTest(EofTest test, ITxTracer txTracer)
         {
-            TestContext.Out.WriteLine($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+            _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
             var vector = test.Vector;

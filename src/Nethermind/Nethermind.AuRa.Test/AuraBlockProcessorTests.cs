@@ -16,6 +16,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
@@ -160,7 +161,7 @@ namespace Nethermind.AuRa.Test
         {
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+            TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
             IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             AuRaBlockProcessor processor = new AuRaBlockProcessor(

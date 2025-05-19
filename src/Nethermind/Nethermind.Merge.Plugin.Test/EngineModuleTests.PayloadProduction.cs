@@ -174,11 +174,8 @@ public partial class EngineModuleTests
 
         await Task.Delay(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay);
 
-        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
-
-        await Task.Delay(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay);
-
-        Assert.That(getPayloadResult.Transactions, Has.Length.InRange(minCount, maxCount));
+        Assert.That(() => rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId)).Result.Data!.Transactions,
+            Has.Length.InRange(minCount, maxCount).After(2000, 1)); // Polling interval need to be short or it might miss it.
     }
 
     [Test]

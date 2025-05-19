@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -29,7 +30,7 @@ internal class Create2DeployerContractRewriterTests
 
         MemDb stateDb = new();
         MemDb codeDb = new();
-        TrieStore ts = new(stateDb, LimboLogs.Instance);
+        TrieStore ts = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         WorldState ws = new(ts, codeDb, LimboLogs.Instance);
         using var _ = ws.BeginScope();
 
