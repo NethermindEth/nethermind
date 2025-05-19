@@ -72,6 +72,7 @@ public class ExecutionEngineManager(
     }
     public async Task<bool> FinalizeBlock(BlockId finalizedBlock, CancellationToken token)
     {
+        if (logger.IsInfo) logger.Info($"Finalizing L2 Block {finalizedBlock}");
         await _semaphore.WaitAsync(token);
         try
         {
@@ -209,9 +210,9 @@ public class ExecutionEngineManager(
     private async Task<bool> SendForkChoiceUpdated(
         BlockId headBlock, BlockId finalizedBlock, BlockId safeBlock)
     {
-        bool shouldUpdate = _currentHead.IsNewerThan(headBlock) ||
-                            _currentFinalizedHead.IsNewerThan(finalizedBlock) ||
-                            _currentSafeHead.IsNewerThan(safeBlock);
+        bool shouldUpdate = _currentHead.IsOlderThan(headBlock) ||
+                            _currentFinalizedHead.IsOlderThan(finalizedBlock) ||
+                            _currentSafeHead.IsOlderThan(safeBlock);
 
         if (!shouldUpdate)
         {

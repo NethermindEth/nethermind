@@ -95,6 +95,7 @@ public class Driver : IDisposable
 
     private async Task ProcessNewFinalized(ulong newFinalized, CancellationToken token)
     {
+        if (_logger.IsInfo) _logger.Info($"Processing new finalized L1 block. {newFinalized}");
         BlockId? lastL2Block = null;
         while(_safeBlocksQueue.Any())
         {
