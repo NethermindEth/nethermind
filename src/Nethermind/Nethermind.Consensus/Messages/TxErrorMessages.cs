@@ -1,7 +1,6 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Crypto;
 
@@ -68,8 +67,8 @@ public static class TxErrorMessages
     public const string InvalidBlobProofs =
         "InvalidBlobProof: Proofs do not match the blobs.";
 
-    public const string InvalidProofVersion
-        = "InvalidTxProofVersion: Version of network wrapper is not supported.";
+    public const string InvalidProofVersion =
+        "InvalidTxProofVersion: Version of network wrapper is not supported.";
 
 
 

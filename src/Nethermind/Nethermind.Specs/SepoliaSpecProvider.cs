@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
@@ -57,7 +57,8 @@ public class SepoliaSpecProvider : ISpecProvider
         (ForkActivation)1735371,
         (1735371, ShanghaiTimestamp),
         (1735371, CancunTimestamp),
-        (1735371, PragueTimestamp)
+        (1735371, PragueTimestamp),
+        (1735371, OsakaTimestamp)
     ];
 
     public static SepoliaSpecProvider Instance { get; } = new();

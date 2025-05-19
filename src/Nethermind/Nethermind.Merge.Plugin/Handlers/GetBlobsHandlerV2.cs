@@ -15,7 +15,6 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumer
 {
     private const int MaxRequest = 128;
 
-
     public Task<ResultWrapper<IEnumerable<BlobAndProofV2>>> HandleAsync(byte[][] request)
     {
         if (request.Length > MaxRequest)
