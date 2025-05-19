@@ -275,14 +275,6 @@ public struct TreePath : IEquatable<TreePath>
         Length--;
     }
 
-    public readonly byte[] ToNibble()
-    {
-        bool odd = Length % 2 == 1;
-        Span<byte> theNibbles = stackalloc byte[odd ? Length + 1 : Length];
-        Nibbles.BytesToNibbleBytes(Span[..((Length + 1) / 2)], theNibbles);
-        return (odd ? theNibbles[..Length] : theNibbles).ToArray();
-    }
-
     public readonly string ToHexString()
     {
         string fromPath = Span.ToHexString();
@@ -455,10 +447,7 @@ public struct TreePath : IEquatable<TreePath>
         return Truncate(otherPath.Length) == otherPath;
     }
 
-    public NibblePath.Key ToNibblePath(int from)
-    {
-        throw new NotImplementedException();
-    }
+    public NibblePath.Key ToNibblePath(int from) => (NibblePath.Key)NibblePath.FromKey(Path.Bytes).SliceFrom(from);
 }
 
 public static class TreePathExtensions
