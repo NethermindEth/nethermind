@@ -27,10 +27,8 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -41,9 +39,8 @@ public class BlockProcessorTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
-        TestSingleReleaseSpecProvider spec = new TestSingleReleaseSpecProvider(ConstantinopleFix.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockProcessor processor = new(
             HoleskySpecProvider.Instance,
@@ -73,9 +70,8 @@ public class BlockProcessorTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
-        TestSingleReleaseSpecProvider spec = new TestSingleReleaseSpecProvider(ConstantinopleFix.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockProcessor processor = new(
             HoleskySpecProvider.Instance,

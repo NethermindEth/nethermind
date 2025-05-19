@@ -603,6 +603,7 @@ public class ChainSpecBasedSpecProviderTests
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
                      .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp))
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip4844TransitionTimestamp))
+
                      // handle gnosis specific exceptions
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxInitCodeSize))

@@ -9,7 +9,6 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Int256;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;

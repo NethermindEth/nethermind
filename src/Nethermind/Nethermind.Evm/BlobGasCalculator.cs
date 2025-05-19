@@ -46,14 +46,6 @@ public static class BlobGasCalculator
             && TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, out feePerBlobGas, spec);
     }
 
-    // public static bool TryCalculateFeePerBlobGas(BlockHeader header, UInt256 blobGasPriceUpdateFraction, out UInt256 feePerBlobGas)
-    // {
-    //     feePerBlobGas = UInt256.MaxValue;
-    //     return header.ExcessBlobGas is not null
-    //         && TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, blobGasPriceUpdateFraction, out feePerBlobGas);
-    // }
-
-    // public static bool TryCalculateFeePerBlobGas(ulong excessBlobGas, UInt256 blobGasPriceUpdateFraction, out UInt256 feePerBlobGas)
     public static bool TryCalculateFeePerBlobGas(ulong excessBlobGas, out UInt256 feePerBlobGas, IReleaseSpec spec)
     {
         static bool FakeExponentialOverflow(UInt256 factor, UInt256 num, UInt256 denominator, out UInt256 feePerBlobGas)
@@ -98,7 +90,6 @@ public static class BlobGasCalculator
             return false;
         }
 
-        // return !FakeExponentialOverflow(, excessBlobGas, Eip4844Constants.BlobGasPriceUpdateFraction, out feePerBlobGas);
         return !FakeExponentialOverflow(Eip4844Constants.GetMinBlobGasPrice(spec), excessBlobGas, spec.BlobBaseFeeUpdateFraction, out feePerBlobGas);
     }
 

@@ -5,9 +5,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Specs;
 using NUnit.Framework;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 

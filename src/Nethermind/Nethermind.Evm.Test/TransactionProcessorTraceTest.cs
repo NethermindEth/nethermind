@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;

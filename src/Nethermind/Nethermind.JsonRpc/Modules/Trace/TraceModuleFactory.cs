@@ -72,8 +72,6 @@ public class TraceModuleFactory(
             new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(scope.TransactionProcessor),
                 _poSSwitcher);
 
-        // RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState, _specProvider);
-        // BlockProcessor.BlockValidationTransactionsExecutor executeBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState, specProvider);
         IBlockProcessor.IBlockTransactionsExecutor rpcBlockTransactionsExecutor = CreateRpcBlockTransactionsExecutor(scope);
         IBlockProcessor.IBlockTransactionsExecutor executeBlockTransactionsExecutor = CreateBlockTransactionsExecutor(scope);
 

@@ -286,4 +286,3 @@ public class ProofTxTracerTests : VirtualMachineTestsBase
         return (tracer, block, transaction);
     }
 }
-

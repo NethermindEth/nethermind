@@ -9,7 +9,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Specs.Forks;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain.BeaconBlockRoot;
