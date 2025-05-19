@@ -202,7 +202,7 @@ public class RangeQueryVisitorTests
     [Test]
     public void StorageRangeFetchVisitor()
     {
-        TrieStore store = TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
+        RawTrieStore store = new RawTrieStore(new MemDb());
         (StateTree inputStateTree, StorageTree _, Hash256 account) = TestItem.Tree.GetTrees(store);
 
         RlpCollector leafCollector = new();
