@@ -85,7 +85,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
         }
 
-        _deleteOldNodes = _pruningStrategy.PruningEnabled;
+        _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys;
         if (pruningConfig.TrackPastKeys && nodeStorage.RequirePath)
         {
             _pastKeyTrackingEnabled = true;
@@ -569,7 +569,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             foreach (BlockCommitSet blockCommitSet in _commitSetQueue)
             {
                 if (!blockCommitSet.IsSealed) continue;
-                if (blockCommitSet.BlockNumber < LatestCommittedBlockNumber - _maxDepth && blockCommitSet.BlockNumber > lastBlockBeforeRorgBoundary)
+                if (blockCommitSet.BlockNumber <= LatestCommittedBlockNumber - _maxDepth && blockCommitSet.BlockNumber > lastBlockBeforeRorgBoundary)
                 {
                     lastBlockBeforeRorgBoundary = blockCommitSet.BlockNumber;
                 }

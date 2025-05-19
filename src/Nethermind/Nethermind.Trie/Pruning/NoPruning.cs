@@ -11,7 +11,7 @@ namespace Nethermind.Trie.Pruning
 
         public static NoPruning Instance { get; } = new();
 
-        public bool PruningEnabled => false;
+        public bool DeleteObsoleteKeys => false;
         public bool ShouldPruneDirtyNode(TrieStoreState state) => false;
 
         public bool ShouldPrunePersistedNode(TrieStoreState state) => false;

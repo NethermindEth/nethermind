@@ -926,7 +926,7 @@ public class TrieNodeTests
     [Test]
     public void Rlp_is_cloned_when_cloning()
     {
-        IPruningTrieStore fullTrieStore = TestTrieStoreFactory.Build(new MemDb(), NullLogManager.Instance);
+        RawTrieStore fullTrieStore = new RawTrieStore(new MemDb());
         IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
         TrieNode leaf1 = new(NodeType.Leaf);
@@ -960,7 +960,6 @@ public class TrieNodeTests
         trieNode.ResolveKey(trieStore, ref emptyPath, true);
         CappedArray<byte> rlp = trieNode.FullRlp;
 
-        fullTrieStore.PersistCache(CancellationToken.None);
         TrieNode restoredBranch = new(NodeType.Branch, rlp);
 
         TrieNode clone = restoredBranch.Clone();
