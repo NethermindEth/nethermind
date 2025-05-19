@@ -5,7 +5,7 @@ namespace Nethermind.Trie.Pruning;
 
 public class MinBlockInCachePruneStrategy(IPruningStrategy baseStrategy, long minBlockFromPersisted, long pruneBoundary): IPruningStrategy
 {
-    public bool PruningEnabled => baseStrategy.PruningEnabled;
+    public bool DeleteObsoleteKeys => baseStrategy.DeleteObsoleteKeys;
 
     public bool ShouldPruneDirtyNode(TrieStoreState state)
     {

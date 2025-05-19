@@ -27,7 +27,7 @@ namespace Nethermind.Trie.Pruning
     public class DontDeleteObsoleteNodeStrategy(IPruningStrategy baseStrategy) : IPruningStrategy
     {
         // Its this thing
-        public bool PruningEnabled => false;
+        public bool DeleteObsoleteKeys => false;
 
         public bool ShouldPruneDirtyNode(TrieStoreState state) => baseStrategy.ShouldPruneDirtyNode(state);
 
