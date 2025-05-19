@@ -123,6 +123,7 @@ namespace Nethermind.Merge.Plugin
             {
                 _transitionFired = true;
                 Transitioned?.Invoke(this, EventArgs.Empty);
+                Transitioned = null; // Unsubscribe all, since we won't fire it again
             }
         }
 
