@@ -22,7 +22,8 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
-        private const int StackallocByteThreshold = 256;
+        // Used to create the nibble key from bytes, and threshold before using ArrayPool for the key
+        private const int StackallocByteThreshold = 384;
 
         private class TrieNodeDecoder
         {
@@ -60,9 +61,10 @@ namespace Nethermind.Trie
                 int totalLength = Rlp.LengthOfSequence(contentLength);
 
                 CappedArray<byte> data = bufferPool.SafeRentBuffer(totalLength);
-                RlpStream rlpStream = data.AsRlpStream();
-                rlpStream.StartSequence(contentLength);
-                rlpStream.Encode(keyBytes);
+                Span<byte> destination = data.AsSpan();
+                int position = Rlp.StartSequence(destination, 0, contentLength);
+                position = Rlp.Encode(destination, position, keyBytes);
+
                 if (rentedBuffer is not null)
                 {
                     ArrayPool<byte>.Shared.Return(rentedBuffer);
@@ -75,11 +77,11 @@ namespace Nethermind.Trie
                     // so E - - - - - - - - - - - - - - -
                     // so |
                     // so |
-                    rlpStream.Write(nodeRef.FullRlp.AsSpan());
+                    nodeRef.FullRlp.AsSpan().CopyTo(destination.Slice(position));
                 }
                 else
                 {
-                    rlpStream.Encode(nodeRef.Keccak);
+                    Rlp.Encode(destination, position, nodeRef.Keccak);
                 }
 
                 return data;
@@ -110,14 +112,17 @@ namespace Nethermind.Trie
                 int totalLength = Rlp.LengthOfSequence(contentLength);
 
                 CappedArray<byte> data = pool.SafeRentBuffer(totalLength);
-                RlpStream rlpStream = data.AsRlpStream();
-                rlpStream.StartSequence(contentLength);
-                rlpStream.Encode(keyBytes);
+                Span<byte> destination = data.AsSpan();
+                int position = Rlp.StartSequence(destination, 0, contentLength);
+                position = Rlp.Encode(destination, position, keyBytes);
+
                 if (rentedBuffer is not null)
                 {
                     ArrayPool<byte>.Shared.Return(rentedBuffer);
                 }
-                rlpStream.Encode(node.Value.AsSpan());
+
+                Rlp.Encode(destination, position, node.Value);
+
                 return data;
             }
 
@@ -149,7 +154,6 @@ namespace Nethermind.Trie
 
             private static int GetChildrenRlpLengthForBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool)
             {
-                item.EnsureInitialized();
                 // Tail call optimized.
                 return item.HasRlp
                     ? GetChildrenRlpLengthForBranchRlp(tree, ref path, item, bufferPool)
@@ -158,7 +162,6 @@ namespace Nethermind.Trie
 
             private static int GetChildrenRlpLengthForBranchParallel(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool)
             {
-                item.EnsureInitialized();
                 // Tail call optimized.
                 return item.HasRlp
                     ? GetChildrenRlpLengthForBranchRlpParallel(tree, path, item, bufferPool)
@@ -168,11 +171,11 @@ namespace Nethermind.Trie
             private static int GetChildrenRlpLengthForBranchNonRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool bufferPool)
             {
                 int totalLength = 0;
-                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCores,
+                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
                     (local: 0, item, tree, bufferPool, rootPath),
                     static (i, state) =>
                     {
-                        object? data = state.item._data[i];
+                        object? data = state.item._nodeData[i];
                         if (ReferenceEquals(data, _nullNode) || data is null)
                         {
                             state.local++;
@@ -205,7 +208,7 @@ namespace Nethermind.Trie
                 int totalLength = 0;
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    object? data = item._data[i];
+                    object? data = item._nodeData[i];
                     if (ReferenceEquals(data, _nullNode) || data is null)
                     {
                         totalLength++;
@@ -229,13 +232,13 @@ namespace Nethermind.Trie
             private static int GetChildrenRlpLengthForBranchRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool? bufferPool)
             {
                 int totalLength = 0;
-                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCores,
+                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
                     (local: 0, item, tree, bufferPool, rootPath),
                     static (i, state) =>
                     {
                         ValueRlpStream rlpStream = state.item.RlpStream;
                         state.item.SeekChild(ref rlpStream, i);
-                        object? data = state.item._data[i];
+                        object? data = state.item._nodeData[i];
                         if (data is null)
                         {
                             state.local += rlpStream.PeekNextRlpLength();
@@ -275,7 +278,7 @@ namespace Nethermind.Trie
                 item.SeekChild(ref rlpStream, 0);
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    object data = item._data[i];
+                    object data = item._nodeData[i];
                     if (data is null)
                     {
                         int length = rlpStream.PeekNextRlpLength();
@@ -311,7 +314,6 @@ namespace Nethermind.Trie
 
             private static void WriteChildrenRlpBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool)
             {
-                item.EnsureInitialized();
                 // Tail call optimized.
                 if (item.HasRlp)
                 {
@@ -328,7 +330,7 @@ namespace Nethermind.Trie
                 int position = 0;
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    object data = item._data[i];
+                    object data = item._nodeData[i];
                     if (ReferenceEquals(data, _nullNode) || data is null)
                     {
                         destination[position++] = 128;
@@ -367,11 +369,11 @@ namespace Nethermind.Trie
                 int position = 0;
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    object data = item._data[i];
+                    object data = item._nodeData[i];
                     if (data is null)
                     {
                         int length = rlpStream.PeekNextRlpLength();
-                        Span<byte> nextItem = rlpStream.Data.AsSpan(rlpStream.Position, length);
+                        ReadOnlySpan<byte> nextItem = rlpStream.Data.Slice(rlpStream.Position, length);
                         nextItem.CopyTo(destination.Slice(position, nextItem.Length));
                         position += nextItem.Length;
                         rlpStream.SkipBytes(length);

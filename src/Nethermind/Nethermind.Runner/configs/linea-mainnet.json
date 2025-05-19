@@ -1,9 +1,10 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/linea-mainnet.json",
     "GenesisHash": "0xb6762a65689107b2326364aefc18f94cda413209fab35c00d4af51eaa20ffbc6",
     "BaseDbPath": "nethermind_db/linea-mainnet",
-    "LogFileName": "linea-mainnet.logs.txt"
+    "LogFileName": "linea-mainnet.log"
   },
   "Merge": {
     "Enabled": false
@@ -16,9 +17,10 @@
   },
   "Sync": {
     "SnapSync": true,
-    "PivotNumber": 13020000,
-    "PivotHash": "0x3dbc1fab314e5877280d5d192f0e55ae349500198121b67099c00af378369102",
-    "PivotTotalDifficulty": "26040001"
+    "PivotNumber": 18860000,
+    "PivotHash": "0x5b561c8c2c55928943bf9ec5108083a9f35723d6a84748fd6f8e005b7edf8e9a",
+    "PivotTotalDifficulty": "37720001",
+    "HeaderStateDistance": 6
   },
   "JsonRpc": {
     "Enabled": true,

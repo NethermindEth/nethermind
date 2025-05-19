@@ -405,7 +405,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public void Cannot_accept_null_file_system()
     {
-        Assert.Throws<ArgumentNullException>(() => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
+        Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
             Substitute.For<IJsonRpcConfig>(),
             null!, LimboLogs.Instance));
     }

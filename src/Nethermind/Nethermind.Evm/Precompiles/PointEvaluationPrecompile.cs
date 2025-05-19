@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -13,10 +14,10 @@ namespace Nethermind.Evm.Precompiles;
 
 public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
 {
-    public static readonly PointEvaluationPrecompile Instance = new PointEvaluationPrecompile();
+    public static readonly PointEvaluationPrecompile Instance = new();
 
-    private static readonly ReadOnlyMemory<byte> PointEvaluationSuccessfulResponse =
-        ((UInt256)Ckzg.Ckzg.FieldElementsPerBlob).ToBigEndian()
+    private static readonly byte[] PointEvaluationSuccessfulResponse =
+        ((UInt256)Ckzg.FieldElementsPerBlob).ToBigEndian()
         .Concat(KzgPolynomialCommitments.BlsModulus.ToBigEndian())
         .ToArray();
 
@@ -26,7 +27,7 @@ public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
 
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

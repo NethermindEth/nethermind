@@ -24,7 +24,7 @@ namespace Nethermind.Shutter;
 public class ShutterBlockHandler : IShutterBlockHandler
 {
     private readonly ILogger _logger;
-    private readonly ShutterTime _time;
+    private readonly SlotTime _time;
     private readonly IShutterEon _eon;
     private readonly IReceiptFinder _receiptFinder;
     private readonly ShutterTxLoader _txLoader;
@@ -53,7 +53,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         ShutterValidatorsInfo validatorsInfo,
         IShutterEon eon,
         ShutterTxLoader txLoader,
-        ShutterTime time,
+        SlotTime time,
         ILogManager logManager,
         TimeSpan slotLength,
         TimeSpan blockWaitCutoff,
@@ -126,7 +126,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     public void Dispose()
     {
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
-        _blockWaitTasks.ForEach(x => x.Value.ForEach(waitTask =>
+        _blockWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask =>
         {
             waitTask.Value.CancellationRegistration.Dispose();
             waitTask.Value.TimeoutCancellationRegistration.Dispose();

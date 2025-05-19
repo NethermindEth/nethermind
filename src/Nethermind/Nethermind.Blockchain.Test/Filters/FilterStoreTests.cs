@@ -142,6 +142,6 @@ public class FilterStoreTests
         BlockParameter to = new(BlockParameterType.Latest);
         FilterStore store = new();
         LogFilter filter = store.CreateLogFilter(from, to, null, topics);
-        filter.TopicsFilter.Should().BeEquivalentTo(expected, c => c.ComparingByValue<TopicsFilter>());
+        filter.TopicsFilter.Should().BeEquivalentTo(expected, static c => c.ComparingByValue<TopicsFilter>());
     }
 }

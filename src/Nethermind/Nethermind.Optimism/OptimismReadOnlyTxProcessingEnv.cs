@@ -17,14 +17,12 @@ public class OptimismReadOnlyTxProcessingEnv(
       IReadOnlyBlockTree readOnlyBlockTree,
       ISpecProvider specProvider,
       ILogManager logManager,
-      IL1CostHelper l1CostHelper,
-      IOptimismSpecHelper opSpecHelper,
-      IWorldState? worldStateToWarmUp = null) : ReadOnlyTxProcessingEnv(
+      ICostHelper costHelper,
+      IOptimismSpecHelper opSpecHelper) : ReadOnlyTxProcessingEnv(
       worldStateManager,
       readOnlyBlockTree,
       specProvider,
-      logManager,
-      worldStateToWarmUp
+      logManager
      )
 {
     protected override ITransactionProcessor CreateTransactionProcessor()
@@ -32,7 +30,7 @@ public class OptimismReadOnlyTxProcessingEnv(
         ArgumentNullException.ThrowIfNull(LogManager);
 
         BlockhashProvider blockhashProvider = new(BlockTree, SpecProvider, StateProvider, LogManager);
-        VirtualMachine virtualMachine = new(blockhashProvider, SpecProvider, CodeInfoRepository, LogManager);
-        return new OptimismTransactionProcessor(SpecProvider, StateProvider, virtualMachine, LogManager, l1CostHelper, opSpecHelper, CodeInfoRepository);
+        VirtualMachine virtualMachine = new(blockhashProvider, SpecProvider, LogManager);
+        return new OptimismTransactionProcessor(SpecProvider, StateProvider, virtualMachine, LogManager, costHelper, opSpecHelper, CodeInfoRepository);
     }
 }

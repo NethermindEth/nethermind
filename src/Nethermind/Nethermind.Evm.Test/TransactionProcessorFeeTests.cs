@@ -6,6 +6,7 @@ using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -36,7 +37,7 @@ public class TransactionProcessorFeeTests
         _spec = new(PragueGnosis.Instance);
         _specProvider = new TestSpecProvider(_spec);
 
-        TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
 
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
@@ -44,7 +45,7 @@ public class TransactionProcessorFeeTests
         _stateProvider.CommitTree(0);
 
         CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
@@ -78,6 +79,41 @@ public class TransactionProcessorFeeTests
         tracer.BurntFees.Should().Be(21000);
     }
 
+    private readonly Address SelfDestructAddress = new("0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3");
+    [Test]
+    public void Check_fees_with_fee_collector_destroy_coinbase()
+    {
+        _spec.FeeCollector = TestItem.AddressC;
+
+        _stateProvider.CreateAccount(TestItem.AddressB, 100.Ether());
+
+        byte[] byteCode = Prepare.EvmCode
+            .PushData(SelfDestructAddress)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done;
+
+        Transaction tx = Build.A.Transaction
+            .WithGasPrice(10)
+            .WithMaxFeePerGas(10)
+            .WithChainId(BlockchainIds.Gnosis)
+            .WithType(TxType.EIP1559)
+            .WithGasLimit(30000000)
+            .WithCode(byteCode)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(SelfDestructAddress).WithBaseFeePerGas(1).WithTransactions(tx).WithGasLimit(30000000)
+            .TestObject;
+
+        FeesTracer tracer = new();
+        CompositeBlockTracer compositeTracer = new();
+        compositeTracer.Add(tracer);
+        compositeTracer.Add(NullBlockTracer.Instance);
+
+        ExecuteAndTrace(block, compositeTracer);
+
+        tracer.Fees.Should().Be(525213);
+        tracer.BurntFees.Should().Be(58357);
+    }
 
     [TestCase(false)]
     [TestCase(true)]
@@ -205,10 +241,11 @@ public class TransactionProcessorFeeTests
         BlockReceiptsTracer blockTracer = new();
         blockTracer.SetOtherTracer(cancellationBlockTracer);
 
+        var blkCtx = new BlockExecutionContext(block.Header, _spec);
         blockTracer.StartNewBlockTrace(block);
         {
             var txTracer = blockTracer.StartNewTxTrace(tx1);
-            _transactionProcessor.Execute(tx1, new(block.Header, _spec), txTracer);
+            _transactionProcessor.Execute(tx1, blkCtx, txTracer);
             blockTracer.EndTxTrace();
         }
 
@@ -220,7 +257,7 @@ public class TransactionProcessorFeeTests
         try
         {
             var txTracer = blockTracer.StartNewTxTrace(tx2);
-            _transactionProcessor.Execute(tx2, new(block.Header, _spec), txTracer);
+            _transactionProcessor.Execute(tx2, blkCtx, txTracer);
             blockTracer.EndTxTrace();
             blockTracer.EndBlockTrace();
         }
@@ -272,7 +309,7 @@ public class TransactionProcessorFeeTests
         foreach (Transaction tx in block.Transactions)
         {
             var txTracer = tracer.StartNewTxTrace(tx);
-            _transactionProcessor.Execute(tx, new(block.Header, _spec), txTracer);
+            _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _spec), txTracer);
             tracer.EndTxTrace();
         }
         tracer.EndBlockTrace();

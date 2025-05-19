@@ -11,19 +11,19 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
 public class TraceModuleFactory(
-    IReadOnlyTrieStore trieStore,
-    IDbProvider dbProvider,
+    IWorldStateManager worldStateManager,
     IBlockTree blockTree,
     IJsonRpcConfig jsonRpcConfig,
+    IBlockchainBridge blockchainBridge,
+    ulong secondsPerSlot,
     IBlockPreprocessorStep recoveryStep,
     IRewardCalculatorSource rewardCalculatorSource,
     IReceiptStorage receiptFinder,
@@ -31,9 +31,10 @@ public class TraceModuleFactory(
     IPoSSwitcher poSSwitcher,
     ILogManager logManager) : ModuleFactoryBase<ITraceRpcModule>
 {
-    protected readonly IReadOnlyTrieStore _trieStore = trieStore;
     protected readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
     protected readonly IJsonRpcConfig _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+    private readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+    protected readonly ulong _secondsPerSlot = secondsPerSlot;
     protected readonly IReceiptStorage _receiptStorage = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -41,9 +42,9 @@ public class TraceModuleFactory(
     protected readonly IRewardCalculatorSource _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
     protected readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
 
-    protected virtual OverridableTxProcessingEnv CreateTxProcessingEnv(OverridableWorldStateManager worldStateManager) => new(worldStateManager, _blockTree, _specProvider, _logManager);
+    protected virtual OverridableTxProcessingEnv CreateTxProcessingEnv(IOverridableWorldScope worldScope) => new(worldScope, _blockTree, _specProvider, _logManager);
 
-    protected virtual ReadOnlyChainProcessingEnv CreateChainProcessingEnv(OverridableWorldStateManager worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new(
+    protected virtual ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IOverridableWorldScope worldScope, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new(
                 scope,
                 Always.Valid,
                 _recoveryStep,
@@ -51,29 +52,36 @@ public class TraceModuleFactory(
                 _receiptStorage,
                 _specProvider,
                 _blockTree,
-                worldStateManager.GlobalStateReader,
+                worldScope.GlobalStateReader,
                 _logManager,
                 transactionsExecutor);
 
+    protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateRpcBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
+        => new RpcBlockTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
+
+    protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
+        => new BlockProcessor.BlockValidationTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
+
     public override ITraceRpcModule Create()
     {
-        OverridableWorldStateManager worldStateManager = new(dbProvider, _trieStore, logManager);
-        OverridableTxProcessingEnv txProcessingEnv = CreateTxProcessingEnv(worldStateManager);
-        IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+        IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
+        OverridableTxProcessingEnv txProcessingEnv = CreateTxProcessingEnv(overridableScope);
+        OverridableTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
         IRewardCalculator rewardCalculator =
             new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(scope.TransactionProcessor),
                 _poSSwitcher);
 
-        RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState, _specProvider);
-        BlockProcessor.BlockValidationTransactionsExecutor executeBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState, specProvider);
+        // RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState, _specProvider);
+        // BlockProcessor.BlockValidationTransactionsExecutor executeBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState, specProvider);
+        IBlockProcessor.IBlockTransactionsExecutor rpcBlockTransactionsExecutor = CreateRpcBlockTransactionsExecutor(scope);
+        IBlockProcessor.IBlockTransactionsExecutor executeBlockTransactionsExecutor = CreateBlockTransactionsExecutor(scope);
 
-        ReadOnlyChainProcessingEnv traceProcessingEnv = CreateChainProcessingEnv(worldStateManager, rpcBlockTransactionsExecutor, scope, rewardCalculator);
-        ReadOnlyChainProcessingEnv executeProcessingEnv = CreateChainProcessingEnv(worldStateManager, executeBlockTransactionsExecutor, scope, rewardCalculator);
+        ReadOnlyChainProcessingEnv traceProcessingEnv = CreateChainProcessingEnv(overridableScope, rpcBlockTransactionsExecutor, scope, rewardCalculator);
+        ReadOnlyChainProcessingEnv executeProcessingEnv = CreateChainProcessingEnv(overridableScope, executeBlockTransactionsExecutor, scope, rewardCalculator);
 
-        Tracer tracer = new(scope.WorldState, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor,
-            traceOptions: ProcessingOptions.TraceTransactions);
+        Tracer tracer = new(scope, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor, traceOptions: ProcessingOptions.TraceTransactions);
 
-        return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, txProcessingEnv);
+        return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, txProcessingEnv, _blockchainBridge, _secondsPerSlot);
     }
 }

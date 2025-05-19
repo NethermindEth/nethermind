@@ -1,9 +1,10 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/energyweb.json",
     "GenesisHash": "0x0b6d3e680af2fc525392c720666cce58e3d8e6fe75ba4b48cb36bcc69039229b",
     "BaseDbPath": "nethermind_db/energyweb",
-    "LogFileName": "energyweb.logs.txt",
+    "LogFileName": "energyweb.log",
     "MemoryHint": 768000000
   },
   "TxPool": {
@@ -11,9 +12,10 @@
   },
   "Sync": {
     "FastSync": true,
-    "PivotNumber": 33170000,
-    "PivotHash": "0x26dde3e41b7c1d3fef0a95f69ee0274ef82856fb6d7676215c319508bdd725d1",
-    "PivotTotalDifficulty": "11287166110767528833080135728511751573615768922",
+    "SnapSync": true,
+    "PivotNumber": 35570000,
+    "PivotHash": "0xf334f2e272ec085e3290fe23733ec7209b059337950404e1a80ae6346ceea457",
+    "PivotTotalDifficulty": "12103843791377781145392234786347995281105110499",
     "UseGethLimitsInFastBlocks": false,
     "FastSyncCatchUpHeightDelta": 10000000000
   },

@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain
                     return false;
                 }
 
-                (bool isSyncing, _, _) = _blockTree.IsSyncing(maxDistanceForSynced: 2);
+                (bool isSyncing, _, _) = _blockTree.IsSyncing(maxDistanceForSynced: 16);
                 return isSyncing;
             }
         }
@@ -74,6 +74,7 @@ namespace Nethermind.Blockchain
 
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
         {
+            IReleaseSpec spec = SpecProvider.GetSpec(e.Block.Header);
             HeadNumber = e.Block.Number;
             BlockGasLimit = e.Block!.GasLimit;
             CurrentBaseFee = e.Block.Header.BaseFeePerGas;

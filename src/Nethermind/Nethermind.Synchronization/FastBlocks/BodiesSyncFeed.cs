@@ -6,20 +6,18 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SyncLimits;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
@@ -29,9 +27,10 @@ namespace Nethermind.Synchronization.FastBlocks
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BodiesBarrierWhenStarted;
         protected override long SyncConfigBarrierCalc => _syncConfig.AncientBodiesBarrierCalc;
         protected override Func<bool> HasPivot =>
-            () => _syncPointers.LowestInsertedBodyNumber is not null && _syncPointers.LowestInsertedBodyNumber <= _syncConfig.PivotNumberParsed;
+            () => _syncPointers.LowestInsertedBodyNumber is not null && _syncPointers.LowestInsertedBodyNumber <= _blockTree.SyncPivot.BlockNumber;
 
-        private int _requestSize = GethSyncLimits.MaxBodyFetch;
+        private FastBlocksAllocationStrategy _approximateAllocationStrategy = new FastBlocksAllocationStrategy(TransferSpeedType.Bodies, 0, true);
+
         private const long DefaultFlushDbInterval = 100000; // About every 10GB on mainnet
         private readonly long _flushDbInterval; // About every 10GB on mainnet
 
@@ -80,17 +79,16 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override void InitializeFeed()
         {
-            if (_pivotNumber != _syncConfig.PivotNumberParsed || _barrier != _syncConfig.AncientBodiesBarrierCalc)
+            if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _syncConfig.AncientBodiesBarrierCalc)
             {
-                _pivotNumber = _syncConfig.PivotNumberParsed;
+                _pivotNumber = _blockTree.SyncPivot.BlockNumber;
                 _barrier = _syncConfig.AncientBodiesBarrierCalc;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in bodies sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
-            _syncReport.FastBlocksBodies.Reset(0);
-            _syncReport.BodiesInQueue.Reset(0);
+            _syncReport.FastBlocksBodies.Reset(0, _pivotNumber - _syncConfig.AncientBodiesBarrierCalc);
         }
 
         private void ResetSyncStatusList()
@@ -125,18 +123,27 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             _syncReport.FastBlocksBodies.Update(_pivotNumber);
             _syncReport.FastBlocksBodies.MarkEnd();
-            _syncReport.BodiesInQueue.Update(0);
-            _syncReport.BodiesInQueue.MarkEnd();
             Flush();
         }
 
-        public override Task<BodiesSyncBatch?> PrepareRequest(CancellationToken token = default)
+        public override async Task<BodiesSyncBatch?> PrepareRequest(CancellationToken token = default)
         {
             BodiesSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
             {
                 BlockInfo?[] infos = null;
-                while (!_syncStatusList.TryGetInfosForBatch(_requestSize, (info) => _blockTree.HasBlock(info.BlockNumber, info.BlockHash), out infos))
+
+                // Set the request size depending on the approximate allocation strategy.
+                int requestSize =
+                    (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, _approximateAllocationStrategy, AllocationContexts.Bodies, token))
+                    ?? GethSyncLimits.MaxBodyFetch;
+
+                while (!_syncStatusList.TryGetInfosForBatch(requestSize, (info) =>
+                       {
+                           bool hasBlock = _blockTree.HasBlock(info.BlockNumber, info.BlockHash);
+                           if (hasBlock) _syncReport.FastBlocksBodies.IncrementSkipped();
+                           return hasBlock;
+                       }, out infos))
                 {
                     token.ThrowIfCancellationRequested();
 
@@ -161,7 +168,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 Flush();
             }
 
-            return Task.FromResult(batch);
+            return batch;
         }
 
         private void Flush()
@@ -267,7 +274,6 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             UpdateSyncReport();
-            AdjustRequestSizes(batch, validResponsesCount);
             LogPostProcessingBatchInfo(batch, validResponsesCount);
 
             return validResponsesCount;
@@ -289,23 +295,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private void UpdateSyncReport()
         {
             _syncReport.FastBlocksBodies.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
-            _syncReport.BodiesInQueue.Update(_syncStatusList.QueueSize);
-        }
-
-        private void AdjustRequestSizes(BodiesSyncBatch batch, int validResponsesCount)
-        {
-            lock (_syncStatusList)
-            {
-                if (validResponsesCount == batch.Infos.Length)
-                {
-                    _requestSize = Math.Min(256, _requestSize * 2);
-                }
-
-                if (validResponsesCount == 0)
-                {
-                    _requestSize = Math.Max(4, _requestSize / 2);
-                }
-            }
+            _syncReport.FastBlocksBodies.CurrentQueued = _syncStatusList.QueueSize;
         }
     }
 }

@@ -1,16 +1,17 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/foundation.json",
     "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
     "BaseDbPath": "nethermind_db/mainnet",
-    "LogFileName": "mainnet.logs.txt",
+    "LogFileName": "mainnet.log",
     "MemoryHint": 2048000000
   },
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 21353000,
-    "PivotHash": "0x2f53bd00be93f4195ef8006762e62a65a8616e1754f39f0b4e80f36b404bebcf",
+    "PivotNumber": 22455000,
+    "PivotHash": "0x3861ab8fa06e55cb36e0eba740eb9a1a48662ddaed6983f33b6f7b8f18fe8462",
     "PivotTotalDifficulty": "58750003716598352816469",
     "FastSyncCatchUpHeightDelta": "10000000000"
   },

@@ -38,10 +38,10 @@ namespace Nethermind.AuRa.Test.Transactions
 
 
                 yield return new TestCaseData(null).SetName("All");
-                yield return new TestCaseData(Select(t => t.Where(tx => !WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Not whitelisted");
-                yield return new TestCaseData(Select(t => t.Where(tx => WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Only whitelisted");
-                yield return new TestCaseData(Select(t => t.Where(tx => tx.To != TestItem.AddressB))).SetName("No priority");
-                yield return new TestCaseData(Select(t => t.Where(tx => tx.To == TestItem.AddressB))).SetName("Only priority");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => !WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Not whitelisted");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Only whitelisted");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => tx.To != TestItem.AddressB))).SetName("No priority");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => tx.To == TestItem.AddressB))).SetName("Only priority");
             }
         }
 
@@ -275,8 +275,9 @@ namespace Nethermind.AuRa.Test.Transactions
                         // to simulate order coming from TxPool
                         comparer.GetPoolUniqueTxComparerByNonce()).ToArray());
 
+            const int DefaultGasLimit = 36_000_000;
 
-            Transaction[] orderedTransactions = TxPoolTxSource.Order(txBySender, comparer).ToArray();
+            Transaction[] orderedTransactions = TxPoolTxSource.Order(txBySender, comparer, _ => true, DefaultGasLimit).ToArray();
             orderedTransactions.Should().BeEquivalentTo(expectation, o => o.WithStrictOrdering());
         }
 

@@ -37,6 +37,7 @@ using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Core.Test;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
 using Nethermind.Synchronization;
@@ -61,14 +62,15 @@ namespace Nethermind.JsonRpc.Benchmark
 
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IReleaseSpec spec = MainnetSpecProvider.Instance.GenesisSpec;
-            var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            var trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
 
             WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             stateProvider.Commit(spec);
             stateProvider.CommitTree(0);
 
-            OverridableWorldStateManager stateManager = new(dbProvider, trieStore.AsReadOnly(), LimboLogs.Instance);
+            WorldStateManager stateManager = new(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
+            OverridableWorldStateManager overridableScope = new(dbProvider, trieStore.AsReadOnly(), LimboLogs.Instance);
 
             StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
 
@@ -86,7 +88,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 LimboLogs.Instance);
             _blockhashProvider = new BlockhashProvider(blockTree, specProvider, stateProvider, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
-            _virtualMachine = new VirtualMachine(_blockhashProvider, specProvider, codeInfoRepository, LimboLogs.Instance);
+            _virtualMachine = new VirtualMachine(_blockhashProvider, specProvider, LimboLogs.Instance);
 
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             blockTree.SuggestBlock(genesisBlock);
@@ -138,7 +140,7 @@ namespace Nethermind.JsonRpc.Benchmark
 
             BlockchainBridge bridge = new(
                 new OverridableTxProcessingEnv(
-                    stateManager,
+                    overridableScope,
                     new ReadOnlyBlockTree(blockTree),
                     specProvider,
                     LimboLogs.Instance),
@@ -147,6 +149,7 @@ namespace Nethermind.JsonRpc.Benchmark
                     new ReadOnlyBlockTree(blockTree),
                     new ReadOnlyDbProvider(dbProvider, true),
                     specProvider,
+                    SimulateTransactionProcessorFactory.Instance,
                     LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,

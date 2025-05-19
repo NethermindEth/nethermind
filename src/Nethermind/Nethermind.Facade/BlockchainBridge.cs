@@ -30,6 +30,7 @@ using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
+using System.Linq;
 
 namespace Nethermind.Facade
 {
@@ -54,6 +55,7 @@ namespace Nethermind.Facade
         private readonly ISpecProvider _specProvider;
         private readonly IBlocksConfig _blocksConfig;
         private readonly SimulateBridgeHelper _simulateBridgeHelper;
+        private readonly SimulateReadOnlyBlocksProcessingEnvFactory _simulateProcessingEnvFactory;
 
         public BlockchainBridge(OverridableTxProcessingEnv processingEnv,
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
@@ -81,9 +83,8 @@ namespace Nethermind.Facade
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blocksConfig = blocksConfig;
             IsMining = isMining;
-            _simulateBridgeHelper = new SimulateBridgeHelper(
-                simulateProcessingEnvFactory ?? throw new ArgumentNullException(nameof(simulateProcessingEnvFactory)),
-                _blocksConfig);
+            _simulateProcessingEnvFactory = simulateProcessingEnvFactory ?? throw new ArgumentNullException(nameof(simulateProcessingEnvFactory));
+            _simulateBridgeHelper = new SimulateBridgeHelper(_blocksConfig, _specProvider);
         }
 
         public Block? HeadBlock
@@ -128,7 +129,8 @@ namespace Nethermind.Facade
             if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? txReceipts))
             {
                 int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
-                return (txReceipt, tx.GetGasInfo(block.Header, _specProvider.GetSpec(block.Header)), logIndexStart);
+                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+                return (txReceipt, tx.GetGasInfo(spec, block.Header), logIndexStart);
             }
 
             return (null, null, 0);
@@ -157,37 +159,18 @@ namespace Nethermind.Facade
 
             return new CallOutput
             {
-                Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
+                Error = ConstructError(tryCallResult, callOutputTracer.Error, tx.GasLimit),
                 GasSpent = callOutputTracer.GasSpent,
                 OutputData = callOutputTracer.ReturnValue,
                 InputError = !tryCallResult.Success
             };
         }
 
-        public SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
+        public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, CancellationToken cancellationToken)
         {
-            SimulateBlockTracer simulateOutputTracer = new(payload.TraceTransfers, payload.ReturnFullTransactionObjects, _specProvider);
-            BlockReceiptsTracer tracer = new();
-            tracer.SetOtherTracer(simulateOutputTracer);
-            SimulateOutput result = new();
-            try
-            {
-                if (!_simulateBridgeHelper.TrySimulate(header, payload, simulateOutputTracer, new CancellationBlockTracer(tracer, cancellationToken), out string error))
-                {
-                    result.Error = error;
-                }
-            }
-            catch (InsufficientBalanceException ex)
-            {
-                result.Error = ex.Message;
-            }
-            catch (Exception ex)
-            {
-                result.Error = ex.ToString();
-            }
-
-            result.Items = simulateOutputTracer.Results;
-            return result;
+            SimulateReadOnlyBlocksProcessingEnv env = _simulateProcessingEnvFactory.Create(payload.Validation);
+            IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, _specProvider, header);
+            return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, cancellationToken);
         }
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
@@ -199,13 +182,20 @@ namespace Nethermind.Facade
                 estimateGasTracer.WithCancellation(cancellationToken));
 
             GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState, _specProvider, _blocksConfig);
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
+
+            string? error = ConstructError(tryCallResult, estimateGasTracer.Error, tx.GasLimit);
+
+            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
+            if (err is not null)
+            {
+                error ??= err;
+            }
 
             return new CallOutput
             {
-                Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error,
+                Error = error,
                 GasSpent = estimate,
-                InputError = !tryCallResult.Success
+                InputError = !tryCallResult.Success || err is not null
             };
         }
 
@@ -222,8 +212,9 @@ namespace Nethermind.Facade
 
             return new CallOutput
             {
-                Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
+                Error = ConstructError(tryCallResult, callOutputTracer.Error, tx.GasLimit),
                 GasSpent = accessTxTracer.GasSpent,
+                OperationGas = callOutputTracer.OperationGas,
                 OutputData = callOutputTracer.ReturnValue,
                 InputError = !tryCallResult.Success,
                 AccessList = accessTxTracer.AccessList
@@ -293,6 +284,11 @@ namespace Nethermind.Facade
                 callHeader.ExcessBlobGas = treatBlockHeaderAsParentBlock
                     ? BlobGasCalculator.CalculateExcessBlobGas(blockHeader, releaseSpec)
                     : blockHeader.ExcessBlobGas;
+
+                if (transaction.Type is TxType.Blob && transaction.MaxFeePerBlobGas is null && BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, out UInt256 blobBaseFee, releaseSpec))
+                {
+                    transaction.MaxFeePerBlobGas = blobBaseFee;
+                }
             }
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
@@ -406,7 +402,7 @@ namespace Nethermind.Facade
 
         public Address? RecoverTxSender(Transaction tx) => _ecdsa.RecoverAddress(tx);
 
-        public void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot)
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>
         {
             _stateReader.RunTreeVisitor(treeVisitor, stateRoot);
         }
@@ -424,6 +420,18 @@ namespace Nethermind.Facade
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
             return _logFinder.FindLogs(filter, cancellationToken);
+        }
+
+        private static string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)
+        {
+            var error = txResult switch
+            {
+                { Success: true } when tracerError is not null => tracerError,
+                { Success: false, Error: not null } => txResult.Error,
+                _ => null
+            };
+
+            return error is null ? null : $"err: {error} (supplied gas {gasLimit})";
         }
     }
 }

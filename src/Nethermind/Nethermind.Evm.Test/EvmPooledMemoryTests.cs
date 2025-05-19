@@ -19,6 +19,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using FluentAssertions;
+using Nethermind.Core.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -148,9 +149,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         long gas = 34218;
         ulong ts = 123456;
         MemDb stateDb = new();
-        TrieStore trieStore = new(
-                stateDb,
-                LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb,
+            LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(
                 trieStore,
                 new MemDb(),
@@ -160,7 +160,6 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         VirtualMachine virtualMachine = new(
             new TestBlockhashProvider(specProvider),
                 specProvider,
-                codeInfoRepository,
                 LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new TransactionProcessor(
                 specProvider,
@@ -196,7 +195,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         MyTracer tracer = new();
         transactionProcessor.Execute(
                 tx,
-                new(block.Header, specProvider.GenesisSpec),
+                new BlockExecutionContext(block.Header, specProvider.GetSpec(block.Header)),
                 tracer);
         return tracer.lastmemline;
     }
@@ -234,15 +233,15 @@ public class MyTracer : ITxTracer, IDisposable
 
     public string lastmemline;
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
+    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256 stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
     }
 
@@ -264,7 +263,7 @@ public class MyTracer : ITxTracer, IDisposable
 
     public void SetOperationMemory(TraceMemory memoryTrace)
     {
-        lastmemline = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(mt => mt.Replace("0x", string.Empty))));
+        lastmemline = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(static mt => mt.Replace("0x", string.Empty))));
     }
 
     public void SetOperationMemorySize(ulong newSize)

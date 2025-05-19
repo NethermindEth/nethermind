@@ -27,6 +27,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Core.Specs;
@@ -40,7 +41,7 @@ public class BlockProcessorTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         TestSingleReleaseSpecProvider spec = new TestSingleReleaseSpecProvider(ConstantinopleFix.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
@@ -48,7 +49,7 @@ public class BlockProcessorTests
             HoleskySpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, spec),
+            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
             transactionProcessor,
@@ -72,7 +73,7 @@ public class BlockProcessorTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         TestSingleReleaseSpecProvider spec = new TestSingleReleaseSpecProvider(ConstantinopleFix.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
@@ -80,7 +81,7 @@ public class BlockProcessorTests
             HoleskySpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             new RewardCalculator(MainnetSpecProvider.Instance),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, spec),
+            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
             transactionProcessor,

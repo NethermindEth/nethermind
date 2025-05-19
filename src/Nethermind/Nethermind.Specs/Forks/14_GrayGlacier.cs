@@ -16,7 +16,7 @@ namespace Nethermind.Specs.Forks
             DifficultyBombDelay = 11400000L;
         }
 
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new GrayGlacier());
+        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new GrayGlacier());
 
 
     }

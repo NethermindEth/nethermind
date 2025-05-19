@@ -259,7 +259,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IEnumerable<UInt256> results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
 
-            List<UInt256> expectedList = expected.Select(n => (UInt256)n).ToList();
+            List<UInt256> expectedList = expected.Select(static n => (UInt256)n).ToList();
             results.Should().BeEquivalentTo(expectedList);
         }
 
@@ -279,7 +279,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IEnumerable<UInt256> results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
 
-            List<UInt256> expectedList = expected.Select(n => (UInt256)n).ToList();
+            List<UInt256> expectedList = expected.Select(static n => (UInt256)n).ToList();
             results.Should().BeEquivalentTo(expectedList);
         }
 

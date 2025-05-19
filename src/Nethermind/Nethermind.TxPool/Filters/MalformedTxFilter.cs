@@ -19,12 +19,13 @@ namespace Nethermind.TxPool.Filters
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
-            if (!txValidator.IsWellFormed(tx, spec))
+            ValidationResult result = txValidator.IsWellFormed(tx, spec);
+            if (!result)
             {
                 Metrics.PendingTransactionsMalformed++;
                 // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
-                if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, invalid transaction.");
-                return AcceptTxResult.Invalid;
+                if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, invalid transaction: {result}");
+                return AcceptTxResult.Invalid.WithMessage($"{result}");
             }
 
             return AcceptTxResult.Accepted;

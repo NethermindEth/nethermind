@@ -22,6 +22,7 @@ using FluentAssertions;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -81,7 +82,7 @@ public class RangeQueryVisitorTests
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
         tree.Accept(visitor, tree.RootHash, CreateVisitingOptions());
 
-        Dictionary<ValueHash256, byte[]?> nodes = leafCollector.Leafs.ToDictionary((it) => it.Item1, (it) => it.Item2);
+        Dictionary<ValueHash256, byte[]?> nodes = leafCollector.Leafs.ToDictionary(static (it) => it.Item1, static (it) => it.Item2);
         nodes.Count.Should().Be(3);
 
         nodes.ContainsKey(new Hash256("0200000000000000000000000000000000000000000000000000000000000000")).Should().BeTrue();
@@ -110,7 +111,7 @@ public class RangeQueryVisitorTests
         act.Should().NotThrow();
     }
 
-    private static VisitingOptions CreateVisitingOptions() => new() { ExpectAccounts = false };
+    private static VisitingOptions CreateVisitingOptions() => new() { };
 
     [Test]
     public void RangeFetchPartialLimit()
@@ -175,7 +176,7 @@ public class RangeQueryVisitorTests
         using ArrayPoolList<byte[]> proofs = visitor.GetProofs();
         proofs.Count.Should().Be(6); // Need to make sure `0x11` is included
 
-        var proofHashes = proofs.Select((rlp) => Keccak.Compute(rlp)).ToHashSet();
+        var proofHashes = proofs.Select(static (rlp) => Keccak.Compute(rlp)).ToHashSet();
         foreach (Hash256 proofHash in proofHashes)
         {
             Console.Out.WriteLine(proofHash);
@@ -201,7 +202,7 @@ public class RangeQueryVisitorTests
     [Test]
     public void StorageRangeFetchVisitor()
     {
-        TrieStore store = new TrieStore(new MemDb(), LimboLogs.Instance);
+        TrieStore store = TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
         (StateTree inputStateTree, StorageTree _, Hash256 account) = TestItem.Tree.GetTrees(store);
 
         RlpCollector leafCollector = new();

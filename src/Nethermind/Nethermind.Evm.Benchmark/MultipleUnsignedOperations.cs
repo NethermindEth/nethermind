@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
@@ -68,8 +69,8 @@ public class MultipleUnsignedOperations
     [GlobalSetup]
     public void GlobalSetup()
     {
-        TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
-        IKeyValueStore codeDb = new MemDb();
+        TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
+        IKeyValueStoreWithBatching codeDb = new MemDb();
 
         _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
         _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
@@ -77,7 +78,7 @@ public class MultipleUnsignedOperations
 
         Console.WriteLine(MuirGlacier.Instance);
         CodeInfoRepository codeInfoRepository = new();
-        _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, codeInfoRepository, new OneLoggerLogManager(NullLogger.Instance));
+        _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
 
         _environment = new ExecutionEnvironment
         (
@@ -87,17 +88,17 @@ public class MultipleUnsignedOperations
             codeInfo: new CodeInfo(_bytecode.Concat(_bytecode).Concat(_bytecode).Concat(_bytecode).ToArray()),
             value: 0,
             transferValue: 0,
-            txExecutionContext: new TxExecutionContext(new(_header, _spec), Address.Zero, 0, null, codeInfoRepository),
+            txExecutionContext: new TxExecutionContext(new BlockExecutionContext(_header, _spec), Address.Zero, 0, null, codeInfoRepository),
             inputData: default
         );
 
-        _evmState = new EvmState(100_000_000L, _environment, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot());
+        _evmState = EvmState.RentTopLevel(100_000_000L, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot(), _environment, new StackAccessTracker());
     }
 
     [Benchmark]
     public void ExecuteCode()
     {
-        _virtualMachine.Run<VirtualMachine.NotTracing>(_evmState, _stateProvider, _txTracer);
+        _virtualMachine.ExecuteTransaction<OffFlag>(_evmState, _stateProvider, _txTracer);
         _stateProvider.Reset();
     }
 

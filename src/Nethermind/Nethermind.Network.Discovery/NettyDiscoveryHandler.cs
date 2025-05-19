@@ -9,6 +9,7 @@ using DotNetty.Transport.Channels.Sockets;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
@@ -97,16 +98,17 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         }
 
         IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(msgBuffer, discoveryMsg.FarAddress);
-
-        await _channel.WriteAndFlushAsync(packet).ContinueWith(t =>
+        try
         {
-            if (t.IsFaulted)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMsg} ,Exp: {t.Exception}");
-            }
-        });
+            await _channel.WriteAndFlushAsync(packet);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMsg} ,Exp: {e}");
+        }
 
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
+        Metrics.DiscoveryMessagesSent.Increment(discoveryMsg.MsgType);
     }
 
     private bool TryParseMessage(DatagramPacket packet, out DiscoveryMsg? msg)
@@ -259,6 +261,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", msg.MsgType.ToString(), size);
         }
+        Metrics.DiscoveryMessagesReceived.Increment(msg.MsgType);
     }
 
     public event EventHandler? OnChannelActivated;

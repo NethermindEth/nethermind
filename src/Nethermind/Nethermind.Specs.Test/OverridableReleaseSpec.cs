@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -32,7 +33,12 @@ namespace Nethermind.Specs.Test
 
         public long GasLimitBoundDivisor => _spec.GasLimitBoundDivisor;
 
-        public UInt256 BlockReward { get; set; }
+        private UInt256? _blockReward;
+        public UInt256 BlockReward
+        {
+            get => _blockReward ?? _spec.BlockReward;
+            set => _blockReward = value;
+        }
 
         public long DifficultyBombDelay => _spec.DifficultyBombDelay;
 
@@ -115,13 +121,9 @@ namespace Nethermind.Specs.Test
         public bool IsRip7212Enabled => _spec.IsRip7212Enabled;
         public bool IsOpGraniteEnabled => _spec.IsOpGraniteEnabled;
         public bool IsOpHoloceneEnabled => _spec.IsOpHoloceneEnabled;
+        public bool IsOpIsthmusEnabled => _spec.IsOpIsthmusEnabled;
 
-        private bool? _isOntakeEnabled;
-        public bool IsOntakeEnabled
-        {
-            get => _isOntakeEnabled ?? _spec.IsOntakeEnabled;
-            set => _isOntakeEnabled = value;
-        }
+        public bool IsEip7623Enabled => _spec.IsEip7623Enabled;
 
         public bool IsEip3607Enabled { get; set; }
 
@@ -142,6 +144,7 @@ namespace Nethermind.Specs.Test
         }
 
         private ulong? _overridenEip4844TransitionTimeStamp;
+
         public ulong Eip4844TransitionTimestamp
         {
             get
@@ -154,6 +157,9 @@ namespace Nethermind.Specs.Test
             }
         }
 
+        public ulong TargetBlobCount => _spec.TargetBlobCount;
+        public ulong MaxBlobCount => _spec.MaxBlobCount;
+        public UInt256 BlobBaseFeeUpdateFraction => _spec.BlobBaseFeeUpdateFraction;
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
         public bool IsEip3855Enabled => _spec.IsEip3855Enabled;
@@ -178,7 +184,11 @@ namespace Nethermind.Specs.Test
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier => _spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator => _spec.BaseFeeCalculator;
+        public bool IsEofEnabled => _spec.IsEofEnabled;
         public bool IsEip6110Enabled => _spec.IsEip6110Enabled;
         public Address DepositContractAddress => _spec.DepositContractAddress;
+
+        Array? IReleaseSpec.EvmInstructionsNoTrace { get => _spec.EvmInstructionsNoTrace; set => _spec.EvmInstructionsNoTrace = value; }
+        Array? IReleaseSpec.EvmInstructionsTraced { get => _spec.EvmInstructionsTraced; set => _spec.EvmInstructionsTraced = value; }
     }
 }

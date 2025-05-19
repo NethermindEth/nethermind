@@ -21,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Timer = System.Timers.Timer;
 
@@ -123,6 +124,17 @@ namespace Nethermind.Synchronization.Peers
             {
                 weakPeer.PutToSleep(sleeps, DateTime.UtcNow);
             }
+        }
+
+        public async Task<int?> EstimateRequestLimit(RequestType requestType, IPeerAllocationStrategy allocationStrategy, AllocationContexts context, CancellationToken token)
+        {
+            // So, to know which peer is next, we just try to allocate it, and then free it back.
+            SyncPeerAllocation syncPeerAllocation = await Allocate(allocationStrategy, context, 1000, token);
+            if (!syncPeerAllocation.HasPeer) return null;
+
+            int requestSize = _stats.GetOrAdd(syncPeerAllocation.Current!.SyncPeer.Node).GetCurrentRequestLimit(requestType);
+            Free(syncPeerAllocation);
+            return requestSize;
         }
 
         public void Start()
@@ -711,7 +723,7 @@ namespace Nethermind.Synchronization.Peers
             _isStarted = false;
             _refreshLoopCancellation.Cancel();
             await (_refreshLoopTask ?? Task.CompletedTask);
-            Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(DisconnectReason.AppClosing, "App Close"); });
+            Parallel.ForEach(_peers, static p => { p.Value.SyncPeer.Disconnect(DisconnectReason.AppClosing, "App Close"); });
 
             _peerRefreshQueue.Writer.TryComplete();
             _refreshLoopCancellation.Dispose();

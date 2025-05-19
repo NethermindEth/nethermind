@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -26,8 +28,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
         ILogManager logManager,
         TimeSpan timePerSlot,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
-        TimeSpan? improvementDelay = null,
-        TimeSpan? minTimeForProduction = null)
+        TimeSpan? improvementDelay = null)
         : base(
             blockProducer,
             blockImprovementContextFactory,
@@ -35,16 +36,39 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             logManager,
             timePerSlot,
             slotsPerOldPayloadCleanup,
-            improvementDelay,
-            minTimeForProduction)
+            improvementDelay)
     {
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
     }
 
     protected override void ImproveBlock(string payloadId, BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
+        PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts)
     {
+        if (payloadAttributes is OptimismPayloadAttributes optimismPayload)
+        {
+            var spec = _specProvider.GetSpec(currentBestBlock.Header);
+            if (spec.IsOpHoloceneEnabled)
+            {
+                // NOTE: This operation should never fail since headers should be valid at this point.
+                if (!optimismPayload.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Parameters, out var error))
+                {
+                    throw new InvalidOperationException($"{nameof(BlockHeader)} was not properly validated: {error}");
+                }
+
+                if (eip1559Parameters.IsZero())
+                {
+                    eip1559Parameters = new EIP1559Parameters(eip1559Parameters.Version, (UInt32)spec.BaseFeeMaxChangeDenominator, (UInt32)spec.ElasticityMultiplier);
+                }
+
+                currentBestBlock.Header.ExtraData = new byte[EIP1559Parameters.ByteLength];
+                eip1559Parameters.WriteTo(currentBestBlock.Header.ExtraData);
+
+                // NOTE: Since we updated the `Header` we need to recalculate the hash.
+                currentBestBlock.Header.Hash = currentBestBlock.Header.CalculateHash();
+            }
+        }
+
         if (payloadAttributes is OptimismPayloadAttributes { NoTxPool: true })
         {
             if (_logger.IsDebug)
@@ -56,22 +80,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
         }
         else
         {
-            if (payloadAttributes is OptimismPayloadAttributes optimismPayload)
-            {
-                var spec = _specProvider.GetSpec(currentBestBlock.Header);
-                if (spec.IsOpHoloceneEnabled)
-                {
-                    if (!optimismPayload.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Parameters, out var error))
-                    {
-                        throw new InvalidOperationException($"{nameof(OptimismPayloadAttributes)} was not properly validated: invalid {nameof(OptimismPayloadAttributes.EIP1559Params)}");
-                    }
-
-                    currentBestBlock.Header.ExtraData = new byte[EIP1559Parameters.ByteLength];
-                    eip1559Parameters.WriteTo(currentBestBlock.Header.ExtraData);
-                }
-            }
-
-            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
         }
     }
 }

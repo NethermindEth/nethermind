@@ -21,7 +21,7 @@ public class BlockForRpc
     private readonly BlockDecoder _blockDecoder = new();
     private readonly bool _isAuRaBlock;
 
-    protected BlockForRpc()
+    public BlockForRpc()
     {
 
     }
@@ -30,7 +30,6 @@ public class BlockForRpc
     public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider)
     {
         _isAuRaBlock = block.Header.AuRaSignature is not null;
-        Author = block.Author ?? block.Beneficiary;
         Difficulty = block.Difficulty;
         ExtraData = block.ExtraData;
         GasLimit = block.GasLimit;
@@ -46,6 +45,7 @@ public class BlockForRpc
         }
         else
         {
+            Author = block.Author;
             Step = block.Header.AuRaStep;
             Signature = block.Header.AuRaSignature;
         }

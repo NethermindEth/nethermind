@@ -26,7 +26,7 @@ using G1 = Bls.P1;
 public class ShutterTxLoader(
     ILogFinder logFinder,
     IShutterConfig cfg,
-    ShutterTime time,
+    SlotTime time,
     ISpecProvider specProvider,
     IEthereumEcdsa ecdsa,
     IAbiEncoder abiEncoder,
@@ -54,11 +54,11 @@ public class ShutterTxLoader(
         string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms fter";
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {keys.Slot} at time {offsetText} slot start...");
 
-        using ArrayPoolList<Transaction>? decrypted = DecryptSequencedTransactions(sequencedTransactions, keys.Keys);
+        using ArrayPoolList<(Transaction Tx, UInt256 GasLimit)>? decrypted = DecryptSequencedTransactions(sequencedTransactions, keys.Keys);
 
-        if (_logger.IsDebug && decrypted is not null) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, decrypted.Select(tx => tx.ToShortString()))}");
+        if (_logger.IsDebug && decrypted is not null) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, decrypted.Select(tx => tx.Tx.ToShortString()))}");
 
-        Transaction[] filtered = decrypted is null ? [] : FilterTransactions(decrypted, parentHeader);
+        Transaction[] filtered = decrypted is null ? [] : [.. FilterTransactions(decrypted, parentHeader)];
 
         ShutterTransactions shutterTransactions = new()
         {
@@ -85,10 +85,18 @@ public class ShutterTxLoader(
         }
     }
 
-    private Transaction[] FilterTransactions(IEnumerable<Transaction> transactions, BlockHeader parentHeader)
-        => transactions.Where(tx => _txFilter.IsAllowed(tx, parentHeader) == TxPool.AcceptTxResult.Accepted).ToArray();
+    private IEnumerable<Transaction> FilterTransactions(IEnumerable<(Transaction Tx, UInt256 GasLimit)> transactions, BlockHeader parentHeader)
+    {
+        foreach ((Transaction tx, UInt256 gasLimit) in transactions)
+        {
+            if (_txFilter.IsAllowed(tx, gasLimit, parentHeader) == TxPool.AcceptTxResult.Accepted)
+            {
+                yield return tx;
+            }
+        }
+    }
 
-    private ArrayPoolList<Transaction>? DecryptSequencedTransactions(ArrayPoolList<SequencedTransaction> sequencedTransactions, EnumerableWithCount<(ReadOnlyMemory<byte> IdentityPreimage, ReadOnlyMemory<byte> Key)> decryptionKeys)
+    private ArrayPoolList<(Transaction, UInt256)>? DecryptSequencedTransactions(ArrayPoolList<SequencedTransaction> sequencedTransactions, EnumerableWithCount<(ReadOnlyMemory<byte> IdentityPreimage, ReadOnlyMemory<byte> Key)> decryptionKeys)
     {
         int txCount = sequencedTransactions.Count;
         int keyCount = decryptionKeys.Count;
@@ -111,7 +119,7 @@ public class ShutterTxLoader(
 
         using ArrayPoolList<int> sortedKeyIndexes = new(txCount, txCount);
         int keyIndex = 0;
-        foreach (SequencedTransaction index in sortedIndexes)
+        foreach (SequencedTransaction index in sortedIndexes.AsSpan())
         {
             sortedKeyIndexes[index.Index] = keyIndex++;
         }
@@ -121,10 +129,10 @@ public class ShutterTxLoader(
         return sequencedTransactions
             .AsParallel()
             .AsOrdered()
-            // ReSharper disable AccessToDisposedClosure
-            .Select((tx, i) => DecryptSequencedTransaction(tx, decryptionKeysList[sortedKeyIndexes[i]]))
-            // ReSharper restore AccessToDisposedClosure
-            .OfType<Transaction>()
+            .Select((tx, i) => (
+                DecryptSequencedTransaction(tx, decryptionKeysList[sortedKeyIndexes[i]]),
+                tx.GasLimit))
+            .OfType<(Transaction, UInt256)>()
             .ToPooledList(sequencedTransactions.Count);
     }
 

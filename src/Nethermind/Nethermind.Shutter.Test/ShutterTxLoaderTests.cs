@@ -16,7 +16,7 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
-class ShutterTxLoaderTests : EngineModuleTests
+class ShutterTxLoaderTests : BaseEngineModuleTests
 {
     private class ShutterEventSimulatorHalfInvalid(
         Random rnd,

@@ -15,7 +15,7 @@ namespace Nethermind.Evm
                 ? tx.SenderAddress
                 : ContractAddress.From(tx.SenderAddress, nonce > 0 ? nonce - 1 : nonce));
 
-        public static TxGasInfo GetGasInfo(this Transaction tx, BlockHeader header, IReleaseSpec spec)
+        public static TxGasInfo GetGasInfo(this Transaction tx, IReleaseSpec spec, BlockHeader header)
         {
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
 

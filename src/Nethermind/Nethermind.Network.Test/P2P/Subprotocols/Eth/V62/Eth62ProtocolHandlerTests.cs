@@ -150,7 +150,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler.NotifyOfNewBlock(block, mode);
             _handler.NotifyOfNewBlock(block, SendBlockMode.HashOnly);
             _handler.NotifyOfNewBlock(block, SendBlockMode.FullBlock);
-            _session.Received(1).DeliverMessage(Arg.Is<P2PMessage>(m =>
+            _session.Received(1).DeliverMessage(Arg.Is<P2PMessage>(static m =>
                 m.GetType().IsAssignableFrom(typeof(NewBlockMessage))
                 || m.GetType().IsAssignableFrom(typeof(NewBlockHashesMessage))));
         }
@@ -233,7 +233,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
 
-            _session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Count == 3));
+            _session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(static bhm => bhm.BlockHeaders.Count == 3));
             _syncManager.Received().FindHash(100);
         }
 
@@ -270,7 +270,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
 
-            _session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Count == 5));
+            _session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(static bhm => bhm.BlockHeaders.Count == 5));
             _syncManager.Received().FindHash(100);
         }
 
@@ -414,7 +414,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public async Task Can_LimitGetBlockBodiesRequestSize()
         {
-            using BlockBodiesMessage msg = new(Build.A.Block.TestObjectNTimes(3));
+            using BlockBodiesMessage msg4 = new(Build.A.Block.TestObjectNTimes(4));
             Transaction signedTransaction = Build.A.Transaction.SignedAndResolved().TestObject;
             Block largerBlock = Build.A.Block.WithTransactions(Enumerable.Repeat(signedTransaction, 1000).ToArray()).TestObject;
 
@@ -429,7 +429,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             HandleIncomingStatusMessage();
             Task getTask = ((ISyncPeer)_handler).GetBlockBodies(requests, CancellationToken.None).AddResultTo(_disposables);
-            HandleZeroMessage(msg, Eth62MessageCode.BlockBodies);
+            HandleZeroMessage(msg4, Eth62MessageCode.BlockBodies);
             await getTask;
 
             Assert.That(getMsg.BlockHashes.Count, Is.EqualTo(4));
@@ -441,7 +441,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.That(getMsg.BlockHashes.Count, Is.EqualTo(6));
 
             getTask = ((ISyncPeer)_handler).GetBlockBodies(requests, CancellationToken.None).AddResultTo(_disposables);
-            HandleZeroMessage(msg, Eth62MessageCode.BlockBodies);
+            HandleZeroMessage(msg4, Eth62MessageCode.BlockBodies);
             await getTask;
 
             Assert.That(getMsg.BlockHashes.Count, Is.EqualTo(4));

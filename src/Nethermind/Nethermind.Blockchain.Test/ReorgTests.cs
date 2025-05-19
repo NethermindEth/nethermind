@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -12,6 +13,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -28,14 +30,16 @@ namespace Nethermind.Blockchain.Test;
 
 public class ReorgTests
 {
+#pragma warning disable NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private BlockchainProcessor _blockchainProcessor = null!;
+#pragma warning restore NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private BlockTree _blockTree = null!;
 
     [OneTimeSetUp]
     public void Setup()
     {
         IDbProvider memDbProvider = TestMemDbProvider.Init();
-        TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
         WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
         StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
@@ -61,7 +65,6 @@ public class ReorgTests
         VirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
-            codeInfoRepository,
             LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new(
             specProvider,
@@ -74,7 +77,7 @@ public class ReorgTests
             MainnetSpecProvider.Instance,
             Always.Valid,
             new RewardCalculator(specProvider),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, specProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
             transactionProcessor,
@@ -94,7 +97,7 @@ public class ReorgTests
     }
 
     [OneTimeTearDown]
-    public void TearDown() => _blockchainProcessor?.Dispose();
+    public async Task TearDownAsync() => await (_blockchainProcessor?.DisposeAsync() ?? default);
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     [Retry(3)]

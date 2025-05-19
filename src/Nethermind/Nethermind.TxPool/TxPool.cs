@@ -32,7 +32,7 @@ namespace Nethermind.TxPool
     /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
     /// or simply for broadcasting and tracing in other cases.
     /// </summary>
-    public class TxPool : ITxPool, IDisposable
+    public class TxPool : ITxPool, IAsyncDisposable
     {
         private readonly IIncomingTxFilter[] _preHashFilters;
         private readonly IIncomingTxFilter[] _postHashFilters;
@@ -51,13 +51,17 @@ namespace Nethermind.TxPool
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly bool _blobReorgsSupportEnabled;
+        private readonly DelegationCache _pendingDelegations = new();
 
         private readonly ILogger _logger;
 
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
+        private readonly ReaderWriterLockSlim _newHeadLock = new(LockRecursionPolicy.SupportsRecursion);
 
         private readonly UpdateGroupDelegate _updateBucket;
         private readonly UpdateGroupDelegate _updateBucketAdded;
+        private readonly Task _headProcessing;
+        private readonly CancellationTokenSource _cts;
 
         public event EventHandler<Block>? TxPoolHeadChanged;
 
@@ -71,6 +75,8 @@ namespace Nethermind.TxPool
         private Transaction[]? _blobTransactionSnapshot;
         private long _lastBlockNumber = -1;
         private Hash256? _lastBlockHash;
+
+        private bool _isDisposed;
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
@@ -105,9 +111,10 @@ namespace Nethermind.TxPool
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
+            SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
+            _cts = new();
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
-            AddNodeInfoEntryForTxPool();
 
             // Capture closures once rather than per invocation
             _updateBucket = UpdateBucket;
@@ -117,16 +124,20 @@ namespace Nethermind.TxPool
             TxPoolHeadChanged += _broadcaster.OnNewHead;
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
+            _transactions.Removed += OnRemovedTx;
+
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
-            if (_blobTransactions.Count > 0) _blobTransactions.UpdatePool(_accounts, _updateBucket);
+            if (_blobTransactions.Count > 0)
+                _blobTransactions.UpdatePool(_accounts, _updateBucket);
 
             _headInfo.HeadChanged += OnHeadChange;
 
             _preHashFilters =
             [
                 new NotSupportedTxFilter(txPoolConfig, _logger),
+                new SizeTxFilter(txPoolConfig, _logger),
                 new GasLimitTxFilter(_headInfo, txPoolConfig, _logger),
                 new PriorityFeeTooLowFilter(_logger),
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
@@ -145,7 +156,8 @@ namespace Nethermind.TxPool
                 new LowNonceFilter(_logger), // has to be after UnknownSenderFilter as it uses sender
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
-                new RecoverAuthorityFilter(ecdsa)
+                new RecoverAuthorityFilter(ecdsa),
+                new DelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, chainHeadInfoProvider.CodeInfoRepository, _pendingDelegations),
             ];
 
             if (incomingTxFilter is not null)
@@ -166,15 +178,17 @@ namespace Nethermind.TxPool
                 _timer.Start();
             }
 
-            ProcessNewHeads();
+            _headProcessing = ProcessNewHeads();
         }
 
         public Transaction[] GetPendingTransactions() => _transactionSnapshot ??= _transactions.GetSnapshot();
 
         public int GetPendingTransactionsCount() => _transactions.Count;
 
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender() =>
-            _transactions.GetBucketSnapshot();
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default) =>
+            _transactions.GetBucketSnapshot(filterToReadyTx ?
+                (data => data.first.CanPayBaseFee(baseFee) && data.first.Nonce == _accounts.GetNonce(data.key)) :
+                null);
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
             _blobTransactions.GetBucketSnapshot();
@@ -192,6 +206,10 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[]? proof)
             => _blobTransactions.TryGetBlobAndProof(blobVersionedHash, out blob, out proof);
 
+        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
+        {
+            RemovePendingDelegations(args.Value);
+        }
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             if (_headInfo.IsSyncing) return;
@@ -208,62 +226,77 @@ namespace Nethermind.TxPool
             }
         }
 
-        private void ProcessNewHeads()
+        private async Task ProcessNewHeads()
         {
-            Task.Factory.StartNew(async () =>
+            try
             {
-                while (await _headBlocksChannel.Reader.WaitToReadAsync())
+                await Task.Run(ProcessNewHeadLoop);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"TxPool update after block queue failed.", ex);
+            }
+        }
+
+        private async Task ProcessNewHeadLoop()
+        {
+            while (await _headBlocksChannel.Reader.WaitToReadAsync(_cts.Token))
+            {
+                while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
                 {
-                    _hashCache.ClearCurrentBlockCache();
-                    while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
+                    // Clear snapshot
+                    _transactionSnapshot = null;
+                    _blobTransactionSnapshot = null;
+
+                    _newHeadLock.EnterWriteLock();
+                    try
                     {
-                        // Clear snapshot
-                        _transactionSnapshot = null;
-                        _blobTransactionSnapshot = null;
-                        try
+                        ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
+                        if (args.PreviousBlock is not null || !CanUseCache(args.Block, accountChanges))
                         {
-                            ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
-                            if (!CanUseCache(args.Block, accountChanges))
-                            {
-                                // Not sequential block, reset cache
-                                _accountCache.Reset();
-                            }
-                            else
-                            {
-                                // Sequential block, just remove changed accounts from cache
-                                _accountCache.RemoveAccounts(accountChanges);
-                            }
-                            args.Block.AccountChanges = null;
-                            accountChanges?.Dispose();
-
-                            _lastBlockNumber = args.Block.Number;
-                            _lastBlockHash = args.Block.Hash;
-
-                            ReAddReorganisedTransactions(args.PreviousBlock);
-                            RemoveProcessedTransactions(args.Block);
-                            UpdateBuckets();
-                            TxPoolHeadChanged?.Invoke(this, args.Block);
-                            Metrics.TransactionCount = _transactions.Count;
-                            Metrics.BlobTransactionCount = _blobTransactions.Count;
+                            // Non-sequential block or reorganization detected, reset cache
+                            _accountCache.Reset();
                         }
-                        catch (Exception e)
+                        else
                         {
-                            if (_logger.IsDebug) _logger.Debug($"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+                            // Sequential block, just remove changed accounts from cache
+                            _accountCache.RemoveAccounts(accountChanges);
                         }
+                        args.Block.AccountChanges = null;
+                        accountChanges?.Dispose();
+
+                        _lastBlockNumber = args.Block.Number;
+                        _lastBlockHash = args.Block.Hash;
+
+                        ReAddReorganisedTransactions(args.PreviousBlock);
+                        RemoveProcessedTransactions(args.Block);
+
+                        if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)
+                        {
+                            _hashCache.ClearCurrentBlockCache();
+                        }
+
+                        UpdateBuckets();
+                        TxPoolHeadChanged?.Invoke(this, args.Block);
+                        Metrics.TransactionCount = _transactions.Count;
+                        Metrics.BlobTransactionCount = _blobTransactions.Count;
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+                    }
+                    finally
+                    {
+                        _newHeadLock.ExitWriteLock();
                     }
                 }
+            }
 
-                bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges)
-                {
-                    return accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
-                }
-            }, TaskCreationOptions.LongRunning).ContinueWith(t =>
+            bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges)
             {
-                if (t.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error($"TxPool update after block queue failed.", t.Exception);
-                }
-            });
+                return accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
+            }
         }
 
         private void ReAddReorganisedTransactions(Block? previousBlock)
@@ -304,7 +337,7 @@ namespace Nethermind.TxPool
         private void RemoveProcessedTransactions(Block block)
         {
             Transaction[] blockTransactions = block.Transactions;
-            using ArrayPoolList<Transaction> blobTxsToSave = new(Eip4844Constants.GetMaxBlobsPerBlock());
+            using ArrayPoolList<Transaction> blobTxsToSave = new((int)_specProvider.GetSpec(block.Header).MaxBlobCount);
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
             long eip1559Txs = 0;
@@ -322,10 +355,15 @@ namespace Nethermind.TxPool
                     eip1559Txs++;
                 }
 
+                if (blockTx.SupportsAuthorizationList)
+                {
+                    eip7702Txs++;
+                }
+
                 if (blockTx.SupportsBlobs)
                 {
                     blobTxs++;
-                    blobs += blockTx.BlobVersionedHashes?.Length ?? 0;
+                    blobs += blockTx.GetBlobCount();
 
                     if (_blobReorgsSupportEnabled)
                     {
@@ -336,11 +374,6 @@ namespace Nethermind.TxPool
                         }
                         else if (_logger.IsTrace) _logger.Trace($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
                     }
-                }
-
-                if (blockTx.Type == TxType.SetCode)
-                {
-                    eip7702Txs++;
                 }
 
                 if (!IsKnown(txHash))
@@ -409,10 +442,17 @@ namespace Nethermind.TxPool
         }
 
         public bool AcceptTxWhenNotSynced { get; set; }
+        public bool SupportsBlobs { get; }
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            if (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) return AcceptTxResult.Syncing;
+            if (!AcceptTxWhenNotSynced &&
+                _headInfo.IsSyncing &&
+                // If local tx allow it to be accepted even when syncing
+                (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0)
+            {
+                return AcceptTxResult.Syncing;
+            }
 
             Metrics.PendingTransactionsReceived++;
 
@@ -422,36 +462,64 @@ namespace Nethermind.TxPool
 
             NewDiscovered?.Invoke(this, new TxEventArgs(tx));
 
-            bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             bool startBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
                                   TxHandlingOptions.PersistentBroadcast;
 
             if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
+            {
+                TraceTx(tx, handlingOptions, startBroadcast);
+            }
 
             TxFilteringState state = new(tx, _accounts);
+            AcceptTxResult accepted;
 
-            AcceptTxResult accepted = FilterTransactions(tx, handlingOptions, ref state);
-
-            if (!accepted)
+            _newHeadLock.EnterReadLock();
+            try
             {
-                Metrics.PendingTransactionsDiscarded++;
-            }
-            else
-            {
-                accepted = AddCore(tx, ref state, startBroadcast);
+                accepted = FilterTransactions(tx, handlingOptions, ref state);
                 if (accepted)
                 {
-                    // Clear proper snapshot
-                    if (tx.SupportsBlobs)
-                        _blobTransactionSnapshot = null;
-                    else
-                        _transactionSnapshot = null;
+                    accepted = AddCore(tx, ref state, startBroadcast);
                 }
+                else
+                {
+                    Metrics.PendingTransactionsDiscarded++;
+                }
+            }
+            finally
+            {
+                _newHeadLock.ExitReadLock();
+            }
+
+            if (accepted)
+            {
+                // Clear proper snapshot
+                if (tx.SupportsBlobs)
+                    _blobTransactionSnapshot = null;
+                else
+                    _transactionSnapshot = null;
             }
 
             return accepted;
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceTx(Transaction tx, TxHandlingOptions handlingOptions, bool startBroadcast)
+            {
+                bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
+                _logger.Trace($"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
+            }
+        }
+
+        private void AddPendingDelegations(Transaction tx)
+        {
+            if (tx.HasAuthorizationList)
+            {
+                foreach (AuthorizationTuple auth in tx.AuthorizationList)
+                {
+                    if (auth.Authority is not null)
+                        _pendingDelegations.IncrementDelegationCount(auth.Authority!);
+                }
+            }
         }
 
         private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, ref TxFilteringState state)
@@ -517,12 +585,13 @@ namespace Nethermind.TxPool
             }
 
             relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, _updateBucketAdded);
-            Metrics.PendingTransactionsAdded++;
+            Interlocked.Increment(ref Metrics.PendingTransactionsAdded);
             if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
             if (tx.SupportsBlobs) { Metrics.PendingBlobTransactionsAdded++; }
 
             if (removed is not null)
             {
+                RemovePendingDelegations(removed);
                 EvictedPending?.Invoke(this, new TxEventArgs(removed));
                 // transaction which was on last position in sorted TxPool and was deleted to give
                 // a place for a newly added tx (with higher priority) is now removed from hashCache
@@ -531,6 +600,8 @@ namespace Nethermind.TxPool
                 Metrics.PendingTransactionsEvicted++;
             }
 
+            AddPendingDelegations(tx);
+
             _broadcaster.Broadcast(tx, isPersistentBroadcast);
 
             _hashCache.SetLongTerm(tx.Hash!);
@@ -538,6 +609,18 @@ namespace Nethermind.TxPool
             Metrics.TransactionCount = _transactions.Count;
             Metrics.BlobTransactionCount = _blobTransactions.Count;
             return AcceptTxResult.Accepted;
+        }
+
+        private void RemovePendingDelegations(Transaction transaction)
+        {
+            if (transaction.HasAuthorizationList)
+            {
+                foreach (var auth in transaction.AuthorizationList)
+                {
+                    if (auth.Authority is not null)
+                        _pendingDelegations.DecrementDelegationCount(auth.Authority!);
+                }
+            }
         }
 
         private void UpdateBucketWithAddedTransaction(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
@@ -678,6 +761,8 @@ namespace Nethermind.TxPool
             if (hasBeenRemoved)
             {
                 RemovedPending?.Invoke(this, new TxEventArgs(transaction));
+
+                RemovePendingDelegations(transaction);
             }
 
             _broadcaster.StopBroadcast(hash);
@@ -765,23 +850,19 @@ namespace Nethermind.TxPool
         public event EventHandler<TxEventArgs>? RemovedPending;
         public event EventHandler<TxEventArgs>? EvictedPending;
 
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
+            if (_isDisposed) return;
+            _isDisposed = true;
             _timer?.Dispose();
+            _cts.Cancel();
             TxPoolHeadChanged -= _broadcaster.OnNewHead;
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
             _headBlocksChannel.Writer.Complete();
-        }
+            _transactions.Removed -= OnRemovedTx;
 
-        /// <summary>
-        /// This method is used just for nice logging features in the console.
-        /// </summary>
-        private static void AddNodeInfoEntryForTxPool()
-        {
-            ThisNodeInfo.AddInfo("Mem est tx   :",
-                $"{(LruCache<ValueHash256, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Hash256AsKey, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000} MB"
-                    .PadLeft(8));
+            await _headProcessing;
         }
 
         private void TimerOnElapsed(object? sender, EventArgs e)
@@ -797,6 +878,7 @@ namespace Nethermind.TxPool
             arrayPoolList.Add(address);
             _accountCache.RemoveAccounts(arrayPoolList);
         }
+
 
         private sealed class AccountCache : IAccountStateProvider
         {
@@ -920,12 +1002,12 @@ Total Evicted:          {Metrics.PendingTransactionsEvicted,24:N0}
 ------------------------------------------------
 Ratios in last block:
 * Eip1559 Transactions: {Metrics.Eip1559TransactionsRatio,24:P5}
-* Eip7702 Transactions: {Metrics.Eip7702TransactionsInBlock,24:P5}
 * DarkPool Level1:      {Metrics.DarkPoolRatioLevel1,24:P5}
 * DarkPool Level2:      {Metrics.DarkPoolRatioLevel2,24:P5}
 Amounts:
 * Blob txs:             {Metrics.BlobTransactionsInBlock,24:N0}
 * Blobs:                {Metrics.BlobsInBlock,24:N0}
+* Eip7702 txs:          {Metrics.Eip7702TransactionsInBlock,24:N0}
 ------------------------------------------------
 Db usage:
 * BlobDb writes:        {Db.Metrics.DbWrites.GetValueOrDefault("BlobTransactions"),24:N0}
@@ -935,3 +1017,4 @@ Db usage:
         }
     }
 }
+

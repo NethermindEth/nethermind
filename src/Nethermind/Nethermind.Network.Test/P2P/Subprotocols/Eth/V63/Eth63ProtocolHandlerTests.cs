@@ -148,12 +148,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 new("eth", Eth63MessageCode.GetReceipts, _ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
             _ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
-            _ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Count == 14));
+            _ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(static r => r.TxReceipts.Count == 14));
         }
 
         private class Context
         {
-            readonly MessageSerializationService _serializationService = new();
+            private readonly MessageSerializationService _serializationService;
             private readonly StatusMessageSerializer _statusMessageSerializer = new();
             public readonly ReceiptsMessageSerializer _receiptMessageSerializer = new(MainnetSpecProvider.Instance);
             public readonly GetReceiptsMessageSerializer _getReceiptMessageSerializer = new();
@@ -173,10 +173,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                         return _protocolHandler;
                     }
 
+                    var nodeStatsManager = Substitute.For<INodeStatsManager>();
+                    nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns((c) => new NodeStatsLight((Node)c[0]));
+
                     _protocolHandler = new Eth63ProtocolHandler(
                         Session,
                         _serializationService,
-                        Substitute.For<INodeStatsManager>(),
+                        nodeStatsManager,
                         SyncServer,
                         RunImmediatelyScheduler.Instance,
                         Substitute.For<ITxPool>(),
@@ -198,9 +201,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 Session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 1000, true));
                 NetworkDiagTracer.IsEnabled = true;
 
-                _serializationService.Register(_statusMessageSerializer);
-                _serializationService.Register(_receiptMessageSerializer);
-                _serializationService.Register(_getReceiptMessageSerializer);
+                _serializationService = new MessageSerializationService(
+                    SerializerInfo.Create(_statusMessageSerializer),
+                    SerializerInfo.Create(_receiptMessageSerializer),
+                    SerializerInfo.Create(_getReceiptMessageSerializer)
+                );
             }
         }
     }

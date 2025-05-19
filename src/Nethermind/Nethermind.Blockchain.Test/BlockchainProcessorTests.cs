@@ -7,17 +7,22 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -36,6 +41,8 @@ public class BlockchainProcessorTests
 
             private readonly HashSet<Hash256> _allowed = new();
 
+            internal readonly HashSet<Hash256> Processed = new();
+
             private readonly HashSet<Hash256> _allowedToFail = new();
 
             private readonly HashSet<Hash256> _rootProcessed = new();
@@ -43,16 +50,6 @@ public class BlockchainProcessorTests
             public BlockProcessorMock(ILogManager logManager, IStateReader stateReader)
             {
                 _logger = logManager.GetClassLogger();
-                stateReader.When(it =>
-                        it.RunTreeVisitor(Arg.Any<ITreeVisitor>(), Arg.Any<Hash256>(), Arg.Any<VisitingOptions>()))
-                    .Do((info =>
-                    {
-                        // Simulate state root check
-                        ITreeVisitor visitor = (ITreeVisitor)info[0];
-                        Hash256 stateRoot = (Hash256)info[1];
-                        if (!_rootProcessed.Contains(stateRoot)) visitor.VisitMissingNode(stateRoot, new TrieVisitContext());
-                    }));
-
                 stateReader.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => _rootProcessed.Contains(x[0]));
             }
 
@@ -68,13 +65,15 @@ public class BlockchainProcessorTests
                 _allowedToFail.Add(hash);
             }
 
-            public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
+            public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
             {
                 if (blockTracer != NullBlockTracer.Instance)
                 {
                     // this is for block reruns on failure for diag tracing
                     throw new InvalidBlockException(suggestedBlocks[0], "wrong tracer");
                 }
+
+                Processed.AddRange(suggestedBlocks.Select(x => x.Hash!));
 
                 _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                 while (true)
@@ -177,6 +176,7 @@ public class BlockchainProcessorTests
         private readonly BlockTree _blockTree;
         private readonly AutoResetEvent _resetEvent;
         private readonly AutoResetEvent _queueEmptyResetEvent;
+        private readonly IStateReader _stateReader;
         private readonly BlockProcessorMock _blockProcessor;
         private readonly RecoveryStepMock _recoveryStep;
         private readonly BlockchainProcessor _processor;
@@ -189,14 +189,14 @@ public class BlockchainProcessorTests
         public ProcessingTestContext(bool startProcessor)
         {
             _logger = _logManager.GetClassLogger();
-            IStateReader stateReader = Substitute.For<IStateReader>();
+            _stateReader = Substitute.For<IStateReader>();
 
             _blockTree = Build.A.BlockTree()
                 .WithoutSettingHead
                 .TestObject;
-            _blockProcessor = new BlockProcessorMock(_logManager, stateReader);
+            _blockProcessor = new BlockProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
-            _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
+            _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
 
@@ -282,9 +282,9 @@ public class BlockchainProcessorTests
             return new AfterBlock(_logManager, this, block);
         }
 
-        public ProcessingTestContext Suggested(Block block)
+        public ProcessingTestContext Suggested(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         {
-            AddBlockResult result = _blockTree.SuggestBlock(block);
+            AddBlockResult result = _blockTree.SuggestBlock(block, options);
             if (result != AddBlockResult.Added)
             {
                 _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
@@ -418,6 +418,18 @@ public class BlockchainProcessorTests
             Thread.Sleep(milliseconds);
             return this;
         }
+
+        public ProcessingTestContext AssertProcessedBlocks(params IEnumerable<Block> blocks)
+        {
+            _blockProcessor.Processed.Should().BeEquivalentTo(blocks.Select(b => b.Hash));
+            return this;
+        }
+
+        public ProcessingTestContext StateSyncedTo(Block block4D8)
+        {
+            _stateReader.HasStateForRoot(block4D8.StateRoot!).Returns(true);
+            return this;
+        }
     }
 
     private static class When
@@ -499,7 +511,24 @@ public class BlockchainProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Can_process_fast_sync()
     {
-        BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(configurer: builder =>
+        {
+            // Need the release spec to be fixed
+            builder.AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
+            {
+                ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
+                IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+                IReadOnlyStateProvider readOnlyState = ctx.Resolve<IReadOnlyStateProvider>();
+                return new ChainHeadInfoProvider(
+                    new FixedForkActivationChainHeadSpecProvider(specProvider, fixedBlock: 10_000_000),
+                    blockTree,
+                    readOnlyState,
+                    new CodeInfoRepository())
+                {
+                    HasSynced = true
+                };
+            });
+        });
         await testBlockchain.BuildSomeBlocks(5);
 
         When.ProcessingBlocks
@@ -508,7 +537,15 @@ public class BlockchainProcessorTests
             .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(2)!)
             .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(3)!)
             .SuggestedWithoutProcessingAndMoveToMain(testBlockchain.BlockTree.FindBlock(4)!)
-            .FullyProcessed(testBlockchain.BlockTree.FindBlock(5)!).BecomesNewHead();
+            .FullyProcessed(testBlockchain.BlockTree.FindBlock(5)!).BecomesNewHead()
+            .AssertProcessedBlocks(
+                testBlockchain.BlockTree.FindBlock(0)!,
+                testBlockchain.BlockTree.FindBlock(1)!,
+                testBlockchain.BlockTree.FindBlock(2)!,
+                testBlockchain.BlockTree.FindBlock(3)!,
+                testBlockchain.BlockTree.FindBlock(4)!,
+                testBlockchain.BlockTree.FindBlock(5)!
+            );
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -722,5 +759,28 @@ public class BlockchainProcessorTests
             .Sleep(10)
             .CountIs(0)
             .QueueIsEmpty(3);
+    }
+
+    [Test]
+    public void ProcessingLongRangeFastSync_ProcessOnlyLastBlock()
+    {
+        When.ProcessingBlocks
+            .QueueIsEmpty(1)
+
+            .FullyProcessed(_block0).BecomesNewHead()
+            .FullyProcessed(_block1D2).BecomesNewHead()
+
+            .Suggested(_block2D4, BlockTreeSuggestOptions.None)
+            .Suggested(_block3D6, BlockTreeSuggestOptions.None)
+            .Suggested(_block4D8, BlockTreeSuggestOptions.None)
+            .StateSyncedTo(_block4D8)
+
+            .FullyProcessed(_block5D10).BecomesNewHead()
+
+            .AssertProcessedBlocks(
+                _block0,
+                _block1D2,
+                _block5D10
+            );
     }
 }

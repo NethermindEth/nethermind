@@ -12,15 +12,22 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class BlsPairingCheckPrecompileTests
+public class BlsPairingCheckPrecompileTests : PrecompileTests<BlsPairingCheckPrecompileTests>, IPrecompileTests
 {
+    public static IEnumerable<string> TestFiles()
+    {
+        yield return "Bls/pairing_check_bls.json";
+        yield return "Bls/fail-pairing_check_bls.json";
+    }
+
+    public static IPrecompile Precompile() => PairingCheckPrecompile.Instance;
+
     [Test]
     public void Test()
     {
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {
-            IPrecompile precompile = PairingCheckPrecompile.Instance;
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance);
+            (ReadOnlyMemory<byte> output, bool success) = PairingCheckPrecompile.Instance.Run(input, MuirGlacier.Instance);
 
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
             success.Should().BeTrue();

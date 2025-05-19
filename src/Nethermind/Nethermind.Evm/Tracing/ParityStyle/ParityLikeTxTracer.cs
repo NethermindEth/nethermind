@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
@@ -70,14 +71,12 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             return executionType switch
             {
-                ExecutionType.TRANSACTION => "call",
-                ExecutionType.CREATE => "create",
-                ExecutionType.CREATE2 => "create",
-                ExecutionType.CALL => "call",
+                ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.EOFCREATE or ExecutionType.TXCREATE => "create",
+                ExecutionType.CALL or ExecutionType.TRANSACTION => "call",
                 ExecutionType.DELEGATECALL => "delegatecall",
                 ExecutionType.STATICCALL => "staticcall",
                 ExecutionType.CALLCODE => "callcode",
-                _ => throw new NotSupportedException($"Parity trace call type is undefined for {executionType}"),
+                _ => throw new NotSupportedException($"Parity trace call type is undefined for {executionType}")
             };
         }
 
@@ -85,14 +84,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             return executionType switch
             {
-                ExecutionType.TRANSACTION => "call",
-                ExecutionType.CREATE => "create",
-                ExecutionType.CREATE2 => "create",
-                ExecutionType.CALL => "call",
-                ExecutionType.DELEGATECALL => "call",
-                ExecutionType.STATICCALL => "call",
-                ExecutionType.CALLCODE => "call",
-                _ => "call",
+                ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.EOFCREATE or ExecutionType.TXCREATE => "create",
+                _ => "call"
             };
         }
 
@@ -135,7 +128,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     action.TraceAddress[i] = _currentAction.TraceAddress[i];
                 }
 
-                action.TraceAddress[_currentAction.TraceAddress.Length] = _currentAction.Subtraces.Count(st => st.IncludeInTrace);
+                action.TraceAddress[_currentAction.TraceAddress.Length] = _currentAction.Subtraces.Count(static st => st.IncludeInTrace);
                 if (action.IncludeInTrace)
                 {
                     _currentAction.Subtraces.Add(action);
@@ -187,7 +180,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
         }
 
-        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
             if (_currentAction is not null)
             {
@@ -202,7 +195,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace.Action!.Result!.Output = output;
         }
 
-        public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+        public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         {
             if (_currentAction is not null)
             {
@@ -224,12 +217,14 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             };
         }
 
-        public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+        public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
         {
             ParityVmOperationTrace operationTrace = new();
             _gasAlreadySetForCurrentOp = false;
-            operationTrace.Pc = pc;
+            operationTrace.Pc = pc + env.CodeInfo.PcOffset();
             operationTrace.Cost = gas;
+            // skip codeSection
+            // skip functionDepth
             _currentOperation = operationTrace;
             _currentPushList.Clear();
             _currentVmTrace.Ops.Add(operationTrace);
@@ -388,7 +383,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             {
                 ExecutionType.CREATE => "create",
                 ExecutionType.CREATE2 => "create2",
-                _ => null,
+                ExecutionType.EOFCREATE => "create3",
+                ExecutionType.TXCREATE => "create4",
+                _ => null
             };
         }
 

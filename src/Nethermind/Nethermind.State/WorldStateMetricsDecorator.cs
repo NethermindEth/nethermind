@@ -30,10 +30,10 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public void SetTransientState(in StorageCell storageCell, byte[] newValue) => innerState.SetTransientState(in storageCell, newValue);
 
-    public void Reset(bool resizeCollections = false)
+    public void Reset(bool resetBlockChanges = true)
     {
         StateMerkleizationTime = 0d;
-        innerState.Reset(resizeCollections);
+        innerState.Reset(resetBlockChanges);
     }
 
     public Snapshot TakeSnapshot(bool newTransactionStart = false) => innerState.TakeSnapshot(newTransactionStart);
@@ -66,7 +66,7 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default) =>
         innerState.CreateAccountIfNotExists(address, in balance, in nonce);
-    public void InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false) =>
+    public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false) =>
         innerState.InsertCode(address, in codeHash, code, spec, isGenesis);
 
     public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec) =>
@@ -85,18 +85,22 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public void DecrementNonce(Address address, UInt256 delta) => innerState.DecrementNonce(address, delta);
 
-    public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitStorageRoots = true)
+    public void SetNonce(Address address, in UInt256 nonce) => innerState.SetNonce(address, nonce);
+
+    public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
     {
         long start = Stopwatch.GetTimestamp();
-        innerState.Commit(releaseSpec, isGenesis, commitStorageRoots);
-        StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        innerState.Commit(releaseSpec, isGenesis, commitRoots);
+        if (commitRoots)
+            StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
     }
 
-    public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false, bool commitStorageRoots = true)
+    public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false, bool commitRoots = true)
     {
         long start = Stopwatch.GetTimestamp();
-        innerState.Commit(releaseSpec, tracer, isGenesis, commitStorageRoots);
-        StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        innerState.Commit(releaseSpec, tracer, isGenesis, commitRoots);
+        if (commitRoots)
+            StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
     }
 
     public void CommitTree(long blockNumber)
@@ -118,7 +122,7 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public bool IsContract(Address address) => innerState.IsContract(address);
 
-    public void Accept(ITreeVisitor visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) =>
+    public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx> =>
         innerState.Accept(visitor, stateRoot, visitingOptions);
 
     public bool AccountExists(Address address) => innerState.AccountExists(address);

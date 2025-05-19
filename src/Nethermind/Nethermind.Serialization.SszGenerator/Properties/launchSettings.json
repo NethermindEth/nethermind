@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "Generate SSZ for tests": {
+      "commandName": "DebugRoslynComponent",
+      "targetProject": "..\\Nethermind.Serialization.SszGenerator.Test\\Nethermind.Serialization.SszGenerator.Test.csproj"
+    },
+    "Generate SSZ for Nethermind.Network.Discovery": {
+      "commandName": "DebugRoslynComponent",
+      "targetProject": "..\\Nethermind.Network.Discovery\\Nethermind.Network.Discovery.csproj"
+    }
+  }
+}

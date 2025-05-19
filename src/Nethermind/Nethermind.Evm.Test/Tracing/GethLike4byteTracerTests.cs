@@ -26,9 +26,9 @@ public class GethLike4byteTracerTests : VirtualMachineTestsBase
         byte[]? input = default,
         UInt256 value = default)
     {
-        Native4ByteTracer tracer = new Native4ByteTracer(GethTraceOptions.Default);
         (Block block, Transaction transaction) = input is null ? PrepareTx(Activation, 100000, code) : PrepareTx(Activation, 100000, code, input, value);
-        _processor.Execute(transaction, new(block.Header, London.Instance), tracer);
+        Native4ByteTracer tracer = new Native4ByteTracer(transaction, GethTraceOptions.Default);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return tracer.BuildResult();
     }
 
@@ -51,8 +51,8 @@ public class GethLike4byteTracerTests : VirtualMachineTestsBase
                 TestName = "Tracing CALL execution",
                 ExpectedResult = new Dictionary<string, int>
                 {
-                    { "62b15678-1", 2 },
-                    { "00000000-2", 1 }
+                    { "0x62b15678-1", 2 },
+                    { "0x00000000-2", 1 }
                 }
             };
 
@@ -62,7 +62,7 @@ public class GethLike4byteTracerTests : VirtualMachineTestsBase
                 .Done;
             var singleCall4ByteIds = new Dictionary<string, int>
                 {
-                    { "62b15678-1", 1 }
+                    { "0x62b15678-1", 1 }
                 };
             yield return new TestCaseData(delegateCallEvmCode, sampleInput)
             {

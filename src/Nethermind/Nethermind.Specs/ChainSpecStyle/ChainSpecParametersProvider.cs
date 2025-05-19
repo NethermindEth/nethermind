@@ -50,7 +50,7 @@ public class ChainSpecParametersProvider : IChainSpecParametersProvider
 
     private void InitializeInstances()
     {
-        IEnumerable<Type> types = TypeDiscovery.FindNethermindBasedTypes(typeof(IChainSpecEngineParameters)).Where(x => x.IsClass);
+        IEnumerable<Type> types = TypeDiscovery.FindNethermindBasedTypes(typeof(IChainSpecEngineParameters)).Where(static x => x.IsClass);
         foreach (Type type in types)
         {
             IChainSpecEngineParameters instance = (IChainSpecEngineParameters)Activator.CreateInstance(type)!;

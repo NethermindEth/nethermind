@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -66,7 +67,7 @@ public class ExecutionProcessorTests
     {
         _specProvider = MainnetSpecProvider.Instance;
         MemDb stateDb = new();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
 
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(eip7002Account, AccountBalance);
@@ -112,8 +113,7 @@ public class ExecutionProcessorTests
             });
     }
 
-
-    public static Hash256 CalculateHash(
+    private static Hash256 CalculateHash(
         TestExecutionRequest[] depositRequests,
         TestExecutionRequest[] withdrawalRequests,
         TestExecutionRequest[] consolidationRequests
@@ -124,9 +124,25 @@ public class ExecutionProcessorTests
     }
 
     [Test]
+    public void ShouldNotProcessExecutionRequestsForGenesisBlock()
+    {
+        Block block = Build.A.Block.WithNumber(0).TestObject;
+        ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
+
+        TxReceipt[] txReceipts = [
+            Build.A.Receipt.WithLogs(
+                CreateLogEntry(TestItem.ExecutionRequestA.RequestDataParts)
+            ).TestObject
+        ];
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
+
+        Assert.That(block.Header.RequestsHash, Is.Null);
+    }
+
+    [Test]
     public void ShouldProcessExecutionRequests()
     {
-        Block block = Build.A.Block.TestObject;
+        Block block = Build.A.Block.WithNumber(1).TestObject;
         ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
 
         TxReceipt[] txReceipts = [
@@ -141,11 +157,16 @@ public class ExecutionProcessorTests
         Assert.That(block.Header.RequestsHash, Is.EqualTo(
            CalculateHash(_executionDepositRequests, _executionWithdrawalRequests, _executionConsolidationRequests)
        ));
+    }
 
-
-        static LogEntry CreateLogEntry(byte[][] requestDataParts) =>
-            Build.A.LogEntry
-                .WithData(_abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts!))
-                .WithAddress(DepositContractAddress).TestObject;
+    static LogEntry CreateLogEntry(byte[][] requestDataParts) =>
+        Build.A.LogEntry
+            .WithData(_abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts!))
+            .WithTopics(ExecutionRequestsProcessor.DepositEventAbi.Hash)
+            .WithAddress(DepositContractAddress).TestObject;
+    [Test]
+    public void ShouldUseCorrectDepositTopic()
+    {
+        Assert.That(ExecutionRequestsProcessor.DepositEventAbi.Hash, Is.EqualTo(new Hash256("0x649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5")));
     }
 }

@@ -15,6 +15,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -45,8 +46,7 @@ public class DevBlockProducerTests
             .WithoutSettingHead
             .TestObject;
 
-        TrieStore trieStore = new(
-            dbProvider.RegisteredDbs[DbNames.State],
+        TrieStore trieStore = TestTrieStoreFactory.Build(dbProvider.RegisteredDbs[DbNames.State],
             NoPruning.Instance,
             Archive.Instance,
             LimboLogs.Instance);
@@ -60,7 +60,6 @@ public class DevBlockProducerTests
         VirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
-            codeInfoRepository,
             LimboLogs.Instance);
         TransactionProcessor txProcessor = new(
             specProvider,
@@ -72,7 +71,7 @@ public class DevBlockProducerTests
             specProvider,
             Always.Valid,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider, specProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
             txProcessor,

@@ -140,6 +140,18 @@ namespace Nethermind.Core
             Bytes = bytes;
         }
 
+        public Address(ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length != Size)
+            {
+                throw new ArgumentException(
+                    $"{nameof(Address)} should be {Size} bytes long and is {bytes.Length} bytes long",
+                    nameof(bytes));
+            }
+
+            Bytes = bytes.ToArray();
+        }
+
         public bool Equals(Address? other)
         {
             if (other is null)
@@ -183,6 +195,12 @@ namespace Nethermind.Core
         /// </summary>
         /// <returns></returns>
         public string ToString(bool withZeroX, bool withEip55Checksum) => Bytes.ToHexString(withZeroX, false, withEip55Checksum);
+
+        public string ToShortString(bool withZeroX = true)
+        {
+            string address = Bytes.ToHexString(withZeroX);
+            return $"{address[..(withZeroX ? 8 : 6)]}...{address[^6..]}";
+        }
 
         public override bool Equals(object? obj)
         {
@@ -234,7 +252,7 @@ namespace Nethermind.Core
                 destinationType == typeof(string) || base.CanConvertTo(context, destinationType);
         }
 
-        public Hash256 ToAccountPath => KeccakCache.Compute(Bytes);
+        public ValueHash256 ToAccountPath => KeccakCache.Compute(Bytes);
 
         [SkipLocalsInit]
         public ValueHash256 ToHash()

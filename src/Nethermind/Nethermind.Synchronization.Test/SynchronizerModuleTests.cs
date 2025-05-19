@@ -4,17 +4,13 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
-using Nethermind.Logging;
+using Nethermind.Core.Test.Modules;
 using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
-using Nethermind.Trie;
+using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -25,76 +21,35 @@ public class SynchronizerModuleTests
     public IContainer CreateTestContainer()
     {
         ITreeSync treeSync = Substitute.For<ITreeSync>();
-        IStateReader stateReader = Substitute.For<IStateReader>();
-        IBlockProcessingQueue blockQueue = Substitute.For<IBlockProcessingQueue>();
 
         return new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddModule(new SynchronizerModule(new TestSyncConfig()
             {
                 FastSync = true,
                 VerifyTrieOnStateSyncFinished = true
             }))
-            .AddKeyedSingleton(DbNames.Code, Substitute.For<IDb>())
-            .AddSingleton(stateReader)
             .AddSingleton(treeSync)
-            .AddSingleton(blockQueue)
-            .AddSingleton(Substitute.For<IProcessExitSource>())
-            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton(Substitute.For<IWorldStateManager>())
             .Build();
     }
 
     [Test]
-    public void TestOnTreeSyncFinish_CallVisit()
+    public async Task TestOnTreeSyncFinish_CallVisit()
     {
         IContainer ctx = CreateTestContainer();
+        ISyncFeed<StateSyncBatch> _ = ctx.Resolve<ISyncFeed<StateSyncBatch>>();
         ITreeSync treeSync = ctx.Resolve<ITreeSync>();
-        IStateReader stateReader = ctx.Resolve<IStateReader>();
+        IWorldStateManager worldStateManager = ctx.Resolve<IWorldStateManager>();
 
-        treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(TestItem.KeccakA));
-        treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(TestItem.KeccakA));
+        BlockHeader header = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject;
+        treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(header));
+        treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(header));
 
-        stateReader
+        await Task.Delay(100);
+
+        worldStateManager
             .Received(1)
-            .RunTreeVisitor(Arg.Any<TrieStatsCollector>(), Arg.Is(TestItem.KeccakA), Arg.Any<VisitingOptions>());
-    }
-
-    [Test]
-    public async Task TestOnTreeSyncFinish_BlockProcessingQueue_UntilFinished()
-    {
-        IContainer ctx = CreateTestContainer();
-        ITreeSync treeSync = ctx.Resolve<ITreeSync>();
-        IStateReader stateReader = ctx.Resolve<IStateReader>();
-        IBlockProcessingQueue blockQueue = ctx.Resolve<IBlockProcessingQueue>();
-
-        ManualResetEvent treeVisitorBlocker = new ManualResetEvent(false);
-
-        stateReader
-            .When(sr => sr.RunTreeVisitor(Arg.Any<TrieStatsCollector>(), Arg.Is(TestItem.KeccakA), Arg.Any<VisitingOptions>()))
-            .Do((ci) =>
-            {
-                treeVisitorBlocker.WaitOne();
-            });
-
-        Task triggerTask = Task.Run(() =>
-        {
-            treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(TestItem.KeccakA));
-        });
-
-        await Task.Delay(100);
-
-        Task blockQueueTask = Task.Run(() =>
-        {
-            blockQueue.BlockRemoved +=
-                Raise.EventWith(null, new BlockRemovedEventArgs(null!, ProcessingResult.Success));
-        });
-
-        await Task.Delay(100);
-
-        blockQueueTask.IsCompleted.Should().BeFalse();
-        treeVisitorBlocker.Set();
-
-        await triggerTask;
-        await blockQueueTask;
-        blockQueue.BlockRemoved += Raise.EventWith(null, new BlockRemovedEventArgs(null!, ProcessingResult.Success));
+            .VerifyTrie(Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>());
     }
 }

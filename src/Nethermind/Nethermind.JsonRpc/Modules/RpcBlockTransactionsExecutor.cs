@@ -8,9 +8,8 @@ using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    public class RpcBlockTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider, ISpecProvider specProvider)
+    public class RpcBlockTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider)
         : BlockProcessor.BlockValidationTransactionsExecutor(
             new TraceTransactionProcessorAdapter(transactionProcessor),
-            stateProvider,
-            specProvider);
+            stateProvider);
 }

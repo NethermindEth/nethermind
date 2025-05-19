@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.Transactions
 
         public CompositeTxFilter(params ITxFilter[] txFilters)
         {
-            _txFilters = txFilters?.Where(f => f is not null).ToArray() ?? [];
+            _txFilters = txFilters?.Where(static f => f is not null).ToArray() ?? [];
         }
 
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)

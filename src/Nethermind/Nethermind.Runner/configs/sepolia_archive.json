@@ -1,9 +1,10 @@
 {
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
     "ChainSpecPath": "chainspec/sepolia.json",
     "GenesisHash": "0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9",
     "BaseDbPath": "nethermind_db/sepolia_archive",
-    "LogFileName": "sepolia.logs.txt",
+    "LogFileName": "sepolia.log",
     "StaticNodesPath": "Data/static-nodes-sepolia.json",
     "MemoryHint": 1024000000
   },
@@ -13,8 +14,12 @@
   "Metrics": {
     "NodeName": "Sepolia Archive"
   },
+  "Sync": {
+    "AncientReceiptsBarrier": 1450408,
+    "AncientBodiesBarrier": 1450408
+  },
   "Blocks": {
-    "TargetBlockGasLimit": 36000000
+    "TargetBlockGasLimit": 60000000
   },
   "Receipt": {
     "TxLookupLimit": 0

@@ -61,7 +61,7 @@ public class FilePasswordProviderTests
     [Test]
     public void Return_null_when_file_not_exists()
     {
-        var passwordProvider = new FilePasswordProvider(address =>
+        var passwordProvider = new FilePasswordProvider(static address =>
         {
             if (address == Address.Zero)
             {
@@ -82,7 +82,7 @@ public class FilePasswordProviderTests
     [Test]
     public void Correctly_use_alternative_provider()
     {
-        var passwordProvider = new FilePasswordProvider(a => string.Empty)
+        var passwordProvider = new FilePasswordProvider(static a => string.Empty)
             .OrReadFromFile(Path.Combine(TestDir, _files[0].Name));
 
         var password = passwordProvider.GetPassword(Address.Zero);

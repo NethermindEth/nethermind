@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Network.Config;
@@ -79,6 +80,18 @@ namespace Nethermind.Config.Test
 
                 Assert.That(config.Enabled, Is.EqualTo(expectedResult), bitArray.ToBitString());
             }
+        }
+
+        [Test]
+        public void Can_useExistingConfig()
+        {
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = 12345,
+            };
+            IConfigProvider configProvider = new ConfigProvider(blocksConfig);
+
+            configProvider.GetConfig<IBlocksConfig>().MinGasPrice.Should().Be(12345);
         }
     }
 }

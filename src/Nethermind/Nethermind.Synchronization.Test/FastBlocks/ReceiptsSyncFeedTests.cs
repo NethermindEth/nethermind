@@ -27,6 +27,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Synchronization.Test.FastBlocks;
 
@@ -56,8 +57,8 @@ public class ReceiptsSyncFeedTests
             }
 
             BlocksByHash = Blocks
-                .Where(b => b is not null)
-                .ToDictionary(b => b!.Hash!, b => b!);
+                .Where(static b => b is not null)
+                .ToDictionary(static b => b!.Hash!, static b => b!);
         }
 
         public Dictionary<Hash256, Block> BlocksByHash { get; }
@@ -82,8 +83,7 @@ public class ReceiptsSyncFeedTests
     private static readonly Scenario _64BodiesWithOneTxEach;
     private static readonly Scenario _64BodiesWithOneTxEachFollowedByEmpty;
 
-    private MeasuredProgress _measuredProgress = null!;
-    private MeasuredProgress _measuredProgressQueue = null!;
+    private ProgressLogger _progressLogger = null!;
 
     static ReceiptsSyncFeedTests()
     {
@@ -105,14 +105,13 @@ public class ReceiptsSyncFeedTests
         _syncConfig = new TestSyncConfig { FastSync = true };
         _syncConfig.PivotNumber = _pivotNumber.ToString();
         _syncConfig.PivotHash = Keccak.Zero.ToString();
+        _blockTree.SyncPivot.Returns((_pivotNumber, Keccak.Zero));
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _syncReport = Substitute.For<ISyncReport>();
 
-        _measuredProgress = new MeasuredProgress();
-        _measuredProgressQueue = new MeasuredProgress();
-        _syncReport.FastBlocksReceipts.Returns(_measuredProgress);
-        _syncReport.ReceiptsInQueue.Returns(_measuredProgressQueue);
+        _progressLogger = new ProgressLogger("Receipts", LimboLogs.Instance);
+        _syncReport.FastBlocksReceipts.Returns(_progressLogger);
 
         _feed = CreateFeed();
     }
@@ -241,8 +240,7 @@ public class ReceiptsSyncFeedTests
         using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
         request.Should().BeNull();
         _feed.CurrentState.Should().Be(SyncFeedState.Finished);
-        _measuredProgress.HasEnded.Should().BeTrue();
-        _measuredProgressQueue.HasEnded.Should().BeTrue();
+        _progressLogger.HasEnded.Should().BeTrue();
     }
 
     [TestCase(1, 1024, false, null, false)]
@@ -298,6 +296,7 @@ public class ReceiptsSyncFeedTests
         _syncConfig = syncConfig;
         _syncConfig.PivotNumber = _pivotNumber.ToString();
         _syncConfig.PivotHash = scenario.Blocks.Last()?.Hash?.ToString();
+        _blockTree.SyncPivot.Returns((_pivotNumber, scenario.Blocks.Last()?.Hash!));
         _syncPointers = Substitute.For<ISyncPointers>();
 
         _feed = new ReceiptsSyncFeed(
@@ -353,13 +352,16 @@ public class ReceiptsSyncFeedTests
             batches.Add(await _feed.PrepareRequest());
         }
 
-        for (int i = 0; i < 2; i++)
+        // Expected batches based on actual MaxReceiptFetch
+        int expectedBatches = (int)Math.Ceiling(256.0 / GethSyncLimits.MaxReceiptFetch);
+
+        for (int i = 0; i < expectedBatches; i++)
         {
             batches[i].Should().NotBeNull();
             batches[i]!.ToString().Should().NotBeNull();
         }
 
-        for (int i = 2; i < 100; i++)
+        for (int i = expectedBatches; i < 100; i++)
         {
             batches[i].Should().BeNull();
         }

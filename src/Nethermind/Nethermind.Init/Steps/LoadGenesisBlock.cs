@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -39,36 +40,34 @@ namespace Nethermind.Init.Steps
                 throw new StepDependencyException();
             }
 
-            IWorldState worldState = _api.WorldState!;
+            IMainProcessingContext mainProcessingContext = _api.MainProcessingContext!;
 
             // if we already have a database with blocks then we do not need to load genesis from spec
             if (_api.BlockTree.Genesis is null)
             {
-                Load(worldState);
+                Load(mainProcessingContext);
             }
 
-            ValidateGenesisHash(expectedGenesisHash, worldState);
+            ValidateGenesisHash(expectedGenesisHash, mainProcessingContext.WorldState);
 
             if (!_initConfig.ProcessingEnabled)
             {
                 if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
-                await (_api.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+                await (_api.MainProcessingContext!.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
             }
         }
 
-        protected virtual void Load(IWorldState worldState)
+        protected virtual void Load(IMainProcessingContext mainProcessingContext)
         {
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
 
             Block genesis = new GenesisLoader(
                 _api.ChainSpec,
                 _api.SpecProvider,
-                worldState,
-                _api.TransactionProcessor)
+                mainProcessingContext.WorldState,
+                mainProcessingContext.TransactionProcessor)
                 .Load();
 
             ManualResetEventSlim genesisProcessedEvent = new(false);
@@ -101,7 +100,7 @@ namespace Nethermind.Init.Steps
             BlockHeader genesis = _api.BlockTree.Genesis ?? throw new NullReferenceException("Genesis block is null");
             if (expectedGenesisHash is not null && genesis.Hash != expectedGenesisHash)
             {
-                if (_logger.IsWarn) _logger.Warn(worldState.DumpState());
+                if (_logger.IsTrace) _logger.Trace(worldState.DumpState());
                 if (_logger.IsWarn) _logger.Warn(genesis.ToString(BlockHeader.Format.Full));
                 if (_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {genesis.Hash}");
             }

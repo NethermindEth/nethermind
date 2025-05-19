@@ -6,14 +6,14 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core;
 public class AuthorizationTuple(
-    ulong chainId,
+    UInt256 chainId,
     Address codeAddress,
     ulong nonce,
     Signature sig,
     Address? authority = null)
 {
     public AuthorizationTuple(
-        ulong chainId,
+        UInt256 chainId,
         Address codeAddress,
         ulong nonce,
         byte yParity,
@@ -22,7 +22,7 @@ public class AuthorizationTuple(
         Address? authority = null) : this(chainId, codeAddress, nonce, new Signature(r, s, (ulong)yParity + Signature.VOffset), authority)
     { }
 
-    public ulong ChainId { get; } = chainId;
+    public UInt256 ChainId { get; } = chainId;
     public Address CodeAddress { get; protected set; } = codeAddress;
     public ulong Nonce { get; } = nonce;
     public Signature AuthoritySignature { get; protected set; } = sig;

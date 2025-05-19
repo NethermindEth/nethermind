@@ -15,31 +15,19 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class BlobGasCalculatorTests
 {
-    [TestCaseSource(nameof(ExcessBlobGasTestCaseSource))]
-    public void Excess_blob_gas_is_calculated_properly((ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas) testCase)
+    [Test]
+    [TestCaseSource(nameof(GenerateTestCases))]
+    public void Excess_blob_gas_is_calculated_properly(
+        (ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas) testCase,
+        IReleaseSpec spec,
+        bool areBlobsEnabled)
     {
-        void Test(IReleaseSpec spec, bool areBlobsEnabled)
-        {
-            BlockHeader parentHeader = Build.A.BlockHeader
-                .WithBlobGasUsed(BlobGasCalculator.CalculateBlobGas(testCase.parentBlobsCount))
-                .WithExcessBlobGas(testCase.parentExcessBlobGas).TestObject;
+        BlockHeader parentHeader = Build.A.BlockHeader
+            .WithBlobGasUsed(BlobGasCalculator.CalculateBlobGas(testCase.parentBlobsCount))
+            .WithExcessBlobGas(testCase.parentExcessBlobGas).TestObject;
 
-            Assert.That(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec), Is.EqualTo(areBlobsEnabled ? testCase.expectedExcessBlobGas : null));
-        }
-
-        Test(Homestead.Instance, false);
-        Test(Frontier.Instance, false);
-        Test(SpuriousDragon.Instance, false);
-        Test(TangerineWhistle.Instance, false);
-        Test(Byzantium.Instance, false);
-        Test(Constantinople.Instance, false);
-        Test(ConstantinopleFix.Instance, false);
-        Test(Istanbul.Instance, false);
-        Test(MuirGlacier.Instance, false);
-        Test(Berlin.Instance, false);
-        Test(GrayGlacier.Instance, false);
-        Test(Shanghai.Instance, false);
-        Test(Cancun.Instance, true);
+        Assert.That(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec),
+            Is.EqualTo(areBlobsEnabled ? testCase.expectedExcessBlobGas : null));
     }
 
     [TestCaseSource(nameof(BlobGasCostTestCaseSource))]
@@ -66,53 +54,54 @@ public class BlobGasCalculatorTests
         Assert.That(blobBaseFee, Is.EqualTo(UInt256.MaxValue));
     }
 
-    [Test]
-    public void Should_use_correct_min_blob_base_fee_with_eip7762()
+    private static IEnumerable<TestCaseData> GenerateTestCases()
     {
-        // Arrange
-        ulong excessBlobGas = 0;
-        var preFork = new ReleaseSpec() { IsEip7762Enabled = false };
-        var postFork = new ReleaseSpec() { IsEip7762Enabled = true };
+        (IReleaseSpec Instance, bool)[] specs =
+        [
+            (Homestead.Instance, false),
+            (Frontier.Instance, false),
+            (SpuriousDragon.Instance, false),
+            (TangerineWhistle.Instance, false),
+            (Byzantium.Instance, false),
+            (Constantinople.Instance, false),
+            (ConstantinopleFix.Instance, false),
+            (Istanbul.Instance, false),
+            (MuirGlacier.Instance, false),
+            (Berlin.Instance, false),
+            (GrayGlacier.Instance, false),
+            (Shanghai.Instance, false),
+            (Cancun.Instance, true),
+            (Prague.Instance, true)
+        ];
 
-        // Act
-        BlobGasCalculator.TryCalculateFeePerBlobGas(
-            excessBlobGas,
-            out UInt256 preForkPrice,
-            preFork);
-
-        BlobGasCalculator.TryCalculateFeePerBlobGas(
-            excessBlobGas,
-            out UInt256 postForkPrice,
-            postFork);
-
-        // Assert
-        Assert.Multiple(() =>
+        foreach ((IReleaseSpec spec, bool areBlobsEnabled) in specs)
         {
-            Assert.That(preForkPrice, Is.EqualTo(new UInt256(1)));
-            Assert.That(postForkPrice, Is.EqualTo(new UInt256(1 << 25)));
-        });
+            foreach ((ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas) testCase in ExcessBlobGasTestCaseSource(spec))
+            {
+                yield return new TestCaseData(testCase, spec, areBlobsEnabled)
+                    .SetName($"ExcessBlobGasTest_{spec.GetType().Name}_{testCase}");
+            }
+        }
     }
 
-    public static IEnumerable<(ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas)> ExcessBlobGasTestCaseSource()
+    private static IEnumerable<(ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas)>
+        ExcessBlobGasTestCaseSource(IReleaseSpec spec)
     {
         yield return (0, 0, 0);
-        yield return (0, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.GasPerBlob) - 1, 0);
-        yield return (0, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.GasPerBlob), 0);
-        yield return (100000, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.GasPerBlob), 100000);
-        yield return (0, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.GasPerBlob) + 1, Eip4844Constants.GasPerBlob * 1);
-        yield return (Eip4844Constants.TargetBlobGasPerBlock, 1, Eip4844Constants.GasPerBlob * 1);
-        yield return (Eip4844Constants.TargetBlobGasPerBlock, 0, 0);
-        yield return (Eip4844Constants.TargetBlobGasPerBlock, 2, Eip4844Constants.GasPerBlob * 2);
-        yield return (Eip4844Constants.MaxBlobGasPerBlock, 1, Eip4844Constants.TargetBlobGasPerBlock + Eip4844Constants.GasPerBlob * 1);
+        yield return (0, (int)spec.TargetBlobCount - 1, 0);
+        yield return (0, (int)spec.TargetBlobCount, 0);
+        yield return (100000, (int)spec.TargetBlobCount, 100000);
+        yield return (0, (int)spec.TargetBlobCount + 1, Eip4844Constants.GasPerBlob * 1);
+        yield return (spec.GetTargetBlobGasPerBlock(), 1, Eip4844Constants.GasPerBlob * 1);
+        yield return (spec.GetTargetBlobGasPerBlock(), 0, 0);
+        yield return (spec.GetTargetBlobGasPerBlock(), 2, Eip4844Constants.GasPerBlob * 2);
+        yield return (spec.GetMaxBlobGasPerBlock(), 1, (spec.MaxBlobCount + 1 - spec.TargetBlobCount) * Eip4844Constants.GasPerBlob);
+        yield return (1, (int)spec.TargetBlobCount, 1);
         yield return (
-            Eip4844Constants.MaxBlobGasPerBlock,
-            (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.GasPerBlob),
-            Eip4844Constants.MaxBlobGasPerBlock);
-        yield return (
-            Eip4844Constants.MaxBlobGasPerBlock,
-            (int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.GasPerBlob),
-            Eip4844Constants.MaxBlobGasPerBlock * 2 - Eip4844Constants.TargetBlobGasPerBlock
-            );
+            spec.GetMaxBlobGasPerBlock(),
+            (int)spec.MaxBlobCount,
+            (spec.MaxBlobCount * 2 - spec.TargetBlobCount) * Eip4844Constants.GasPerBlob
+        );
     }
 
     public static IEnumerable<(Transaction tx, ulong excessBlobGas, UInt256 expectedCost)> BlobGasCostTestCaseSource()

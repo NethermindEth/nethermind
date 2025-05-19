@@ -70,19 +70,7 @@ namespace Nethermind.Core.Crypto
 
         public byte[] Bytes { get; }
 
-        public byte[] PrefixedBytes
-        {
-            get
-            {
-                if (_prefixedBytes is null)
-                {
-                    return LazyInitializer.EnsureInitialized(ref _prefixedBytes,
-                        () => Core.Extensions.Bytes.Concat(0x04, Bytes));
-                }
-
-                return _prefixedBytes;
-            }
-        }
+        public byte[] PrefixedBytes => _prefixedBytes ??= Core.Extensions.Bytes.Concat(0x04, Bytes);
 
         public bool Equals(PublicKey? other) => other is not null && Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
 

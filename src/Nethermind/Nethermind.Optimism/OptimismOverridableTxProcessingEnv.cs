@@ -13,21 +13,20 @@ using Nethermind.State;
 namespace Nethermind.Optimism;
 
 public class OptimismOverridableTxProcessingEnv(
-    OverridableWorldStateManager worldStateManager,
+    IOverridableWorldScope worldStateManager,
     IReadOnlyBlockTree readOnlyBlockTree,
     ISpecProvider specProvider,
     ILogManager logManager,
-    IL1CostHelper l1CostHelper,
-    IOptimismSpecHelper opSpecHelper,
-    IWorldState? worldStateToWarmUp = null)
-    : OverridableTxProcessingEnv(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp)
+    ICostHelper costHelper,
+    IOptimismSpecHelper opSpecHelper)
+    : OverridableTxProcessingEnv(worldStateManager, readOnlyBlockTree, specProvider, logManager)
 {
     protected override ITransactionProcessor CreateTransactionProcessor()
     {
         ArgumentNullException.ThrowIfNull(LogManager);
 
         BlockhashProvider blockhashProvider = new(BlockTree, SpecProvider, StateProvider, LogManager);
-        VirtualMachine virtualMachine = new(blockhashProvider, SpecProvider, CodeInfoRepository, LogManager);
-        return new OptimismTransactionProcessor(SpecProvider, StateProvider, virtualMachine, LogManager, l1CostHelper, opSpecHelper, CodeInfoRepository);
+        VirtualMachine virtualMachine = new(blockhashProvider, SpecProvider, LogManager);
+        return new OptimismTransactionProcessor(SpecProvider, StateProvider, virtualMachine, LogManager, costHelper, opSpecHelper, CodeInfoRepository);
     }
 }

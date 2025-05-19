@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -13,8 +14,24 @@ namespace Nethermind.Network.Discovery.Serializers;
 
 public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<NeighborsMsg>
 {
+    private static readonly Func<RlpStream, Node> _decodeItem = static ctx =>
+    {
+        int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
+        int count = ctx.PeekNumberOfItemsRemaining(lastPosition);
+
+        ReadOnlySpan<byte> ip = ctx.DecodeByteArraySpan();
+        IPEndPoint address = GetAddress(ip, ctx.DecodeInt());
+        if (count > 3)
+        {
+            ctx.DecodeInt();
+        }
+
+        ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan();
+        return new Node(new PublicKey(id), address);
+    };
+
     public NeighborsMsgSerializer(IEcdsa ecdsa,
-        IPrivateKeyGenerator nodeKey,
+        [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey,
         INodeIdResolver nodeIdResolver) : base(ecdsa, nodeKey, nodeIdResolver)
     {
     }
@@ -53,30 +70,16 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
 
         NettyRlpStream rlp = new(Data);
         rlp.ReadSequenceLength();
-        Node[] nodes = DeserializeNodes(rlp) as Node[];
+        Node[] nodes = DeserializeNodes(rlp);
 
         long expirationTime = rlp.DecodeLong();
         NeighborsMsg msg = new(FarPublicKey, expirationTime, nodes);
         return msg;
     }
 
-    private static Node?[] DeserializeNodes(RlpStream rlpStream)
+    private static Node[] DeserializeNodes(RlpStream rlpStream)
     {
-        return rlpStream.DecodeArray(ctx =>
-        {
-            int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
-            int count = ctx.PeekNumberOfItemsRemaining(lastPosition);
-
-            ReadOnlySpan<byte> ip = ctx.DecodeByteArraySpan();
-            IPEndPoint address = GetAddress(ip, ctx.DecodeInt());
-            if (count > 3)
-            {
-                ctx.DecodeInt();
-            }
-
-            ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan();
-            return new Node(new PublicKey(id), address);
-        });
+        return rlpStream.DecodeArray<Node>(_decodeItem);
     }
 
     private static int GetNodesLength(Node[] nodes, out int contentLength)

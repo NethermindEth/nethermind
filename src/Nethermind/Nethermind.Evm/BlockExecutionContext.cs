@@ -26,7 +26,7 @@ public readonly struct BlockExecutionContext
         }
     }
 
-    public BlockExecutionContext(BlockHeader blockHeader, UInt256 forceBlobBaseFee)
+    public BlockExecutionContext(BlockHeader blockHeader, in UInt256 forceBlobBaseFee)
     {
         Header = blockHeader;
         BlobBaseFee = forceBlobBaseFee;

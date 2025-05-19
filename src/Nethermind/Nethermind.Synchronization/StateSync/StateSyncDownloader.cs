@@ -39,6 +39,7 @@ namespace Nethermind.Synchronization.StateSync
             ISyncPeer peer = peerInfo.SyncPeer;
             Task<IOwnedReadOnlyList<byte[]>> task = null;
             HashList? hashList = null;
+            GetTrieNodesRequest? getTrieNodesRequest = null;
             // Use GETNODEDATA if possible. Firstly via dedicated NODEDATA protocol
             if (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler))
             {
@@ -65,8 +66,8 @@ namespace Nethermind.Synchronization.StateSync
                 else
                 {
                     if (Logger.IsTrace) Logger.Trace($"Requested TrieNodes via SnapProtocol from peer {peer}");
-                    GetTrieNodesRequest request = GetGroupedRequest(batch);
-                    task = snapHandler.GetTrieNodes(request, cancellationToken);
+                    getTrieNodesRequest = GetGroupedRequest(batch);
+                    task = snapHandler.GetTrieNodes(getTrieNodesRequest, cancellationToken);
                 }
             }
 
@@ -80,6 +81,7 @@ namespace Nethermind.Synchronization.StateSync
                 batch.Responses = await task;
 
                 if (hashList is not null) HashList.Return(hashList);
+                getTrieNodesRequest?.Dispose();
             }
             catch (Exception e)
             {
@@ -95,7 +97,7 @@ namespace Nethermind.Synchronization.StateSync
         {
             GetTrieNodesRequest request = new() { RootHash = batch.StateRoot };
 
-            Dictionary<Hash256?, List<(TreePath path, StateSyncItem syncItem)>> itemsGroupedByAccount = new();
+            Dictionary<Hash256AsKey?, List<(TreePath path, StateSyncItem syncItem)>> itemsGroupedByAccount = new();
             List<(TreePath path, StateSyncItem syncItem)> accountTreePaths = new();
 
             foreach (StateSyncItem? item in batch.RequestedNodes)
@@ -137,7 +139,7 @@ namespace Nethermind.Synchronization.StateSync
             foreach (var kvp in itemsGroupedByAccount)
             {
                 byte[][] group = new byte[kvp.Value.Count + 1][];
-                group[0] = kvp.Key.Bytes.ToArray();
+                group[0] = kvp.Key?.Value.Bytes.ToArray();
 
                 for (int groupIndex = 1; groupIndex < group.Length; groupIndex++)
                 {

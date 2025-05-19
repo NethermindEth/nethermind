@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Visitors
             _logger = logger;
 
             long assumedHead = _blockTree.Head?.Number ?? 0;
-            _startNumber = Math.Max(syncConfig.PivotNumberParsed, assumedHead + 1);
+            _startNumber = Math.Max(_blockTree.SyncPivot.BlockNumber, assumedHead + 1);
             _blocksToLoad = (assumedHead + 1) >= _startNumber ? (_blockTree.BestKnownNumber - _startNumber + 1) : 0;
 
             _currentLevelNumber = _startNumber - 1; // because we always increment on entering
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Visitors
 
         private void WarnAboutProcessingGaps(ChainLevelInfo chainLevelInfo)
         {
-            bool thisLevelWasProcessed = chainLevelInfo?.BlockInfos.Any(b => b.WasProcessed) ?? false;
+            bool thisLevelWasProcessed = chainLevelInfo?.BlockInfos.Any(static b => b.WasProcessed) ?? false;
             if (thisLevelWasProcessed)
             {
                 if (_processingGapStart is not null)

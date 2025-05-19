@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -30,9 +31,10 @@ namespace Nethermind.Network.Test.P2P
         public void Setup()
         {
             _session = Substitute.For<ISession>();
-            _serializer = new MessageSerializationService();
-            _serializer.Register(new HelloMessageSerializer());
-            _serializer.Register(new PingMessageSerializer());
+            _serializer = new MessageSerializationService(
+                SerializerInfo.Create(new HelloMessageSerializer()),
+                SerializerInfo.Create(new PingMessageSerializer())
+            );
         }
 
         [TearDown]
@@ -84,9 +86,16 @@ namespace Nethermind.Network.Test.P2P
         public void On_init_sends_a_hello_message_with_capabilities()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            string[] expectedCapabilities = ["eth66", "eth67", "eth68", "nodedata1"];
+
+            // These are called by ProtocolsManager.
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 66));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 67));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.NodeData, 1));
+
             p2PProtocolHandler.Init();
 
-            string[] expectedCapabilities = ["eth66", "eth67", "eth68", "nodedata1"];
             _session.Received(1).DeliverMessage(
                 Arg.Is<HelloMessage>(m => m.Capabilities.Select(c => c.ToString()).SequenceEqual(expectedCapabilities)));
         }
@@ -176,6 +185,18 @@ namespace Nethermind.Network.Test.P2P
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
             Assert.That(p2PProtocolHandler.ListenPort, Is.EqualTo(ListenPort));
+        }
+
+        [Test]
+        public void On_init_sends_a_hello_message_with_public_client_id()
+        {
+            ProductInfo.InitializePublicClientId("{name}/{version}");
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.Init();
+
+            _session.Received(1).DeliverMessage(
+                Arg.Is<HelloMessage>(m =>
+                    m.ClientId == $"{ProductInfo.Name}/v{ProductInfo.Version}"));
         }
     }
 }

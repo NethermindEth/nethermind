@@ -12,6 +12,7 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -61,6 +62,7 @@ namespace Ethereum.Test.Base
                 "Cancun" => Cancun.Instance,
                 "Paris" => Paris.Instance,
                 "Prague" => Prague.Instance,
+                "Osaka" => Osaka.Instance,
                 _ => throw new NotSupportedException()
             };
         }
@@ -154,11 +156,6 @@ namespace Ethereum.Test.Base
                     transactionJson.AuthorizationList
                     .Select(i =>
                     {
-                        if (i.ChainId > ulong.MaxValue)
-                        {
-                            i.ChainId = 0;
-                            transaction.SenderAddress = Address.Zero;
-                        }
                         if (i.Nonce > ulong.MaxValue)
                         {
                             i.Nonce = 0;
@@ -190,7 +187,7 @@ namespace Ethereum.Test.Base
                             transaction.SenderAddress = Address.Zero;
                         }
                         return new AuthorizationTuple(
-                            i.ChainId.u0,
+                            i.ChainId,
                             i.Address,
                             i.Nonce.u0,
                             (byte)i.V,
@@ -232,11 +229,11 @@ namespace Ethereum.Test.Base
             return transaction;
         }
 
-        public static IEnumerable<GeneralStateTest> Convert(string name, GeneralStateTestJson testJson)
+        public static IEnumerable<GeneralStateTest> Convert(string name, string category, GeneralStateTestJson testJson)
         {
             if (testJson.LoadFailure is not null)
             {
-                return Enumerable.Repeat(new GeneralStateTest { Name = name, LoadFailure = testJson.LoadFailure }, 1);
+                return Enumerable.Repeat(new GeneralStateTest { Name = name, Category = category, LoadFailure = testJson.LoadFailure }, 1);
             }
 
             List<GeneralStateTest> blockchainTests = new();
@@ -252,6 +249,7 @@ namespace Ethereum.Test.Base
                     {
                         test.Name += testJson.Info?.Labels?[iterationNumber.ToString()]?.Replace(":label ", string.Empty);
                     }
+                    test.Category = category;
 
                     test.ForkName = postStateBySpec.Key;
                     test.Fork = ParseSpec(postStateBySpec.Key);
@@ -281,15 +279,16 @@ namespace Ethereum.Test.Base
             return blockchainTests;
         }
 
-        public static BlockchainTest Convert(string name, BlockchainTestJson testJson)
+        public static BlockchainTest Convert(string name, string category, BlockchainTestJson testJson)
         {
             if (testJson.LoadFailure is not null)
             {
-                return new BlockchainTest { Name = name, LoadFailure = testJson.LoadFailure };
+                return new BlockchainTest { Name = name, Category = category, LoadFailure = testJson.LoadFailure };
             }
 
             BlockchainTest test = new();
             test.Name = name;
+            test.Category = category;
             test.Network = testJson.EthereumNetwork;
             test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
             test.TransitionForkActivation = testJson.TransitionForkActivation;
@@ -315,7 +314,65 @@ namespace Ethereum.Test.Base
 
         private static readonly EthereumJsonSerializer _serializer = new();
 
-        public static IEnumerable<GeneralStateTest> Convert(string json)
+        public static IEnumerable<EofTest> ConvertToEofTests(string json)
+        {
+            Dictionary<string, EofTestJson> testsInFile = _serializer.Deserialize<Dictionary<string, EofTestJson>>(json);
+            List<EofTest> tests = new();
+            foreach (KeyValuePair<string, EofTestJson> namedTest in testsInFile)
+            {
+                (string name, string category) = GetNameAndCategory(namedTest.Key);
+                GetTestMetaData(namedTest, out string? description, out string? url, out string? spec);
+
+                foreach (KeyValuePair<string, VectorTestJson> pair in namedTest.Value.Vectors)
+                {
+                    VectorTestJson vectorJson = pair.Value;
+                    VectorTest vector = new();
+                    vector.Code = Bytes.FromHexString(vectorJson.Code);
+                    vector.ContainerKind = ParseContainerKind(vectorJson.ContainerKind);
+
+                    foreach (var result in vectorJson.Results)
+                    {
+                        EofTest test = new()
+                        {
+                            Name = $"{name}",
+                            Category = $"{category} [{result.Key}]",
+                            Url = url,
+                            Description = description,
+                            Spec = spec
+                        };
+                        test.Vector = vector;
+                        test.Result = result.ToTestResult();
+                        tests.Add(test);
+                    }
+                }
+            }
+
+            return tests;
+
+            static ValidationStrategy ParseContainerKind(string containerKind)
+                => ("INITCODE".Equals(containerKind) ? ValidationStrategy.ValidateInitCodeMode : ValidationStrategy.ValidateRuntimeMode);
+
+            static void GetTestMetaData(KeyValuePair<string, EofTestJson> namedTest, out string? description, out string? url, out string? spec)
+            {
+                description = null;
+                url = null;
+                spec = null;
+                GeneralStateTestInfoJson info = namedTest.Value?.Info;
+                if (info is not null)
+                {
+                    description = info.Description;
+                    url = info.Url;
+                    spec = info.Spec;
+                }
+            }
+        }
+
+        private static Result ToTestResult(this KeyValuePair<string, TestResultJson> result)
+            => result.Value.Result ?
+                new Result { Fork = result.Key, Success = true } :
+                new Result { Fork = result.Key, Success = false, Error = result.Value.Exception };
+
+        public static IEnumerable<GeneralStateTest> ConvertStateTest(string json)
         {
             Dictionary<string, GeneralStateTestJson> testsInFile =
                 _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
@@ -323,7 +380,8 @@ namespace Ethereum.Test.Base
             List<GeneralStateTest> tests = new();
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {
-                tests.AddRange(Convert(namedTest.Key, namedTest.Value));
+                (string name, string category) = GetNameAndCategory(namedTest.Key);
+                tests.AddRange(Convert(name, category, namedTest.Value));
             }
 
             return tests;
@@ -359,10 +417,42 @@ namespace Ethereum.Test.Base
                     testSpec.EthereumNetworkAfterTransition = ParseSpec(networks[1]);
                 }
 
-                testsByName.Add(Convert(testName, testSpec));
+                (string name, string category) = GetNameAndCategory(testName);
+                testsByName.Add(Convert(name, category, testSpec));
             }
 
             return testsByName;
+        }
+
+        private static (string name, string category) GetNameAndCategory(string key)
+        {
+            key = key.Replace('\\', '/');
+            var index = key.IndexOf(".py::");
+            if (index < 0)
+            {
+                return (key, "");
+            }
+            var name = key.Substring(index + 5);
+            string category = key.Substring(0, index);
+            int startIndex = 0;
+            for (var i = 0; i < 3; i++)
+            {
+                int newIndex = category.IndexOf("/", startIndex);
+                if (newIndex < 0)
+                {
+                    break;
+                }
+                if (index + 1 < category.Length)
+                {
+                    startIndex = newIndex + 1;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            category = category.Substring(startIndex);
+            return (name, category);
         }
     }
 }

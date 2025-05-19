@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.Producers
             _logManager = logManager;
             _executionRequestsProcessor = executionRequestsProcessor;
 
-            TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
+            TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, _blocksConfig.BlockProductionMaxTxKilobytes, logManager);
         }
 
         public virtual BlockProducerEnv Create(ITxSource? additionalTxSource = null)
@@ -132,13 +132,7 @@ namespace Nethermind.Consensus.Producers
             IBlocksConfig blocksConfig,
             ITransactionComparerProvider transactionComparerProvider,
             ILogManager logManager)
-        {
-            ITxFilterPipeline txSourceFilterPipeline = CreateTxSourceFilter(blocksConfig);
-            return new TxPoolTxSource(txPool, _specProvider, transactionComparerProvider, logManager, txSourceFilterPipeline);
-        }
-
-        protected virtual ITxFilterPipeline CreateTxSourceFilter(IBlocksConfig blocksConfig) =>
-            TxFilterPipelineBuilder.CreateStandardFilteringPipeline(_logManager, _specProvider, blocksConfig);
+            => new TxPoolTxSourceFactory(txPool, _specProvider, transactionComparerProvider, blocksConfig, logManager).Create();
 
         protected virtual BlockProcessor CreateBlockProcessor(
             IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,

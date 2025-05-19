@@ -20,6 +20,7 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
+        public static ReadOnlySpan<byte> EofMagic => [0xEF, 0x00];
         public const byte MaxTxType = 0x7F;
         public const int BaseTxGasCost = 21000;
 
@@ -47,11 +48,14 @@ namespace Nethermind.Core
         public UInt256 MaxPriorityFeePerGas => GasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
         public UInt256 MaxFeePerGas => Supports1559 ? DecodedMaxFeePerGas : GasPrice;
-        public bool SupportsAccessList => Type >= TxType.AccessList && Type != TxType.DepositTx;
-        public bool Supports1559 => Type >= TxType.EIP1559 && Type != TxType.DepositTx;
-        public bool SupportsBlobs => Type == TxType.Blob && Type != TxType.DepositTx;
-        public bool SupportsAuthorizationList => Type == TxType.SetCode && Type != TxType.DepositTx;
+        public bool SupportsAccessList => Type.SupportsAccessList();
+        public bool Supports1559 => Type.Supports1559();
+        public bool SupportsBlobs => Type.SupportsBlobs();
+        public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
         public long GasLimit { get; set; }
+        private long _spentGas;
+        [JsonIgnore]
+        public long SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
         public Memory<byte>? Data { get; set; }
@@ -59,6 +63,8 @@ namespace Nethermind.Core
         public Signature? Signature { get; set; }
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
+        public bool IsEofContractCreation => IsContractCreation && (Data?.Span.StartsWith(EofMagic) ?? false);
+        public bool IsLegacyContractCreation => IsContractCreation && !IsEofContractCreation;
         public bool IsMessageCall => To is not null;
 
         [MemberNotNullWhen(true, nameof(AuthorizationList))]
@@ -195,9 +201,11 @@ namespace Nethermind.Core
         /// <summary>
         /// Encoded transaction length
         /// </summary>
-        public int GetLength(ITransactionSizeCalculator sizeCalculator)
+        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs)
         {
-            return _size ??= sizeCalculator.GetLength(this);
+            return shouldCountBlobs
+              ? _size ??= sizeCalculator.GetLength(this, true)
+              : sizeCalculator.GetLength(this, false);
         }
 
         public string ToShortString()
@@ -231,7 +239,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
             builder.AppendLine($"{indent}Data:      {(Data.AsArray() ?? []).ToHexString()}");
-            builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? []).ToHexString()}");
+            builder.AppendLine($"{indent}Signature: {Signature?.Bytes.ToHexString()}");
             builder.AppendLine($"{indent}V:         {Signature?.V}");
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
@@ -334,7 +342,7 @@ namespace Nethermind.Core
     /// <remarks>Created because of cyclic dependencies between Core and Rlp modules</remarks>
     public interface ITransactionSizeCalculator
     {
-        int GetLength(Transaction tx);
+        int GetLength(Transaction tx, bool shouldCountBlobs = true);
     }
 
     /// <summary>

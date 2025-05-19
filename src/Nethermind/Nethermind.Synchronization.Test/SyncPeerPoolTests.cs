@@ -23,6 +23,7 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Test.Mocks;
 using NSubstitute;
 using NUnit.Framework;
+using ZstdSharp.Unsafe;
 
 namespace Nethermind.Synchronization.Test;
 
@@ -180,7 +181,7 @@ public class SyncPeerPoolTests
         SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 25);
         await WaitForPeersInitialization(ctx);
         ctx.Pool.DropUselessPeers(true);
-        Assert.That(peers.Any(p => p.DisconnectRequested), Is.True);
+        Assert.That(peers.Any(static p => p.DisconnectRequested), Is.True);
     }
 
     [TestCase(true, false)]
@@ -235,7 +236,7 @@ public class SyncPeerPoolTests
         }
         await WaitForPeersInitialization(ctx);
         ctx.Pool.DropUselessPeers(true);
-        Assert.That(peers.Any(p => p.DisconnectRequested), Is.True);
+        Assert.That(peers.Any(static p => p.DisconnectRequested), Is.True);
     }
 
     [Test]
@@ -704,8 +705,8 @@ public class SyncPeerPoolTests
 
         await Task.WhenAll(allocationTasks);
 
-        SyncPeerAllocation[] allocations = allocationTasks.Select(t => t.Result).ToArray();
-        SyncPeerAllocation[] successfulAllocations = allocations.Where(r => r.Current is not null).ToArray();
+        SyncPeerAllocation[] allocations = allocationTasks.Select(static t => t.Result).ToArray();
+        SyncPeerAllocation[] successfulAllocations = allocations.Where(static r => r.Current is not null).ToArray();
 
         // we had only two peers and 3 borrow calls so only two are successful
         Assert.That(successfulAllocations.Length, Is.EqualTo(2));
@@ -721,6 +722,22 @@ public class SyncPeerPoolTests
             // no peer assigned any more after calling free
             Assert.That(allocation.Current, Is.Null, "null A");
         }
+    }
+
+    [Test]
+    public async Task Return_request_limit()
+    {
+        await using Context ctx = new();
+        await SetupPeers(ctx, 1);
+
+        var thePeer = ctx.Pool.InitializedPeers.First();
+        INodeStats nodeStat = Substitute.For<INodeStats>();
+        ctx.Stats.GetOrAdd(thePeer.SyncPeer.Node).Returns(nodeStat);
+        nodeStat.GetCurrentRequestLimit(RequestType.Headers).Returns(999);
+
+        var limit = await ctx.Pool.EstimateRequestLimit(RequestType.Headers, new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.Headers, default);
+
+        limit.Should().Be(999);
     }
 
     private int _pendingRequests;
@@ -792,7 +809,7 @@ public class SyncPeerPoolTests
         try
         {
             await ctx.Pool.AllocateAndRun(
-                (peer) => { return peer.GetBlockHeaders(0, 1, 1, CancellationToken.None); },
+                static (peer) => { return peer.GetBlockHeaders(0, 1, 1, CancellationToken.None); },
                 BySpeedStrategy.FastestHeader, AllocationContexts.Headers, cts.Token);
         }
         catch (OperationCanceledException)

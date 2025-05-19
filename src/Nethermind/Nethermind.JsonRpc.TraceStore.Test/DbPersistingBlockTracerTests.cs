@@ -52,7 +52,7 @@ public class DbPersistingBlockTracerTests
     public void saves_traces_to_db()
     {
         Test test = new();
-        (Hash256 hash, List<ParityLikeTxTrace> traces) = test.Trace(tracer =>
+        (Hash256 hash, List<ParityLikeTxTrace> traces) = test.Trace(static tracer =>
             {
                 tracer.ReportAction(100, 50, TestItem.AddressA, TestItem.AddressB, TestItem.RandomDataA, ExecutionType.CALL);
                 tracer.ReportAction(80, 20, TestItem.AddressB, TestItem.AddressC, TestItem.RandomDataC, ExecutionType.CREATE);

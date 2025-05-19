@@ -1,14 +1,16 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Cli;
-using Nethermind.Cli.Console;
 using Nethermind.Consensus;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using System.CommandLine;
+using Ethereum.Test.Base;
+using Nethermind.Core.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.JsonRpc.Client;
+using Nethermind.Serialization.Json;
 
 namespace SendBlobs;
 internal static class SetupCli
@@ -64,6 +66,7 @@ internal static class SetupCli
             HelpName = "fee"
         };
         CliOption<bool> waitOption = new("--wait") { Description = "Wait for tx inclusion" };
+        CliOption<string> forkOption = new("--fork") { Description = "Specify fork for MaxBlobCount, TargetBlobCount" };
 
         command.Add(rpcUrlOption);
         command.Add(blobTxOption);
@@ -75,6 +78,7 @@ internal static class SetupCli
         command.Add(feeMultiplierOption);
         command.Add(maxPriorityFeeGasOption);
         command.Add(waitOption);
+        command.Add(forkOption);
         command.SetAction((parseResult, cancellationToken) =>
         {
             PrivateKey[] privateKeys;
@@ -92,8 +96,10 @@ internal static class SetupCli
                 return Task.CompletedTask;
             }
 
-            BlobSender sender = new(parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance);
+            string? fork = parseResult.GetValue(forkOption);
+            IReleaseSpec spec = fork is null ? Prague.Instance : JsonToEthereumTest.ParseSpec(fork);
 
+            BlobSender sender = new(parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance);
             return sender.SendRandomBlobs(
                 ParseTxOptions(parseResult.GetValue(blobTxOption)),
                 privateKeys,
@@ -101,7 +107,7 @@ internal static class SetupCli
                 parseResult.GetValue(maxFeePerBlobGasOption) ?? parseResult.GetValue(maxFeePerDataGasOptionObsolete),
                 parseResult.GetValue(feeMultiplierOption),
                 parseResult.GetValue(maxPriorityFeeGasOption),
-                parseResult.GetValue(waitOption));
+                parseResult.GetValue(waitOption), spec);
         });
     }
 
@@ -190,17 +196,18 @@ internal static class SetupCli
         command.Add(maxFeeOption);
         command.SetAction(async (parseResult, cancellationToken) =>
         {
-            INodeManager nodeManager = InitNodeManager(
-                parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance.GetClassLogger());
+            IJsonRpcClient rpcClient = InitRpcClient(
+                parseResult.GetValue(rpcUrlOption)!,
+                SimpleConsoleLogManager.Instance.GetClassLogger());
 
-            string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
+            string? chainIdString = await rpcClient.Post<string>("eth_chainId") ?? "1";
             ulong chainId = HexConvert.ToUInt64(chainIdString);
 
             Signer signer = new(chainId, new PrivateKey(parseResult.GetValue(privateKeyOption)!),
                 SimpleConsoleLogManager.Instance);
 
-            FundsDistributor distributor = new FundsDistributor(
-                nodeManager, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
+            FundsDistributor distributor = new(
+                rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
             IEnumerable<string> hashes = await distributor.DitributeFunds(
                 signer,
                 parseResult.GetValue(keyNumberOption),
@@ -251,31 +258,28 @@ internal static class SetupCli
         command.Add(maxFeeOption);
         command.SetAction(async (parseResult, cancellationToken) =>
         {
-            INodeManager nodeManager = InitNodeManager(parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance.GetClassLogger());
+            IJsonRpcClient rpcClient = InitRpcClient(
+                parseResult.GetValue(rpcUrlOption)!,
+                SimpleConsoleLogManager.Instance.GetClassLogger());
 
-            string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
+            string? chainIdString = await rpcClient.Post<string>("eth_chainId") ?? "1";
             ulong chainId = HexConvert.ToUInt64(chainIdString);
 
-            FundsDistributor distributor = new(nodeManager, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
+            FundsDistributor distributor = new(rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
             IEnumerable<string> hashes = await distributor.ReclaimFunds(
                 new(parseResult.GetValue(receiverOption)!),
                 parseResult.GetValue(maxFeeOption),
                 parseResult.GetValue(maxPriorityFeeGasOption));
         });
-
         root.Add(command);
     }
 
-    public static INodeManager InitNodeManager(string rpcUrl, ILogger logger)
-    {
-        ICliConsole cliConsole = new CliConsole();
-        IJsonSerializer serializer = new EthereumJsonSerializer();
-        OneLoggerLogManager logManager = new OneLoggerLogManager(logger);
-        ICliEngine engine = new CliEngine(cliConsole);
-        INodeManager nodeManager = new NodeManager(engine, serializer, cliConsole, logManager);
-        nodeManager.SwitchUri(new Uri(rpcUrl));
-        return nodeManager;
-    }
+    public static IJsonRpcClient InitRpcClient(string rpcUrl, ILogger logger) =>
+        new BasicJsonRpcClient(
+            new Uri(rpcUrl),
+            new EthereumJsonSerializer(),
+            new OneLoggerLogManager(logger)
+        );
 
     public static void SetupSendFileCommand(CliCommand root)
     {
@@ -325,6 +329,7 @@ internal static class SetupCli
             HelpName = "fee"
         };
         CliOption<bool> waitOption = new("--wait") { Description = "Wait for tx inclusion" };
+        CliOption<string> forkOption = new("--fork") { Description = "Specify fork for MaxBlobCount, TargetBlobCount" };
 
         command.Add(fileOption);
         command.Add(rpcUrlOption);
@@ -334,11 +339,15 @@ internal static class SetupCli
         command.Add(feeMultiplierOption);
         command.Add(maxPriorityFeeGasOption);
         command.Add(waitOption);
+        command.Add(forkOption);
         command.SetAction((parseResult, cancellationToken) =>
         {
             PrivateKey privateKey = new(parseResult.GetValue(privateKeyOption)!);
             byte[] data = File.ReadAllBytes(parseResult.GetValue(fileOption)!);
             BlobSender sender = new(parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance);
+
+            string? fork = parseResult.GetValue(forkOption);
+            IReleaseSpec spec = fork is null ? Prague.Instance : JsonToEthereumTest.ParseSpec(fork);
 
             return sender.SendData(
                 data,
@@ -347,7 +356,7 @@ internal static class SetupCli
                 parseResult.GetValue(maxFeePerBlobGasOption),
                 parseResult.GetValue(feeMultiplierOption),
                 parseResult.GetValue(maxPriorityFeeGasOption),
-                parseResult.GetValue(waitOption));
+                parseResult.GetValue(waitOption), spec);
         });
 
         root.Add(command);

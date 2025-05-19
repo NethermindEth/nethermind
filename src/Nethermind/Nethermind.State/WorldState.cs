@@ -42,14 +42,14 @@ namespace Nethermind.State
             }
         }
 
-        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+        public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager)
             : this(trieStore, codeDb, logManager, null, null)
         {
         }
 
         internal WorldState(
             ITrieStore trieStore,
-            IKeyValueStore? codeDb,
+            IKeyValueStoreWithBatching? codeDb,
             ILogManager? logManager,
             StateTree? stateTree = null,
             IStorageTreeFactory? storageTreeFactory = null,
@@ -63,7 +63,7 @@ namespace Nethermind.State
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
 
-        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
+        public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
             : this(trieStore, codeDb, logManager, null, preBlockCaches: preBlockCaches, populatePreBlockCache: populatePreBlockCache)
         {
         }
@@ -104,11 +104,11 @@ namespace Nethermind.State
         {
             _transientStorageProvider.Set(storageCell, newValue);
         }
-        public void Reset(bool resizeCollections = false)
+        public void Reset(bool resetBlockChanges = true)
         {
-            _stateProvider.Reset(resizeCollections);
-            _persistentStorageProvider.Reset(resizeCollections);
-            _transientStorageProvider.Reset(resizeCollections);
+            _stateProvider.Reset(resetBlockChanges);
+            _persistentStorageProvider.Reset(resetBlockChanges);
+            _transientStorageProvider.Reset(resetBlockChanges);
         }
         public void WarmUp(AccessList? accessList)
         {
@@ -119,7 +119,7 @@ namespace Nethermind.State
                     bool exists = _stateProvider.WarmUp(address);
                     foreach (UInt256 storage in storages)
                     {
-                        _persistentStorageProvider.WarmUp(new StorageCell(address, storage), isEmpty: !exists);
+                        _persistentStorageProvider.WarmUp(new StorageCell(address, in storage), isEmpty: !exists);
                     }
                 }
             }
@@ -143,9 +143,9 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccount(address, balance, nonce);
         }
-        public void InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
-            _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
+            return _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
         }
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
@@ -201,11 +201,6 @@ namespace Nethermind.State
             return _stateProvider.GetCodeHash(address);
         }
 
-        public void Accept(ITreeVisitor visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null)
-        {
-            _stateProvider.Accept(visitor, stateRoot, visitingOptions);
-        }
-
         public void Accept<TContext>(ITreeVisitor<TContext> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TContext : struct, INodeContext<TContext>
         {
             _stateProvider.Accept(visitor, stateRoot, visitingOptions);
@@ -229,17 +224,17 @@ namespace Nethermind.State
             return _trieStore.HasRoot(stateRoot);
         }
 
-        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitStorageRoots = true)
+        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
         {
-            _persistentStorageProvider.Commit(commitStorageRoots);
-            _transientStorageProvider.Commit(commitStorageRoots);
-            _stateProvider.Commit(releaseSpec, isGenesis);
+            _persistentStorageProvider.Commit(commitRoots);
+            _transientStorageProvider.Commit(commitRoots);
+            _stateProvider.Commit(releaseSpec, commitRoots, isGenesis);
         }
-        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitStorageRoots = true)
+        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
-            _persistentStorageProvider.Commit(tracer, commitStorageRoots);
-            _transientStorageProvider.Commit(tracer, commitStorageRoots);
-            _stateProvider.Commit(releaseSpec, tracer, isGenesis);
+            _persistentStorageProvider.Commit(tracer, commitRoots);
+            _transientStorageProvider.Commit(tracer, commitRoots);
+            _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
         }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
@@ -258,13 +253,12 @@ namespace Nethermind.State
             _stateProvider.Restore(snapshot.StateSnapshot);
         }
 
-        internal void Restore(int state, int persistantStorage, int transientStorage)
+        internal void Restore(int state, int persistentStorage, int transientStorage)
         {
-            Restore(new Snapshot(state, new Snapshot.Storage(persistantStorage, transientStorage)));
+            Restore(new Snapshot(state, new Snapshot.Storage(persistentStorage, transientStorage)));
         }
 
-        // Needed for benchmarks
-        internal void SetNonce(Address address, in UInt256 nonce)
+        public void SetNonce(Address address, in UInt256 nonce)
         {
             _stateProvider.SetNonce(address, nonce);
         }

@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using CkzgLib;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -11,7 +13,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
-using System.Linq;
 
 namespace Nethermind.Consensus.Validators;
 
@@ -110,11 +111,14 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     public static readonly IntrinsicGasTxValidator Instance = new();
     private IntrinsicGasTxValidator() { }
 
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
         // This is unnecessarily calculated twice - at validation and execution times.
-        transaction.GasLimit < IntrinsicGasCalculator.Calculate(transaction, releaseSpec)
+        IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, releaseSpec);
+        return transaction.GasLimit < intrinsicGas.MinimalGas
             ? TxErrorMessages.IntrinsicGasTooLow
             : ValidationResult.Success;
+    }
 }
 
 public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool> validate) : ITxValidator
@@ -189,14 +193,15 @@ public sealed class BlobFieldsTxValidator : ITxValidator
             { To: null } => TxErrorMessages.TxMissingTo,
             { MaxFeePerBlobGas: null } => TxErrorMessages.BlobTxMissingMaxFeePerBlobGas,
             { BlobVersionedHashes: null } => TxErrorMessages.BlobTxMissingBlobVersionedHashes,
-            _ => ValidateBlobFields(transaction)
+            _ => ValidateBlobFields(transaction, releaseSpec)
         };
 
-    private ValidationResult ValidateBlobFields(Transaction transaction)
+    private ValidationResult ValidateBlobFields(Transaction transaction, IReleaseSpec spec)
     {
         int blobCount = transaction.BlobVersionedHashes!.Length;
         ulong totalDataGas = BlobGasCalculator.CalculateBlobGas(blobCount);
-        return totalDataGas > Eip4844Constants.MaxBlobGasPerTransaction ? TxErrorMessages.BlobTxGasLimitExceeded
+        var maxBlobGasPerTxn = spec.GetMaxBlobGasPerBlock();
+        return totalDataGas > maxBlobGasPerTxn ? TxErrorMessages.BlobTxGasLimitExceeded(totalDataGas, maxBlobGasPerTxn)
             : blobCount < Eip4844Constants.MinBlobsPerTransaction ? TxErrorMessages.BlobTxMissingBlobs
             : ValidateBlobVersionedHashes();
 
@@ -238,17 +243,17 @@ public sealed class MempoolBlobTxValidator : ITxValidator
         {
             for (int i = 0; i < blobCount; i++)
             {
-                if (wrapper.Blobs[i].Length != Ckzg.Ckzg.BytesPerBlob)
+                if (wrapper.Blobs[i].Length != Ckzg.BytesPerBlob)
                 {
                     return TxErrorMessages.ExceededBlobSize;
                 }
 
-                if (wrapper.Commitments[i].Length != Ckzg.Ckzg.BytesPerCommitment)
+                if (wrapper.Commitments[i].Length != Ckzg.BytesPerCommitment)
                 {
                     return TxErrorMessages.ExceededBlobCommitmentSize;
                 }
 
-                if (wrapper.Proofs[i].Length != Ckzg.Ckzg.BytesPerProof)
+                if (wrapper.Proofs[i].Length != Ckzg.BytesPerProof)
                 {
                     return TxErrorMessages.InvalidBlobProofSize;
                 }

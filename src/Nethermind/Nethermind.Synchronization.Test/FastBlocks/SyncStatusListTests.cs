@@ -53,9 +53,9 @@ public class SyncStatusListTests
         SyncStatusList syncStatusList = new SyncStatusList(blockTree, 1000, null, 900);
 
         BlockInfo?[] infos;
-        syncStatusList.TryGetInfosForBatch(500, (_) => false, out infos);
+        syncStatusList.TryGetInfosForBatch(500, static (_) => false, out infos);
 
-        infos.Count((it) => it is not null).Should().Be(101);
+        infos.Count(static (it) => it is not null).Should().Be(101);
     }
 
     [Test]
@@ -182,5 +182,5 @@ public class SyncStatusListTests
     }
 
     private static FastBlockStatusList CreateFastBlockStatusList(int length, bool parallel = true) =>
-        new(Enumerable.Range(0, length).Select(i => (FastBlockStatus)(i % 3)).ToList(), parallel);
+        new(Enumerable.Range(0, length).Select(static i => (FastBlockStatus)(i % 3)).ToList(), parallel);
 }
