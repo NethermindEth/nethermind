@@ -124,7 +124,9 @@ public class PruningTrieStateFactory(
 
         pruningStrategy = Prune
             .WhenCacheReaches(pruningConfig.DirtyCacheMb.MB())
-            .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB() - pruningConfig.DirtyCacheMb.MB());
+            .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB() - pruningConfig.DirtyCacheMb.MB())
+            .WhenLastPersistedBlockIsTooOld(pruningConfig.MaxUnpersistedBlockCount, pruningConfig.PruningBoundary)
+            .UnlessLastPersistedBlockIsTooNew(pruningConfig.MinUnpersistedBlockCount, pruningConfig.PruningBoundary);
 
         if (!pruningConfig.Mode.IsMemory())
         {
