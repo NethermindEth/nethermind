@@ -31,6 +31,19 @@ public class L1BlockInfo
             $"BaseFeeScalar: {BaseFeeScalar}, BlobBaseFeeScalar: {BlobBaseFeeScalar}, SequenceNumber: {SequenceNumber}, Timestamp: {Timestamp}, " +
             $"Number: {Number}, BaseFee: {BaseFee}, BlobBaseFee: {BlobBaseFee}, BlockHash: {BlockHash}, BatcherAddress: {BatcherAddress}";
     }
+
+    public static readonly L1BlockInfo Empty = new()
+    {
+        BaseFee = 0,
+        BlobBaseFee = 0,
+        BaseFeeScalar = 0,
+        BatcherAddress = Address.Zero,
+        BlobBaseFeeScalar = 0,
+        BlockHash = Hash256.Zero,
+        Number = 0,
+        SequenceNumber = 0,
+        Timestamp = 0,
+    };
 }
 
 public class L1BlockInfoBuilder
@@ -83,7 +96,7 @@ public class L1BlockInfoBuilder
     public static L1BlockInfo FromL1BlockAndSystemConfig(L1Block block, SystemConfig config, ulong sequenceNumber)
     {
         // TODO: fetch BlobBaseFeeUpdateFraction
-        BlobGasCalculator.TryCalculateFeePerBlobGas(block.ExcessBlobGas!.Value, out UInt256 feePerBlobGas, Cancun.Instance);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(block.ExcessBlobGas!.Value, out UInt256 feePerBlobGas, Prague.Instance);
         return new()
         {
             BaseFeeScalar = config.BaseFeeScalar,
