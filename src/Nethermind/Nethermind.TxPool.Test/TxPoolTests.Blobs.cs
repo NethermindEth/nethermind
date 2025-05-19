@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using CkzgLib;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -17,12 +15,21 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.TxPool.Collections;
 using NSubstitute;
 using NUnit.Framework;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace Nethermind.TxPool.Test
 {
@@ -934,6 +941,115 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei())
                 .WithNonce(UInt256.Zero)
                 .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
+        }
+
+        [TestCaseSource(nameof(BlobScheduleActivationsTestCaseSource))]
+        public async Task<int> should_txs_be_eviceted_based_on_proof_version_and_fork(TestAction[] testActions)
+        {
+            ChainSpecBasedSpecProvider provider = LoadChainSpec(new ChainSpecJson
+            {
+                Params = new ChainSpecParamsJson
+                {
+                    Eip4844TransitionTimestamp = _blockTree.Head.Timestamp,
+                    Eip7002TransitionTimestamp = _blockTree.Head.Timestamp,
+                    Eip7594TransitionTimestamp = _blockTree.Head.Timestamp + 1,
+                }
+            });
+
+            Block head = _blockTree.Head;
+            _blockTree.FindBestSuggestedHeader().Returns(head.Header);
+
+            UInt256 nonce = 0;
+
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.Storage, Size = 10 };
+            _txPool = CreatePool(txPoolConfig, provider);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            foreach (TestAction action in testActions)
+            {
+                switch (action)
+                {
+                    case TestAction.AddV0:
+                        {
+                            Transaction tx = Build.A.Transaction
+                                .WithShardBlobTxTypeAndFields(1)
+                                .WithMaxFeePerGas(2.GWei())
+                                .WithMaxPriorityFeePerGas(2.GWei())
+                                .WithNonce(nonce)
+                                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                            _txPool.SubmitTx(tx, TxHandlingOptions.None);
+                            nonce++;
+                        }
+                        break;
+                    case TestAction.AddV1:
+                        {
+                            Transaction tx = Build.A.Transaction
+                                .WithShardBlobTxTypeAndFields(1, spec: provider.GetSpec(new ForkActivation(0, _blockTree.Head.Timestamp + 1)))
+                                .WithMaxFeePerGas(2.GWei())
+                                .WithMaxPriorityFeePerGas(2.GWei())
+                                .WithNonce(nonce)
+                                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                            _txPool.SubmitTx(tx, TxHandlingOptions.None);
+                            nonce++;
+                        }
+                        break;
+                    case TestAction.Fork:
+                        AddBlock();
+                        await Task.Delay(1000);
+                        break;
+                    case TestAction.ResetNonce:
+                        nonce = 0;
+                        break;
+                }
+            }
+
+            return _txPool.GetPendingBlobTransactionsCount();
+        }
+
+        public enum TestAction
+        {
+            AddV0,
+            AddV1,
+            Fork,
+            ResetNonce,
+        }
+
+        public static IEnumerable BlobScheduleActivationsTestCaseSource
+        {
+            get
+            {
+                static TestCaseData MakeTestCase(string testName, int finalCount, params TestAction[] testActions)
+                    => new(testActions) { TestName = $"EvictProofVersion: {testName}", ExpectedResult = finalCount };
+
+                yield return MakeTestCase("V0 should be evicted in Osaka", 0, TestAction.AddV0, TestAction.Fork);
+                yield return MakeTestCase("Take only V0 ones before Osaka", 2, TestAction.AddV0, TestAction.AddV0, TestAction.AddV1);
+                yield return MakeTestCase("Evict old proof and all the next txs", 0, TestAction.AddV0, TestAction.AddV0, TestAction.Fork, TestAction.AddV1);
+                yield return MakeTestCase("Replace with new proof", 1, TestAction.AddV0, TestAction.Fork, TestAction.ResetNonce, TestAction.AddV1);
+                yield return MakeTestCase("Ignore V1 before Osaka, no gaps", 0, TestAction.AddV1);
+            }
+        }
+
+        private ChainSpecBasedSpecProvider LoadChainSpec(ChainSpecJson spec)
+        {
+            EthereumJsonSerializer serializer = new();
+
+            spec.Engine ??= new ChainSpecJson.EngineJson
+            {
+                CustomEngineData = new Dictionary<string, JsonElement> { { "NethDev", serializer.Deserialize<JsonElement>("{}") } }
+            };
+
+            ChainSpecLoader loader = new(serializer);
+            MemoryStream data = new(Encoding.UTF8.GetBytes(serializer.Serialize(spec)));
+
+            return new(loader.Load(data));
+        }
+
+        private void AddBlock()
+        {
+            var bh = new BlockHeader(_blockTree.Head.Hash, Keccak.EmptyTreeHash, TestItem.AddressA, 0, _blockTree.Head.Number + 1, _blockTree.Head.GasLimit, _blockTree.Head.Timestamp + 1, []);
+            var bb = new BlockBody([], []);
+            _blockTree.FindBestSuggestedHeader().Returns(bh);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(new Block(bh, bb), _blockTree.Head));
         }
     }
 }
