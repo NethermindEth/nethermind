@@ -235,7 +235,7 @@ public class EthereumL1Bridge : IL1Bridge
         if (_logger.IsInfo) _logger.Info("Deriving blocks after restart");
         try
         {
-            L1Block newHead = await GetFinalized(token);
+            L1Block newHead = await GetHead(token);
             while (!token.IsCancellationRequested && newHead.Number != _currentHead.Number)
             {
                 await ProcessFinalized();
