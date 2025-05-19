@@ -64,3 +64,61 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
         static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
     }
 }
+
+public class RawTrieStore(INodeStorage nodeStorage, bool isReadOnly = false) : ITrieStore, IReadOnlyTrieStore
+{
+    public RawTrieStore(IKeyValueStoreWithBatching kv) : this(new NodeStorage(kv))
+    {
+    }
+
+    public void Dispose()
+    {
+    }
+
+    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags)
+    {
+        if (isReadOnly) return NullCommitter.Instance;
+        return new RawScopedTrieStore.Committer(nodeStorage, address, writeFlags);
+    }
+
+    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
+    {
+        return new TrieNode(NodeType.Unknown, hash);
+    }
+
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        byte[]? ret = nodeStorage.Get(address, path, hash, flags);
+        if (ret is null) throw new MissingTrieNodeException("Node missing", address, path, hash);
+        return ret;
+    }
+
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        return nodeStorage.Get(address, path, hash, flags);
+    }
+
+    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
+    {
+        return nodeStorage.KeyExists(address, path, keccak);
+    }
+
+    public INodeStorage.KeyScheme Scheme { get; } = nodeStorage.Scheme;
+    public bool HasRoot(Hash256 stateRoot)
+    {
+        return nodeStorage.KeyExists(null, TreePath.Empty, stateRoot);
+    }
+
+    public IScopedTrieStore GetTrieStore(Hash256? address)
+    {
+        return new RawScopedTrieStore(nodeStorage, address);
+    }
+
+    public IBlockCommitter BeginBlockCommit(long blockNumber)
+    {
+        return NullCommitter.Instance;
+    }
+
+    public IReadOnlyTrieStore AsReadOnly(INodeStorage? store = null) =>
+        new RawTrieStore(nodeStorage, true);
+}
