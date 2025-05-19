@@ -262,7 +262,7 @@ public class EthereumL1Bridge : IL1Bridge
     private async Task ProcessFinalized()
     {
         L1Block? newFinalized = await _ethL1Api.GetFinalized(true);
-        if (newFinalized is null || _currentFinalizedHead.IsOlderThan(newFinalized.Value.Number)) return;
+        if (newFinalized is null || _currentFinalizedHead.IsNewerThan(newFinalized.Value.Number)) return;
         _currentFinalizedHead = BlockId.FromL1Block(newFinalized.Value);
         if (_logger.IsInfo) _logger.Info($"New L1 finalization signal. New finalized head: {_currentFinalizedHead}");
         await _finalizedBlocksChannel.Writer.WriteAsync(newFinalized.Value.Number);
