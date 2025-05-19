@@ -453,20 +453,27 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
+    private TrieStoreState GatherState()
+    {
+        return new TrieStoreState(PersistedMemoryUsedByDirtyCache, DirtyMemoryUsedByDirtyCache,
+            LatestCommittedBlockNumber, LastPersistedBlockNumber);
+    }
+
     public void Prune()
     {
-        if ((_pruningStrategy.ShouldPruneDirtyNode(DirtyMemoryUsedByDirtyCache) || _pruningStrategy.ShouldPrunePersistedNode(PersistedMemoryUsedByDirtyCache)) && _pruningTask.IsCompleted)
+        var state = GatherState();
+        if ((_pruningStrategy.ShouldPruneDirtyNode(state) || _pruningStrategy.ShouldPrunePersistedNode(state)) && _pruningTask.IsCompleted)
         {
             _pruningTask = Task.Run(() =>
             {
                 lock (_dirtyNodesLock)
                 {
-                    if (_pruningStrategy.ShouldPruneDirtyNode(DirtyMemoryUsedByDirtyCache))
+                    if (_pruningStrategy.ShouldPruneDirtyNode(GatherState()))
                     {
                         PersistAndPruneDirtyCache();
                     }
 
-                    if (_pruningStrategy.ShouldPrunePersistedNode(PersistedMemoryUsedByDirtyCache))
+                    if (_pruningStrategy.ShouldPrunePersistedNode(GatherState()))
                     {
                         PrunePersistedNodes();
                     }
@@ -495,18 +502,14 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
 
             long memoryUsedByDirtyCache = DirtyMemoryUsedByDirtyCache;
-            if (!_pruningTaskCancellationTokenSource.IsCancellationRequested &&
-                _pruningStrategy.ShouldPruneDirtyNode(memoryUsedByDirtyCache))
-            {
-                SaveSnapshot();
+            SaveSnapshot();
 
-                PruneCache(dontRemoveNodes: !_deleteOldNodes);
+            PruneCache(dontRemoveNodes: !_deleteOldNodes);
 
-                TimeSpan sw = Stopwatch.GetElapsedTime(start);
-                long ms = (long)sw.TotalMilliseconds;
-                Metrics.PruningTime = ms;
-                if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {ms:0.##} ms. Dirty memory from {memoryUsedByDirtyCache / 1.MiB()}MB to {DirtyMemoryUsedByDirtyCache / 1.MiB()}MB");
-            }
+            TimeSpan sw = Stopwatch.GetElapsedTime(start);
+            long ms = (long)sw.TotalMilliseconds;
+            Metrics.PruningTime = ms;
+            if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {ms:0.##} ms. Dirty memory from {memoryUsedByDirtyCache / 1.MiB()}MB to {DirtyMemoryUsedByDirtyCache / 1.MiB()}MB");
 
             if (_logger.IsDebug) _logger.Debug($"Pruning finished. Unlocked {nameof(TrieStore)}.");
         }
@@ -518,45 +521,42 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void SaveSnapshot()
     {
-        if (_pruningStrategy.ShouldPruneDirtyNode(MemoryUsedByDirtyCache))
+        if (_logger.IsDebug) _logger.Debug("Elevated pruning starting");
+
+        int count = _commitSetQueue?.Count ?? 0;
+        if (count == 0) return;
+
+        using ArrayPoolList<BlockCommitSet> candidateSets = DetermineCommitSetToPersistInSnapshot(count);
+
+        bool shouldTrackPastKey =
+            // Its disabled
+            _pastKeyTrackingEnabled &&
+            // Full pruning need to visit all node, so can't delete anything.
+            !_persistenceStrategy.IsFullPruning &&
+            (_deleteOldNodes
+                // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
+                ? candidateSets.Count == 1
+                // For archice node, it is safe to remove canon key from cache as it will just get re-loaded.
+                : true);
+
+        Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder = shouldTrackPastKey ? _persistedNodeRecorder : null;
+
+        for (int index = 0; index < candidateSets.Count; index++)
         {
-            if (_logger.IsDebug) _logger.Debug("Elevated pruning starting");
-
-            int count = _commitSetQueue?.Count ?? 0;
-            if (count == 0) return;
-
-            using ArrayPoolList<BlockCommitSet> candidateSets = DetermineCommitSetToPersistInSnapshot(count);
-
-            bool shouldTrackPastKey =
-                // Its disabled
-                _pastKeyTrackingEnabled &&
-                // Full pruning need to visit all node, so can't delete anything.
-                !_persistenceStrategy.IsFullPruning &&
-                (_deleteOldNodes
-                    // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
-                    ? candidateSets.Count == 1
-                    // For archice node, it is safe to remove canon key from cache as it will just get re-loaded.
-                    : true);
-
-            Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder = shouldTrackPastKey ? _persistedNodeRecorder : null;
-
-            for (int index = 0; index < candidateSets.Count; index++)
-            {
-                BlockCommitSet blockCommitSet = candidateSets[index];
-                if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {blockCommitSet.BlockNumber}");
-                ParallelPersistBlockCommitSet(blockCommitSet, persistedNodeRecorder);
-            }
-
-            AnnounceReorgBoundaries();
-
-            if (candidateSets.Count > 0)
-            {
-                return;
-            }
-
-            _commitSetQueue.TryPeek(out BlockCommitSet? uselessFrontSet);
-            if (_logger.IsDebug) _logger.Debug($"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {_maxDepth})");
+            BlockCommitSet blockCommitSet = candidateSets[index];
+            if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {blockCommitSet.BlockNumber}");
+            ParallelPersistBlockCommitSet(blockCommitSet, persistedNodeRecorder);
         }
+
+        AnnounceReorgBoundaries();
+
+        if (candidateSets.Count > 0)
+        {
+            return;
+        }
+
+        _commitSetQueue.TryPeek(out BlockCommitSet? uselessFrontSet);
+        if (_logger.IsDebug) _logger.Debug($"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {_maxDepth})");
     }
 
     private ArrayPoolList<BlockCommitSet> DetermineCommitSetToPersistInSnapshot(int count)

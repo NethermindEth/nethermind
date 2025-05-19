@@ -17,16 +17,11 @@ namespace Nethermind.Trie.Pruning
 
     public class DontDeleteObsoleteNodeStrategy(IPruningStrategy baseStrategy) : IPruningStrategy
     {
+        // Its this thing
         public bool PruningEnabled => false;
 
-        public bool ShouldPruneDirtyNode(in long dirtyNodeMemory)
-        {
-            return baseStrategy.ShouldPruneDirtyNode(in dirtyNodeMemory);
-        }
+        public bool ShouldPruneDirtyNode(TrieStoreState state) => baseStrategy.ShouldPruneDirtyNode(state);
 
-        public bool ShouldPrunePersistedNode(in long persistedNodeMemory)
-        {
-            return baseStrategy.ShouldPrunePersistedNode(in persistedNodeMemory);
-        }
+        public bool ShouldPrunePersistedNode(TrieStoreState state) => baseStrategy.ShouldPrunePersistedNode(state);
     }
 }

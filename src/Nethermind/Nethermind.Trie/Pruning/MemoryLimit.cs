@@ -10,7 +10,7 @@ namespace Nethermind.Trie.Pruning
     public class MemoryLimit(long dirtyMemoryLimit) : IPruningStrategy
     {
         public bool PruningEnabled => true;
-        public bool ShouldPruneDirtyNode(in long dirtyNodeMemory) => dirtyNodeMemory >= dirtyMemoryLimit;
-        public bool ShouldPrunePersistedNode(in long persistedNodeMemory) => false;
+        public bool ShouldPruneDirtyNode(TrieStoreState state) => state.DirtyCacheMemory >= dirtyMemoryLimit;
+        public bool ShouldPrunePersistedNode(TrieStoreState state) => false;
     }
 }

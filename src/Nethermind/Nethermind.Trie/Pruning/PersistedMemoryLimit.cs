@@ -10,7 +10,7 @@ public class PersistedMemoryLimit(IPruningStrategy baseStrategy, long persistedM
 {
     public bool PruningEnabled => baseStrategy.PruningEnabled;
 
-    public bool ShouldPruneDirtyNode(in long dirtyNodeMemory) => baseStrategy.ShouldPruneDirtyNode(in dirtyNodeMemory);
+    public bool ShouldPruneDirtyNode(TrieStoreState state) => baseStrategy.ShouldPruneDirtyNode(state);
 
-    public bool ShouldPrunePersistedNode(in long persistedNodeMemory) => (persistedNodeMemory >= persistedMemoryLimit);
+    public bool ShouldPrunePersistedNode(TrieStoreState state) => (state.PersistedCacheMemory >= persistedMemoryLimit);
 }
