@@ -8,7 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.24528.1" />
+      <PackageReference Include="System.CommandLine" Version="2.0.0-beta5.25265.107" />
       <PackageReference Include="BouncyCastle.Cryptography" Version="2.5.1" Aliases="BouncyCastle"/>
     </ItemGroup>
 

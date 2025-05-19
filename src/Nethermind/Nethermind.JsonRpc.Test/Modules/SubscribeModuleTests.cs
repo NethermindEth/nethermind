@@ -20,6 +20,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
@@ -72,7 +73,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _txPool = Substitute.For<ITxPool>();
             _receiptStorage = Substitute.For<IReceiptStorage>();
             _specProvider = Substitute.For<ISpecProvider>();
-            _filterStore = new FilterStore();
+            _filterStore = new FilterStore(new TimerFactory());
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
             _jsonSerializer = new EthereumJsonSerializer();
             _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _logManager);
@@ -111,6 +112,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             _jsonRpcDuplexClient?.Dispose();
             _receiptCanonicalityMonitor?.Dispose();
+            _filterStore.Dispose();
         }
 
         private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId, TransactionsOption? options = null, bool shouldReceiveResult = true)

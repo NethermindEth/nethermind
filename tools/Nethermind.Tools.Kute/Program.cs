@@ -22,7 +22,7 @@ static class Program
 {
     public static async Task<int> Main(string[] args)
     {
-        CliRootCommand rootCommand =
+        RootCommand rootCommand =
         [
             Config.MessagesFilePath,
             Config.HostAddress,
@@ -44,7 +44,7 @@ static class Program
             return app.Run();
         });
 
-        CliConfiguration cli = new(rootCommand);
+        CommandLineConfiguration cli = new(rootCommand);
 
         return await cli.InvokeAsync(args);
     }
