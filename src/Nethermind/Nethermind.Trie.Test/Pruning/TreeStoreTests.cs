@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -403,7 +404,11 @@ namespace Nethermind.Trie.Test.Pruning
             using TrieStore fullTrieStore = CreateTrieStore(
                 pruningStrategy: new MemoryLimit(16.MB()),
                 kvStore: memDb,
-                persistenceStrategy: new ConstantInterval(4));
+                persistenceStrategy: new ConstantInterval(4),
+                new PruningConfig()
+                {
+                    PruningBoundary = 4,
+                });
 
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(0, a))
             {
@@ -414,6 +419,7 @@ namespace Nethermind.Trie.Test.Pruning
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(3, a)) { }
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(4, a)) { }
 
+            fullTrieStore.WaitForPruning();
             storage.Get(null, TreePath.Empty, a.Keccak).Should().NotBeNull();
             fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak).Should().BeTrue();
         }
