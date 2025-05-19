@@ -257,9 +257,22 @@ namespace Nethermind.Core
         [SkipLocalsInit]
         public ValueHash256 ToHash()
         {
-            Span<byte> addressBytes = stackalloc byte[Hash256.Size];
-            Bytes.CopyTo(addressBytes[(Hash256.Size - Address.Size)..]);
-            return new ValueHash256(addressBytes);
+            ref byte value = ref MemoryMarshal.GetArrayDataReference(Bytes);
+
+            Unsafe.SkipInit(out ValueHash256 result);
+            ref byte bytes = ref Unsafe.As<ValueHash256, byte>(ref result);
+
+            // First 4+8 bytes are zero, zero 16 bytes to maximize write combining
+            Unsafe.As<byte, Vector128<byte>>(ref bytes) = default;
+
+            // 20 bytes which is uint+Vector128
+            Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(uint) + sizeof(ulong)))
+                = Unsafe.As<byte, uint>(ref value);
+
+            Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes, sizeof(ulong) + sizeof(ulong)))
+                = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref value, sizeof(uint)));
+
+            return result;
         }
     }
 

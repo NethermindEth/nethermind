@@ -1023,7 +1023,7 @@ Db usage:
         // Cleanup ArrayPoolList AccountChanges as they are not used anywhere else
         private static void DisposeBlockAccountChanges(Block block)
         {
-            if (block.AccountChanges == null) return;
+            if (block.AccountChanges is null) return;
 
             block.AccountChanges.Dispose();
             block.AccountChanges = null;
