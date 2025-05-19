@@ -487,7 +487,7 @@ public partial class EthRpcModule(
         Block block = searchResult.Object;
         if (positionIndex < 0 || positionIndex > block!.Uncles.Length - 1)
         {
-            return ResultWrapper<BlockForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
+            return ResultWrapper<BlockForRpc>.Success(null);
         }
 
         BlockHeader uncleHeader = block.Uncles[(int)positionIndex];
