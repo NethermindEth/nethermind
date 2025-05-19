@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -925,7 +926,7 @@ public class TrieNodeTests
     [Test]
     public void Rlp_is_cloned_when_cloning()
     {
-        ITrieStore fullTrieStore = TestTrieStoreFactory.Build(new MemDb(), NullLogManager.Instance);
+        IPruningTrieStore fullTrieStore = TestTrieStoreFactory.Build(new MemDb(), NullLogManager.Instance);
         IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
         TrieNode leaf1 = new(NodeType.Leaf);
@@ -933,6 +934,7 @@ public class TrieNodeTests
         leaf1.Value = new byte[111];
         TreePath emptyPath = TreePath.Empty;
         leaf1.ResolveKey(trieStore, ref emptyPath, false);
+        Console.Error.WriteLine("Keccak " + leaf1.Keccak);
         leaf1.Seal();
 
         TrieNode leaf2 = new(NodeType.Leaf);
@@ -958,6 +960,7 @@ public class TrieNodeTests
         trieNode.ResolveKey(trieStore, ref emptyPath, true);
         CappedArray<byte> rlp = trieNode.FullRlp;
 
+        fullTrieStore.PersistCache(CancellationToken.None);
         TrieNode restoredBranch = new(NodeType.Branch, rlp);
 
         TrieNode clone = restoredBranch.Clone();
