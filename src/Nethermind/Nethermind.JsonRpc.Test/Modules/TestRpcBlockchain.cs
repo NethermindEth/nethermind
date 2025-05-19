@@ -38,10 +38,18 @@ using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Consensus.Rewards;
 using System.IO.Abstractions;
 using Autofac;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
+using Nethermind.Network.Config;
+using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.Rlpx;
+using Nethermind.Stats;
+using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -255,6 +263,27 @@ namespace Nethermind.JsonRpc.Test.Modules
             TxSender ??= new TxPoolSender(TxPool, TxSealer, NonceManager, EthereumEcdsa ?? new EthereumEcdsa(SpecProvider.ChainId));
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
             FeeHistoryOracle ??= new FeeHistoryOracle(BlockTree, ReceiptStorage, SpecProvider);
+
+            ProtocolsManager = new ProtocolsManager(
+                Substitute.For<ISyncPeerPool>(),
+                Substitute.For<ISyncServer>(),
+                Substitute.For<IBackgroundTaskScheduler>(),
+                TxPool,
+                Substitute.For<IPooledTxsRequestor>(),
+                Substitute.For<IDiscoveryApp>(),
+                Substitute.For<IMessageSerializationService>(),
+                Substitute.For<IRlpxHost>(),
+                Substitute.For<INodeStatsManager>(),
+                Substitute.For<IProtocolValidator>(),
+                Substitute.For<INetworkStorage>(),
+                new ForkInfo(SpecProvider, GetGenesisBlock(WorldStateManager.GlobalWorldState).Hash!),
+                Substitute.For<IGossipPolicy>(),
+                Substitute.For<INetworkConfig>(),
+                WorldStateManager,
+                LimboLogs.Instance,
+                Substitute.For<ITxGossipPolicy>()
+            );
+
             EthRpcModule = _ethRpcModuleBuilder(this);
             TraceRpcModule = _traceRpcModuleBuilder(this);
             DebugRpcModule = _debugRpcModuleBuilder(this);
