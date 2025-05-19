@@ -8,7 +8,6 @@
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
     <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
-    <InvariantGlobalization>true</InvariantGlobalization>
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <StartupObject>Nethermind.Test.Runner.Program</StartupObject>
   </PropertyGroup>

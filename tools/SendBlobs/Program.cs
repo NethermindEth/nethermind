@@ -9,14 +9,14 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
-        CliRootCommand rootCommand = [];
+        RootCommand rootCommand = [];
 
         SetupCli.SetupExecute(rootCommand);
         SetupCli.SetupDistributeCommand(rootCommand);
         SetupCli.SetupReclaimCommand(rootCommand);
         SetupCli.SetupSendFileCommand(rootCommand);
 
-        CliConfiguration cli = new(rootCommand);
+        CommandLineConfiguration cli = new(rootCommand);
 
         return await cli.InvokeAsync(args);
     }

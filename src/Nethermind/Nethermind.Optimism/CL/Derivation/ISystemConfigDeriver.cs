@@ -73,4 +73,13 @@ public record SystemConfig
     {
         return $"BatcherAddress: {BatcherAddress}, GasLimit: {GasLimit}, Overhead: {Overhead.ToHexString()}, Scalar: {Scalar.ToHexString()}, EIP1559Params: {EIP1559Params.ToHexString()}";
     }
+
+    public static readonly SystemConfig Empty = new()
+    {
+        BatcherAddress = Address.Zero,
+        EIP1559Params = [],
+        GasLimit = 0,
+        Overhead = [],
+        Scalar = []
+    };
 }
