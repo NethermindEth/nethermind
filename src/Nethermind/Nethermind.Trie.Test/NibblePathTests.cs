@@ -211,4 +211,86 @@ public class NibblePathTests
             fromNibbles[i].Should().Be(array[i]);
         }
     }
+
+    [TestCase(0, 6)]
+    [TestCase(1, 5)]
+    [TestCase(1, 4)]
+    [TestCase(2, 4)]
+    [TestCase(2, 3)]
+    public void ToKey(int start, int length)
+    {
+        ReadOnlySpan<byte> nibbles = [1, 2, 3, 4, 5, 6];
+        NibblePath path = NibblePath.Key.FromNibbles(nibbles).AsPath();
+
+        NibblePath.Key slice = (NibblePath.Key)path.Slice(start, length);
+
+        slice.Length.Should().Be(length);
+
+        for (int i = 0; i < length; i++)
+        {
+            slice[i].Should().Be(nibbles[i + start]);
+        }
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    public void SliceFrom(int start)
+    {
+        ReadOnlySpan<byte> nibbles = [1, 2, 3, 4, 5, 6];
+        NibblePath path = NibblePath.Key.FromNibbles(nibbles).AsPath();
+
+        NibblePath slice = path.SliceFrom(start);
+
+        var length = (byte)(nibbles.Length - start);
+        slice.Length.Should().Be(length);
+
+        for (int i = 0; i < length; i++)
+        {
+            slice[i].Should().Be(nibbles[i + start]);
+        }
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    public void SliceTo(int length)
+    {
+        ReadOnlySpan<byte> nibbles = [1, 2, 3, 4, 5, 6];
+        NibblePath path = NibblePath.Key.FromNibbles(nibbles).AsPath();
+
+        NibblePath slice = path.SliceTo(length);
+
+        slice.Length.Should().Be((byte)length);
+
+        for (int i = 0; i < length; i++)
+        {
+            slice[i].Should().Be(nibbles[i]);
+        }
+    }
+
+    [Test]
+    public void Equals_oddity_has_no_impact()
+    {
+        var path = NibblePath.FromKey([0xAA, 0xAA]);
+
+        var length = path.Length;
+
+        NibblePath a = path.SliceTo(length - 1);
+        NibblePath b = path.SliceFrom(1);
+
+        a.Length.Should().Be(b.Length);
+        a.Equals(b).Should().BeTrue();
+    }
+
+    [Test]
+    public void Equals_oddity_aligned()
+    {
+        var a = NibblePath.FromKey([0x12, 0x34]);
+        var b = NibblePath.FromKey([0x12, 0x34]);
+
+        a.Equals(b).Should().BeTrue();
+    }
+
 }

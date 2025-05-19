@@ -248,8 +248,10 @@ public readonly ref struct NibblePath
 
     public bool Equals(in NibblePath other)
     {
-        if (((other.Length ^ Length) | (other._odd ^ _odd)) > 0)
+        if (other.Length != Length)
             return false;
+
+        // Same length
 
         ref var left = ref _span;
         ref var right = ref other._span;
@@ -261,134 +263,69 @@ public readonly ref struct NibblePath
             return true;
         }
 
-        if (other._odd == OddBit)
+        if (other._odd == _odd)
         {
-            // This means that the first byte represents just one nibble
-            if (((left ^ right) & NibbleMask) > 0)
+            // Oddity is the same
+
+            if (other._odd == OddBit)
             {
-                // First nibble differs
-                return false;
+                // This means that the first byte represents just one nibble
+                if (((left ^ right) & NibbleMask) > 0)
+                {
+                    // First nibble differs
+                    return false;
+                }
+
+                // Move beyond first
+                left = ref Unsafe.Add(ref left, 1);
+                right = ref Unsafe.Add(ref right, 1);
+
+                // One nibble already consumed, reduce the length
+                length -= 1;
             }
 
-            // Move beyond first
-            left = ref Unsafe.Add(ref left, 1);
-            right = ref Unsafe.Add(ref right, 1);
-
-            // One nibble already consumed, reduce the length
-            length -= 1;
-        }
-
-        if ((length & OddBit) == OddBit)
-        {
-            const int highNibbleMask = NibbleMask << NibbleShift;
-
-            // Length is odd, which requires checking the last byte but only the first nibble
-            if (((Unsafe.Add(ref left, length >> 1) ^ Unsafe.Add(ref right, length >> 1))
-                 & highNibbleMask) > 0)
+            if ((length & OddBit) == OddBit)
             {
-                return false;
+                const int highNibbleMask = NibbleMask << NibbleShift;
+
+                // Length is odd, which requires checking the last byte but only the first nibble
+                if (((Unsafe.Add(ref left, length >> 1) ^ Unsafe.Add(ref right, length >> 1))
+                     & highNibbleMask) > 0)
+                {
+                    return false;
+                }
+
+                // Last nibble already consumed, reduce the length
+                length -= 1;
             }
 
-            // Last nibble already consumed, reduce the length
-            length -= 1;
+            if (length == 0)
+                return true;
+
+            Debug.Assert(length % 2 == 0);
+
+            ReadOnlySpan<byte> leftSpan = MemoryMarshal.CreateReadOnlySpan(ref left, length >> 1);
+            ReadOnlySpan<byte> rightSpan = MemoryMarshal.CreateReadOnlySpan(ref right, length >> 1);
+
+            return leftSpan.SequenceEqual(rightSpan);
         }
 
-        if (length == 0)
+        // Not aligned fallback. Should not occur
+        return Fallback(in this, in other);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static bool Fallback(in NibblePath @this, in NibblePath other)
+        {
+            // fallback, the slow path version to make the method work in any case
+            for (int i = 0; i < @this.Length; i++)
+            {
+                if (@this.GetAt(i) != other.GetAt(i))
+                {
+                    return false;
+                }
+            }
+
             return true;
-
-        Debug.Assert(length % 2 == 0);
-
-        ReadOnlySpan<byte> leftSpan = MemoryMarshal.CreateReadOnlySpan(ref left, length >> 1);
-        ReadOnlySpan<byte> rightSpan = MemoryMarshal.CreateReadOnlySpan(ref right, length >> 1);
-
-        return leftSpan.SequenceEqual(rightSpan);
-    }
-
-    public override int GetHashCode()
-    {
-        if (Length <= 1)
-        {
-            // for a single nibble path, make it different from empty.
-            return Length == 0 ? 0 : 1 << GetAt(0);
-        }
-
-        unchecked
-        {
-            ref var span = ref _span;
-
-            uint hash = (uint)Length << 24;
-            nuint length = Length;
-
-            if (_odd == OddBit)
-            {
-                // mix in first half
-                hash |= (uint)(_span & 0x0F) << 20;
-                span = ref Unsafe.Add(ref span, 1);
-                length -= 1;
-            }
-
-            if (length % 2 == 1)
-            {
-                // mix in
-                hash |= (uint)GetAt((int)length - 1) << 16;
-                length -= 1;
-            }
-
-            Debug.Assert(length % 2 == 0, "Length should be even here");
-
-            length /= 2; // make it byte
-
-            // 8 bytes
-            if (length >= sizeof(long))
-            {
-                nuint offset = 0;
-                nuint longLoop = length - sizeof(long);
-                if (longLoop != 0)
-                {
-                    do
-                    {
-                        hash = BitOperations.Crc32C(hash,
-                            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref span, offset)));
-                        offset += sizeof(long);
-                    } while (longLoop > offset);
-                }
-
-                // Do final hash as sizeof(long) from end rather than start
-                hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref span, longLoop)));
-
-                return (int)hash;
-            }
-
-            // 4 bytes
-            if (length >= sizeof(int))
-            {
-                hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<uint>(ref span));
-                length -= sizeof(int);
-                if (length > 0)
-                {
-                    // Do final hash as sizeof(long) from end rather than start
-                    hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref span, length)));
-                }
-
-                return (int)hash;
-            }
-
-            // 2 bytes
-            if (length >= sizeof(short))
-            {
-                hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ushort>(ref span));
-                length -= sizeof(short);
-                if (length > 0)
-                {
-                    // Do final hash as sizeof(long) from end rather than start
-                    hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref span, length)));
-                }
-
-                return (int)hash;
-            }
-
-            // 1 byte
-            return (int)BitOperations.Crc32C(hash, span);
         }
     }
 
