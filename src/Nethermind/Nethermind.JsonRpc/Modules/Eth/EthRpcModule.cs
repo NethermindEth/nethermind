@@ -768,12 +768,7 @@ public partial class EthRpcModule(
         (TxReceipt? receipt, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetReceiptAndGasInfo(txHash);
         if (receipt is null || gasInfo is null)
         {
-            Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
-            return blockHash is null
-                ? GetFailureResult<ReceiptForRpc, Block>(
-                    new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable),
-                    _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
-                : ResultWrapper<ReceiptForRpc>.Success(null);
+            return ResultWrapper<ReceiptForRpc>.Success(null);
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
