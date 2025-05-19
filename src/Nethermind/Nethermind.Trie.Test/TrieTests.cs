@@ -225,7 +225,7 @@ namespace Nethermind.Trie.Test
             byte[] emptyByteCompactEncoded = { 0 };
 
             checkTree.GetNodeByKey(emptyByte, patriciaTree.RootHash).Should().BeEquivalentTo(rootNodeHash);
-            checkTree.GetNodeByKey(emptyByteCompactEncoded, patriciaTree.RootHash).Should().BeEquivalentTo(rootNodeHash);
+            checkTree.GetNodeByPath(emptyByteCompactEncoded, patriciaTree.RootHash).Should().BeEquivalentTo(rootNodeHash);
 
             checkTree.GetNodeByKey(branchNodeKey1, patriciaTree.RootHash).Should().BeEquivalentTo(branchNodeValue1);
         }

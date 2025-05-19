@@ -342,6 +342,12 @@ namespace Nethermind.Trie
             }
         }
 
+        /// <summary>
+        /// Gets the node by its compact encoded path, <see cref="NibblePath.FromCompact"/>.
+        /// </summary>
+        /// <param name="compact">The compact path that is decompressed by the method.</param>
+        /// <param name="rootHash"></param>
+        /// <returns></returns>
         [DebuggerStepThrough]
         public byte[]? GetNodeByPath(byte[] compact, Hash256? rootHash = null)
         {

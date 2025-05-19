@@ -75,6 +75,9 @@ public readonly ref struct NibblePath
 
     public static NibblePath FromCompact(byte[] compact)
     {
+        if (compact.Length == 1 && compact[0] == 0)
+            return default;
+
         byte oddity = (byte)((compact[0] & OddFlag) >> OddFlagShift);
         return new NibblePath(ref compact[1 - oddity], oddity, (byte)((compact.Length - 1) * 2 + oddity));
     }
