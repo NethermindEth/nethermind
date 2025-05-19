@@ -517,7 +517,8 @@ public readonly ref struct NibblePath
         {
             var odd = Odd;
             var length = (byte)((_data.Length - PreambleLength) * 2 + odd);
-            return new NibblePath(ref _data[1 - odd], odd, length);
+
+            return length == 0 ? default : new NibblePath(ref _data[1 - odd], odd, length);
         }
 
         public int MemorySize => _data is null || ReferenceEquals(_data, EmptyBytes)
