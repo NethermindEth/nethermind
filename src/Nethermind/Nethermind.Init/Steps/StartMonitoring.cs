@@ -17,7 +17,7 @@ using Type = System.Type;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeNetwork))]
+[RunnerStepDependencies()]
 public class StartMonitoring : IStep
 {
     private readonly IApiWithNetwork _api;
@@ -106,10 +106,12 @@ public class StartMonitoring : IStep
             });
         }
 
+        /*
         monitoringService.AddMetricsUpdateAction(() =>
         {
             Synchronization.Metrics.SyncTime = (long?)_api.EthSyncingInfo?.UpdateAndGetSyncTime().TotalSeconds ?? 0;
         });
+        */
     }
 
     private void PrepareProductInfoMetrics()

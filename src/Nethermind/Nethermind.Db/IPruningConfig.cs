@@ -23,8 +23,8 @@ public interface IPruningConfig : IConfig
     long DirtyCacheMb { get; set; }
 
     [ConfigItem(
-        Description = "The block persistence frequency. If set to `N`, it caches after each `Nth` block even if not required by cache memory usage.",
-        DefaultValue = "8192")]
+        Description = "The block persistence frequency. Only applied with archive node.",
+        DefaultValue = "1")]
     long PersistenceInterval { get; set; }
 
     [ConfigItem(
