@@ -1,5 +1,5 @@
 ; Unshipped analyzer release
-; https://github.com/dotnet/roslyn-analyzers/blob/main/src/Microsoft.CodeAnalysis.Analyzers/ReleaseTrackingAnalyzers.Help.md
+; https://github.com/dotnet/roslyn-analyzers/blob/main/src/Tools/GenerateDocumentationAndConfigFiles/ReleaseTrackingHelper.cs
 
 ### New Rules
 
