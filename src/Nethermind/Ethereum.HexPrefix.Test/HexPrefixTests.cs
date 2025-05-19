@@ -27,7 +27,7 @@ namespace Ethereum.HexPrefix.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(HexPrefixTest test)
         {
-            NibblePath path = NibblePath.FromNibbles(test.Sequence);
+            NibblePath.Key path = NibblePath.Key.FromNibbles(test.Sequence);
 
             // encode
             byte[] bytes = new byte[path.ByteLength];
@@ -36,7 +36,7 @@ namespace Ethereum.HexPrefix.Test
             Assert.That(resultHex, Is.EqualTo(test.Output));
 
             // decode
-            (NibblePath key, bool isLeaf) = NibblePath.FromRlpBytes(bytes);
+            (NibblePath.Key key, bool isLeaf) = NibblePath.Key.FromRlpBytes(bytes);
             byte[] checkBytes = new byte[key.ByteLength];
             key.EncodeTo(checkBytes, isLeaf);
             string checkHex = checkBytes.ToHexString(false);
