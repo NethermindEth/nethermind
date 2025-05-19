@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,8 +18,9 @@ namespace Nethermind.Optimism.CL.L1Bridge;
 
 public class EthereumL1Bridge : IL1Bridge
 {
+    private const int L1EpochSlotSize = 32;
     private const int L1SlotTimeMilliseconds = 12000;
-    private const int L1EpochTimeMilliseconds = 32 * L1SlotTimeMilliseconds;
+    private const int L1EpochTimeMilliseconds = L1EpochSlotSize * L1SlotTimeMilliseconds;
 
     private readonly IEthApi _ethL1Api;
     private readonly IBeaconApi _beaconApi;
@@ -26,6 +28,7 @@ public class EthereumL1Bridge : IL1Bridge
     private readonly ILogger _logger;
 
     private BlockId _currentHead;
+    private BlockId _currentFinalizedHead;
 
     private readonly Address _batchSubmitter;
     private readonly Address _batcherInboxAddress;
@@ -58,20 +61,24 @@ public class EthereumL1Bridge : IL1Bridge
         {
             while (!token.IsCancellationRequested)
             {
-                L1Block newHead = await GetFinalized(token);
+                // L1Bridge priorities: update finalized block, process new head
+                await ProcessFinalized();
+                L1Block newHead = await GetHead(token);
                 ulong newHeadNumber = newHead.Number;
                 if (newHeadNumber == _currentHead.Number)
                 {
-                    await Task.Delay(L1SlotTimeMilliseconds, token);
+                    await Task.Delay(100, token);
                     continue;
                 }
+
+                _logger.Warn($"New l1 state. Head: {newHead.Number}, Finalized: {_currentFinalizedHead.Number}");
 
                 await BuildUp(_currentHead.Number, newHeadNumber, token);
                 await ProcessBlock(newHead, token);
 
                 _currentHead = BlockId.FromL1Block(newHead);
 
-                await Task.Delay(L1EpochTimeMilliseconds, token);
+                await Task.Delay(L1SlotTimeMilliseconds, token);
             }
         }
         catch (Exception e)
@@ -100,7 +107,7 @@ public class EthereumL1Bridge : IL1Bridge
                         _batchSubmitter == transaction.From)
                     {
                         ulong slotNumber = CalculateSlotNumber(block.Timestamp.ToUInt64(null));
-                        await ProcessBlobBatcherTransaction(transaction, startingBlobIndex, slotNumber, token);
+                        await ProcessBlobBatcherTransaction(transaction, block.Number, startingBlobIndex, slotNumber, token);
                     }
 
                     startingBlobIndex += transaction.BlobVersionedHashes!.Length;
@@ -110,7 +117,7 @@ public class EthereumL1Bridge : IL1Bridge
                     if (_batcherInboxAddress == transaction.To &&
                         _batchSubmitter == transaction.From)
                     {
-                        await ProcessCalldataBatcherTransaction(transaction, token);
+                        await ProcessCalldataBatcherTransaction(transaction, block.Number, token);
                     }
                 }
             }
@@ -132,7 +139,7 @@ public class EthereumL1Bridge : IL1Bridge
         return (timestamp - _l1BeaconGenesisSlotTime) / l1SlotTime;
     }
 
-    private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, int startingBlobIndex, ulong slotNumber, CancellationToken token)
+    private async Task ProcessBlobBatcherTransaction(L1Transaction transaction, ulong blockNumber, int startingBlobIndex, ulong slotNumber, CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info($"Processing Blob Batcher transaction. TxHash: {transaction.Hash}");
         BlobSidecar[] blobSidecars = await _beaconApi.GetBlobSidecars(slotNumber, startingBlobIndex,
@@ -152,16 +159,16 @@ public class EthereumL1Bridge : IL1Bridge
         for (int i = 0; i < transaction.BlobVersionedHashes.Length; i++)
         {
             await _decodingPipeline.DaDataWriter.WriteAsync(
-                new DaDataSource { Data = blobSidecars[i].Blob, DataType = DaDataType.Blob }, token);
+                new DaDataSource { DataOrigin = blockNumber, Data = blobSidecars[i].Blob, DataType = DaDataType.Blob }, token);
         }
     }
 
-    private async Task ProcessCalldataBatcherTransaction(L1Transaction transaction, CancellationToken token)
+    private async Task ProcessCalldataBatcherTransaction(L1Transaction transaction, ulong blockNumber, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(transaction.Input);
         if (_logger.IsInfo) _logger.Info($"Processing Calldata Batcher transaction. TxHash: {transaction.Hash}");
         await _decodingPipeline.DaDataWriter.WriteAsync(
-            new DaDataSource { Data = transaction.Input, DataType = DaDataType.Calldata }, token);
+            new DaDataSource { DataOrigin = blockNumber, Data = transaction.Input, DataType = DaDataType.Calldata }, token);
     }
 
     /// <remarks> Gets all blocks from range ({from}, {to}). It's safe only if {to} is finalized </remarks>
@@ -250,4 +257,16 @@ public class EthereumL1Bridge : IL1Bridge
 
         if (_logger.IsInfo) _logger.Info("L1 bridge reached current head");
     }
+
+    private async Task ProcessFinalized()
+    {
+        L1Block? newFinalized = await _ethL1Api.GetFinalized(true);
+        if (newFinalized is null || _currentFinalizedHead.IsOlderThan(newFinalized.Value.Number)) return;
+        _currentFinalizedHead = BlockId.FromL1Block(newFinalized.Value);
+        await _finalizedBlocksChannel.Writer.WriteAsync(newFinalized.Value.Number);
+    }
+
+    private readonly Channel<ulong> _finalizedBlocksChannel = Channel.CreateBounded<ulong>(L1EpochSlotSize + 1);
+
+    public ChannelReader<ulong> FinalizedL1BlocksChannel => _finalizedBlocksChannel.Reader;
 }

@@ -29,4 +29,6 @@ public readonly record struct BlockId
 
     public bool IsNewerThan(BlockId newBlockId) =>
         Number < newBlockId.Number;
+
+    public bool IsOlderThan(ulong otherBlockNumber) => Number > otherBlockNumber;
 }

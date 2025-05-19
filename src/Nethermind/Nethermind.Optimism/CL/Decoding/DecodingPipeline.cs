@@ -13,11 +13,11 @@ namespace Nethermind.Optimism.CL.Decoding;
 public class DecodingPipeline(ILogger logger) : IDecodingPipeline
 {
     private readonly Channel<DaDataSource> _inputChannel = Channel.CreateBounded<DaDataSource>(9);
-    private readonly Channel<BatchV1> _outputChannel = Channel.CreateBounded<BatchV1>(3);
+    private readonly Channel<(BatchV1, ulong)> _outputChannel = Channel.CreateBounded<(BatchV1, ulong)>(3);
     private readonly IFrameQueue _frameQueue = new FrameQueue(logger);
 
     public ChannelWriter<DaDataSource> DaDataWriter => _inputChannel.Writer;
-    public ChannelReader<BatchV1> DecodedBatchesReader => _outputChannel.Reader;
+    public ChannelReader<(BatchV1, ulong)> DecodedBatchesReader => _outputChannel.Reader;
 
     public async Task Run(CancellationToken token)
     {
@@ -49,7 +49,7 @@ public class DecodingPipeline(ILogger logger) : IDecodingPipeline
                         {
                             foreach (var batch in batches)
                             {
-                                await _outputChannel.Writer.WriteAsync(batch, token);
+                                await _outputChannel.Writer.WriteAsync((batch, daData.DataOrigin), token);
                             }
                         }
                     }

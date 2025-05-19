@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Decoding;
@@ -19,6 +22,7 @@ public class Driver : IDisposable
     private readonly IExecutionEngineManager _executionEngineManager;
     private readonly IDecodingPipeline _decodingPipeline;
     private readonly ISystemConfigDeriver _systemConfigDeriver;
+    private readonly ChannelReader<ulong> _finalizedL1BlocksChannel;
     private readonly ulong _l2BlockTime;
 
     public Driver(IL1Bridge l1Bridge,
@@ -32,6 +36,7 @@ public class Driver : IDisposable
     {
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
+        _finalizedL1BlocksChannel = l1Bridge.FinalizedL1BlocksChannel;
         _l2BlockTime = engineParameters.L2BlockTime.Value;
         _logger = logger;
         _l2Api = l2Api;
@@ -54,42 +59,24 @@ public class Driver : IDisposable
         {
             while (!token.IsCancellationRequested)
             {
-                BatchV1 decodedBatch = await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
+                Task finalizedBlockReady = _finalizedL1BlocksChannel.WaitToReadAsync(token).AsTask();
+                Task nextBatchReady = _decodingPipeline.DecodedBatchesReader.WaitToReadAsync(token).AsTask();
 
-                ulong firstBlockNumber = decodedBatch.RelTimestamp / _l2BlockTime;
-                ulong lastBlockNumber = firstBlockNumber + decodedBatch.BlockCount - 1;
-                if (_logger.IsInfo)
-                    _logger.Info($"Got batch for processing. Blocks from {firstBlockNumber} to {lastBlockNumber}");
-                if (lastBlockNumber <= _currentDerivedBlock)
+                // Driver processing priorities: finalized, new batch
+                await Task.WhenAny(finalizedBlockReady, nextBatchReady);
+
+                if (finalizedBlockReady.IsCompleted)
                 {
-                    if (_logger.IsInfo) _logger.Info("Old batch. Skipping");
+                    ulong finalizedBlock = await _finalizedL1BlocksChannel.ReadAsync(token);
+                    await ProcessNewFinalized(finalizedBlock, token);
                     continue;
                 }
 
-                if (_currentDerivedBlock + 1 < firstBlockNumber)
+                if (nextBatchReady.IsCompleted)
                 {
-                    if (_logger.IsWarn)
-                        _logger.Warn(
-                            $"Derived batch is out of order. Highest derived block: {_currentDerivedBlock}, Batch first block: {firstBlockNumber}");
-                    throw new ArgumentException("Batch is out of order");
-                }
-
-                L2Block l2Parent = await _l2Api.GetBlockByNumber(firstBlockNumber - 1);
-
-                var derivedPayloadAttributes = _derivationPipeline
-                    .DerivePayloadAttributes(l2Parent, decodedBatch, token)
-                    .GetAsyncEnumerator(token);
-                while (await derivedPayloadAttributes.MoveNextAsync())
-                {
-                    PayloadAttributesRef payloadAttributes = derivedPayloadAttributes.Current;
-                    bool valid = await _executionEngineManager.ProcessNewDerivedPayloadAttributes(payloadAttributes);
-                    if (!valid)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Derived invalid Payload Attributes. {payloadAttributes}");
-                        break;
-                    }
-
-                    _currentDerivedBlock = payloadAttributes.Number;
+                    (BatchV1 decodedBatch, ulong batchOrigin) = await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
+                    await ProcessDecodedBatch(decodedBatch, batchOrigin, token);
+                    continue;
                 }
             }
         }
@@ -102,6 +89,67 @@ public class Driver : IDisposable
         {
             if (_logger.IsInfo) _logger.Info("Driver is shutting down.");
         }
+    }
+
+    private readonly Queue<(ulong L1BatchOrigin, BlockId LastL2Block)> _safeBlocksQueue = new();
+
+    private async Task ProcessNewFinalized(ulong newFinalized, CancellationToken token)
+    {
+        BlockId? lastL2Block = null;
+        while(_safeBlocksQueue.Any())
+        {
+            (ulong l1BatchOrigin, BlockId last) = _safeBlocksQueue.Peek();
+            if (l1BatchOrigin > newFinalized)
+            {
+                break;
+            }
+            lastL2Block = last;
+            _safeBlocksQueue.Dequeue();
+        }
+        if (lastL2Block is not null) await _executionEngineManager.FinalizeBlock(lastL2Block.Value, token);
+    }
+
+    private async Task ProcessDecodedBatch(BatchV1 decodedBatch, ulong batchOrigin, CancellationToken token)
+    {
+        ulong firstBlockNumber = decodedBatch.RelTimestamp / _l2BlockTime;
+        ulong lastBlockNumber = firstBlockNumber + decodedBatch.BlockCount - 1;
+        if (_logger.IsInfo)
+            _logger.Info($"Got batch for processing. Blocks from {firstBlockNumber} to {lastBlockNumber}");
+        if (lastBlockNumber <= _currentDerivedBlock)
+        {
+            if (_logger.IsInfo) _logger.Info("Old batch. Skipping");
+            return;
+        }
+
+        if (_currentDerivedBlock + 1 < firstBlockNumber)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn(
+                    $"Derived batch is out of order. Highest derived block: {_currentDerivedBlock}, Batch first block: {firstBlockNumber}");
+            throw new ArgumentException("Batch is out of order");
+        }
+
+        L2Block l2Parent = await _l2Api.GetBlockByNumber(firstBlockNumber - 1);
+
+        var derivedPayloadAttributes = _derivationPipeline
+            .DerivePayloadAttributes(l2Parent, decodedBatch, token)
+            .GetAsyncEnumerator(token);
+        BlockId? lastDerivedBlock = null;
+        while (await derivedPayloadAttributes.MoveNextAsync())
+        {
+            PayloadAttributesRef payloadAttributes = derivedPayloadAttributes.Current;
+            BlockId? derivedBlock = await _executionEngineManager.ProcessNewDerivedPayloadAttributes(payloadAttributes, token);
+            if (derivedBlock is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Derived invalid Payload Attributes. {payloadAttributes}");
+                break;
+            }
+
+            lastDerivedBlock = derivedBlock;
+            _currentDerivedBlock = payloadAttributes.Number;
+        }
+
+        if (lastDerivedBlock is not null) _safeBlocksQueue.Enqueue((batchOrigin, lastDerivedBlock.Value));
     }
 
     public void Reset(ulong finalizedBlockNumber)
