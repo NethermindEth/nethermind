@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -145,7 +145,7 @@ namespace Nethermind.Evm.TransactionProcessing
             bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
 
             TransactionResult result;
-            IntrinsicGas intrinsicGas = CalculateIntrinsicGas(tx, spec);
+            IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec);
             if (!(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas))) return result;
 
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
@@ -434,9 +434,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             return deleteCallerAccount;
         }
-
-        protected virtual IntrinsicGas CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
-            => IntrinsicGasCalculator.Calculate(tx, spec);
 
 
         protected virtual TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)

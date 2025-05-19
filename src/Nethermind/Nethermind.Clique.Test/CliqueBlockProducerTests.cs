@@ -1,11 +1,16 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Comparers;
@@ -19,24 +24,19 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Evm;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
+using Nethermind.Config;
 
 namespace Nethermind.Clique.Test;
 
@@ -93,27 +93,12 @@ public class CliqueBlockProducerTests
             StateReader stateReader = new(trieStore, codeDb, nodeLogManager);
             WorldState stateProvider = new(trieStore, codeDb, nodeLogManager);
             stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
-            SepoliaSpecProvider testnetSpecProvider = SepoliaSpecProvider.Instance;
-
-            IReleaseSpec finalSpec = testnetSpecProvider.GetFinalSpec();
-
-            if (finalSpec.WithdrawalsEnabled)
-            {
-                stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-                stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec);
-            }
-
-            if (finalSpec.ConsolidationRequestsEnabled)
-            {
-                stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-                stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
-            }
-
-            stateProvider.Commit(testnetSpecProvider.GenesisSpec);
+            SepoliaSpecProvider goerliSpecProvider = SepoliaSpecProvider.Instance;
+            stateProvider.Commit(goerliSpecProvider.GenesisSpec);
             stateProvider.CommitTree(0);
 
             BlockTree blockTree = Build.A.BlockTree()
-                .WithSpecProvider(testnetSpecProvider)
+                .WithSpecProvider(goerliSpecProvider)
                 .WithBlocksDb(blocksDb)
                 .WithoutSettingHead
                 .TestObject;
@@ -127,7 +112,7 @@ public class CliqueBlockProducerTests
                 new BlobTxStorage(),
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SepoliaSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
                 new TxPoolConfig(),
-                new TxValidator(testnetSpecProvider.ChainId),
+                new TxValidator(goerliSpecProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer());
             _pools[privateKey] = txPool;
@@ -143,12 +128,12 @@ public class CliqueBlockProducerTests
             _genesis.Header.Hash = _genesis.Header.CalculateHash();
             _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
-            TransactionProcessor transactionProcessor = new(testnetSpecProvider, stateProvider,
+            TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
                 new VirtualMachine(blockhashProvider, specProvider, nodeLogManager),
                 codeInfoRepository,
                 nodeLogManager);
             BlockProcessor blockProcessor = new(
-                testnetSpecProvider,
+                goerliSpecProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
@@ -156,7 +141,7 @@ public class CliqueBlockProducerTests
                 NullReceiptStorage.Instance,
                 transactionProcessor,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-                new BlockhashStore(testnetSpecProvider, stateProvider),
+                new BlockhashStore(goerliSpecProvider, stateProvider),
                 nodeLogManager);
 
             BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
@@ -165,35 +150,19 @@ public class CliqueBlockProducerTests
             IReadOnlyTrieStore minerTrieStore = trieStore.AsReadOnly();
 
             WorldState minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
-
-            if (finalSpec.WithdrawalsEnabled)
-            {
-                minerStateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-                minerStateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec);
-            }
-
-            if (finalSpec.ConsolidationRequestsEnabled)
-            {
-                minerStateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-                minerStateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
-            }
-
-            minerStateProvider.Commit(testnetSpecProvider.GenesisSpec);
-            minerStateProvider.CommitTree(0);
-
             VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
-            TransactionProcessor minerTransactionProcessor = new(testnetSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
+            TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
 
             BlockProcessor minerBlockProcessor = new(
-                testnetSpecProvider,
+                goerliSpecProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, testnetSpecProvider, _logManager),
+                new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, goerliSpecProvider, _logManager),
                 minerStateProvider,
                 NullReceiptStorage.Instance,
                 minerTransactionProcessor,
                 new BeaconBlockRootHandler(minerTransactionProcessor, minerStateProvider),
-                new BlockhashStore(testnetSpecProvider, minerStateProvider),
+                new BlockhashStore(goerliSpecProvider, minerStateProvider),
                 nodeLogManager);
 
             BlockchainProcessor minerProcessor = new(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
@@ -216,7 +185,7 @@ public class CliqueBlockProducerTests
                 new CryptoRandom(),
                 snapshotManager,
                 cliqueSealer,
-                new TargetAdjustedGasLimitCalculator(testnetSpecProvider, new BlocksConfig()),
+                new TargetAdjustedGasLimitCalculator(goerliSpecProvider, new BlocksConfig()),
                 MainnetSpecProvider.Instance,
                 _cliqueConfig,
                 nodeLogManager);
@@ -270,7 +239,7 @@ public class CliqueBlockProducerTests
             BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             Block genesis = new(header);
             genesis.Header.Hash = genesis.Header.CalculateHash();
-            genesis.Header.StateRoot = new Hash256("0xba946bf2140ef68f7d9d57ef06a8ac0b28002b62060c462ba398389c97f1f1fa");
+            genesis.Header.StateRoot = Keccak.EmptyTreeHash;
             genesis.Header.TxRoot = Keccak.EmptyTreeHash;
             genesis.Header.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesis.Header.Bloom = Bloom.Empty;

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -31,6 +31,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
@@ -39,6 +40,7 @@ using Nethermind.Specs.Test;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -66,18 +68,18 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
     [TestCase(
-        "0x1f26afbef938a122f4f55d2f081ac81cd9c8851ca22452fa5baf58845e574fc6",
-        "0x343ab3716f2475c9cdd993dc654dd0ea143379a62f0556180bff1869eb451858",
-        "0x26b9598dd31cd520c6dcaf4f6fa13e279b4fa1f94d150357290df0e944f53115",
-        "0x2de3ad8b5939b3b9")]
+        "0x1270af16dfea9b40aa9381529cb2629008fea35386041f52c07034ea8c038a05",
+        "0xea3bdca86662fa8b5399f2c3ff494ced747f07834740ead723ebe023852e9ea1",
+        "0xd75d320c3a98a02ec7fe2abdcb1769bd063fec04d73f1735810f365ac12bc4ba",
+        "0x7389011914b1ca84")]
     public override Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V4(latestValidHash, blockHash, stateRoot, payloadId);
 
     [TestCase(
-        "0xca2fbb93848df6500fcc33f9036f43f33db9844719f0a5fc69079d8d90dbb28f",
-        "0xc6caeb09b3f26ddda9b1adb956fadbe29d7d90cff9bf2e2b0f3f1d0ec9296a72",
-        "0xd4ab6af74f5566d54b164115a9b00726bd35e2170d206e466c4be30ebfe23894",
-        "0x103ea062e6e09c06")]
+        "0xe168b70ac8a6f7d90734010030801fbb2dcce03a657155c4024b36ba8d1e3926",
+        "0x3e604e45a9a74b66a7e03f828cc2597f0cb5f5e7dc50c9211be3a62fbcd6396d",
+        "0xdbd87b98a6be7d4e3f11ff8500c38a0736d9a5e7a47b5cb25628d37187a98cb9",
+        "0xcdd08163eccae523")]
     public override Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V2(latestValidHash, blockHash, stateRoot, payloadId);
 

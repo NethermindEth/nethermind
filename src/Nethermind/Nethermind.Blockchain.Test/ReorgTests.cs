@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -38,29 +38,11 @@ public class ReorgTests
     [OneTimeSetUp]
     public void Setup()
     {
-        ISpecProvider specProvider = MainnetSpecProvider.Instance;
         IDbProvider memDbProvider = TestMemDbProvider.Init();
         TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
         WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-
-        IReleaseSpec finalSpec = specProvider.GetFinalSpec();
-
-        if (finalSpec.WithdrawalsEnabled)
-        {
-            stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-            stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, specProvider.GenesisSpec);
-        }
-
-        if (finalSpec.ConsolidationRequestsEnabled)
-        {
-            stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-            stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, specProvider.GenesisSpec);
-        }
-
-        stateProvider.Commit(specProvider.GenesisSpec);
-        stateProvider.CommitTree(0);
-
         StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
+        ISpecProvider specProvider = MainnetSpecProvider.Instance;
         EthereumEcdsa ecdsa = new(1);
         ITransactionComparerProvider transactionComparerProvider =
             new TransactionComparerProvider(specProvider, _blockTree);
