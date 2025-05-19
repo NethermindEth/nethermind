@@ -162,7 +162,7 @@ namespace Nethermind.Trie
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
-        public NibblePath Key
+        public NibblePath.Key Key
         {
             get => _nodeData is INodeWithKey node ? node.Key : default;
             internal set
@@ -492,7 +492,7 @@ namespace Nethermind.Trie
             }
             else
             {
-                (NibblePath key, bool isLeaf) = NibblePath.FromRlpBytes(rlpStream.DecodeByteArraySpan());
+                (NibblePath.Key key, bool isLeaf) = NibblePath.Key.FromRlpBytes(rlpStream.DecodeByteArraySpan());
                 if (isLeaf)
                 {
                     ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
@@ -821,7 +821,7 @@ namespace Nethermind.Trie
             return MemorySizes.Align(unaligned);
         }
 
-        public TrieNode CloneWithChangedKey(NibblePath key)
+        public TrieNode CloneWithChangedKey(NibblePath.Key key)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
@@ -855,7 +855,7 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(NibblePath key, in CappedArray<byte> changedValue)
+        public TrieNode CloneWithChangedKeyAndValue(NibblePath.Key key, in CappedArray<byte> changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;

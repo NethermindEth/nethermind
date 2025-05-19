@@ -36,7 +36,7 @@ namespace Nethermind.Trie
                     $"Node passed to {nameof(EncodeExtension)} is {item.NodeType}");
                 Debug.Assert(item.Key.IsNull == false, "Extension key should not be null when encoding");
 
-                NibblePath key = item.Key;
+                NibblePath.Key key = item.Key;
                 int hexLength = key.ByteLength;
                 byte[]? rentedBuffer = hexLength > StackallocByteThreshold
                     ? ArrayPool<byte>.Shared.Rent(hexLength)
@@ -95,7 +95,7 @@ namespace Nethermind.Trie
                     ThrowNullKey(node);
                 }
 
-                NibblePath key = node.Key;
+                NibblePath.Key key = node.Key;
                 int hexLength = key.ByteLength;
                 byte[]? rentedBuffer = hexLength > StackallocByteThreshold
                     ? ArrayPool<byte>.Shared.Rent(hexLength)

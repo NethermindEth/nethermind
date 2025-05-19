@@ -185,7 +185,7 @@ public class VisitingTests
                 return this;
             }
 
-            public PathGatheringContext Add(NibblePath nibblePath)
+            public PathGatheringContext Add(NibblePath.Key nibblePath)
             {
                 var @new = new byte[Nibbles.Length + nibblePath.Length];
                 Nibbles.CopyTo(@new, 0);

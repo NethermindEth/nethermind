@@ -627,7 +627,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = NibblePath.FromRaw(TestItem.KeccakA.Bytes);
+            a.Key = NibblePath.Key.FromRaw(TestItem.KeccakA.Bytes);
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
             MemDb memDb = new();
@@ -677,7 +677,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode a = new(NodeType.Leaf);
             Account account = new(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
-            a.Key = NibblePath.FromHexString("abc");
+            a.Key = NibblePath.Key.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 
             TrieNode b = new(NodeType.Leaf, new byte[1]);
@@ -727,10 +727,10 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Will_combine_same_storage()
         {
-            var start = NibblePath.FromRaw(TestItem.KeccakA.Bytes);
+            var start = NibblePath.Key.FromRaw(TestItem.KeccakA.Bytes);
 
-            NibblePath storage1Nib = start[1..].PrependWith(0);
-            NibblePath storage2Nib = start[1..].PrependWith(1);
+            NibblePath.Key storage1Nib = start[1..].PrependWith(0);
+            NibblePath.Key storage2Nib = start[1..].PrependWith(1);
 
             TrieNode storage1 = new(NodeType.Leaf, new byte[32]);
             TreePath emptyPath = TreePath.Empty;
@@ -871,7 +871,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode node = new(NodeType.Leaf);
             Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
             node.Value = _accountDecoder.Encode(account).Bytes;
-            node.Key = NibblePath.FromRaw(TestItem.KeccakA.Bytes);
+            node.Key = NibblePath.Key.FromRaw(TestItem.KeccakA.Bytes);
             TreePath emptyPath = TreePath.Empty;
             node.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
 

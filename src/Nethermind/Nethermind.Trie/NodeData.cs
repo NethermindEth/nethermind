@@ -21,7 +21,7 @@ public interface INodeData
 
 interface INodeWithKey : INodeData
 {
-    public NibblePath Key { get; set; }
+    public NibblePath.Key Key { get; set; }
 }
 
 public class BranchData : INodeData
@@ -55,9 +55,9 @@ public class ExtensionData : INodeWithKey
     public int MemorySize => MemorySizes.RefSize + MemorySizes.RefSize + _key.MemorySize;
     public int Length => 2;
 
-    public NibblePath _key;
+    public NibblePath.Key _key;
     public object? _value;
-    public NibblePath Key { get => _key; set => _key = value; }
+    public NibblePath.Key Key { get => _key; set => _key = value; }
     public object? Value { get => _value; set => _value = value; }
     public ref object this[int index]
     {
@@ -81,21 +81,21 @@ public class ExtensionData : INodeWithKey
 
     public ExtensionData()
     {
-        Key = NibblePath.Empty;
+        Key = NibblePath.Key.Empty;
     }
 
-    internal ExtensionData(NibblePath key)
+    internal ExtensionData(NibblePath.Key key)
     {
         Key = key;
     }
 
-    internal ExtensionData(NibblePath key, TrieNode value)
+    internal ExtensionData(NibblePath.Key key, TrieNode value)
     {
         Key = key;
         Value = value;
     }
 
-    private ExtensionData(NibblePath key, object? value)
+    private ExtensionData(NibblePath.Key key, object? value)
     {
         Key = key;
         Value = value;
@@ -115,22 +115,22 @@ public class LeafData : INodeWithKey
 
     private readonly CappedArray<byte> _value;
 
-    public NibblePath Key { get; set; }
+    public NibblePath.Key Key { get; set; }
     public ref readonly CappedArray<byte> Value => ref _value;
     public TrieNode? StorageRoot { get; set; }
 
     public LeafData()
     {
-        Key = NibblePath.Empty;
+        Key = NibblePath.Key.Empty;
     }
 
-    internal LeafData(NibblePath key, in CappedArray<byte> value)
+    internal LeafData(NibblePath.Key key, in CappedArray<byte> value)
     {
         Key = key;
         _value = value;
     }
 
-    private LeafData(NibblePath key, in CappedArray<byte> value, TrieNode? storageRoot)
+    private LeafData(NibblePath.Key key, in CappedArray<byte> value, TrieNode? storageRoot)
     {
         Key = key;
         _value = value;

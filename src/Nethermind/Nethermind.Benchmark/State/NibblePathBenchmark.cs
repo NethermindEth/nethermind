@@ -28,59 +28,59 @@ public class NibblePathBenchmark
         Enumerable.Repeat(3, 63).Select(b => (byte)b).ToArray()
     ];
 
-    private static readonly NibblePath Long = NibblePath.FromHexString("0x123456789123456789123456789123456789");
+    private static readonly NibblePath.Key Long = NibblePath.Key.FromHexString("0x123456789123456789123456789123456789");
 
-    private static readonly (byte[] nibbles, NibblePath path)[] NibblesWithPaths =
+    private static readonly (byte[] nibbles, NibblePath.Key path)[] NibblesWithPaths =
         Nibbles
-            .Select(n => (n, NibblePath.FromNibbles(n)))
+            .Select(n => (n, NibblePath.Key.FromNibbles(n)))
             .ToArray();
 
     public static IEnumerable<byte[]> GetNibbles() => Nibbles;
-    public static IEnumerable<(byte[] nibbles, NibblePath path)> GetNibblesWithPaths() => NibblesWithPaths;
+    public static IEnumerable<(byte[] nibbles, NibblePath.Key path)> GetNibblesWithPaths() => NibblesWithPaths;
 
     [Benchmark]
     [ArgumentsSource(nameof(GetNibbles))]
-    public NibblePath FromNibbles(byte[] nibbles)
+    public NibblePath.Key FromNibbles(byte[] nibbles)
     {
-        return NibblePath.FromNibbles(nibbles);
+        return NibblePath.Key.FromNibbles(nibbles);
     }
 
-    [Benchmark]
-    [ArgumentsSource(nameof(GetNibblesWithPaths))]
-    public int CommonPrefixLength((byte[] nibbles, NibblePath path) pair)
-    {
-        return pair.path.CommonPrefixLength(pair.nibbles);
-    }
-
-    [Benchmark]
-    [ArgumentsSource(nameof(GetNibblesWithPaths))]
-    public int CommonPrefixLength_ByRef((byte[] nibbles, NibblePath path) pair)
-    {
-        NibblePath.ByRef byRef = pair.path;
-        return byRef.CommonPrefixLength(byRef);
-    }
-
-    [Benchmark]
-    [ArgumentsSource(nameof(GetNibblesWithPaths))]
-    public bool Equals((byte[] nibbles, NibblePath path) pair)
-    {
-        return pair.path.Equals(pair.path);
-    }
-
-    [Benchmark]
-    [ArgumentsSource(nameof(GetNibblesWithPaths))]
-    public bool Equals_Ref((byte[] nibbles, NibblePath path) pair)
-    {
-        NibblePath path = pair.path;
-        return ((NibblePath.ByRef)path).Equals(path);
-    }
-
-    [Benchmark]
-    [Arguments(1, 2)]
-    [Arguments(0, 3)]
-    [Arguments(0, 30)]
-    public NibblePath Slice(int start, int length)
-    {
-        return Long.Slice(start, length);
-    }
+    // [Benchmark]
+    // [ArgumentsSource(nameof(GetNibblesWithPaths))]
+    // public int CommonPrefixLength((byte[] nibbles, NibblePath.Key path) pair)
+    // {
+    //     return pair.path.CommonPrefixLength(pair.nibbles);
+    // }
+    //
+    // [Benchmark]
+    // [ArgumentsSource(nameof(GetNibblesWithPaths))]
+    // public int CommonPrefixLength_ByRef((byte[] nibbles, NibblePath path) pair)
+    // {
+    //     NibblePath.ByRef byRef = pair.path;
+    //     return byRef.CommonPrefixLength(byRef);
+    // }
+    //
+    // [Benchmark]
+    // [ArgumentsSource(nameof(GetNibblesWithPaths))]
+    // public bool Equals((byte[] nibbles, NibblePath path) pair)
+    // {
+    //     return pair.path.Equals(pair.path);
+    // }
+    //
+    // [Benchmark]
+    // [ArgumentsSource(nameof(GetNibblesWithPaths))]
+    // public bool Equals_Ref((byte[] nibbles, NibblePath path) pair)
+    // {
+    //     NibblePath path = pair.path;
+    //     return ((NibblePath.ByRef)path).Equals(path);
+    // }
+    //
+    // [Benchmark]
+    // [Arguments(1, 2)]
+    // [Arguments(0, 3)]
+    // [Arguments(0, 30)]
+    // public NibblePath Slice(int start, int length)
+    // {
+    //     return Long.Slice(start, length);
+    // }
 }

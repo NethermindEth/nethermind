@@ -15,7 +15,7 @@ public class NibblePathTests
     public void Encode_gives_correct_output_when_one(bool flag, byte nibble1, byte byte1)
     {
         Span<byte> output = stackalloc byte[1];
-        NibblePath.Single(nibble1).EncodeTo(output, flag);
+        NibblePath.Key.Single(nibble1).EncodeTo(output, flag);
         Assert.That(output[0], Is.EqualTo(byte1));
     }
 
@@ -24,7 +24,7 @@ public class NibblePathTests
     public void Encode_gives_correct_output_when_odd(bool flag, byte nibble1, byte nibble2, byte nibble3,
         byte byte1, byte byte2)
     {
-        var path = NibblePath.FromNibbles([nibble1, nibble2, nibble3]);
+        var path = NibblePath.Key.FromNibbles([nibble1, nibble2, nibble3]);
         Span<byte> output = stackalloc byte[2];
 
         path.EncodeTo(output, flag);
@@ -37,7 +37,7 @@ public class NibblePathTests
     [TestCase(true, (byte)3, (byte)7, (byte)32, (byte)55)]
     public void Encode_gives_correct_output_when_even(bool flag, byte nibble1, byte nibble2, byte byte1, byte byte2)
     {
-        var path = NibblePath.FromNibbles([nibble1, nibble2]);
+        var path = NibblePath.Key.FromNibbles([nibble1, nibble2]);
         Span<byte> output = stackalloc byte[2];
 
         path.EncodeTo(output, flag);
@@ -51,7 +51,7 @@ public class NibblePathTests
     public void Decode_gives_correct_output_when_even(bool expectedFlag, byte nibble1, byte nibble2, byte byte1,
         byte byte2)
     {
-        (NibblePath key, bool isLeaf) = NibblePath.FromRlpBytes(new[] { byte1, byte2 });
+        (NibblePath.Key key, bool isLeaf) = NibblePath.Key.FromRlpBytes(new[] { byte1, byte2 });
         Assert.That(isLeaf, Is.EqualTo(expectedFlag));
         Assert.That(key.Length, Is.EqualTo(2));
         Assert.That(key[0], Is.EqualTo(nibble1));
@@ -62,7 +62,7 @@ public class NibblePathTests
     [TestCase(true, (byte)3, (byte)51)]
     public void Decode_gives_correct_output_when_one(bool expectedFlag, byte nibble1, byte byte1)
     {
-        (NibblePath key, bool isLeaf) = NibblePath.FromRlpBytes(new[] { byte1 });
+        (NibblePath.Key key, bool isLeaf) = NibblePath.Key.FromRlpBytes(new[] { byte1 });
 
         Assert.That(isLeaf, Is.EqualTo(expectedFlag));
         Assert.That(key.Length, Is.EqualTo(1));
@@ -74,7 +74,7 @@ public class NibblePathTests
     public void Decode_gives_correct_output_when_odd(bool expectedFlag, byte nibble1, byte nibble2, byte nibble3,
         byte byte1, byte byte2)
     {
-        (NibblePath key, bool isLeaf) = NibblePath.FromRlpBytes(new[] { byte1, byte2 });
+        (NibblePath.Key key, bool isLeaf) = NibblePath.Key.FromRlpBytes(new[] { byte1, byte2 });
         Assert.That(isLeaf, Is.EqualTo(expectedFlag));
         Assert.That(key.Length, Is.EqualTo(3));
         Assert.That(key[0], Is.EqualTo(nibble1));
@@ -90,7 +90,7 @@ public class NibblePathTests
     {
         const byte added = 9;
 
-        var path = NibblePath.FromNibbles(nibbles);
+        var path = NibblePath.Key.FromNibbles(nibbles);
 
         var prepended = path.PrependWith(added);
 
@@ -111,8 +111,8 @@ public class NibblePathTests
     [TestCase(new byte[] { 0xA, 2, 3 }, new byte[] { 4, 5, 6 })]
     public void Concat(byte[] a, byte[] b)
     {
-        var pathA = NibblePath.FromNibbles(a);
-        var pathB = NibblePath.FromNibbles(b);
+        var pathA = NibblePath.Key.FromNibbles(a);
+        var pathB = NibblePath.Key.FromNibbles(b);
 
         var concatenated = pathA.Concat(pathB);
 
@@ -135,7 +135,7 @@ public class NibblePathTests
     [TestCase(new byte[] { 1, 2, 3, 4 }, "0x1234")]
     public void ToHexString(byte[] nibbles, string expected)
     {
-        NibblePath.FromNibbles(nibbles).ToHexString().Should().Be(expected);
+        NibblePath.Key.FromNibbles(nibbles).ToHexString().Should().Be(expected);
     }
 
     private static readonly byte[] OddNibbles = [0xA, 0xB, 0xC, 0xD, 0xE];
@@ -180,8 +180,8 @@ public class NibblePathTests
 
     private static void Assert_Slice(int start, int length, byte[] nibbles)
     {
-        var expected = NibblePath.FromNibbles(nibbles.AsSpan(start, length));
-        var actual = NibblePath.FromNibbles(nibbles).Slice(start, length);
+        var expected = NibblePath.Key.FromNibbles(nibbles.AsSpan(start, length));
+        var actual = NibblePath.Key.FromNibbles(nibbles).Slice(start, length);
 
         actual.Equals(expected).Should().BeTrue();
     }
@@ -192,95 +192,10 @@ public class NibblePathTests
     [TestCase("0xABCD", new byte[] { 0xA, 0xB, 0xC, 0xD })]
     public void FromHexString(string parse, byte[] nibbles)
     {
-        var expected = NibblePath.FromNibbles(nibbles);
-        var parsed = NibblePath.FromHexString(parse);
+        var expected = NibblePath.Key.FromNibbles(nibbles);
+        var parsed = NibblePath.Key.FromHexString(parse);
 
         parsed.Equals(expected).Should().BeTrue();
-    }
-
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    [TestCase(5)]
-    [TestCase(6)]
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(9)]
-    [TestCase(10)]
-    [TestCase(11)]
-    [TestCase(12)]
-    public void Ref_FromNibbles(int count)
-    {
-        var nibbles = Enumerable.Range(1, count).Select(i => (byte)i).ToArray();
-
-        var path = NibblePath.ByRef.FromNibbles(nibbles, stackalloc byte[5]);
-
-        path.Length.Should().Be(nibbles.Length);
-        for (int i = 0; i < nibbles.Length; i++)
-        {
-            path[i].Should().Be(nibbles[i]);
-        }
-    }
-
-
-    [TestCase(0, 6)]
-    [TestCase(1, 5)]
-    [TestCase(1, 4)]
-    [TestCase(1, 3)]
-    [TestCase(2, 4)]
-    [TestCase(2, 3)]
-    [TestCase(2, 2)]
-    [TestCase(2, 1)]
-    [TestCase(3, 3)]
-    [TestCase(3, 2)]
-    [TestCase(3, 1)]
-    public void Ref_Slice_Even(int from, int length)
-    {
-        NibblePath.ByRef path = NibblePath.ByRef.FromNibbles(EvenNibbles, stackalloc byte[6]);
-        NibblePath expected = NibblePath.FromNibbles(EvenNibbles.AsSpan(from, length));
-        NibblePath actual = path.Slice(from, length);
-
-        actual.Equals(expected).Should().BeTrue();
-    }
-
-    [TestCase(0, 5)]
-    [TestCase(1, 4)]
-    [TestCase(1, 3)]
-    [TestCase(1, 2)]
-    [TestCase(2, 3)]
-    [TestCase(2, 2)]
-    [TestCase(2, 1)]
-    [TestCase(3, 2)]
-    [TestCase(3, 1)]
-    public void Ref_Slice_Odd(int from, int length)
-    {
-        NibblePath.ByRef path = NibblePath.ByRef.FromNibbles(OddNibbles, stackalloc byte[6]);
-        NibblePath expected = NibblePath.FromNibbles(OddNibbles.AsSpan(from, length));
-        NibblePath actual = path.Slice(from, length);
-
-        actual.Equals(expected).Should().BeTrue();
-    }
-
-    [TestCase(new byte[] { 1 })]
-    [TestCase(new byte[] { 1, 2 })]
-    [TestCase(new byte[] { 0xA, 0xB, 0xC })]
-    [TestCase(new byte[] { 0xA, 0xB, 0xC, 0xD })]
-    public void Equals(byte[] nibbles)
-    {
-        var pathRef = NibblePath.ByRef.FromNibbles(nibbles, stackalloc byte[12]);
-        var path = NibblePath.FromNibbles(nibbles);
-
-        pathRef.Equals(path).Should().BeTrue();
-    }
-
-    [Test(Description = "A sanity check for equals not returning just true.")]
-    public void Equals_not()
-    {
-        var pathRef = NibblePath.ByRef.FromNibbles([1, 2], stackalloc byte[12]);
-        var path = NibblePath.Single(3);
-
-        pathRef.Equals(path).Should().BeFalse();
     }
 
     [Test]
@@ -288,7 +203,7 @@ public class NibblePathTests
     {
         var array = Enumerable.Range(1, length).Select(i => (byte)(i & 15)).ToArray();
 
-        var fromNibbles = NibblePath.FromNibbles(array);
+        var fromNibbles = NibblePath.Key.FromNibbles(array);
         fromNibbles.Length.Should().Be(length);
 
         for (int i = 0; i < length; i++)
