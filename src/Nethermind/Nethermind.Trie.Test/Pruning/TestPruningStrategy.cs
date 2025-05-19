@@ -12,8 +12,8 @@ namespace Nethermind.Trie.Test.Pruning
         : IPruningStrategy
     {
         public bool PruningEnabled => pruningEnabled;
-        public bool ShouldPruneDirtyNode(in long currentMemory) => pruningEnabled && (ShouldPruneEnabled || WithMemoryLimit is not null && currentMemory > WithMemoryLimit);
-        public bool ShouldPrunePersistedNode(in long persistedNodeMemory) => pruningEnabled && (ShouldPrunePersistedEnabled || WithPersistedMemoryLimit is not null && persistedNodeMemory > WithPersistedMemoryLimit);
+        public bool ShouldPruneDirtyNode(TrieStoreState state) => pruningEnabled && (ShouldPruneEnabled || WithMemoryLimit is not null && state.DirtyCacheMemory > WithMemoryLimit);
+        public bool ShouldPrunePersistedNode(TrieStoreState state) => pruningEnabled && (ShouldPrunePersistedEnabled || WithPersistedMemoryLimit is not null && state.PersistedCacheMemory > WithPersistedMemoryLimit);
 
         public bool ShouldPruneEnabled { get; set; } = shouldPrune;
         public bool ShouldPrunePersistedEnabled { get; set; } = shouldPrune;

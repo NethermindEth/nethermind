@@ -77,63 +77,63 @@ public class RawTrieStore(INodeStorage nodeStorage, bool isReadOnly = false) : I
     {
     }
 
-    ICommitter IScopableTrieStore.BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags)
+    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags)
     {
         if (isReadOnly) return NullCommitter.Instance;
         return new RawScopedTrieStore.Committer(nodeStorage, address, writeFlags);
     }
 
-    TrieNode IScopableTrieStore.FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
+    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
     {
         return new TrieNode(NodeType.Unknown, hash);
     }
 
-    byte[]? IScopableTrieStore.LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
         byte[]? ret = nodeStorage.Get(address, path, hash, flags);
         if (ret is null) throw new MissingTrieNodeException("Node missing", address, path, hash);
         return ret;
     }
 
-    byte[]? IScopableTrieStore.TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
         return nodeStorage.Get(address, path, hash, flags);
     }
 
-    bool IScopableTrieStore.IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
+    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
     {
         return nodeStorage.KeyExists(address, path, keccak);
     }
 
-    INodeStorage.KeyScheme IScopableTrieStore.Scheme { get; } = nodeStorage.Scheme;
+    public INodeStorage.KeyScheme Scheme { get; } = nodeStorage.Scheme;
 
-    bool ITrieStore.HasRoot(Hash256 stateRoot)
+    public bool HasRoot(Hash256 stateRoot)
     {
         return nodeStorage.KeyExists(null, TreePath.Empty, stateRoot);
     }
 
-    IScopedTrieStore ITrieStore.GetTrieStore(Hash256? address)
+    public IScopedTrieStore GetTrieStore(Hash256? address)
     {
         return new RawScopedTrieStore(nodeStorage, address);
     }
 
-    IBlockCommitter ITrieStore.BeginBlockCommit(long blockNumber)
+    public IBlockCommitter BeginBlockCommit(long blockNumber)
     {
         return NullCommitter.Instance;
     }
 
-    void IPruningTrieStore.PersistCache(CancellationToken cancellationToken)
+    public void PersistCache(CancellationToken cancellationToken)
     {
     }
 
-    IReadOnlyTrieStore IPruningTrieStore.AsReadOnly(INodeStorage? store) =>
+    public IReadOnlyTrieStore AsReadOnly(INodeStorage? store = null) =>
         new RawTrieStore(nodeStorage, true);
 
-    event EventHandler<ReorgBoundaryReached>? IPruningTrieStore.ReorgBoundaryReached
+    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
         add => throw new Exception("Unsupported operation");
         remove => throw new Exception("Unsupported operation");
     }
 
-    IReadOnlyKeyValueStore IPruningTrieStore.TrieNodeRlpStore { get; }
+    public IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
 }
