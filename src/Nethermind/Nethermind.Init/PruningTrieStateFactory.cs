@@ -82,7 +82,7 @@ public class PruningTrieStateFactory(
         IPruningStrategy pruningStrategy;
         if (pruningConfig.Mode.IsMemory())
         {
-            persistenceStrategy = Persist.EveryNBlock(pruningConfig.PersistenceInterval); // TODO: this should be based on time
+            persistenceStrategy = No.Persistence;
             if (pruningConfig.Mode.IsFull() && stateDb is IFullPruningDb fullPruningDb)
             {
                 PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(fullPruningDb, blockTree!, logManager);
@@ -92,7 +92,7 @@ public class PruningTrieStateFactory(
         }
         else
         {
-            persistenceStrategy = Persist.EveryBlock;
+            persistenceStrategy = Persist.EveryNBlock(pruningConfig.PersistenceInterval);
         }
 
         // On a 7950x (32 logical coree), assuming write buffer is large enough, the pruning time is about 3 second
