@@ -219,12 +219,14 @@ public class EthereumL1Bridge : IL1Bridge
     {
         if (_logger.IsInfo) _logger.Info($"Resetting L1 bridge. New head number: {highestFinalizedOrigin.Number}, new head hash {highestFinalizedOrigin.BlockHash}");
         _currentHead = BlockId.FromL1BlockInfo(highestFinalizedOrigin);
+        _currentFinalizedHead = BlockId.FromL1BlockInfo(highestFinalizedOrigin);
     }
 
     public async Task Initialize(CancellationToken token)
     {
         L1Block finalized = await GetFinalized(token);
         _currentHead = BlockId.FromL1Block(finalized);
+        _currentFinalizedHead = BlockId.FromL1Block(finalized);
         if (_logger.IsInfo) _logger.Info($"Initializing L1 bridge. New head number: {finalized.Number}, new head hash {finalized.Hash}");
     }
 
