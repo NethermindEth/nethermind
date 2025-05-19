@@ -174,8 +174,8 @@ internal class BlobSender
                         break;
                     case "7": maxFeePerBlobGas = UInt256.MaxValue; break;
                     //case "8": maxFeePerBlobGas = 42_000_000_000; break;
-                    case "9": blobsContainer.Proofs = blobsContainer.Proofs.Skip(1).ToArray(); break;
-                    case "10": blobsContainer.Commitments = blobsContainer.Commitments.Skip(1).ToArray(); break;
+                    case "9": blobsContainer = blobsContainer with { Proofs = blobsContainer.Proofs.Skip(1).ToArray() }; break;
+                    case "10": blobsContainer = blobsContainer with { Commitments = blobsContainer.Commitments.Skip(1).ToArray() }; break;
                     case "11": maxFeePerBlobGas = UInt256.MaxValue / Eip4844Constants.GasPerBlob + 1; break;
                 }
 
