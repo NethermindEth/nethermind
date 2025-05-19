@@ -81,6 +81,9 @@ public class ExecutionEngineManager(
         catch (Exception e)
         {
             if (logger.IsWarn) logger.Warn($"Exception during block finalization: {e}");
+        }
+        finally
+        {
             _semaphore.Release();
         }
 

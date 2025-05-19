@@ -238,6 +238,7 @@ public class EthereumL1Bridge : IL1Bridge
             L1Block newHead = await GetFinalized(token);
             while (!token.IsCancellationRequested && newHead.Number != _currentHead.Number)
             {
+                await ProcessFinalized();
                 await BuildUp(_currentHead.Number, newHead.Number, token);
                 await ProcessBlock(newHead, token);
 
