@@ -12,7 +12,8 @@ namespace Nethermind.Core.Test;
 /// <summary>
 /// Expose <see cref="IPruningTrieStore"/> interface without actually having any pruning logic.
 /// <see cref="RawScopedTrieStore"/> does not have any concept of two level trie, just trie, because its for <see cref="PatriciaTree"/>.
-/// Note: If you are using this, consider interacting with <see cref="TestWorldStateFactory"/> instead.
+/// Note: If you are using this, consider interacting with <see cref="TestWorldStateFactory"/> instead, or if you
+/// actually don't need the whole worldstate or the two level trie, <see cref="RawScopedTrieStore"/>.
 /// </summary>
 /// <param name="nodeStorage"></param>
 /// <param name="isReadOnly"></param>
