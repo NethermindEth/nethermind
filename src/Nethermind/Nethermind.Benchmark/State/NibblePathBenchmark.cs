@@ -45,12 +45,27 @@ public class NibblePathBenchmark
         return NibblePath.Key.FromNibbles(nibbles);
     }
 
-    // [Benchmark]
-    // [ArgumentsSource(nameof(GetNibblesWithPaths))]
-    // public int CommonPrefixLength((byte[] nibbles, NibblePath.Key path) pair)
-    // {
-    //     return pair.path.CommonPrefixLength(pair.nibbles);
-    // }
+    private static readonly NibblePath.Key CommonPrefixKey = NibblePath.Key.FromRaw([0xAA, 0xAA, 0xDE, 0xFF]);
+
+    [Benchmark(OperationsPerInvoke = 4)]
+    [Arguments(0, 1)]
+    [Arguments(1, 1)]
+    [Arguments(0, 2)]
+    [Arguments(1, 2)]
+    [Arguments(0, 3)]
+    [Arguments(1, 3)]
+    [Arguments(0, 4)]
+    public int CommonPrefix(int from, int length)
+    {
+        NibblePath path = NibblePath.FromKey([0xAA, 0xAA]).Slice(from, length);
+        NibblePath.Key key = CommonPrefixKey;
+
+        return key.CommonPrefixLength(path) +
+               key.CommonPrefixLength(path) +
+               key.CommonPrefixLength(path) +
+               key.CommonPrefixLength(path);
+    }
+
     //
     // [Benchmark]
     // [ArgumentsSource(nameof(GetNibblesWithPaths))]
@@ -84,3 +99,5 @@ public class NibblePathBenchmark
     //     return Long.Slice(start, length);
     // }
 }
+
+public void

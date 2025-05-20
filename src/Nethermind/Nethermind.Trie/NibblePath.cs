@@ -869,7 +869,7 @@ public readonly ref struct NibblePath
 
 
         // The only path where it's executed it's an extension check. Extensions are not that long.
-        public int CommonPrefixLength(in NibblePath remaining) => AsPath().CommonPrefixLength(remaining);
+        public int CommonPrefixLength(in NibblePath other) => AsPath().CommonPrefixLength(other);
 
         // PSHUFB mask to pick bytes [0,2,4,…,14] then zero the rest
         private static readonly Vector128<byte> HighMask = Vector128.Create(
