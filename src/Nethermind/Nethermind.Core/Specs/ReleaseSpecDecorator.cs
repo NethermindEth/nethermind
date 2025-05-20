@@ -83,6 +83,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual Address Eip2935ContractAddress => spec.Eip2935ContractAddress;
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
     public bool IsEip7702Enabled => spec.IsEip7702Enabled;
+    public bool IsEip7823Enabled => spec.IsEip7823Enabled;
     public virtual bool IsRip7212Enabled => spec.IsRip7212Enabled;
     public virtual bool IsOpGraniteEnabled => spec.IsOpGraniteEnabled;
     public virtual bool IsOpHoloceneEnabled => spec.IsOpHoloceneEnabled;
