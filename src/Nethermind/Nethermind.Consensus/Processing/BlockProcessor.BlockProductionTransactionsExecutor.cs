@@ -61,7 +61,7 @@ namespace Nethermind.Consensus.Processing
             {
             }
 
-			// todo: remove
+            // todo: remove
             // public bool IsTransactionInBlock(Transaction tx) => _transactionsInBlock.Contains(tx);
             public bool IsTransactionInBlock(Transaction tx) => throw new NotImplementedException();
 

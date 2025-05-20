@@ -42,8 +42,8 @@ namespace Nethermind.Consensus.Processing
 
                 var enhanced = EnhanceBlockExecutionContext(blkCtx);
 
-				_transactionsInBlock.Clear();
-				_transactionsInBlock.AddRange(block.Transactions);
+                _transactionsInBlock.Clear();
+                _transactionsInBlock.AddRange(block.Transactions);
 
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
