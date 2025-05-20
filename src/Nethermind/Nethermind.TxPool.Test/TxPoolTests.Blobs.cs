@@ -934,7 +934,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [TestCaseSource(nameof(BlobScheduleActivationsTestCaseSource))]
-        public async Task<int> should_txs_be_evicted_based_on_proof_version_and_fork(BlobsSupportMode poolMode, TestAction[] testActions)
+        public async Task<int> should_evict_based_on_proof_version_and_fork(BlobsSupportMode poolMode, TestAction[] testActions)
         {
             ChainSpecBasedSpecProvider provider = LoadChainSpec(new ChainSpecJson
             {
@@ -965,7 +965,7 @@ namespace Nethermind.TxPool.Test
                         _txPool.SubmitTx(GetBlobTx(TestItem.PrivateKeyA, nonce++), TxHandlingOptions.None);
                         break;
                     case TestAction.AddV1:
-                        _txPool.SubmitTx(GetBlobTx(TestItem.PrivateKeyA, nonce++, v1Spec), TxHandlingOptions.None);
+                        _txPool.SubmitTx(GetBlobTx(TestItem.PrivateKeyA, nonce++, releaseSpec: v1Spec), TxHandlingOptions.None);
                         break;
                     case TestAction.Fork:
                         await AddBlock();
@@ -1028,10 +1028,10 @@ namespace Nethermind.TxPool.Test
             return Task.Delay(300);
         }
 
-        private Transaction GetBlobTx(PrivateKey sender, UInt256 nonce = default, IReleaseSpec releaseSpec = default)
+        private Transaction GetBlobTx(PrivateKey sender, UInt256 nonce = default, int blobCount = 1, IReleaseSpec releaseSpec = default)
         {
             return Build.A.Transaction
-                .WithShardBlobTxTypeAndFields(spec: releaseSpec)
+                .WithShardBlobTxTypeAndFields(blobCount: blobCount, spec: releaseSpec)
                 .WithMaxFeePerGas(1.GWei())
                 .WithMaxPriorityFeePerGas(1.GWei())
                 .WithNonce(nonce)
@@ -1039,7 +1039,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task Test_eviction()
+        public async Task should_evict_with_too_many_blobs()
         {
             ChainSpecBasedSpecProvider provider = new(new ChainSpec
             {
@@ -1048,8 +1048,8 @@ namespace Nethermind.TxPool.Test
                     Eip4844TransitionTimestamp = _blockTree.Head.Timestamp,
                     Eip7002TransitionTimestamp = _blockTree.Head.Timestamp + 1,
                     BlobSchedule = {
-                        { "cancun", new ChainSpecBlobCountJson { Max = 5, Timestamp = _blockTree.Head.Timestamp } },
-                        { "prague", new ChainSpecBlobCountJson { Max = 3, Timestamp = _blockTree.Head.Timestamp + 1 } },
+                        { Cancun.Instance.Name, new ChainSpecBlobCountJson { Max = 5, Timestamp = _blockTree.Head.Timestamp } },
+                        { Prague.Instance.Name, new ChainSpecBlobCountJson { Max = 3, Timestamp = _blockTree.Head.Timestamp + 1 } },
                     },
                 },
                 EngineChainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>()
@@ -1062,29 +1062,11 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, provider);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction txOk = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields(3)
-                .WithMaxFeePerGas(2.GWei())
-                .WithMaxPriorityFeePerGas(2.GWei())
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            UInt256 nonce = 0;
 
-            Transaction txToRemove1 = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields(5)
-                .WithMaxFeePerGas(2.GWei())
-                .WithMaxPriorityFeePerGas(2.GWei())
-                .WithNonce(txOk.Nonce + 1)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-
-            Transaction txToRemove2 = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields(3)
-                .WithMaxFeePerGas(2.GWei())
-                .WithMaxPriorityFeePerGas(2.GWei())
-                .WithNonce(txOk.Nonce + 2)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-
-            _txPool.SubmitTx(txOk, TxHandlingOptions.None);
-            _txPool.SubmitTx(txToRemove1, TxHandlingOptions.None);
-            _txPool.SubmitTx(txToRemove2, TxHandlingOptions.None);
+            _txPool.SubmitTx(GetBlobTx(TestItem.PrivateKeyA, nonce++, 3), TxHandlingOptions.None);
+            _txPool.SubmitTx(GetBlobTx(TestItem.PrivateKeyA, nonce++, 5), TxHandlingOptions.None);
+            _txPool.SubmitTx(GetBlobTx(TestItem.PrivateKeyA, nonce++, 3), TxHandlingOptions.None);
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(3));
 
