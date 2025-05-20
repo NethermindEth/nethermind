@@ -24,13 +24,15 @@ namespace Nethermind.Api
         (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
 
         IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
-        IDiscoveryApp? DiscoveryApp { get; set; }
+
+        [SkipServiceCollection]
+        IDiscoveryApp DiscoveryApp { get; }
         IGrpcServer? GrpcServer { get; set; }
         IIPResolver? IpResolver { get; set; }
         IMessageSerializationService MessageSerializationService { get; }
         IGossipPolicy GossipPolicy { get; set; }
-        IPeerManager? PeerManager { get; set; }
-        IPeerPool? PeerPool { get; set; }
+        IPeerManager? PeerManager { get; }
+        IPeerPool? PeerPool { get; }
         IProtocolsManager? ProtocolsManager { get; set; }
         IProtocolValidator? ProtocolValidator { get; set; }
         IList<IPublisher> Publishers { get; }
@@ -40,13 +42,13 @@ namespace Nethermind.Api
         IRpcModuleProvider? RpcModuleProvider { get; }
         IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
         ISessionMonitor? SessionMonitor { get; set; }
-        IStaticNodesManager? StaticNodesManager { get; set; }
-        ITrustedNodesManager? TrustedNodesManager { get; set; }
-        ISynchronizer? Synchronizer { get; }
+        IStaticNodesManager StaticNodesManager { get; }
+        ITrustedNodesManager TrustedNodesManager { get; }
         ISyncModeSelector SyncModeSelector { get; }
         ISyncPeerPool? SyncPeerPool { get; }
         ISyncServer? SyncServer { get; }
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory? SubscriptionFactory { get; set; }
+        IEngineRequestsTracker? EngineRequestsTracker { get; set; }
     }
 }

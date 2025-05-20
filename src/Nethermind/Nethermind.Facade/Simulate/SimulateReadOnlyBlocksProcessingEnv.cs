@@ -29,8 +29,8 @@ public class SimulateBlockValidationTransactionsExecutor(
     UInt256? blobBaseFeeOverride)
     : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
 {
-    protected override BlockExecutionContext CreateBlockExecutionContext(Block block, IReleaseSpec spec) =>
-        blobBaseFeeOverride is not null ? new BlockExecutionContext(block.Header, blobBaseFeeOverride.Value) : base.CreateBlockExecutionContext(block, spec);
+    protected override BlockExecutionContext EnhanceBlockExecutionContext(in BlockExecutionContext blkCtx) =>
+        blobBaseFeeOverride is null ? blkCtx : new BlockExecutionContext(blkCtx.Header, blobBaseFeeOverride.Value);
 
     protected override void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
     {
@@ -72,7 +72,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
         StateProvider = worldState;
         SimulateBlockhashProvider blockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager), BlockTree);
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
-        SimulateVirtualMachine virtualMachine = new SimulateVirtualMachine(new VirtualMachine(blockhashProvider, specProvider, CodeInfoRepository, logManager));
+        SimulateVirtualMachine virtualMachine = new SimulateVirtualMachine(new VirtualMachine(blockhashProvider, specProvider, logManager));
         _transactionProcessor = transactionProcessorFactory.CreateTransactionProcessor(SpecProvider, StateProvider, virtualMachine, CodeInfoRepository, _logManager, validate);
         _blockValidator = CreateValidator();
         BlockTransactionPicker = new BlockProductionTransactionPicker(specProvider, ignoreEip3607: true);

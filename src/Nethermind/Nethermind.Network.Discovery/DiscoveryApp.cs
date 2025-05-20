@@ -4,6 +4,7 @@
 using System.Net.NetworkInformation;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
 using Nethermind.Config;
@@ -12,6 +13,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -38,12 +40,14 @@ public class DiscoveryApp : IDiscoveryApp
     private NettyDiscoveryHandler? _discoveryHandler;
     private Task? _storageCommitTask;
 
-    public DiscoveryApp(INodesLocator nodesLocator,
+    public DiscoveryApp(
+        [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
+        INodesLocator nodesLocator,
         IDiscoveryManager? discoveryManager,
         INodeTable? nodeTable,
         IMessageSerializationService? msgSerializationService,
         ICryptoRandom? cryptoRandom,
-        INetworkStorage? discoveryStorage,
+        [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage? discoveryStorage,
         INetworkConfig? networkConfig,
         IDiscoveryConfig? discoveryConfig,
         ITimestamper? timestamper,
@@ -62,12 +66,9 @@ public class DiscoveryApp : IDiscoveryApp
         _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _discoveryStorage.StartBatch();
-    }
 
-    public void Initialize(PublicKey masterPublicKey)
-    {
         _discoveryManager.NodeDiscovered += OnNodeDiscovered;
-        _nodeTable.Initialize(masterPublicKey);
+        _nodeTable.Initialize(nodeKey.PublicKey);
         if (_nodeTable.MasterNode is null)
         {
             throw new NetworkingException(

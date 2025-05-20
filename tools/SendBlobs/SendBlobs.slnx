@@ -1,7 +1,7 @@
 <Solution>
+  <Project Path="../../src/Nethermind/Ethereum.Test.Base/Ethereum.Test.Base.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
-  <Project Path="../../src/Nethermind/Nethermind.Cli/Nethermind.Cli.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Config/Nethermind.Config.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Consensus/Nethermind.Consensus.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Core/Nethermind.Core.csproj" />

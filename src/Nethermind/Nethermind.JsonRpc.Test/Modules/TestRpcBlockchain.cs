@@ -39,6 +39,7 @@ using Nethermind.Consensus.Rewards;
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Timers;
 using Nethermind.JsonRpc.Modules.Trace;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -177,8 +178,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             LimboLogs.Instance,
             @this.SpecProvider,
             @this.GasPriceOracle,
-            new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), new SyncConfig(),
-                new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
+            new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), @this.Container.Resolve<ISyncConfig>(),
+            new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
             @this.BlocksConfig.SecondsPerSlot);
@@ -225,7 +226,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 configurer?.Invoke(builder);
             });
 
-            IFilterStore filterStore = new FilterStore();
+            IFilterStore filterStore = new FilterStore(new TimerFactory());
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
             IReadOnlyBlockTree? roBlockTree = BlockTree!.AsReadOnly();

@@ -19,6 +19,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using FluentAssertions;
+using Nethermind.Core.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -148,9 +149,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         long gas = 34218;
         ulong ts = 123456;
         MemDb stateDb = new();
-        TrieStore trieStore = new(
-                stateDb,
-                LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb,
+            LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(
                 trieStore,
                 new MemDb(),
@@ -160,7 +160,6 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         VirtualMachine virtualMachine = new(
             new TestBlockhashProvider(specProvider),
                 specProvider,
-                codeInfoRepository,
                 LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new TransactionProcessor(
                 specProvider,
@@ -242,7 +241,7 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
     }
 

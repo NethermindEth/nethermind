@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Specs;
@@ -38,13 +39,13 @@ namespace Nethermind.Evm.Benchmark
             ByteCode = Bytes.FromHexString(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE") ?? string.Empty);
             Console.WriteLine($"Running benchmark for bytecode {ByteCode?.ToHexString()}");
 
-            TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
-            IKeyValueStore codeDb = new MemDb();
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
+            IKeyValueStoreWithBatching codeDb = new MemDb();
             _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
             CodeInfoRepository codeInfoRepository = new();
-            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, codeInfoRepository, LimboLogs.Instance);
+            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
 
             _environment = new ExecutionEnvironment
             (
@@ -64,7 +65,7 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark]
         public void ExecuteCode()
         {
-            _virtualMachine.Run<VirtualMachine.NotTracing>(_evmState, _stateProvider, _txTracer);
+            _virtualMachine.ExecuteTransaction<OffFlag>(_evmState, _stateProvider, _txTracer);
             _stateProvider.Reset();
         }
     }

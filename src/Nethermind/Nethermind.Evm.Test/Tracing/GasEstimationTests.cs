@@ -7,6 +7,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -49,7 +50,8 @@ namespace Nethermind.Evm.Test.Tracing
                 Array.Empty<byte>()); // this would not happen but we want to ensure that precompiles are ignored
             testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(0);
+            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(0);
+            Assert.That(err, Is.Null);
         }
 
         [Test]
@@ -78,7 +80,8 @@ namespace Nethermind.Evm.Test.Tracing
                 ExecutionType.TRANSACTION, false);
             testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(0);
+            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(0);
+            Assert.That(err, Is.Null);
         }
 
         [Test]
@@ -105,7 +108,8 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(300, Array.Empty<byte>()); // should not happen
             }
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(14L);
+            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(14L);
+            Assert.That(err, Is.Null);
         }
 
         [Test]
@@ -134,7 +138,8 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(24L);
+            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(24L);
+            Assert.That(err, Is.Null);
         }
 
         [Test]
@@ -158,7 +163,8 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
             testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
             testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(35146L);
+            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(35146L);
+            Assert.That(err, Is.Null);
         }
 
         [Test]
@@ -175,7 +181,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportActionEnd(63, Array.Empty<byte>()); // second level
             testEnvironment.tracer.ReportActionEnd(65, Array.Empty<byte>());
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(1);
+            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? _).Should().Be(1);
         }
 
         [Test]
@@ -223,7 +229,8 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(18);
+            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(18);
+            Assert.That(err, Is.Null);
         }
 
         [Test]
@@ -252,7 +259,8 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(17);
+            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(17);
+            Assert.That(err, Is.Null);
         }
 
         [TestCase(-1)]
@@ -272,17 +280,18 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            Assert.That(() => sut.Estimate(tx, block.Header, tracer, errorMargin), Throws.TypeOf<ArgumentOutOfRangeException>());
+            sut.Estimate(tx, block.Header, tracer, out string? err, errorMargin);
+            Assert.That(err, Is.Not.Null);
         }
 
 
-        [TestCase(Transaction.BaseTxGasCost, GasEstimator.DefaultErrorMargin)]
-        [TestCase(Transaction.BaseTxGasCost, 100)]
-        [TestCase(Transaction.BaseTxGasCost, 1000)]
-        [TestCase(Transaction.BaseTxGasCost + 10000, GasEstimator.DefaultErrorMargin)]
-        [TestCase(Transaction.BaseTxGasCost + 20000, GasEstimator.DefaultErrorMargin)]
-        [TestCase(Transaction.BaseTxGasCost + 123456789, 123)]
-        public void Estimate_DifferentAmountOfGasAndMargin_EstimationResultIsWithinMargin(int totalGas, int errorMargin)
+        [TestCase(Transaction.BaseTxGasCost, GasEstimator.DefaultErrorMargin, false)]
+        [TestCase(Transaction.BaseTxGasCost, 100, false)]
+        [TestCase(Transaction.BaseTxGasCost, 1000, false)]
+        [TestCase(Transaction.BaseTxGasCost + 10000, GasEstimator.DefaultErrorMargin, true)]
+        [TestCase(Transaction.BaseTxGasCost + 20000, GasEstimator.DefaultErrorMargin, true)]
+        [TestCase(Transaction.BaseTxGasCost + 123456789, 123, true)]
+        public void Estimate_DifferentAmountOfGasAndMargin_EstimationResultIsWithinMargin(int totalGas, int errorMargin, bool fail)
         {
             Transaction tx = Build.A.Transaction.WithGasLimit(30000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
@@ -296,9 +305,24 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            long result = sut.Estimate(tx, block.Header, tracer, errorMargin);
+            long result = sut.Estimate(tx, block.Header, tracer, out string? err, errorMargin);
 
-            Assert.That(result, Is.EqualTo(totalGas).Within(totalGas * (errorMargin / 10000d + 1)));
+            if (fail)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(err, Is.EqualTo("Cannot estimate gas, gas spent exceeded transaction and block gas limit"));
+                    Assert.That(result, Is.EqualTo(0));
+                }
+            }
+            else
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(err, Is.Null);
+                    Assert.That(result, Is.EqualTo(totalGas).Within(totalGas * (errorMargin / 10000d + 1)));
+                }
+            }
         }
 
         [Test]
@@ -317,9 +341,13 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            long result = sut.Estimate(tx, block.Header, tracer, GasEstimator.DefaultErrorMargin);
+            long result = sut.Estimate(tx, block.Header, tracer, out string? err, GasEstimator.DefaultErrorMargin);
 
-            Assert.That(result, Is.Not.EqualTo(totalGas).Within(10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Is.Null);
+                Assert.That(result, Is.Not.EqualTo(totalGas).Within(10));
+            }
         }
 
         [Test]
@@ -338,9 +366,13 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            long result = sut.Estimate(tx, block.Header, tracer, 0);
+            long result = sut.Estimate(tx, block.Header, tracer, out string? err, 0);
 
-            Assert.That(result, Is.EqualTo(totalGas));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Is.Null);
+                Assert.That(result, Is.EqualTo(totalGas));
+            }
         }
 
         private class TestEnvironment
@@ -356,14 +388,14 @@ namespace Nethermind.Evm.Test.Tracing
             {
                 _specProvider = MainnetSpecProvider.Instance;
                 MemDb stateDb = new();
-                TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+                TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
                 _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
                 _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);
 
                 CodeInfoRepository codeInfoRepository = new();
-                VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
+                VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
                 _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
                 _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
 

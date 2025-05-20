@@ -13,11 +13,11 @@ namespace Nethermind.Evm;
 
 public struct StackAccessTracker : IDisposable
 {
-    public readonly IReadOnlySet<Address> AccessedAddresses => _trackingState.AccessedAddresses;
-    public readonly IReadOnlySet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
-    public readonly ICollection<LogEntry> Logs => _trackingState.Logs;
-    public readonly IReadOnlySet<Address> DestroyList => _trackingState.DestroyList;
-    public readonly IReadOnlySet<AddressAsKey> CreateList => _trackingState.CreateList;
+    public readonly JournalSet<Address> AccessedAddresses => _trackingState.AccessedAddresses;
+    public readonly JournalSet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
+    public readonly JournalCollection<LogEntry> Logs => _trackingState.Logs;
+    public readonly JournalSet<Address> DestroyList => _trackingState.DestroyList;
+    public readonly HashSet<AddressAsKey> CreateList => _trackingState.CreateList;
 
     private TrackingState _trackingState;
 
@@ -58,7 +58,7 @@ public struct StackAccessTracker : IDisposable
                 _trackingState.AccessedAddresses.Add(address);
                 foreach (UInt256 storage in storages)
                 {
-                    _trackingState.AccessedStorageCells.Add(new StorageCell(address, storage));
+                    _trackingState.AccessedStorageCells.Add(new StorageCell(address, in storage));
                 }
             }
         }
@@ -97,7 +97,7 @@ public struct StackAccessTracker : IDisposable
         TrackingState.ResetAndReturn(state);
     }
 
-    private class TrackingState
+    private sealed class TrackingState
     {
         private static readonly ConcurrentQueue<TrackingState> _trackerPool = new();
         public static TrackingState RentState() => _trackerPool.TryDequeue(out TrackingState tracker) ? tracker : new TrackingState();

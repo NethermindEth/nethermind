@@ -81,6 +81,7 @@ public class MergePluginTests
                     api.TransactionComparerProvider!,
                     ctx.Resolve<IBlocksConfig>(),
                     api.LogManager!);
+                api.EngineRequestsTracker = Substitute.For<IEngineRequestsTracker>();
             })
             .Build();
     }
@@ -194,7 +195,7 @@ public class MergePluginTests
 
     [TestCase(true, true, true)]
     [TestCase(true, false, false)]
-    [TestCase(false, true, false)]
+    [TestCase(false, true, true)]
     public async Task InitThrowExceptionIfBodiesAndReceiptIsDisabled(bool downloadBody, bool downloadReceipt, bool shouldPass)
     {
         ISyncConfig syncConfig = new SyncConfig()
@@ -214,6 +215,11 @@ public class MergePluginTests
         else
         {
             await invocation.Should().ThrowAsync<InvalidConfigurationException>();
+        }
+
+        if (!downloadBody && downloadReceipt)
+        {
+            syncConfig.DownloadBodiesInFastSync.Should().BeTrue(); // Modified by PruningTrieStateFactory
         }
     }
 }

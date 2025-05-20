@@ -19,6 +19,6 @@ public class CancunStateTests : GeneralStateTestBase
     private static IEnumerable<GeneralStateTest> LoadTests()
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(), $"fixtures/state_tests/cancun");
-        return loader.LoadTests().Cast<GeneralStateTest>();
+        return loader.LoadTests<GeneralStateTest>();
     }
 }

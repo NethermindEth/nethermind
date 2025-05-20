@@ -1,9 +1,8 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
@@ -20,18 +19,8 @@ public static class ExecutionRequestExtensions
     public const int MaxRequestsCount = 3;
     private const int PublicKeySize = 48;
 
-    public static byte[][] EmptyRequests = [];
-    public static Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
-
-    public static int GetRequestsByteSize(this IEnumerable<ExecutionRequest> requests)
-    {
-        int size = 0;
-        foreach (ExecutionRequest request in requests)
-        {
-            size += request.RequestData!.Length + 1;
-        }
-        return size;
-    }
+    public static readonly byte[][] EmptyRequests = [];
+    public static readonly Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
 
     [SkipLocalsInit]
     public static Hash256 CalculateHashFromFlatEncodedRequests(byte[][]? flatEncodedRequests)

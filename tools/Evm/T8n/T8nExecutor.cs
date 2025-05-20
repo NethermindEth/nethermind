@@ -12,6 +12,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -37,7 +38,7 @@ public static class T8nExecutor
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
 
-        TrieStore trieStore = new(stateDb, _logManager);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, _logManager);
         WorldState stateProvider = new(trieStore, codeDb, _logManager);
         CodeInfoRepository codeInfoRepository = new();
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
@@ -45,7 +46,6 @@ public static class T8nExecutor
         IVirtualMachine virtualMachine = new VirtualMachine(
             blockhashProvider,
             test.SpecProvider,
-            codeInfoRepository,
             _logManager);
         TransactionProcessor transactionProcessor = new(
             test.SpecProvider,

@@ -86,7 +86,7 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "[]")]
     string[] AdditionalRpcUrls { get; set; }
 
-    [ConfigItem(Description = "The gas limit for `eth_call` and `eth_estimateGas`.", DefaultValue = "100000000")]
+    [ConfigItem(Description = "The maximum gas limit for `eth_call` and `eth_estimateGas`.", DefaultValue = "100000000")]
     long? GasCap { get; set; }
 
     [ConfigItem(
@@ -106,7 +106,6 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "The max length of HTTP request body, in bytes.", DefaultValue = "30000000")]
     long? MaxRequestBodySize { get; set; }
-
 
     [ConfigItem(
         Description = "The max number of logs per response for the `eth_getLogs` JSON-RPC method. `0` to lift the limit.",
@@ -182,4 +181,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "false")]
     bool EnablePerMethodMetrics { get; set; }
+
+    [ConfigItem(Description = "The eth_filters timeout, in milliseconds.", DefaultValue = "900000")]
+    int FiltersTimeout { get; set; }
 }

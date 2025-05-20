@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -41,9 +42,10 @@ namespace Nethermind.Trie.Test
             private TrieStore _trieStore;
             private readonly IPersistenceStrategy _persistenceStrategy;
             private readonly TestPruningStrategy _pruningStrategy;
+            private readonly IPruningConfig _pruningConfig;
 
             [DebuggerStepThrough]
-            private PruningContext(TestPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy)
+            private PruningContext(TestPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy, IPruningConfig? pruningConfig = null)
             {
                 _logManager = LimboLogs.Instance;
                 //new TestLogManager(LogLevel.Trace);
@@ -51,7 +53,9 @@ namespace Nethermind.Trie.Test
                 _dbProvider = TestMemDbProvider.Init();
                 _persistenceStrategy = persistenceStrategy;
                 _pruningStrategy = pruningStrategy;
-                _trieStore = new TrieStore(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);
+
+                _pruningConfig = pruningConfig ?? new PruningConfig() { TrackPastKeys = false };
+                _trieStore = TestTrieStoreFactory.Build(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _pruningConfig, _logManager);
                 _stateProvider = new WorldState(_trieStore, _dbProvider.CodeDb, _logManager);
                 _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
             }
@@ -78,13 +82,19 @@ namespace Nethermind.Trie.Test
             public static PruningContext InMemoryWithPastKeyTracking
             {
                 [DebuggerStepThrough]
-                get => new(new TestPruningStrategy(true, trackedPastKeyCount: 1000), No.Persistence);
+                get => new(new TestPruningStrategy(true), No.Persistence, new PruningConfig()
+                {
+                    TrackPastKeys = true,
+                });
             }
 
             public static PruningContext InMemoryAlwaysPrune
             {
                 [DebuggerStepThrough]
-                get => new(new TestPruningStrategy(true, true, 1000000), No.Persistence);
+                get => new(new TestPruningStrategy(true, true), No.Persistence, new PruningConfig()
+                {
+                    TrackPastKeys = true,
+                });
             }
 
             public static PruningContext SetupWithPersistenceEveryEightBlocks
@@ -124,8 +134,8 @@ namespace Nethermind.Trie.Test
 
             public PruningContext WithMaxDepth(int maxDepth)
             {
-                _pruningStrategy.MaxDepth = maxDepth;
-                return this;
+                _pruningConfig.PruningBoundary = maxDepth;
+                return new PruningContext(_pruningStrategy, _persistenceStrategy, _pruningConfig);
             }
 
             public PruningContext PruneOldBlock()
@@ -214,7 +224,7 @@ namespace Nethermind.Trie.Test
             public PruningContext DisposeAndRecreate()
             {
                 _trieStore.Dispose();
-                _trieStore = new TrieStore(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);
+                _trieStore = TestTrieStoreFactory.Build(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);
                 _stateProvider = new WorldState(_trieStore, _dbProvider.CodeDb, _logManager);
                 _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
                 return this;
@@ -312,9 +322,10 @@ namespace Nethermind.Trie.Test
 
             public PruningContext WithPrunePersistedNodeParameter(long minimumTarget, double portion)
             {
-                _pruningStrategy.PrunePersistedNodeMinimumTarget = minimumTarget;
-                _pruningStrategy.PrunePersistedNodePortion = portion;
-                return this;
+                _pruningConfig.PrunePersistedNodeMinimumTarget = minimumTarget;
+                _pruningConfig.PrunePersistedNodePortion = portion;
+
+                return new PruningContext(_pruningStrategy, _persistenceStrategy, _pruningConfig);
             }
 
             public void AssertThatTotalMemoryUsedIs(long memoryUsage)

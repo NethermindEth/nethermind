@@ -102,7 +102,7 @@ namespace Nethermind.Trie
             ILogManager logManager,
             ICappedArrayPool? bufferPool = null)
             : this(
-                new TrieStore(keyValueStore, logManager).GetTrieStore(null),
+                new RawScopedTrieStore(new NodeStorage(keyValueStore), null),
                 rootHash,
                 parallelBranches,
                 allowCommits,
@@ -470,7 +470,7 @@ namespace Nethermind.Trie
 
             void Trace(in ReadOnlySpan<byte> rawKey, in CappedArray<byte> value)
             {
-                _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.AsSpan().ToHexString()}")}");
+                _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
             }
 
             [DoesNotReturn]

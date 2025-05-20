@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
@@ -27,9 +28,6 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     // For backwards compatibility with previous Nethermind versions we also serialize it.
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Address? From { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public long? Gas { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? Value { get; set; }
@@ -97,14 +95,31 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         tx.GasLimit = Gas ?? 90_000;
         tx.Value = Value ?? 0;
         tx.Data = Input;
-        tx.GasPrice = GasPrice ?? 20.GWei();
+        tx.GasPrice = GasPrice ?? 0;
         tx.ChainId = ChainId;
         tx.SenderAddress = From ?? Address.SystemUser;
+        if ((R != 0 || S != 0) && (R is not null || S is not null))
+        {
+            ulong v;
+            if (V is null)
+            {
+                v = 0;
+            }
+            else if (V.Value > 1)
+            {
+                v = V.Value.ToUInt64(null); // non protected
+            }
+            else
+            {
+                v = EthereumEcdsaExtensions.CalculateV(ChainId ?? 0, V.Value == 1); // protected
+            }
+
+            tx.Signature = new(R ?? UInt256.Zero, S ?? UInt256.Zero, v);
+        }
 
         return tx;
     }
 
-    // TODO: Can we remove this code?
     public override void EnsureDefaults(long? gasCap)
     {
         if (gasCap is null || gasCap == 0)

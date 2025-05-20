@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -16,7 +17,7 @@ public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
     public static readonly PointEvaluationPrecompile Instance = new();
 
     private static readonly byte[] PointEvaluationSuccessfulResponse =
-        ((UInt256)Ckzg.Ckzg.FieldElementsPerBlob).ToBigEndian()
+        ((UInt256)Ckzg.FieldElementsPerBlob).ToBigEndian()
         .Concat(KzgPolynomialCommitments.BlsModulus.ToBigEndian())
         .ToArray();
 

@@ -31,8 +31,6 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             _selectionType = selectionType;
         }
 
-        public bool CanBeReplaced => _strategy.CanBeReplaced;
-
         public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
             UInt256? currentDiffOrNull = blockTree.BestSuggestedHeader?.TotalDifficulty;

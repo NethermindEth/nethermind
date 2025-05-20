@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using System;
 using System.Linq;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test;
@@ -36,10 +37,10 @@ internal class TransactionProcessorEip7702Tests
     {
         MemDb stateDb = new();
         _specProvider = new TestSpecProvider(Prague.Instance);
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
