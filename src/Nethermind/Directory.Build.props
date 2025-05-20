@@ -9,7 +9,6 @@
 
   <PropertyGroup Label="ProductInfo">
     <BuildTimestamp Condition="'$(BuildTimestamp)' == ''">$([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())</BuildTimestamp>
-    <Product>Nethermind</Product>
     <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit)</SourceRevisionId>
     <VersionPrefix>1.33.0</VersionPrefix>
     <VersionSuffix>unstable</VersionSuffix>

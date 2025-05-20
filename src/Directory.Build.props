@@ -12,6 +12,7 @@
 
   <PropertyGroup Label="ProductInfo">
     <Copyright>Demerzel Solutions Limited</Copyright>
+    <Product>Nethermind</Product>
   </PropertyGroup>
 
 </Project>
