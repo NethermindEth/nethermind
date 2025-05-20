@@ -23,6 +23,7 @@ public class Driver : IDisposable
     private readonly IDecodingPipeline _decodingPipeline;
     private readonly ISystemConfigDeriver _systemConfigDeriver;
     private readonly ChannelReader<ulong> _finalizedL1BlocksChannel;
+    private readonly IL1Bridge _l1Bridge;
     private readonly ulong _l2BlockTime;
 
     public Driver(IL1Bridge l1Bridge,
@@ -36,6 +37,7 @@ public class Driver : IDisposable
     {
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
+        _l1Bridge = l1Bridge;
         _finalizedL1BlocksChannel = l1Bridge.FinalizedL1BlocksChannel;
         _l2BlockTime = engineParameters.L2BlockTime.Value;
         _logger = logger;
@@ -52,6 +54,8 @@ public class Driver : IDisposable
     }
 
     private ulong _currentDerivedBlock;
+    private ulong _currentFinalized;
+    private L1BlockInfo? _currentFinalizedBlockOrigin;
 
     public async Task Run(CancellationToken token)
     {
@@ -62,7 +66,7 @@ public class Driver : IDisposable
                 Task finalizedBlockReady = _finalizedL1BlocksChannel.WaitToReadAsync(token).AsTask();
                 Task nextBatchReady = _decodingPipeline.DecodedBatchesReader.WaitToReadAsync(token).AsTask();
 
-                // Driver processing priorities: finalized, new batch
+                // Driver processing priorities: reorg, finalized, new batch
                 await Task.WhenAny(finalizedBlockReady, nextBatchReady);
 
                 if (finalizedBlockReady.IsCompleted)
@@ -78,6 +82,12 @@ public class Driver : IDisposable
                     await ProcessDecodedBatch(decodedBatch, batchOrigin, token);
                     continue;
                 }
+
+                L1BridgeStepResult stepResult = await _l1Bridge.Step(token);
+                if (stepResult == L1BridgeStepResult.Reorg)
+                {
+                    await ProcessReorg(token);
+                }
             }
         }
         catch (Exception e)
@@ -91,15 +101,24 @@ public class Driver : IDisposable
         }
     }
 
-    private readonly Queue<(ulong L1BatchOrigin, BlockId LastL2Block)> _safeBlocksQueue = new();
+    private async Task ProcessReorg(CancellationToken token)
+    {
+        if (_currentFinalizedBlockOrigin is null) return;
+        Reset(_currentFinalized);
+        await _decodingPipeline.Reset(token);
+        _l1Bridge.Reset(BlockId.FromL1BlockInfo(_currentFinalizedBlockOrigin));
+    }
+
+    private readonly Queue<(ulong L1BatchOrigin, BlockId LastL2Block, L1BlockInfo blockOrigin)> _safeBlocksQueue = new();
 
     private async Task ProcessNewFinalized(ulong newFinalized, CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info($"Processing new finalized L1 block. {newFinalized}");
         BlockId? lastL2Block = null;
+        L1BlockInfo? blockOrigin = null;
         while(_safeBlocksQueue.Any())
         {
-            (ulong l1BatchOrigin, BlockId last) = _safeBlocksQueue.Peek();
+            (ulong l1BatchOrigin, BlockId last, blockOrigin) = _safeBlocksQueue.Peek();
             if (l1BatchOrigin > newFinalized)
             {
                 break;
@@ -107,7 +126,13 @@ public class Driver : IDisposable
             lastL2Block = last;
             _safeBlocksQueue.Dequeue();
         }
-        if (lastL2Block is not null) await _executionEngineManager.FinalizeBlock(lastL2Block.Value, token);
+
+        if (lastL2Block is not null)
+        {
+            _currentFinalized = lastL2Block.Value.Number;
+            _currentFinalizedBlockOrigin = blockOrigin!;
+            await _executionEngineManager.FinalizeBlock(lastL2Block.Value, token);
+        }
     }
 
     private async Task ProcessDecodedBatch(BatchV1 decodedBatch, ulong batchOrigin, CancellationToken token)
@@ -136,6 +161,7 @@ public class Driver : IDisposable
             .DerivePayloadAttributes(l2Parent, decodedBatch, token)
             .GetAsyncEnumerator(token);
         BlockId? lastDerivedBlock = null;
+        L1BlockInfo? blockOrigin = null;
         while (await derivedPayloadAttributes.MoveNextAsync())
         {
             PayloadAttributesRef payloadAttributes = derivedPayloadAttributes.Current;
@@ -146,17 +172,20 @@ public class Driver : IDisposable
                 break;
             }
 
-            lastDerivedBlock = derivedBlock;
+            lastDerivedBlock = derivedBlock.Value;
+            blockOrigin = payloadAttributes.L1BlockInfo;
             _currentDerivedBlock = payloadAttributes.Number;
         }
 
-        if (lastDerivedBlock is not null) _safeBlocksQueue.Enqueue((batchOrigin, lastDerivedBlock.Value));
+        if (lastDerivedBlock is not null) _safeBlocksQueue.Enqueue((batchOrigin, lastDerivedBlock.Value, blockOrigin!));
     }
 
     public void Reset(ulong finalizedBlockNumber)
     {
         if (_logger.IsInfo) _logger.Info($"Resetting Driver. New finalized block {finalizedBlockNumber}");
         _currentDerivedBlock = finalizedBlockNumber;
+        _currentFinalized = finalizedBlockNumber;
+        _safeBlocksQueue.Clear();
     }
 
     public void Dispose()

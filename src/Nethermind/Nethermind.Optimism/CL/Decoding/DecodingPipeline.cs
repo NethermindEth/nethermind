@@ -19,6 +19,8 @@ public class DecodingPipeline(ILogger logger) : IDecodingPipeline
     public ChannelWriter<DaDataSource> DaDataWriter => _inputChannel.Writer;
     public ChannelReader<(BatchV1, ulong)> DecodedBatchesReader => _outputChannel.Reader;
 
+    private int _resetRequested = 0;
+
     public async Task Run(CancellationToken token)
     {
         var buffer = new Memory<byte>(new byte[BlobDecoder.MaxBlobDataSize]);
@@ -26,6 +28,13 @@ public class DecodingPipeline(ILogger logger) : IDecodingPipeline
         {
             while (!token.IsCancellationRequested)
             {
+                if (Interlocked.CompareExchange(ref _resetRequested, 0, 0) == 1)
+                {
+                    await Clear(token);
+                    Interlocked.Exchange(ref _resetRequested, 0);
+                    _resetCompleted.SetResult();
+                }
+
                 buffer.Clear();
                 var daData = await _inputChannel.Reader.ReadAsync(token);
 
@@ -68,5 +77,29 @@ public class DecodingPipeline(ILogger logger) : IDecodingPipeline
         {
             if (logger.IsInfo) logger.Info($"Decoding pipeline is shutting down.");
         }
+    }
+
+    private async Task Clear(CancellationToken token)
+    {
+        while (await _inputChannel.Reader.WaitToReadAsync(token))
+        {
+            while (_inputChannel.Reader.TryRead(out _)) { }
+        }
+
+        while (await _outputChannel.Reader.WaitToReadAsync(token))
+        {
+            while (_outputChannel.Reader.TryRead(out _)) { }
+        }
+
+        _frameQueue.Clear();
+    }
+
+    private TaskCompletionSource _resetCompleted = new();
+
+    public async Task Reset(CancellationToken token)
+    {
+        Interlocked.Exchange(ref _resetRequested, 1);
+        await _resetCompleted.Task;
+        _resetCompleted = new();
     }
 }

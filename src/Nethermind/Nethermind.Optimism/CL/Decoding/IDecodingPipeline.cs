@@ -14,6 +14,7 @@ public interface IDecodingPipeline
     ChannelWriter<DaDataSource> DaDataWriter { get; }
     // L1BatchOrigin - block at witch we fully reconstructed Batch
     ChannelReader<(BatchV1 Batch, ulong L1BatchOrigin)> DecodedBatchesReader { get; }
+    Task Reset(CancellationToken token);
 }
 
 public class DaDataSource

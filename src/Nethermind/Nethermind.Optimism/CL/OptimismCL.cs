@@ -119,13 +119,12 @@ public class OptimismCL : IDisposable
                 await Task.WhenAll(
                     p2pTask,
                     _decodingPipeline.Run(_cancellationTokenSource.Token),
-                    _l1Bridge.Run(_cancellationTokenSource.Token),
                     _driver.Run(_cancellationTokenSource.Token)
                 );
             }
             else
             {
-                _l1Bridge.Reset(finalized.L1BlockInfo);
+                _l1Bridge.Reset(BlockId.FromL1BlockInfo(finalized.L1BlockInfo));
                 Task decodingPipelineTask = _decodingPipeline.Run(_cancellationTokenSource.Token);
                 _driver.Reset(finalized.Number);
                 Task driverTask = _driver.Run(_cancellationTokenSource.Token);
@@ -134,7 +133,6 @@ public class OptimismCL : IDisposable
                 await Task.WhenAll(
                     _p2p.Run(_cancellationTokenSource.Token),
                     decodingPipelineTask,
-                    _l1Bridge.Run(_cancellationTokenSource.Token),
                     driverTask
                 );
             }
