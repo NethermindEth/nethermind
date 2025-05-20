@@ -194,6 +194,7 @@ public class TestBlockchain : IDisposable
             state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
             state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
 
+            InitialStateMutator?.Invoke(state);
             byte[] code = Bytes.FromHexString("0xabcd");
             state.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
 
