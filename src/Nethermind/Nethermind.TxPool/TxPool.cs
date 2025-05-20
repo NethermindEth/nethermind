@@ -757,27 +757,6 @@ namespace Nethermind.TxPool
                     shouldBeDumped |= balance < cost;
                 }
 
-                if (!shouldBeDumped)
-                {
-                    ProofVersion headSpec = _specProvider.GetCurrentHeadSpec().BlobProofVersion;
-
-                    bool drop = false;
-
-                    if (transactions.Any(t => t.SupportsBlobs))
-                    {
-                        foreach (Transaction txn in transactions)
-                        {
-                            drop |= (txn is LightTransaction ltxn ? ltxn.ProofVersion : ((txn.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default)) != headSpec;
-
-                            if (drop)
-                            {
-                                _hashCache.DeleteFromLongTerm(txn.Hash!);
-                                updateTx(transactions, txn, changedGasBottleneck: null, lastElement);
-                            }
-                        }
-                    }
-                }
-
                 if (shouldBeDumped)
                 {
                     foreach (Transaction transaction in transactions)
@@ -791,7 +770,26 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    UpdateGasBottleneck(transactions, currentNonce, balance, lastElement, updateTx);
+                    if (transactions.Any(t => t.SupportsBlobs))
+                    {
+                        ProofVersion headSpec = _specProvider.GetCurrentHeadSpec().BlobProofVersion;
+                        bool drop = false;
+
+                        foreach (Transaction txn in transactions)
+                        {
+                            drop |= txn.GetProofVersion() != headSpec;
+
+                            if (drop)
+                            {
+                                _hashCache.DeleteFromLongTerm(txn.Hash!);
+                                updateTx(transactions, txn, changedGasBottleneck: null, lastElement);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        UpdateGasBottleneck(transactions, currentNonce, balance, lastElement, updateTx);
+                    }
                 }
             }
         }
