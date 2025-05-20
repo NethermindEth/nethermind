@@ -926,7 +926,7 @@ public class TrieNodeTests
     [Test]
     public void Rlp_is_cloned_when_cloning()
     {
-        RawTrieStore fullTrieStore = new RawTrieStore(new MemDb());
+        TestRawTrieStore fullTrieStore = new TestRawTrieStore(new MemDb());
         IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
         TrieNode leaf1 = new(NodeType.Leaf);
