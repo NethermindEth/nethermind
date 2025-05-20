@@ -321,6 +321,11 @@ namespace Nethermind.Core.Specs
         bool IsEip7702Enabled { get; }
 
         /// <summary>
+        /// Transactions that allows code delegation for EOA
+        /// </summary>
+        bool IsEip7918Enabled { get; }
+
+        /// <summary>
         /// Blob base fee collection for Gnosis
         /// </summary>
         bool IsEip4844FeeCollectorEnabled { get; }
