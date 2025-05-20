@@ -3,7 +3,7 @@
 
 namespace Nethermind.Trie.Pruning;
 
-public class MinBlockInCachePruneStrategy(IPruningStrategy baseStrategy, long minBlockFromPersisted, long pruneBoundary): IPruningStrategy
+public class MinBlockInCachePruneStrategy(IPruningStrategy baseStrategy, long minBlockFromPersisted, long pruneBoundary) : IPruningStrategy
 {
     public bool DeleteObsoleteKeys => baseStrategy.DeleteObsoleteKeys;
 

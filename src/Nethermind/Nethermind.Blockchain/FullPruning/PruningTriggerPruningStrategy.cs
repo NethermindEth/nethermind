@@ -8,7 +8,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.FullPruning;
 
-public class PruningTriggerPruningStrategy: IPruningStrategy, IDisposable
+public class PruningTriggerPruningStrategy : IPruningStrategy, IDisposable
 {
     private readonly IFullPruningDb _fullPruningDb;
     private readonly IPruningStrategy _basePruningStrategy;
