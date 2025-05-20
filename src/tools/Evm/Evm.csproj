@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="System.CommandLine" />
+      <ProjectReference Include="..\..\Nethermind\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
+      <ProjectReference Include="..\..\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />
+      <ProjectReference Include="..\..\Nethermind\Nethermind.Evm\Nethermind.Evm.csproj" />
+      <ProjectReference Include="..\..\Nethermind\Nethermind.Db\Nethermind.Db.csproj" />
+      <ProjectReference Include="..\..\Nethermind\Nethermind.Specs\Nethermind.Specs.csproj" />
+      <ProjectReference Include="..\..\Nethermind\Nethermind.Trie\Nethermind.Trie.csproj" />
+      <ProjectReference Include="..\..\Nethermind\Nethermind.Consensus\Nethermind.Consensus.csproj" />
+      <ProjectReference Include="..\..\Nethermind\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
+      <ProjectReference Include="..\..\Nethermind\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
+    </ItemGroup>
+
+</Project>
