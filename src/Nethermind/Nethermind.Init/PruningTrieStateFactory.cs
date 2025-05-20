@@ -76,6 +76,8 @@ public class PruningTrieStateFactory(
             pruningConfig.PruningBoundary = 64;
         }
 
+        AdviseConfig();
+
         IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
         IDb stateDb = dbProvider.StateDb;
         IPersistenceStrategy persistenceStrategy;
@@ -83,43 +85,10 @@ public class PruningTrieStateFactory(
         if (pruningConfig.Mode.IsMemory())
         {
             persistenceStrategy = No.Persistence;
-            if (pruningConfig.Mode.IsFull() && stateDb is IFullPruningDb fullPruningDb)
-            {
-                PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(fullPruningDb, blockTree!, logManager);
-                disposeStack.Push(triggerPersistenceStrategy);
-                persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
-            }
         }
         else
         {
             persistenceStrategy = Persist.EveryNBlock(pruningConfig.PersistenceInterval);
-        }
-
-        // On a 7950x (32 logical coree), assuming write buffer is large enough, the pruning time is about 3 second
-        // with 8GB of pruning cache. Lets assume that this is a safe estimate as the ssd can be a limitation also.
-        long maximumCacheMb = Environment.ProcessorCount * 250;
-        // It must be at least 1GB as on mainnet at least 500MB will remain to support snap sync. So pruning cache only drop to about 500MB after pruning.
-        maximumCacheMb = Math.Max(1000, maximumCacheMb);
-        if (pruningConfig.CacheMb > maximumCacheMb)
-        {
-            // The user can also change `--Db.StateDbWriteBufferSize`.
-            // Which may or may not be better as each read will need to go through eacch write buffer.
-            // So having less of them is probably better..
-            if (_logger.IsWarn) _logger.Warn($"Detected {pruningConfig.CacheMb}MB of pruning cache config. Pruning cache more than {maximumCacheMb}MB is not recommended with {Environment.ProcessorCount} logical core as it may cause long memory pruning time which affect attestation.");
-        }
-
-        var totalWriteBufferMb = dbConfig.StateDbWriteBufferNumber * dbConfig.StateDbWriteBufferSize / (ulong)1.MB();
-        var minimumWriteBufferMb = 0.2 * pruningConfig.CacheMb;
-        if (totalWriteBufferMb < minimumWriteBufferMb)
-        {
-            long minimumWriteBufferSize = (int)Math.Ceiling((minimumWriteBufferMb * 1.MB()) / dbConfig.StateDbWriteBufferNumber);
-
-            if (_logger.IsWarn) _logger.Warn($"Detected {totalWriteBufferMb}MB of maximum write buffer size. Write buffer size should be at least 20% of pruning cache MB or memory pruning may slow down. Try setting `--Db.{nameof(dbConfig.StateDbWriteBufferSize)} {minimumWriteBufferSize}`.");
-        }
-
-        if (pruningConfig.CacheMb <= pruningConfig.DirtyCacheMb)
-        {
-            throw new InvalidConfigurationException("Dirty pruning cache size must be less than persisted pruning cache size.", -1);
         }
 
         pruningStrategy = Prune
@@ -132,6 +101,14 @@ public class PruningTrieStateFactory(
         {
             pruningStrategy = pruningStrategy
                 .DontDeleteObsoleteNode();
+        }
+
+        if (stateDb is IFullPruningDb fullPruningDb)
+        {
+            PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(fullPruningDb, blockTree!, pruningStrategy, logManager);
+            disposeStack.Push(triggerPersistenceStrategy);
+            persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
+            pruningStrategy = triggerPersistenceStrategy;
         }
 
         INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb);
@@ -209,6 +186,36 @@ public class PruningTrieStateFactory(
         );
 
         return (stateManager, mainNodeStorage, adminRpcModule);
+    }
+
+    private void AdviseConfig()
+    {
+        // On a 7950x (32 logical coree), assuming write buffer is large enough, the pruning time is about 3 second
+        // with 8GB of pruning cache. Lets assume that this is a safe estimate as the ssd can be a limitation also.
+        long maximumCacheMb = Environment.ProcessorCount * 250;
+        // It must be at least 1GB as on mainnet at least 500MB will remain to support snap sync. So pruning cache only drop to about 500MB after pruning.
+        maximumCacheMb = Math.Max(1000, maximumCacheMb);
+        if (pruningConfig.CacheMb > maximumCacheMb)
+        {
+            // The user can also change `--Db.StateDbWriteBufferSize`.
+            // Which may or may not be better as each read will need to go through eacch write buffer.
+            // So having less of them is probably better..
+            if (_logger.IsWarn) _logger.Warn($"Detected {pruningConfig.CacheMb}MB of pruning cache config. Pruning cache more than {maximumCacheMb}MB is not recommended with {Environment.ProcessorCount} logical core as it may cause long memory pruning time which affect attestation.");
+        }
+
+        var totalWriteBufferMb = dbConfig.StateDbWriteBufferNumber * dbConfig.StateDbWriteBufferSize / (ulong)1.MB();
+        var minimumWriteBufferMb = 0.2 * pruningConfig.CacheMb;
+        if (totalWriteBufferMb < minimumWriteBufferMb)
+        {
+            long minimumWriteBufferSize = (int)Math.Ceiling((minimumWriteBufferMb * 1.MB()) / dbConfig.StateDbWriteBufferNumber);
+
+            if (_logger.IsWarn) _logger.Warn($"Detected {totalWriteBufferMb}MB of maximum write buffer size. Write buffer size should be at least 20% of pruning cache MB or memory pruning may slow down. Try setting `--Db.{nameof(dbConfig.StateDbWriteBufferSize)} {minimumWriteBufferSize}`.");
+        }
+
+        if (pruningConfig.CacheMb <= pruningConfig.DirtyCacheMb)
+        {
+            throw new InvalidConfigurationException("Dirty pruning cache size must be less than persisted pruning cache size.", -1);
+        }
     }
 
     private void InitializeFullPruning(
