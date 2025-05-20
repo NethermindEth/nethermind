@@ -3,7 +3,8 @@
   "dataDir": "taiko-alethia",
   "engine": {
     "Taiko": {
-      "ontakeTransition": "0x836c0"
+      "ontakeTransition": "0x836c0",
+      "pacayaTransition": "0x11CAB0"
     }
   },
   "params": {
@@ -47,7 +48,6 @@
     "eip3855TransitionTimestamp": "0x0",
     "eip3860TransitionTimestamp": "0x0",
     "terminalTotalDifficulty": "0",
-
     "eip1559BaseFeeMinValueTransition": "0x836c0"
   },
   "genesis": {
