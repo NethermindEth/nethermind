@@ -11,6 +11,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -18,7 +19,7 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class InclusionListValidatorTests
 {
-    private ITransactionProcessor _transactionProcessor;
+    private IWorldState _stateProvider;
     private ISpecProvider _specProvider;
     private InclusionListValidator _inclusionListValidator;
     private Transaction _validTx;
@@ -26,11 +27,11 @@ public class InclusionListValidatorTests
     [SetUp]
     public void Setup()
     {
-        _transactionProcessor = Substitute.For<ITransactionProcessor>();
+        _stateProvider = Substitute.For<IWorldState>();
         _specProvider = new CustomSpecProvider(((ForkActivation)0, Fork7805.Instance));
         _inclusionListValidator = new InclusionListValidator(
             _specProvider,
-            _transactionProcessor);
+            _stateProvider);
 
         _validTx = Build.A.Transaction
             .WithGasLimit(100_000)
@@ -72,8 +73,9 @@ public class InclusionListValidatorTests
     [Test]
     public void When_valid_tx_excluded_then_reject()
     {
-        _transactionProcessor.BuildUp(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
-            .Returns(TransactionResult.Ok);
+        // _transactionProcessor.BuildUp(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
+        //     .Returns(TransactionResult.Ok);
+		// todo: fake world state
 
         var block = Build.A.Block
             .WithGasLimit(30_000_000)

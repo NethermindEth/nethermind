@@ -4,14 +4,14 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Validators;
 
 public class InclusionListValidator(
     ISpecProvider specProvider,
-    ITransactionProcessor transactionProcessor) : IInclusionListValidator
+    IWorldState worldState) : IInclusionListValidator
 {
     public bool ValidateInclusionList(Block block, Func<Transaction, bool> isTransactionInBlock) =>
         ValidateInclusionList(block, isTransactionInBlock, specProvider.GetSpec(block.Header));
@@ -47,7 +47,13 @@ public class InclusionListValidator(
                 continue;
             }
 
-            bool couldIncludeTx = transactionProcessor.CallAndRestore(tx, new(block.Header, spec), NullTxTracer.Instance);
+			// todo: check conditions
+			UInt256 txCost = tx.Value + (UInt256)tx.GasLimit * tx.GasPrice;
+            bool couldIncludeTx =
+				tx.GasPrice >= block.BaseFeePerGas &&
+				worldState.GetBalance(tx.SenderAddress) >= txCost &&
+				worldState.GetNonce(tx.SenderAddress) == tx.Nonce;
+
             if (couldIncludeTx)
             {
                 return false;

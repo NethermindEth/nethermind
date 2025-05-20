@@ -62,7 +62,7 @@ public partial class BlockProcessor(
     private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
     private readonly IExecutionRequestsProcessor _executionRequestsProcessor = executionRequestsProcessor ?? new ExecutionRequestsProcessor(transactionProcessor);
     private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-    private readonly IInclusionListValidator _inclusionListValidator = new InclusionListValidator(specProvider, transactionProcessor);
+    private readonly IInclusionListValidator _inclusionListValidator = new InclusionListValidator(specProvider, stateProvider);
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
