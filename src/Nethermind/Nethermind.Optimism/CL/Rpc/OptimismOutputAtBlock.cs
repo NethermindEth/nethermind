@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Optimism.CL;
 
@@ -16,3 +17,23 @@ public sealed record OptimismOutputAtBlock
     public required OptimismSyncStatus Status { get; init; }
 }
 
+public sealed record OptimismOutputV0
+{
+    public static readonly byte[] Version = new byte[32];
+
+    public required Hash256 StateRoot { get; init; }
+    public required Hash256 MessagePasserStorageRoot { get; init; }
+    public required Hash256 BlockHash { get; init; }
+
+    public Hash256 Root()
+    {
+        Span<byte> buffer = stackalloc byte[128];
+
+        Version.CopyTo(buffer);
+        StateRoot.Bytes.CopyTo(buffer[32..]);
+        MessagePasserStorageRoot.Bytes.CopyTo(buffer[64..]);
+        BlockHash.Bytes.CopyTo(buffer[96..]);
+
+        return new Hash256(buffer);
+    }
+}

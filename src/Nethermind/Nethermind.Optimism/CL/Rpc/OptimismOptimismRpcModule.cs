@@ -22,9 +22,46 @@ public class OptimismOptimismRpcModule(
     ChainSpec chainSpec
 ) : IOptimismOptimismRpcModule
 {
-    public Task<ResultWrapper<OptimismOutputAtBlock>> optimism_outputAtBlock(ulong blockNumber)
+    public async Task<ResultWrapper<OptimismOutputAtBlock>> optimism_outputAtBlock(ulong blockNumber)
     {
-        return ResultWrapper<OptimismOutputAtBlock>.Fail("Not implemented");
+        var statusResult = await optimism_syncStatus();
+        if (statusResult.Result.ResultType != ResultType.Success)
+        {
+            return ResultWrapper<OptimismOutputAtBlock>.Fail("Failed to get L2 block ref with sync status");
+        }
+
+        var status = statusResult.Data;
+        if (blockNumber > status.FinalizedL2.Number)
+        {
+            return ResultWrapper<OptimismOutputAtBlock>.Fail("Block is not finalized");
+        }
+
+        var block = await l2Api.GetBlockByNumber(blockNumber);
+
+        var proof = await l2Api.GetProof(PreDeploys.L2ToL1MessagePasser, [], (long)block.Number);
+        if (proof == null)
+        {
+            return ResultWrapper<OptimismOutputAtBlock>.Fail("Failed to get proof");
+        }
+
+        var output = new OptimismOutputV0
+        {
+            StateRoot = block.StateRoot,
+            MessagePasserStorageRoot = proof.StorageRoot,
+            BlockHash = block.Hash
+        };
+
+        var result = new OptimismOutputAtBlock
+        {
+            Version = OptimismOutputV0.Version,
+            OutputRoot = output.Root(),
+            BlockRef = L2BlockRef.From(block),
+            WithdrawalStorageRoot = output.MessagePasserStorageRoot,
+            StateRoot = output.StateRoot,
+            Status = status
+        };
+
+        return ResultWrapper<OptimismOutputAtBlock>.Success(result);
     }
 
     public Task<ResultWrapper<OptimismRollupConfig>> optimism_rollupConfig()
