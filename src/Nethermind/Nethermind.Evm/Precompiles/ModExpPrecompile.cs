@@ -205,6 +205,10 @@ namespace Nethermind.Evm.Precompiles
             return maxLength > 32 && isEip7883Enabled ? 2 * words * words : words * words;
         }
 
+        static readonly UInt256 IterationCountMultiplier = 8;
+
+        static readonly UInt256 IterationCountMultiplierEip7883 = 16;
+
         /// <summary>
         /// def calculate_iteration_count(exponent_length, exponent):
         /// iteration_count = 0
@@ -234,8 +238,9 @@ namespace Nethermind.Evm.Precompiles
                         bitLength--;
                     }
 
-                    UInt256 multiplier = (UInt256)(isEip7883Enabled ? 16 : 8);
-                    bool overflow = UInt256.MultiplyOverflow(exponentLength - 32, multiplier, out UInt256 multiplicationResult);
+                    bool overflow = UInt256.MultiplyOverflow(exponentLength - 32,
+                        isEip7883Enabled ? IterationCountMultiplierEip7883 : IterationCountMultiplier,
+                        out UInt256 multiplicationResult);
                     overflow |= UInt256.AddOverflow(multiplicationResult, (UInt256)bitLength, out iterationCount);
                     if (overflow)
                     {
