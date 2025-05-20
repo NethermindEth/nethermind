@@ -267,6 +267,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             {
                 if (Cancun.Instance.Name.Equals(forkName, StringComparison.OrdinalIgnoreCase)) parameters.Timestamp ??= spec.CancunTimestamp;
                 if (Prague.Instance.Name.Equals(forkName, StringComparison.OrdinalIgnoreCase)) parameters.Timestamp ??= spec.PragueTimestamp;
+                if (Osaka.Instance.Name.Equals(forkName, StringComparison.OrdinalIgnoreCase)) parameters.Timestamp ??= spec.OsakaTimestamp;
             }
 
             ulong timestamp = 0;
