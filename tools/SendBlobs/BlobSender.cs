@@ -290,12 +290,13 @@ internal class BlobSender
         if (defaultMaxFeePerBlobGas is null)
         {
             ulong excessBlobsReserve = 2 * spec.TargetBlobCount;
-            BlobGasCalculator.TryCalculateFeePerBlobGas(
-                (block.ExcessBlobGas ?? 0) +
+			ulong excessBlobGas = (block.ExcessBlobGas ?? 0) +
                 excessBlobs * spec.MaxBlobCount +
-                excessBlobsReserve,
+                excessBlobsReserve;
+            BlobGasCalculator.TryCalculateFeePerBlobGas(
+                excessBlobGas,
                 out UInt256 blobGasPrice,
-                _specProvider.GetSpec(block.ToBlock().Header));
+                spec);
             result.maxFeePerBlobGas = blobGasPrice;
         }
         else
