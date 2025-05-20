@@ -42,7 +42,7 @@ namespace Nethermind.Db
         public int DirtyNodeShardBit { get; set; } = 8;
         public double PrunePersistedNodePortion { get; set; } = 0.05;
         public long PrunePersistedNodeMinimumTarget { get; set; } = 50.MiB();
-        public long MaxUnpersistedBlockCount { get; set; } = 297;
-        public long MinUnpersistedBlockCount { get; set; } = 32;
+        public long MaxUnpersistedBlockCount { get; set; } = 297; // About 1 hour on mainnet
+        public long MinUnpersistedBlockCount { get; set; } = 8; // About slightly more than 1 minute
     }
 }

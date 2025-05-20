@@ -17,19 +17,21 @@ namespace Nethermind.Blockchain.FullPruning;
 /// Used when both memory pruning and full pruning are enabled.
 /// We need to store state trie to DB to be able to copy this trie into new database in full pruning.
 /// </remarks>
-public class PruningTriggerPersistenceStrategy : IPersistenceStrategy, IDisposable
+public class PruningTriggerPersistenceStrategy : IPersistenceStrategy, IPruningStrategy, IDisposable
 {
     private readonly IFullPruningDb _fullPruningDb;
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
     private int _inPruning = 0;
     private long? _minPersistedBlock = null;
+    private readonly IPruningStrategy _basePruningStrategy;
 
-    public PruningTriggerPersistenceStrategy(IFullPruningDb fullPruningDb, IBlockTree blockTree, ILogManager logManager)
+    public PruningTriggerPersistenceStrategy(IFullPruningDb fullPruningDb, IBlockTree blockTree, IPruningStrategy basePruningStrategy, ILogManager logManager)
     {
         _fullPruningDb = fullPruningDb;
         _blockTree = blockTree;
         _logger = logManager.GetClassLogger();
+        _basePruningStrategy = basePruningStrategy;
         _fullPruningDb.PruningFinished += OnPruningFinished;
         _fullPruningDb.PruningStarted += OnPruningStarted;
     }
@@ -66,6 +68,26 @@ public class PruningTriggerPersistenceStrategy : IPersistenceStrategy, IDisposab
 
         return inPruning;
     }
+
+    public bool DeleteObsoleteKeys => _basePruningStrategy.DeleteObsoleteKeys;
+
+    public bool ShouldPruneDirtyNode(TrieStoreState state)
+    {
+        bool inPruning = _inPruning != 0;
+        if (inPruning)
+        {
+            // `ShouldPersist` would cause all block to be persisted which is good, but we also need to trigger
+            // snapshot also, which normally only happens
+            if (state.LatestCommittedBlock % 8 == 0)
+            {
+                Console.Error.WriteLine("Trigger");
+                return true;
+            }
+        }
+        return _basePruningStrategy.ShouldPruneDirtyNode(state);
+    }
+
+    public bool ShouldPrunePersistedNode(TrieStoreState state) => _basePruningStrategy.ShouldPrunePersistedNode(state);
 
     public bool IsFullPruning => _inPruning != 0;
 

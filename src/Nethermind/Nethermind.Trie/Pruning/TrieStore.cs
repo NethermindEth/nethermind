@@ -1120,7 +1120,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     }
 
     public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
-    public bool IsCurrentlyFullPruning => _persistenceStrategy.IsFullPruning;
 
     private class TrieKeyValueStore(TrieStore trieStore) : IReadOnlyKeyValueStore
     {
