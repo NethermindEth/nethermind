@@ -934,7 +934,6 @@ public class TrieNodeTests
         leaf1.Value = new byte[111];
         TreePath emptyPath = TreePath.Empty;
         leaf1.ResolveKey(trieStore, ref emptyPath, false);
-        Console.Error.WriteLine("Keccak " + leaf1.Keccak);
         leaf1.Seal();
 
         TrieNode leaf2 = new(NodeType.Leaf);
