@@ -12,10 +12,126 @@ public interface IOptimismOptimismRpcModule : IRpcModule
 {
     [JsonRpcMethod(
         IsImplemented = false,
-        Description = "TODO",
+        Description = "Get the output root at a specific block",
         IsSharable = true,
-        ExampleResponse = "TODO")]
-    public Task<ResultWrapper<int>> optimism_outputAtBlock();
+        ExampleResponse = """
+        {
+            "version": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "outputRoot": "0xd13f0fb77010a8d8d000694b290607e961a96679a5f95dd2729dbd8449d61f71",
+            "blockRef": {
+                "hash": "0x2b8e886f2ba10fbb12c56917bd7d645149e80a6b63ed3a22706ff77f4f68b31f",
+                "number": 27982526,
+                "parentHash": "0xb0ba7dd7e480dba77138bb8e7c3d8336ecf8506d43c72cd728c56e18f9d855de",
+                "timestamp": 1747767592,
+                "l1origin": {
+                    "hash": "0xec9cffbe80bf9464bb22696cc42044e0dae1ddcf1dc731e0f71d336dae6cf42a",
+                    "number": 8369709
+                },
+                "sequenceNumber": 3
+            },
+            "withdrawalStorageRoot": "0x086887b2594a26b67d79630404998a03636eb5be95b5422079fff0856cc436e8",
+            "stateRoot": "0xeef23eb186808bb06e74b915cd0cc028fad7fbff016b9d5f3fb75cd2098b4ff9",
+            "syncStatus": {
+                "current_l1": {
+                    "hash": "0x7436683b06cbe2a6e5ddee3b56662a06dad9d1ded8aaa1025db7d00fd40ad660",
+                    "number": 8369912,
+                    "parentHash": "0xda0c6532118c2fed831c452cf072d997ef93ffacb2229882b10375b51d09eed2",
+                    "timestamp": 1747769952
+                },
+                "current_l1_finalized": {
+                    "hash": "0x702499355918ad1c1568f9e3552b6f8cdf7c55020f856c127f4d99f651a71f5c",
+                    "number": 8369816,
+                    "parentHash": "0xfd46bb323d403a18cd7e7f7dd75b25a6fc11042a90d20bedf5cc7ca21be7e903",
+                    "timestamp": 1747768800
+                },
+                "head_l1": {
+                    "hash": "0xda0c6532118c2fed831c452cf072d997ef93ffacb2229882b10375b51d09eed2",
+                    "number": 8369911,
+                    "parentHash": "0x0e99acec22398878f90f4061894669ac3d6e92409b849c849d84ead826c6f4b2",
+                    "timestamp": 1747769940
+                },
+                "safe_l1": {
+                    "hash": "0x795d9561c7c5e9cbc26f3834d6911003a4ba1c57b0f7cb2d07f2bba1299481a6",
+                    "number": 8369848,
+                    "parentHash": "0x35968c6c0e0b46f2096a4dfa19f8176640d774a25d76e5a899e3b1f495d3ed89",
+                    "timestamp": 1747769184
+                },
+                "finalized_l1": {
+                    "hash": "0x702499355918ad1c1568f9e3552b6f8cdf7c55020f856c127f4d99f651a71f5c",
+                    "number": 8369816,
+                    "parentHash": "0xfd46bb323d403a18cd7e7f7dd75b25a6fc11042a90d20bedf5cc7ca21be7e903",
+                    "timestamp": 1747768800
+                },
+                "unsafe_l2": {
+                    "hash": "0x2ff9b8127f79a19a5fbf1656612eade0763c5ba6be6f5f5b954d5ca7d3b24dbe",
+                    "number": 27983710,
+                    "parentHash": "0x51bffa9fedb78364086ba45d38b82c24d3397a0dcc51cbc68cecc7ebc9b1f4f8",
+                    "timestamp": 1747769960,
+                    "l1origin": {
+                        "hash": "0x55421b87f34d649251e1b4bb8e3cacd8de6b994a84a0e386cbefb69dd251e830",
+                        "number": 8369907
+                    },
+                    "sequenceNumber": 0
+                },
+                "safe_l2": {
+                    "hash": "0x12c18807eb1578776d9237b33fde9baeec8b9b6f9594eae8bc5208b177652774",
+                    "number": 27983607,
+                    "parentHash": "0xe514721b50d0abb179b5fdb099ed0f8d8a5e2c75d42ba5864337f03c73e07f31",
+                    "timestamp": 1747769754,
+                    "l1origin": {
+                        "hash": "0xb27ea6ae8fea77a431041ee6edb6858d8243cffaf21a1657b10e8c5e080847f2",
+                        "number": 8369889
+                    },
+                    "sequenceNumber": 6
+                },
+                "finalized_l2": {
+                    "hash": "0xaf6ec2ad20956631f6da172fa4dd3f7ff2aa4a8624e3b85bc452a7112430f193",
+                    "number": 27983037,
+                    "parentHash": "0xf822e3d49edc88c7eb92c82d4aaf0ac6996e4d0ff2bf301b70d9e0db200ad218",
+                    "timestamp": 1747768614,
+                    "l1origin": {
+                        "hash": "0x01d7decde6bd1557e8192cd42980c8ecfc9f17651a8be8106a0bfaeac5400b67",
+                        "number": 8369794
+                    },
+                    "sequenceNumber": 2
+                },
+                "pending_safe_l2": {
+                    "hash": "0x12c18807eb1578776d9237b33fde9baeec8b9b6f9594eae8bc5208b177652774",
+                    "number": 27983607,
+                    "parentHash": "0xe514721b50d0abb179b5fdb099ed0f8d8a5e2c75d42ba5864337f03c73e07f31",
+                    "timestamp": 1747769754,
+                    "l1origin": {
+                        "hash": "0xb27ea6ae8fea77a431041ee6edb6858d8243cffaf21a1657b10e8c5e080847f2",
+                        "number": 8369889
+                    },
+                    "sequenceNumber": 6
+                },
+                "cross_unsafe_l2": {
+                    "hash": "0x2ff9b8127f79a19a5fbf1656612eade0763c5ba6be6f5f5b954d5ca7d3b24dbe",
+                    "number": 27983710,
+                    "parentHash": "0x51bffa9fedb78364086ba45d38b82c24d3397a0dcc51cbc68cecc7ebc9b1f4f8",
+                    "timestamp": 1747769960,
+                    "l1origin": {
+                        "hash": "0x55421b87f34d649251e1b4bb8e3cacd8de6b994a84a0e386cbefb69dd251e830",
+                        "number": 8369907
+                    },
+                    "sequenceNumber": 0
+                },
+                "local_safe_l2": {
+                    "hash": "0x12c18807eb1578776d9237b33fde9baeec8b9b6f9594eae8bc5208b177652774",
+                    "number": 27983607,
+                    "parentHash": "0xe514721b50d0abb179b5fdb099ed0f8d8a5e2c75d42ba5864337f03c73e07f31",
+                    "timestamp": 1747769754,
+                    "l1origin": {
+                        "hash": "0xb27ea6ae8fea77a431041ee6edb6858d8243cffaf21a1657b10e8c5e080847f2",
+                        "number": 8369889
+                    },
+                    "sequenceNumber": 6
+                }
+            }
+        }
+        """)]
+    public Task<ResultWrapper<OptimismOutputAtBlock>> optimism_outputAtBlock(ulong blockNumber);
 
     [JsonRpcMethod(
         IsImplemented = true,

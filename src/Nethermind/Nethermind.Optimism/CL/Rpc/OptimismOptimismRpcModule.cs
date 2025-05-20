@@ -22,9 +22,9 @@ public class OptimismOptimismRpcModule(
     ChainSpec chainSpec
 ) : IOptimismOptimismRpcModule
 {
-    public Task<ResultWrapper<int>> optimism_outputAtBlock()
+    public Task<ResultWrapper<OptimismOutputAtBlock>> optimism_outputAtBlock(ulong blockNumber)
     {
-        return ResultWrapper<int>.Success(0);
+        return ResultWrapper<OptimismOutputAtBlock>.Fail("Not implemented");
     }
 
     public Task<ResultWrapper<OptimismRollupConfig>> optimism_rollupConfig()
