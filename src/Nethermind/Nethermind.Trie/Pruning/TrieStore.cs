@@ -368,11 +368,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         Prune();
     }
 
-
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-
-    // Used in testing to not have to wait for condition.
-    public event EventHandler? OnMemoryPruneCompleted;
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
     {
@@ -478,11 +474,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                         PrunePersistedNodes();
                     }
                 }
-            });
-
-            _pruningTask.ContinueWith(_ =>
-            {
-                OnMemoryPruneCompleted?.Invoke(this, EventArgs.Empty);
             });
         }
     }
@@ -887,7 +878,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
 
             using ArrayPoolList<Task> persistNodeStartingFromTasks = parallelStartNodes.Select(
-                    entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, persistedNodeRecorder, writeFlags, disposeQueue)))
+                entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, persistedNodeRecorder, writeFlags, disposeQueue)))
                 .ToPooledList(parallelStartNodes.Count);
 
             Task.WaitAll(persistNodeStartingFromTasks.AsSpan());
@@ -1012,8 +1003,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private void PersistOnShutdown()
     {
         if (_commitSetQueue?.IsEmpty ?? true) return;
-        // here we try to shorten the number of blocks recalculated when restarting (so we force persist)
-        // and we need to speed up the standard announcement procedure so we persists a block
 
         using ArrayPoolList<BlockCommitSet> candidateSets = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
 
