@@ -174,6 +174,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
                 AuRaContractGasLimitOverride gasLimitCalculator = new(
                     blockGasLimitContractTransitions.Select(static blockGasLimitContractTransition =>
                             new BlockGasLimitContract(
+                                _api.SpecProvider,
                                 _api.AbiEncoder,
                                 blockGasLimitContractTransition.Value,
                                 blockGasLimitContractTransition.Key,

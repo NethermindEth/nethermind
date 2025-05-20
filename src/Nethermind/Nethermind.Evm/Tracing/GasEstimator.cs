@@ -118,7 +118,7 @@ namespace Nethermind.Evm.Tracing
             return rightBound;
         }
 
-        private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit, CancellationToken token)
+        private bool TryExecutableTransaction(Transaction transaction, BlockHeader header, long gasLimit, CancellationToken token)
         {
             OutOfGasTracer tracer = new();
 
@@ -126,7 +126,7 @@ namespace Nethermind.Evm.Tracing
             transaction.CopyTo(txClone);
             txClone.GasLimit = gasLimit;
 
-            BlockExecutionContext blCtx = new(block, _specProvider.GetSpec(block));
+            BlockExecutionContext blCtx = new(header, _specProvider.GetSpec(header));
             _transactionProcessor.CallAndRestore(txClone, in blCtx, tracer.WithCancellation(token));
 
             return !tracer.OutOfGas;

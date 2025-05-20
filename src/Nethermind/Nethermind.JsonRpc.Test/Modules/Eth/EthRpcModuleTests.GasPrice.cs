@@ -131,17 +131,17 @@ public partial class EthRpcModuleTests
             yield return new TestCaseData(0ul)
             {
                 TestName = $"Cancun block no {nameof(BlockHeader.ExcessBlobGas)} accumulated",
-                ExpectedResult = Success(Eip4844Constants.MinBlobGasPrice)
+                ExpectedResult = Success(Eip4844Constants.GetMinBlobGasPrice(London.Instance))
             };
             yield return new TestCaseData(1ul)
             {
                 TestName = $"Low {nameof(BlockHeader.ExcessBlobGas)}",
-                ExpectedResult = Success(Eip4844Constants.MinBlobGasPrice)
+                ExpectedResult = Success(Eip4844Constants.GetMinBlobGasPrice(London.Instance))
             };
             yield return new TestCaseData(Eip4844Constants.GasPerBlob)
             {
                 TestName = $"Low {nameof(BlockHeader.ExcessBlobGas)}",
-                ExpectedResult = Success(Eip4844Constants.MinBlobGasPrice)
+                ExpectedResult = Success(Eip4844Constants.GetMinBlobGasPrice(London.Instance))
             };
             yield return new TestCaseData(Cancun.Instance.GetMaxBlobGasPerBlock() * 4)
             {

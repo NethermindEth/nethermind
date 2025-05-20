@@ -87,7 +87,7 @@ public class AuRaContractGasLimitOverrideTests
             KeyValuePair<long, Address> blockGasLimitContractTransition = ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>().BlockGasLimitContractTransitions
                 .First();
-            BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value,
+            BlockGasLimitContract gasLimitContract = new(SpecProvider, AbiEncoder.Instance, blockGasLimitContractTransition.Value,
                 blockGasLimitContractTransition.Key,
                 new ReadOnlyTxProcessingEnv(
                     WorldStateManager,

@@ -231,7 +231,7 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
             Assert.That(spec.GetMaxBlobGasPerBlock(), Is.EqualTo(786432));
-            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei()));
+            Assert.That(Eip4844Constants.GetMinBlobGasPrice(spec), Is.EqualTo(1.Wei()));
             Assert.That(spec.GetTargetBlobGasPerBlock(), Is.EqualTo(393216));
         });
     }
@@ -421,6 +421,8 @@ public class ChainSpecBasedSpecProviderTests
 
     private static void VerifyGnosisPragueSpecifics(IReleaseSpec prePragueSpec, IReleaseSpec postPragueSpec, Address feeCollector)
     {
+        GnosisSpecProvider gnosisSpecProvider = GnosisSpecProvider.Instance;
+        IReleaseSpec spec = gnosisSpecProvider.GetFinalSpec();
         Assert.Multiple(() =>
         {
             Assert.That(prePragueSpec.FeeCollector, Is.EqualTo(feeCollector));
@@ -440,7 +442,7 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)1112826));
             Assert.That(spec.GetMaxBlobGasPerBlock(), Is.EqualTo(262144));
-            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
+            Assert.That(Eip4844Constants.GetMinBlobGasPrice(spec), Is.EqualTo(1.GWei()));
             Assert.That(spec.GetTargetBlobGasPerBlock(), Is.EqualTo(131072));
         });
     }

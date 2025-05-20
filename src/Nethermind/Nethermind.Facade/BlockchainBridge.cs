@@ -285,7 +285,7 @@ namespace Nethermind.Facade
                     ? BlobGasCalculator.CalculateExcessBlobGas(blockHeader, releaseSpec)
                     : blockHeader.ExcessBlobGas;
 
-                if (transaction.Type is TxType.Blob && transaction.MaxFeePerBlobGas is null && BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee))
+                if (transaction.Type is TxType.Blob && transaction.MaxFeePerBlobGas is null && BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, out UInt256 blobBaseFee, releaseSpec))
                 {
                     transaction.MaxFeePerBlobGas = blobBaseFee;
                 }
@@ -293,7 +293,7 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader, releaseSpec.BlobBaseFeeUpdateFraction), tracer);
+            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader, releaseSpec), tracer);
         }
 
         public ulong GetChainId()

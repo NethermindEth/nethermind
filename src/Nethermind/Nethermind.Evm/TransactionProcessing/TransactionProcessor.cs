@@ -499,7 +499,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
                 if (!overflows && tx.SupportsBlobs)
                 {
-                    overflows = !BlobGasCalculator.TryCalculateBlobBaseFee(blkContext.Header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
+                    overflows = !BlobGasCalculator.TryCalculateBlobBaseFee(blkContext.Header, tx, out blobBaseFee, spec);
                     if (!overflows)
                     {
                         overflows = UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment);

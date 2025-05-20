@@ -252,7 +252,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
             {
-                TxPriorityContract = new TxPriorityContract(AbiEncoder.Instance, TestItem.AddressA,
+                TxPriorityContract = new TxPriorityContract(SpecProvider, AbiEncoder.Instance, TestItem.AddressA,
                     new ReadOnlyTxProcessingEnv(WorldStateManager, BlockTree.AsReadOnly(), SpecProvider, LimboLogs.Instance));
 
                 Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination>(
