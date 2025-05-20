@@ -140,85 +140,73 @@ public readonly ref struct NibblePath
 
     public int CommonPrefixLength(in NibblePath other)
     {
+        int at = 0;
+
         var length = Math.Min(other.Length, Length);
         if (length == 0)
         {
             // special case, empty is different at zero
-            return 0;
+            goto Result;
         }
 
-        if (_odd == other._odd)
+        const int one = 1;
+        const int two = 2;
+
+        // special handling for 1, 2, 3 nibbles at the beginning end
+        if ((length & (one | two)) != 0)
         {
-            // The most common case in Trie.
-            // As paths will start on the same level, the odd will be encoded same way for them.
-            // This means that an unrolled version can be used.
-
-            ref var left = ref _span;
-            ref var right = ref other._span;
-
-            var position = 0;
-            var isOdd = (_odd & OddBit) != 0;
-            if (isOdd)
+            if ((length & one) != 0)
             {
-                // This means first byte is not a whole byte
-                if ((left & NibbleMask) != (right & NibbleMask))
+                if (GetAt(0) != other.GetAt(0))
                 {
-                    // First nibble differs
-                    return 0;
+                    goto Result;
                 }
 
-                // Equal so start comparing at next byte
-                position = 1;
+                at++;
             }
 
-            // Byte length is half of the nibble length
-            var byteLength = length / 2;
-            if (!isOdd && ((length & 1) > 0))
+            if ((length & two) != 0)
             {
-                // If not isOdd, but the length is odd, then we need to add one more byte
-                byteLength += 1;
-            }
-
-            ReadOnlySpan<byte> leftSpan =
-                MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref left, position), byteLength);
-            ReadOnlySpan<byte> rightSpan =
-                MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref right, position), byteLength);
-            var divergence = leftSpan.CommonPrefixLength(rightSpan);
-
-            position += divergence * 2;
-            if (divergence == leftSpan.Length)
-            {
-                // Remove the extra nibble that made it up to a full byte, if added.
-                return Math.Min(length, position);
-            }
-
-            // Check which nibble is different
-            if ((leftSpan[divergence] & 0xf0) == (rightSpan[divergence] & 0xf0))
-            {
-                // Are equal, so the next nibble is the one that differs
-                return position + 1;
-            }
-
-            return position;
-        }
-
-        return Fallback(in this, in other, length);
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static int Fallback(in NibblePath @this, in NibblePath other, int length)
-        {
-            // fallback, the slow path version to make the method work in any case
-            int i = 0;
-            for (; i < length; i++)
-            {
-                if (@this.GetAt(i) != other.GetAt(i))
+                if (GetAt(at) != other.GetAt(at))
                 {
-                    return i;
+                    goto Result;
                 }
-            }
 
-            return length;
+                at++;
+
+                if (GetAt(at) != other.GetAt(at))
+                {
+                    goto Result;
+                }
+
+                at++;
+            }
         }
+
+        Debug.Assert((length - at) % 4 == 0);
+
+        for (; at < length; at += 4)
+        {
+            var left = GetAt(at) << (NibbleShift * 3) |
+                    GetAt(at + 1) << (NibbleShift * 2) |
+                    GetAt(at + 2) << (NibbleShift * 1) |
+                    GetAt(at + 3) << (NibbleShift * 0);
+
+            var right = other.GetAt(at) << (NibbleShift * 3) |
+                        other.GetAt(at + 1) << (NibbleShift * 2) |
+                        other.GetAt(at + 2) << (NibbleShift * 1) |
+                        other.GetAt(at + 3) << (NibbleShift * 0);
+
+            var xor = left ^ right;
+            if (xor != 0)
+            {
+                at += BitOperations.LeadingZeroCount((uint)xor) / NibbleShift;
+                goto Result;
+            }
+        }
+
+        Result:
+        return at;
     }
 
     public override string ToString()
@@ -869,7 +857,12 @@ public readonly ref struct NibblePath
 
 
         // The only path where it's executed it's an extension check. Extensions are not that long.
-        public int CommonPrefixLength(in NibblePath other) => AsPath().CommonPrefixLength(other);
+        public int CommonPrefixLength(in NibblePath other)
+        {
+            var odd = Odd;
+            ref byte data = ref MemoryMarshal.GetArrayDataReference(_data!);
+            return new NibblePath(ref Unsafe.Add(ref data, 1 - odd), odd, (byte)Length).CommonPrefixLength(other);
+        }
 
         // PSHUFB mask to pick bytes [0,2,4,…,14] then zero the rest
         private static readonly Vector128<byte> HighMask = Vector128.Create(
