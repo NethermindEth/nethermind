@@ -193,6 +193,7 @@ public class EthereumL1Bridge : IL1Bridge
     /// <remarks> Processes all blocks from range [{segmentStartNumber}, {headNumber}) </remarks>
     private async Task RollBack(Hash256 headHash, ulong headNumber, Hash256 segmentStartHash, ulong segmentStartNumber, CancellationToken cancellationToken)
     {
+        if (headNumber <= segmentStartNumber) return;
         Hash256 currentHash = headHash;
         L1Block[] chainSegment = new L1Block[headNumber - segmentStartNumber];
         for (ulong blockNumber = headNumber - 1; blockNumber >= segmentStartNumber; blockNumber--)
