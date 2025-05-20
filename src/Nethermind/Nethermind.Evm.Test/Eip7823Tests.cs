@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Specs;
@@ -19,22 +20,7 @@ public class Eip7823Tests
     private const uint ModExpMaxInputSizeEip7823 = ModExpPrecompile.ModExpMaxInputSizeEip7823;
     private const uint ModExpMaxInputSizeEip7823PlusOne = ModExpPrecompile.ModExpMaxInputSizeEip7823 + 1;
 
-    [TestCase(true, true, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823)]
-    [TestCase(false, true, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823)]
-    [TestCase(true, false, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823)]
-    [TestCase(false, true, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823)]
-    [TestCase(true, false, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823)]
-    [TestCase(false, true, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823)]
-    [TestCase(true, false, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823PlusOne)]
-    [TestCase(false, true, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823PlusOne)]
-    [TestCase(true, false, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823)]
-    [TestCase(false, true, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823)]
-    [TestCase(true, false, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823PlusOne)]
-    [TestCase(false, true, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823PlusOne)]
-    [TestCase(true, false, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823PlusOne)]
-    [TestCase(false, true, ModExpMaxInputSizeEip7823, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823PlusOne)]
-    [TestCase(true, false, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823PlusOne)]
-    [TestCase(false, true, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823PlusOne, ModExpMaxInputSizeEip7823PlusOne)]
+    [TestCaseSource(nameof(LimitTests))]
     public void TestEip7823(bool isEip7823Enabled, bool success, uint inputBaseLength, uint inputExpLength, uint inputModulusLength)
     {
         IReleaseSpec spec = new Prague() { IsEip7823Enabled = isEip7823Enabled };
@@ -60,6 +46,27 @@ public class Eip7823Tests
         else
         {
             Assert.That(gas, Is.EqualTo(long.MaxValue));
+        }
+    }
+
+    private static IEnumerable<object> LimitTests
+    {
+        get
+        {
+            uint inputBaseLength = ModExpMaxInputSizeEip7823;
+            uint inputExpLength = ModExpMaxInputSizeEip7823;
+            uint inputModulusLength = ModExpMaxInputSizeEip7823;
+            yield return new object[] { true, true, inputBaseLength, inputExpLength, inputModulusLength };
+            yield return new object[] { false, true, inputBaseLength, inputExpLength, inputModulusLength };
+
+            for (var i = 0b001; i <= 0b111; i++)
+            {
+                inputBaseLength = (i & 0b001) != 0 ? ModExpMaxInputSizeEip7823PlusOne : ModExpMaxInputSizeEip7823;
+                inputExpLength = (i & 0b010) != 0 ? ModExpMaxInputSizeEip7823PlusOne : ModExpMaxInputSizeEip7823;
+                inputModulusLength = (i & 0b100) != 0 ? ModExpMaxInputSizeEip7823PlusOne : ModExpMaxInputSizeEip7823;
+                yield return new object[] { true, false, inputBaseLength, inputExpLength, inputModulusLength };
+                yield return new object[] { false, true, inputBaseLength, inputExpLength, inputModulusLength };
+            }
         }
     }
 
