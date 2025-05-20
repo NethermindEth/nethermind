@@ -44,7 +44,7 @@ public class PruningTrieStateFactory(
     INodeStorage mainNodeStorage,
     IProcessExitSource processExit,
     ChainSpec chainSpec,
-    IDisposer disposer,
+    DisposableStack disposeStack,
     ILogManager logManager
 )
 {
@@ -100,9 +100,9 @@ public class PruningTrieStateFactory(
         // NOTE: Don't forget this! Very important!
         TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, blockTree!, logManager);
         // Must be disposed after main trie store or the final persist on dispose will not set persisted state on blocktree.
-        disposer.AddInstanceForDisposal(trieStoreBoundaryWatcher);
+        disposeStack.Push(trieStoreBoundaryWatcher);
 
-        disposer.AddInstanceForDisposal(mainWorldTrieStore);
+        disposeStack.Push(mainWorldTrieStore);
 
         InitializeFullPruning(
             dbProvider.StateDb,
@@ -204,7 +204,7 @@ public class PruningTrieStateFactory(
                 drive,
                 trieStore,
                 logManager);
-            disposer.AddInstanceForDisposal(pruner);
+            disposeStack.Push(pruner);
         }
     }
 }
@@ -219,7 +219,7 @@ public class MainPruningTrieStoreFactory
         IDbProvider dbProvider,
         INodeStorageFactory nodeStorageFactory,
         IBlockTree blockTree,
-        IDisposer disposer,
+        DisposableStack disposeStack,
         ILogManager logManager
         )
     {
@@ -263,7 +263,7 @@ public class MainPruningTrieStoreFactory
         if (stateDb is IFullPruningDb fullPruningDb)
         {
             PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(fullPruningDb, blockTree!, logManager);
-            disposer.AddInstanceForDisposal(triggerPersistenceStrategy);
+            disposeStack.Push(triggerPersistenceStrategy);
             persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
             pruningStrategy = new PruningTriggerPruningStrategy(fullPruningDb, pruningStrategy);
         }
