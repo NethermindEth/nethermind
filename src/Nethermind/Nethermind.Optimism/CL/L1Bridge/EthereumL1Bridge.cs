@@ -61,8 +61,8 @@ public class EthereumL1Bridge : IL1Bridge
         {
             while (!token.IsCancellationRequested)
             {
-                // L1Bridge priorities: update finalized block, process new head
                 await ProcessFinalized();
+                L1Block newFinalized = await GetFinalized(token);
                 L1Block newHead = await GetHead(token);
                 ulong newHeadNumber = newHead.Number;
                 if (newHeadNumber == _currentHead.Number)
@@ -71,7 +71,19 @@ public class EthereumL1Bridge : IL1Bridge
                     continue;
                 }
 
-                await BuildUp(_currentHead.Number, newHeadNumber, token);
+                if (!_currentFinalizedHead.IsNewerThan(newFinalized.Number))
+                {
+                    if (_logger.IsInfo) _logger.Info($"New L1 finalization signal. New finalized head: {newFinalized.Number}");
+                    await BuildUp(_currentHead.Number, newFinalized.Number, token); // Will process blocks if _currentHead is older than newFinalized
+                    _currentFinalizedHead = BlockId.FromL1Block(newFinalized);
+                    if (_currentHead.Number < _currentFinalizedHead.Number)
+                    {
+                        _currentHead = _currentFinalizedHead;
+                    }
+                    await _finalizedBlocksChannel.Writer.WriteAsync(newFinalized.Number, token);
+                }
+
+                await RollBack(newHead.Hash, newHeadNumber, _currentHead.Hash, _currentHead.Number, token);
                 await ProcessBlock(newHead, token);
 
                 _currentHead = BlockId.FromL1Block(newHead);
@@ -122,7 +134,7 @@ public class EthereumL1Bridge : IL1Bridge
         }
         catch (OperationCanceledException)
         {
-
+            throw;
         }
         catch (Exception ex)
         {
@@ -169,13 +181,48 @@ public class EthereumL1Bridge : IL1Bridge
             new DaDataSource { DataOrigin = blockNumber, Data = transaction.Input, DataType = DaDataType.Calldata }, token);
     }
 
-    /// <remarks> Gets all blocks from range ({from}, {to}). It's safe only if {to} is finalized </remarks>
+    /// <remarks> Processes all blocks from range ({from}, {to}). It's safe only if {to} is finalized </remarks>
     private async Task BuildUp(ulong from, ulong to, CancellationToken cancellationToken)
     {
         for (ulong i = from + 1; i < to; i++)
         {
             await ProcessBlock(await GetBlock(i, cancellationToken), cancellationToken);
         }
+    }
+
+    /// <remarks> Processes all blocks from range [{segmentStartNumber}, {headNumber}) </remarks>
+    private async Task RollBack(Hash256 headHash, ulong headNumber, Hash256 segmentStartHash, ulong segmentStartNumber, CancellationToken cancellationToken)
+    {
+        Hash256 currentHash = headHash;
+        L1Block[] chainSegment = new L1Block[headNumber - segmentStartNumber];
+        for (ulong blockNumber = headNumber - 1; blockNumber >= segmentStartNumber; blockNumber--)
+        {
+            ulong i = segmentStartNumber - blockNumber;
+            chainSegment[i] = await GetBlock(blockNumber, cancellationToken);
+            if (currentHash != chainSegment[i].Hash)
+            {
+                ProcessReorg();
+                return;
+            }
+            currentHash = chainSegment[i].ParentHash;
+        }
+
+        if (currentHash != segmentStartHash)
+        {
+            ProcessReorg();
+            return;
+        }
+
+        for (int i = 0; i < chainSegment.Length; i++)
+        {
+            await ProcessBlock(chainSegment[i], cancellationToken);
+        }
+    }
+
+    private void ProcessReorg()
+    {
+        if (_logger.IsInfo) _logger.Info($"L1 reorg detected. Resetting pipeline");
+        _currentHead = _currentFinalizedHead;
     }
 
     public async Task<L1Block> GetBlock(ulong blockNumber, CancellationToken token) =>
@@ -235,7 +282,7 @@ public class EthereumL1Bridge : IL1Bridge
         if (_logger.IsInfo) _logger.Info("Deriving blocks after restart");
         try
         {
-            L1Block newHead = await GetHead(token);
+            L1Block newHead = await GetFinalized(token);
             while (!token.IsCancellationRequested && newHead.Number != _currentHead.Number)
             {
                 await ProcessFinalized();
