@@ -149,6 +149,9 @@ public readonly ref struct NibblePath
             goto Result;
         }
 
+        int left = 0;
+        int right = 0;
+
         const int one = 1;
         const int two = 2;
 
@@ -157,52 +160,50 @@ public readonly ref struct NibblePath
         {
             if ((length & one) != 0)
             {
-                if (GetAt(0) != other.GetAt(0))
-                {
-                    goto Result;
-                }
+                left |= GetAt(0) << (NibbleShift * 3);
+                right |= other.GetAt(0) << (NibbleShift * 3);
 
                 at++;
             }
 
             if ((length & two) != 0)
             {
-                if (GetAt(at) != other.GetAt(at))
-                {
-                    goto Result;
-                }
+                left |= ((GetAt(at) << NibbleShift) | GetAt(at + 1)) << (NibbleShift * (3 - at));
+                right |= ((other.GetAt(at) << NibbleShift) | other.GetAt(at + 1)) << (NibbleShift * (3 - at));
 
-                at++;
-
-                if (GetAt(at) != other.GetAt(at))
-                {
-                    goto Result;
-                }
-
-                at++;
+                at += 2;
             }
+        }
+
+        var xor = left ^ right;
+        if (xor != 0)
+        {
+            at += BitOperations.LeadingZeroCount((uint)xor) / NibbleShift;
+            goto Result;
         }
 
         Debug.Assert((length - at) % 4 == 0);
 
-        for (; at < length; at += 4)
+        for (; at < ( length - 4); at += 4)
         {
-            var left = GetAt(at) << (NibbleShift * 3) |
-                    GetAt(at + 1) << (NibbleShift * 2) |
-                    GetAt(at + 2) << (NibbleShift * 1) |
-                    GetAt(at + 3) << (NibbleShift * 0);
+            left = GetAt(at) << (NibbleShift * 3) |
+                   GetAt(at + 1) << (NibbleShift * 2) |
+                   GetAt(at + 2) << (NibbleShift * 1) |
+                   GetAt(at + 3) << (NibbleShift * 0);
 
-            var right = other.GetAt(at) << (NibbleShift * 3) |
-                        other.GetAt(at + 1) << (NibbleShift * 2) |
-                        other.GetAt(at + 2) << (NibbleShift * 1) |
-                        other.GetAt(at + 3) << (NibbleShift * 0);
 
-            var xor = left ^ right;
+            right = other.GetAt(at) << (NibbleShift * 3) |
+                    other.GetAt(at + 1) << (NibbleShift * 2) |
+                    other.GetAt(at + 2) << (NibbleShift * 1) |
+                    other.GetAt(at + 3) << (NibbleShift * 0);
+
+            xor = left ^ right;
             if (xor != 0)
             {
                 at += BitOperations.LeadingZeroCount((uint)xor) / NibbleShift;
                 goto Result;
             }
+
         }
 
         Result:
@@ -859,6 +860,23 @@ public readonly ref struct NibblePath
         // The only path where it's executed it's an extension check. Extensions are not that long.
         public int CommonPrefixLength(in NibblePath other)
         {
+            var length = Math.Min(other.Length, Length);
+
+            if (length <= 3)
+            {
+                if (length == 0)
+                    return 0;
+
+                if (this[0] != other[0] || length == 1)
+                    return 1;
+
+                if (this[1] != other[1] || length == 2)
+                    return 2;
+
+                if (this[2] != other[2] || length == 3)
+                    return 3;
+            }
+
             var odd = Odd;
             ref byte data = ref MemoryMarshal.GetArrayDataReference(_data!);
             return new NibblePath(ref Unsafe.Add(ref data, 1 - odd), odd, (byte)Length).CommonPrefixLength(other);
