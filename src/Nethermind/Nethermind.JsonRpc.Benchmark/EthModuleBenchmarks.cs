@@ -99,7 +99,7 @@ namespace Nethermind.JsonRpc.Benchmark
             TransactionProcessor transactionProcessor
                  = new(MainnetSpecProvider.Instance, stateProvider, _virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
-            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, specProvider);
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider);
             BlockProcessor blockProcessor = new(
                 specProvider,
                 Always.Valid,
