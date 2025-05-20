@@ -71,7 +71,6 @@ public class EthereumL1Bridge : IL1Bridge
             {
                 if (_logger.IsInfo)
                     _logger.Info($"New L1 finalization signal. New finalized head: {newFinalized.Number}");
-                await BuildUp(_currentHead.Number, newFinalized.Number, token); // Will process blocks if _currentHead is older than newFinalized
                 _currentFinalizedHead = BlockId.FromL1Block(newFinalized);
                 if (_currentHead.Number < _currentFinalizedHead.Number)
                 {
@@ -79,6 +78,7 @@ public class EthereumL1Bridge : IL1Bridge
                 }
 
                 await _finalizedBlocksChannel.Writer.WriteAsync(newFinalized.Number, token);
+                await BuildUp(_currentHead.Number, newFinalized.Number, token); // Will process blocks if _currentHead is older than newFinalized
             }
 
             bool isReorg = await RollBack(newHead.Hash, newHeadNumber, _currentHead.Hash, _currentHead.Number, token);
@@ -283,9 +283,9 @@ public class EthereumL1Bridge : IL1Bridge
             L1Block newHead = await GetFinalized(token);
             while (!token.IsCancellationRequested && newHead.Number != _currentHead.Number)
             {
+                await _finalizedBlocksChannel.Writer.WriteAsync(newHead.Number, token);
                 await BuildUp(_currentHead.Number, newHead.Number, token);
                 await ProcessBlock(newHead, token);
-                await _finalizedBlocksChannel.Writer.WriteAsync(newHead.Number, token);
 
                 _currentHead = BlockId.FromL1Block(newHead);
                 newHead = await GetFinalized(token);
