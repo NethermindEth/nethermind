@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -36,22 +35,28 @@ public class BlobGasCalculatorTests
     {
         BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(testCase.excessBlobGas).TestObject;
 
-        bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, testCase.tx, out UInt256 blobBaseFee, London.Instance);
+        bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, testCase.tx, out UInt256 blobBaseFee, Cancun.Instance);
 
-        Assert.That(success, Is.True);
-        Assert.That(blobBaseFee, Is.EqualTo(testCase.expectedCost));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.True);
+            Assert.That(blobBaseFee, Is.EqualTo(testCase.expectedCost));
+        }
     }
 
     [Test]
     public void Blob_base_fee_may_overflow()
     {
-        var tx = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject;
+        Transaction tx = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject;
         BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(ulong.MaxValue).TestObject;
 
-        bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, out UInt256 blobBaseFee, London.Instance);
+        bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, out UInt256 blobBaseFee, Cancun.Instance);
 
-        Assert.That(success, Is.False);
-        Assert.That(blobBaseFee, Is.EqualTo(UInt256.MaxValue));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.False);
+            Assert.That(blobBaseFee, Is.EqualTo(UInt256.MaxValue));
+        }
     }
 
     private static IEnumerable<TestCaseData> GenerateTestCases()
