@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -161,6 +162,7 @@ public partial class BaseEngineModuleTests
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
             new GetBlobsHandler(chain.TxPool),
+            Substitute.For<IEngineRequestsTracker>(),
             chain.SpecProvider,
             new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);
@@ -173,7 +175,7 @@ public partial class BaseEngineModuleTests
     {
         List<ExecutionPayload> blocks = new();
         ExecutionPayload parentBlock = startingParentBlock;
-        parentBlock.TryGetBlock(out Block? block);
+        Block? block = parentBlock.TryGetBlock().Block;
         UInt256? startingTotalDifficulty = block!.IsGenesis
             ? block.Difficulty : chain.BlockFinder.FindHeader(block!.Header!.ParentHash!)!.TotalDifficulty;
         BlockHeader parentHeader = block!.Header;
@@ -197,7 +199,7 @@ public partial class BaseEngineModuleTests
 
             blocks.Add((getPayloadResult));
             parentBlock = getPayloadResult;
-            parentBlock.TryGetBlock(out block!);
+            block = parentBlock.TryGetBlock().Block!;
             block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
             parentHeader = block.Header;
         }

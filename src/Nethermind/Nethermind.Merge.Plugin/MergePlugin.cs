@@ -246,13 +246,13 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         {
             ArgumentNullException.ThrowIfNull(_api.BlockTree);
             ArgumentNullException.ThrowIfNull(_api.HeaderValidator);
-            ArgumentNullException.ThrowIfNull(_api.EthSyncingInfo);
             ArgumentNullException.ThrowIfNull(_api.Sealer);
             ArgumentNullException.ThrowIfNull(_api.BlockValidator);
             ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
             ArgumentNullException.ThrowIfNull(_api.TxPool);
             ArgumentNullException.ThrowIfNull(_api.SpecProvider);
             ArgumentNullException.ThrowIfNull(_api.StateReader);
+            ArgumentNullException.ThrowIfNull(_api.EngineRequestsTracker);
             ArgumentNullException.ThrowIfNull(_postMergeBlockProducer);
 
             // ToDo: ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart. Then we will wait 5s more to ensure everything is processed
@@ -262,16 +262,19 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             }
             Thread.Sleep(5000);
 
+            // Single block shouldn't take a full slot to run
+            // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
+            double maxSingleImprovementTimePerSlot = _blocksConfig.SecondsPerSlot * _blocksConfig.SingleBlockImprovementOfSlot;
             IBlockImprovementContextFactory CreateBlockImprovementContextFactory()
             {
                 if (string.IsNullOrEmpty(mergeConfig.BuilderRelayUrl))
                 {
-                    return new BlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+                    return new BlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot));
                 }
 
                 DefaultHttpClient httpClient = new(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager, retryDelayMilliseconds: 100);
                 IBoostRelay boostRelay = new BoostRelay(httpClient, mergeConfig.BuilderRelayUrl);
-                return new BoostBlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot), boostRelay, _api.StateReader);
+                return new BoostBlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot), boostRelay, _api.StateReader);
             }
 
             IBlockImprovementContextFactory improvementContextFactory = _api.BlockImprovementContextFactory ??= CreateBlockImprovementContextFactory();
@@ -337,6 +340,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
                 new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
                 new GetBlobsHandler(_api.TxPool),
+                _api.EngineRequestsTracker,
                 _api.SpecProvider,
                 new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, mergeConfig), _api.LogManager),
                 _api.LogManager);

@@ -16,6 +16,7 @@ using Nethermind.State;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Trie.Pruning;
 
@@ -65,13 +66,13 @@ public class CodeInfoRepositoryTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         CodeInfoRepository sut = new();
 
-        sut.TryGetDelegation(stateProvider, TestItem.AddressA, out _).Should().Be(false);
+        sut.TryGetDelegation(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>(), out _).Should().Be(false);
     }
 
 
@@ -95,13 +96,13 @@ public class CodeInfoRepositoryTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         CodeInfoRepository sut = new();
 
-        sut.TryGetDelegation(stateProvider, TestItem.AddressA, out _).Should().Be(true);
+        sut.TryGetDelegation(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>(), out _).Should().Be(true);
     }
 
     [TestCaseSource(nameof(DelegationCodeCases))]
@@ -109,14 +110,14 @@ public class CodeInfoRepositoryTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         CodeInfoRepository sut = new();
 
         Address result;
-        sut.TryGetDelegation(stateProvider, TestItem.AddressA, out result);
+        sut.TryGetDelegation(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>(), out result);
 
         result.Should().Be(new Address(code.Slice(3, Address.Size)));
     }
@@ -126,7 +127,7 @@ public class CodeInfoRepositoryTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
@@ -137,7 +138,7 @@ public class CodeInfoRepositoryTests
 
         CodeInfoRepository sut = new();
 
-        sut.GetExecutableCodeHash(stateProvider, TestItem.AddressA).Should().Be(Keccak.Compute(code).ValueHash256);
+        sut.GetExecutableCodeHash(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().Be(Keccak.Compute(code).ValueHash256);
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]
@@ -145,14 +146,14 @@ public class CodeInfoRepositoryTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
 
         CodeInfoRepository sut = new();
 
-        sut.GetExecutableCodeHash(stateProvider, TestItem.AddressA).Should().Be(Keccak.Compute(code).ValueHash256);
+        sut.GetExecutableCodeHash(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().Be(Keccak.Compute(code).ValueHash256);
     }
 
     [TestCaseSource(nameof(DelegationCodeCases))]
@@ -160,7 +161,7 @@ public class CodeInfoRepositoryTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
@@ -170,7 +171,7 @@ public class CodeInfoRepositoryTests
         stateProvider.InsertCode(delegationAddress, delegationCode, Substitute.For<IReleaseSpec>());
         CodeInfoRepository sut = new();
 
-        CodeInfo result = sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>());
+        ICodeInfo result = sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>());
         result.MachineCode.ToArray().Should().BeEquivalentTo(delegationCode);
     }
 
@@ -179,7 +180,7 @@ public class CodeInfoRepositoryTests
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());

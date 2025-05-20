@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
@@ -24,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -96,7 +98,7 @@ namespace Nethermind.Init.Steps
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.ReadOnlyStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new(
+                ? new(new ReadOnlyTxProcessingEnvFactory(
                         _api.WorldStateManager!,
                         _api.BlockTree!.AsReadOnly(),
                         _api.SpecProvider!,
@@ -125,6 +127,8 @@ namespace Nethermind.Init.Steps
                 IsMainProcessor = true
             };
 
+            getApi.DisposeStack.Push(blockchainProcessor);
+
             setApi.MainProcessingContext = new MainProcessingContext(
                 transactionProcessor,
                 mainBlockProcessor,
@@ -132,10 +136,12 @@ namespace Nethermind.Init.Steps
                 mainWorldState);
             setApi.BlockProcessingQueue = blockchainProcessor;
 
-            IFilterStore filterStore = setApi.FilterStore = new FilterStore();
+            IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
+            IFilterStore filterStore = setApi.FilterStore = new FilterStore(getApi.TimerFactory, rpcConfig.FiltersTimeout);
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
+            _api.DisposeStack.Push(filterStore);
 
             BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
                 mainBlockProcessor,
@@ -188,7 +194,6 @@ namespace Nethermind.Init.Steps
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 _api.SpecProvider,
-                codeInfoRepository,
                 _api.LogManager);
 
             return virtualMachine;

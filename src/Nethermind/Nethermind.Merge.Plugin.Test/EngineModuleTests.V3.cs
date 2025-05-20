@@ -9,6 +9,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Producers;
@@ -177,7 +178,7 @@ public partial class EngineModuleTests
 
         payload.ParentHash = TestItem.KeccakA;
         payload.BlockNumber = 2;
-        payload.TryGetBlock(out Block? b);
+        Block? b = payload.TryGetBlock().Block;
         payload.BlockHash = b!.CalculateHash();
 
         byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
@@ -194,7 +195,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         payload.BlockNumber = 2;
-        payload.TryGetBlock(out Block? b);
+        Block? b = payload.TryGetBlock().Block;
         payload.BlockHash = b!.CalculateHash();
 
         byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
@@ -212,7 +213,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         payload.StateRoot = Keccak.Zero;
-        payload.TryGetBlock(out Block? b);
+        Block? b = payload.TryGetBlock().Block;
         payload.BlockHash = b!.CalculateHash();
 
         byte[]?[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).ToArray();
@@ -229,8 +230,8 @@ public partial class EngineModuleTests
         (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
-        payload.TryGetBlock(out Block? b);
-        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.GetTransactions()[0], RlpBehaviors.SkipTypedWrapping).Bytes;
+        Block? b = payload.TryGetBlock().Block;
+        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.TryGetTransactions().Transactions[0], RlpBehaviors.SkipTypedWrapping).Bytes;
         txRlp[0] = 100; // set TxType to 100
         payload.Transactions = [txRlp];
         payload.BlockHash = b!.CalculateHash();
@@ -385,6 +386,7 @@ public partial class EngineModuleTests
                  Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
                  Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
                  Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
+                 Substitute.For<IEngineRequestsTracker>(),
                  chain.SpecProvider,
                  new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
                  Substitute.For<ILogManager>()));
@@ -691,7 +693,6 @@ public partial class EngineModuleTests
 
         SyncPeerMock chainAPeer = new SyncPeerMock(chainA.BlockTree);
         SyncPeerAllocation alloc = new SyncPeerAllocation(new PeerInfo(chainAPeer), AllocationContexts.All);
-        alloc.AllocateBestPeer(new[] { new PeerInfo(chainAPeer) }, Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
         chainC.SyncPeerPool!.Allocate(
             Arg.Any<IPeerAllocationStrategy>(),
             Arg.Any<AllocationContexts>(),

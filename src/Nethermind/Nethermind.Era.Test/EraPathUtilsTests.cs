@@ -19,7 +19,7 @@ public class EraPathUtilsTests
     public void Filename_NetworkIsNull_ReturnsException()
     {
 #pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
-        Assert.That(() => EraPathUtils.Filename(null, 0, new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000")), Throws.ArgumentException);
+        Assert.That(() => EraPathUtils.Filename(null, 0, new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000")), Throws.ArgumentNullException);
 #pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
     }
 

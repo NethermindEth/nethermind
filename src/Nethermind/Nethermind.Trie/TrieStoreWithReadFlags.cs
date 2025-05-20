@@ -15,7 +15,4 @@ public class TrieStoreWithReadFlags(IScopedTrieStore implementation, ReadFlags f
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
         implementation.IsPersisted(in path, in keccak);
-
-    public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp) =>
-        implementation.Set(in path, in keccak, rlp);
 }

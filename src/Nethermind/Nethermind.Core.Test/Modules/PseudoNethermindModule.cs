@@ -33,15 +33,12 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
     protected override void Load(ContainerBuilder builder)
     {
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
-        INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
 
         base.Load(builder);
         builder
             .AddModule(new NethermindModule(spec, configProvider, logManager))
 
-            .AddModule(new NetworkModule(initConfig))
-            .AddModule(new DiscoveryModule(initConfig, networkConfig))
-            .AddModule(new WorldStateModule())
+            .AddModule(new PsudoNetworkModule())
             .AddModule(new BlockTreeModule())
             .AddModule(new BlockProcessingModule())
 

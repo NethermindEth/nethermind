@@ -46,9 +46,9 @@ public class BuilderBlockValidationRequest
 
     /// <summary>
     /// The block hash of the parent beacon block.
-    /// <see cref=https://github.com/flashbots/builder/blob/df9c765067d57ab4b2d0ad39dbb156cbe4965778/eth/block-validation/api.go#L198"/>
+    /// <a href="https:/github.com/flashbots/builder/blob/df9c765067d57ab4b2d0ad39dbb156cbe4965778/eth/block-validation/api.go#L198">See more</a>
     /// </summary>
     [JsonRequired]
     [JsonPropertyName("parent_beacon_block_root")]
-    public Hash256 ParentBeaconBlockRoot { get; set; }
+    public Hash256? ParentBeaconBlockRoot { get; set; }
 }

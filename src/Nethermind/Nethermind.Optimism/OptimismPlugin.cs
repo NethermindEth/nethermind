@@ -116,6 +116,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             NullSealEngine.Instance,
             new ManualTimestamper(),
             _api.SpecProvider,
+            _api.SpecHelper,
             _api.LogManager,
             _api.Config<IBlocksConfig>());
     }
@@ -169,6 +170,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProducer);
         ArgumentNullException.ThrowIfNull(_api.TxPool);
+        ArgumentNullException.ThrowIfNull(_api.EngineRequestsTracker);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_invalidChainTracker);
@@ -180,9 +182,12 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             await Task.Delay(100);
         await Task.Delay(5000);
 
+        // Single block shouldn't take a full slot to run
+        // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
+        double maxSingleImprovementTimePerSlot = _blocksConfig.SecondsPerSlot * _blocksConfig.SingleBlockImprovementOfSlot;
         BlockImprovementContextFactory improvementContextFactory = new(
             _api.BlockProducer,
-            TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+            TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot));
 
         OptimismPayloadPreparationService payloadPreparationService = new(
             _api.SpecProvider,
@@ -247,6 +252,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new ExchangeTransitionConfigurationV1Handler(posSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
+            _api.EngineRequestsTracker,
             _api.SpecProvider,
             new GCKeeper(
                 initConfig.DisableGcOnNewPayload
@@ -263,15 +269,28 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         _api.RpcModuleProvider.RegisterSingle(opEngine);
 
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
+        StepDependencyException.ThrowIfNull(_api.OptimismEthRpcModule);
+        StepDependencyException.ThrowIfNull(_api.IpResolver);
 
-        ICLConfig clConfig = _api.Config<ICLConfig>();
-        if (clConfig.Enabled)
+        IOptimismConfig config = _api.Config<IOptimismConfig>();
+        if (config.ClEnabled)
         {
             CLChainSpecEngineParameters chainSpecEngineParameters = _api.ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
-            _cl = new OptimismCL(_api.SpecProvider, chainSpecEngineParameters, clConfig, _api.EthereumJsonSerializer,
-                _api.EthereumEcdsa, _api.Timestamper, _api!.LogManager, opEngine);
-            await _cl.Start();
+            _cl = new OptimismCL(
+                _api.SpecProvider,
+                chainSpecEngineParameters,
+                config,
+                _api.EthereumJsonSerializer,
+                _api.EthereumEcdsa,
+                _api.Timestamper,
+                _api.ChainSpec.Genesis.Timestamp,
+                _api!.LogManager,
+                _api.OptimismEthRpcModule,
+                _api.IpResolver.ExternalIp,
+                opEngine);
+            _ = _cl.Start(); // NOTE: Fire and forget, exception handling must be done inside `Start`
+            _api.DisposeStack.Push(_cl);
         }
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
@@ -309,12 +328,14 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddModule(new BaseMergePluginModule())
             .AddModule(new OptimismSynchronizerModule(chainSpec))
 
-            .AddSingleton<OptimismChainSpecEngineParameters>(chainSpec.EngineChainSpecParametersProvider
-                .GetChainSpecParameters<OptimismChainSpecEngineParameters>())
+            .AddSingleton(chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<OptimismChainSpecEngineParameters>())
+            .AddSingleton<IOptimismSpecHelper, OptimismSpecHelper>()
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
 
+            // Validators
+            .AddSingleton<IBlockValidator, OptimismBlockValidator>()
             .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
             ;

@@ -66,7 +66,7 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default) =>
         innerState.CreateAccountIfNotExists(address, in balance, in nonce);
-    public void InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false) =>
+    public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false) =>
         innerState.InsertCode(address, in codeHash, code, spec, isGenesis);
 
     public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec) =>

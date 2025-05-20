@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using CkzgLib;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Crypto;
@@ -191,10 +192,10 @@ namespace Nethermind.Core.Test.Builders
                 for (int i = 0; i < blobCount; i++)
                 {
                     TestObjectInternal.BlobVersionedHashes[i] = new byte[32];
-                    wrapper.Blobs[i] = new byte[Ckzg.Ckzg.BytesPerBlob];
+                    wrapper.Blobs[i] = new byte[Ckzg.BytesPerBlob];
                     wrapper.Blobs[i][0] = (byte)(i % 256);
-                    wrapper.Commitments[i] = new byte[Ckzg.Ckzg.BytesPerCommitment];
-                    wrapper.Proofs[i] = new byte[Ckzg.Ckzg.BytesPerProof];
+                    wrapper.Commitments[i] = new byte[Ckzg.BytesPerCommitment];
+                    wrapper.Proofs[i] = new byte[Ckzg.BytesPerProof];
 
                     KzgPolynomialCommitments.KzgifyBlob(
                         wrapper.Blobs[i],
@@ -297,6 +298,12 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> WithSourceHash(Hash256? sourceHash)
         {
             TestObjectInternal.SourceHash = sourceHash;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithIsOPSystemTransaction(bool isOPSystemTransaction)
+        {
+            TestObjectInternal.IsOPSystemTransaction = isOPSystemTransaction;
             return this;
         }
 

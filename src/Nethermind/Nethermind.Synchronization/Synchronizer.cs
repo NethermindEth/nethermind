@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -26,6 +27,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
+using Nethermind.Synchronization.Trie;
 
 namespace Nethermind.Synchronization
 {
@@ -311,11 +313,13 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
 
             // The direct implementation is decorated by merge plugin (not the interface)
             // so its  declared on its own and other use is binded.
-            .AddScoped<BlockDownloader>()
-            .AddScoped<IForwardHeaderProvider, PowForwardHeaderProvider>()
-            .Bind<ISyncDownloader<BlocksRequest>, BlockDownloader>()
+            .AddSingleton<BlockDownloader>()
+            .Bind<IForwardSyncController, BlockDownloader>()
 
-            .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>()
+            .AddScoped<IForwardHeaderProvider, PowForwardHeaderProvider>()
+            .AddScoped<ISyncDownloader<BlocksRequest>, MultiBlockDownloader>()
+
+            .Add<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>()
             .AddScoped<SyncDispatcher<BlocksRequest>>()
 
             // For headers. There are two header scope, Fast and Beacon
@@ -346,6 +350,17 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<SyncPeerPool>()
                 .Bind<ISyncPeerPool, SyncPeerPool>()
                 .Bind<IPeerDifficultyRefreshPool, SyncPeerPool>()
+                .OnActivate<ISyncPeerPool>((peerPool, ctx) =>
+                {
+                    ILogManager logManager = ctx.Resolve<ILogManager>();
+                    ctx.Resolve<IWorldStateManager>().InitializeNetwork(
+                        new PathNodeRecovery(
+                            new NodeDataRecovery(peerPool!, ctx.Resolve<INodeStorage>(), logManager),
+                            new SnapRangeRecovery(peerPool!, logManager),
+                            logManager
+                        )
+                    );
+                })
 
             .AddSingleton<ISyncServer, SyncServer>();
 

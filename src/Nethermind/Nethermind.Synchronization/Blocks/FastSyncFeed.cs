@@ -10,17 +10,9 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class FastSyncFeed : ActivatedSyncFeed<BlocksRequest>
+    public class FastSyncFeed(IForwardSyncController forwardSyncController, ISyncConfig syncConfig)
+        : ActivatedSyncFeed<BlocksRequest>
     {
-        private readonly ISyncConfig _syncConfig;
-        private readonly BlocksRequest _blocksRequest;
-
-        public FastSyncFeed(ISyncConfig syncConfig)
-        {
-            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _blocksRequest = new BlocksRequest(BuildOptions(), syncConfig.StateMinDistanceFromHead);
-        }
-
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastSync;
 
         private DownloaderOptions BuildOptions()
@@ -28,17 +20,25 @@ namespace Nethermind.Synchronization.Blocks
             return DownloaderOptions.Insert | DownloaderOptions.WithReceipts;
         }
 
-        public override Task<BlocksRequest> PrepareRequest(CancellationToken token = default) => Task.FromResult(_blocksRequest);
+        public override Task<BlocksRequest> PrepareRequest(CancellationToken token = default)
+        {
+            return forwardSyncController.PrepareRequest(BuildOptions(), syncConfig.StateMinDistanceFromHead, token);
+        }
 
         public override SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo peer = null)
         {
-            FallAsleep();
-            return SyncResponseHandlingResult.OK;
+            return forwardSyncController.HandleResponse(response, peer);
         }
 
-        public override bool IsMultiFeed => false;
+        public override bool IsMultiFeed => true;
 
         public override AllocationContexts Contexts => AllocationContexts.Blocks;
         public override bool IsFinished => false; // Check MultiSyncModeSelector
+
+        public override void FallAsleep()
+        {
+            base.FallAsleep();
+            forwardSyncController.PruneDownloadBuffer();
+        }
     }
 }

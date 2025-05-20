@@ -182,13 +182,20 @@ namespace Nethermind.Facade
                 estimateGasTracer.WithCancellation(cancellationToken));
 
             GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState, _specProvider, _blocksConfig);
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
+
+            string? error = ConstructError(tryCallResult, estimateGasTracer.Error, tx.GasLimit);
+
+            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
+            if (err is not null)
+            {
+                error ??= err;
+            }
 
             return new CallOutput
             {
-                Error = ConstructError(tryCallResult, estimateGasTracer.Error, tx.GasLimit),
+                Error = error,
                 GasSpent = estimate,
-                InputError = !tryCallResult.Success
+                InputError = !tryCallResult.Success || err is not null
             };
         }
 
@@ -301,7 +308,6 @@ namespace Nethermind.Facade
 
         public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);
         public FilterType GetFilterType(int filterId) => _filterStore.GetFilterType(filterId);
-        public FilterLog[] GetFilterLogs(int filterId) => _filterManager.GetLogs(filterId);
 
         public IEnumerable<FilterLog> GetLogs(
             BlockParameter fromBlock,
@@ -415,10 +421,16 @@ namespace Nethermind.Facade
             return _logFinder.FindLogs(filter, cancellationToken);
         }
 
-        private string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)
+        private static string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)
         {
-            if (txResult.Success) return tracerError;
-            return txResult.Error is not null ? $"err: {txResult.Error} (supplied gas {gasLimit})" : null;
+            var error = txResult switch
+            {
+                { Success: true } when tracerError is not null => tracerError,
+                { Success: false, Error: not null } => txResult.Error,
+                _ => null
+            };
+
+            return error is null ? null : $"err: {error} (supplied gas {gasLimit})";
         }
     }
 }

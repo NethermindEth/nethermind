@@ -22,6 +22,7 @@ using FluentAssertions;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -201,7 +202,7 @@ public class RangeQueryVisitorTests
     [Test]
     public void StorageRangeFetchVisitor()
     {
-        TrieStore store = new TrieStore(new MemDb(), LimboLogs.Instance);
+        TrieStore store = TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
         (StateTree inputStateTree, StorageTree _, Hash256 account) = TestItem.Tree.GetTrees(store);
 
         RlpCollector leafCollector = new();

@@ -112,15 +112,11 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_api.ReceiptStorage);
         ArgumentNullException.ThrowIfNull(_api.StateReader);
         ArgumentNullException.ThrowIfNull(_api.TxPool);
-        ArgumentNullException.ThrowIfNull(_api.TxSender);
-        ArgumentNullException.ThrowIfNull(_api.Wallet);
-        ArgumentNullException.ThrowIfNull(_api.GasPriceOracle);
-        ArgumentNullException.ThrowIfNull(_api.EthSyncingInfo);
-        ArgumentNullException.ThrowIfNull(_api.DbProvider);
         ArgumentNullException.ThrowIfNull(_api.FinalizationManager);
         ArgumentNullException.ThrowIfNull(_api.WorldStateManager);
         ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
         ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
+        ArgumentNullException.ThrowIfNull(_api.EngineRequestsTracker);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
 
@@ -183,6 +179,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new ExchangeTransitionConfigurationV1Handler(poSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
+            _api.EngineRequestsTracker,
             _api.SpecProvider,
             new GCKeeper(
                 initConfig.DisableGcOnNewPayload
