@@ -190,6 +190,10 @@ public class TestBlockchain : IDisposable
                 state.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
             }
 
+            state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
+            state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
+            state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
+
             byte[] code = Bytes.FromHexString("0xabcd");
             state.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
 
@@ -206,9 +210,6 @@ public class TestBlockchain : IDisposable
                 state.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
                 state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, SpecProvider.GenesisSpec);
             }
-
-            state.Commit(SpecProvider.GenesisSpec);
-            state.CommitTree(0);
 
             state.Commit(SpecProvider.GenesisSpec);
             state.CommitTree(0);
