@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <OutputType>Exe</OutputType>
-        <PublishSingleFile>true</PublishSingleFile>
-        <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
-        <AllowedReferenceRelatedFileExtensions>*.pdb</AllowedReferenceRelatedFileExtensions>
+      <OutputType>Exe</OutputType>
+      <PublishSingleFile>true</PublishSingleFile>
+      <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+      <AllowedReferenceRelatedFileExtensions>*.pdb</AllowedReferenceRelatedFileExtensions>
     </PropertyGroup>
 
     <ItemGroup>
