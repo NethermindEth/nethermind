@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [master]
   push:
-    branches: [master,chore/tools-move]
+    branches: [master]
 
 jobs:
   build:
