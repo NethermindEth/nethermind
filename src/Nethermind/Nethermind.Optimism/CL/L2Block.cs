@@ -11,6 +11,7 @@ public class L2Block
 {
     public required Hash256 Hash { get; init; }
     public required Hash256 ParentHash { get; init; }
+    public required Hash256 StateRoot { get; init; }
     public required PayloadAttributesRef PayloadAttributesRef { get; init; }
     public ulong Number => PayloadAttributesRef.Number;
     public OptimismPayloadAttributes PayloadAttributes => PayloadAttributesRef.PayloadAttributes;

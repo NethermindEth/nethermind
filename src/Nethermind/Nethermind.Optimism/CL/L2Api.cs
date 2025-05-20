@@ -38,6 +38,7 @@ public class L2Api(
         {
             Hash = block.Hash,
             ParentHash = block.ParentHash,
+            StateRoot = block.StateRoot,
             PayloadAttributesRef = payloadAttributes
         };
     }
@@ -93,6 +94,7 @@ public class L2Api(
         {
             Hash = block.Hash,
             ParentHash = block.ParentHash,
+            StateRoot = block.StateRoot,
             PayloadAttributesRef = payloadAttributes
         };
     }
@@ -109,6 +111,7 @@ public class L2Api(
         {
             Hash = block.Hash,
             ParentHash = block.ParentHash,
+            StateRoot = block.StateRoot,
             PayloadAttributesRef = payloadAttributes
         };
     }
@@ -125,8 +128,23 @@ public class L2Api(
         {
             Hash = block.Hash,
             ParentHash = block.ParentHash,
+            StateRoot = block.StateRoot,
             PayloadAttributesRef = payloadAttributes
         };
+    }
+
+    public Task<AccountProof?> GetProof(Address accountAddress, UInt256[] storageKeys, long blockNumber)
+    {
+        // TODO: Retry logic
+        var result = l2EthRpc.eth_getProof(accountAddress, storageKeys, new BlockParameter(blockNumber));
+        if (result.Result.ResultType != ResultType.Success)
+        {
+            return Task.FromResult<AccountProof?>(null);
+        }
+        else
+        {
+            return Task.FromResult<AccountProof?>(result.Data);
+        }
     }
 
     public async Task<ForkchoiceUpdatedV1Result> ForkChoiceUpdatedV3(Hash256 headHash, Hash256 finalizedHash, Hash256 safeHash,
