@@ -256,6 +256,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             ArgumentNullException.ThrowIfNull(_api.SpecProvider);
             ArgumentNullException.ThrowIfNull(_api.StateReader);
             ArgumentNullException.ThrowIfNull(_api.TransactionComparerProvider);
+            ArgumentNullException.ThrowIfNull(_api.EngineRequestsTracker);
             ArgumentNullException.ThrowIfNull(_postMergeBlockProducer);
 
             // ToDo: ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart. Then we will wait 5s more to ensure everything is processed
@@ -349,6 +350,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 new GetBlobsHandler(_api.TxPool),
                 new GetInclusionListTransactionsHandler(_api.BlockTree, txPoolTxSource),
                 new UpdatePayloadWithInclusionListHandler(payloadPreparationService, _inclusionListTxSource!),
+                _api.EngineRequestsTracker,
                 _api.SpecProvider,
                 new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, mergeConfig), _api.LogManager),
                 _api.LogManager);

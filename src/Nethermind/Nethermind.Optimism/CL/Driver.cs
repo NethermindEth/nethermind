@@ -19,6 +19,7 @@ public class Driver : IDisposable
     private readonly IExecutionEngineManager _executionEngineManager;
     private readonly IDecodingPipeline _decodingPipeline;
     private readonly ISystemConfigDeriver _systemConfigDeriver;
+    private readonly ulong _l2BlockTime;
 
     public Driver(IL1Bridge l1Bridge,
         IDecodingPipeline decodingPipeline,
@@ -31,6 +32,7 @@ public class Driver : IDisposable
     {
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
+        _l2BlockTime = engineParameters.L2BlockTime.Value;
         _logger = logger;
         _l2Api = l2Api;
         _decodingPipeline = decodingPipeline;
@@ -41,31 +43,71 @@ public class Driver : IDisposable
             new DepositTransactionBuilder(chainId, engineParameters),
             logger);
         _derivationPipeline = new DerivationPipeline(payloadAttributesDeriver, l1Bridge,
-            l2GenesisTimestamp, engineParameters.L2BlockTime.Value, chainId, _logger);
+            l2GenesisTimestamp, _l2BlockTime, chainId, _logger);
     }
+
+    private ulong _currentDerivedBlock;
 
     public async Task Run(CancellationToken token)
     {
-        while (!token.IsCancellationRequested)
+        try
         {
-            BatchV1 decodedBatch = await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
-
-            ulong parentNumber = decodedBatch.RelTimestamp / 2 - 1;
-            L2Block l2Parent = await _l2Api.GetBlockByNumber(parentNumber);
-
-            var derivedPayloadAttributes = _derivationPipeline.DerivePayloadAttributes(l2Parent, decodedBatch, token)
-                .GetAsyncEnumerator(token);
-            while (await derivedPayloadAttributes.MoveNextAsync())
+            while (!token.IsCancellationRequested)
             {
-                PayloadAttributesRef payloadAttributes = derivedPayloadAttributes.Current;
-                bool valid = await _executionEngineManager.ProcessNewDerivedPayloadAttributes(payloadAttributes);
-                if (!valid)
+                BatchV1 decodedBatch = await _decodingPipeline.DecodedBatchesReader.ReadAsync(token);
+
+                ulong firstBlockNumber = decodedBatch.RelTimestamp / _l2BlockTime;
+                ulong lastBlockNumber = firstBlockNumber + decodedBatch.BlockCount - 1;
+                if (_logger.IsInfo)
+                    _logger.Info($"Got batch for processing. Blocks from {firstBlockNumber} to {lastBlockNumber}");
+                if (lastBlockNumber <= _currentDerivedBlock)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Derived invalid Payload Attributes. {payloadAttributes}");
-                    break;
+                    if (_logger.IsInfo) _logger.Info("Old batch. Skipping");
+                    continue;
+                }
+
+                if (_currentDerivedBlock + 1 < firstBlockNumber)
+                {
+                    if (_logger.IsWarn)
+                        _logger.Warn(
+                            $"Derived batch is out of order. Highest derived block: {_currentDerivedBlock}, Batch first block: {firstBlockNumber}");
+                    throw new ArgumentException("Batch is out of order");
+                }
+
+                L2Block l2Parent = await _l2Api.GetBlockByNumber(firstBlockNumber - 1);
+
+                var derivedPayloadAttributes = _derivationPipeline
+                    .DerivePayloadAttributes(l2Parent, decodedBatch, token)
+                    .GetAsyncEnumerator(token);
+                while (await derivedPayloadAttributes.MoveNextAsync())
+                {
+                    PayloadAttributesRef payloadAttributes = derivedPayloadAttributes.Current;
+                    bool valid = await _executionEngineManager.ProcessNewDerivedPayloadAttributes(payloadAttributes);
+                    if (!valid)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Derived invalid Payload Attributes. {payloadAttributes}");
+                        break;
+                    }
+
+                    _currentDerivedBlock = payloadAttributes.Number;
                 }
             }
         }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn && e is not OperationCanceledException)
+                _logger.Warn($"Unhandled exception in Driver: {e}");
+        }
+        finally
+        {
+            if (_logger.IsInfo) _logger.Info("Driver is shutting down.");
+        }
+    }
+
+    public void Reset(ulong finalizedBlockNumber)
+    {
+        if (_logger.IsInfo) _logger.Info($"Resetting Driver. New finalized block {finalizedBlockNumber}");
+        _currentDerivedBlock = finalizedBlockNumber;
     }
 
     public void Dispose()

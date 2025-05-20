@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Specs.Forks;
@@ -435,7 +436,7 @@ public class StorageProviderTests
 
         public Context(PreBlockCaches preBlockCaches = null)
         {
-            StateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
+            StateProvider = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
             StateProvider.CreateAccount(Address1, 0);
             StateProvider.CreateAccount(Address2, 0);
             StateProvider.Commit(Frontier.Instance);

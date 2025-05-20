@@ -8,6 +8,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.IO;
+using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -45,6 +46,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
         IHandler<ArrayPoolList<byte[]>> getInclusionListTransactionsHandler,
         IHandler<(string, byte[][]), string?> updatePayloadWithInclusionListHandler,
+        IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
         ILogManager logManager,
@@ -65,6 +67,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 getBlobsHandler,
                 getInclusionListTransactionsHandler,
                 updatePayloadWithInclusionListHandler,
+                engineRequestsTracker,
                 specProvider,
                 gcKeeper,
                 logManager), ITaikoEngineRpcModule

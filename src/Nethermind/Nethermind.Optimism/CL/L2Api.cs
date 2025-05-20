@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Optimism.CL.Derivation;
@@ -28,6 +29,7 @@ public class L2Api(
     public async Task<L2Block> GetBlockByNumber(ulong number)
     {
         var block = await RetryGetBlock(new((long)number));
+        ArgumentNullException.ThrowIfNull(block); // We cannot get null here
         var payloadAttributes = PayloadAttributesFromBlockForRpc(block);
         return new L2Block
         {
@@ -55,10 +57,20 @@ public class L2Api(
 
         payloadAttributes.SetTransactions(txs);
 
-        L1BlockInfo l1BlockInfo =
-            L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(txs[0].Data!.Value.Span, block.ExtraData);
-        SystemConfig systemConfig =
-            systemConfigDeriver.SystemConfigFromL2BlockInfo(txs[0].Data!.Value.Span, block.ExtraData, (ulong)block.GasLimit);
+        L1BlockInfo l1BlockInfo;
+        SystemConfig systemConfig;
+        if (block.Number != 0)
+        {
+            l1BlockInfo =
+                L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(txs[0].Data!.Value.Span, block.ExtraData);
+            systemConfig =
+                systemConfigDeriver.SystemConfigFromL2BlockInfo(txs[0].Data!.Value.Span, block.ExtraData, (ulong)block.GasLimit);
+        }
+        else
+        {
+            l1BlockInfo = L1BlockInfo.Empty;
+            systemConfig = SystemConfig.Empty;
+        }
         PayloadAttributesRef result = new()
         {
             PayloadAttributes = payloadAttributes,
@@ -72,6 +84,7 @@ public class L2Api(
     public async Task<L2Block> GetHeadBlock()
     {
         var block = await RetryGetBlock(BlockParameter.Latest);
+        ArgumentNullException.ThrowIfNull(block); // We cannot get null here
         var payloadAttributes = PayloadAttributesFromBlockForRpc(block);
         return new L2Block
         {
@@ -81,9 +94,13 @@ public class L2Api(
         };
     }
 
-    public async Task<L2Block> GetFinalizedBlock()
+    public async Task<L2Block?> GetFinalizedBlock()
     {
         var block = await RetryGetBlock(BlockParameter.Finalized);
+        if (block is null) // Fresh instance of EL might return UnknownBlockError
+        {
+            return null;
+        }
         var payloadAttributes = PayloadAttributesFromBlockForRpc(block);
         return new L2Block
         {
@@ -93,9 +110,13 @@ public class L2Api(
         };
     }
 
-    public async Task<L2Block> GetSafeBlock()
+    public async Task<L2Block?> GetSafeBlock()
     {
         var block = await RetryGetBlock(BlockParameter.Safe);
+        if (block is null) // Fresh instance of EL might return UnknownBlockError
+        {
+            return null;
+        }
         var payloadAttributes = PayloadAttributesFromBlockForRpc(block);
         return new L2Block
         {
@@ -130,14 +151,19 @@ public class L2Api(
         => await RetryEngineApi(async () => await l2EngineRpc.engine_newPayloadV3(payload, [], parentBeaconBlockRoot),
             err => $"NewPayload request error: {err}");
 
-    private async Task<BlockForRpc> RetryGetBlock(BlockParameter blockParameter)
+    private async Task<BlockForRpc?> RetryGetBlock(BlockParameter blockParameter)
     {
         var result = l2EthRpc.eth_getBlockByNumber(blockParameter, true);
-        while (result?.Result.ResultType != ResultType.Success)
+        while (result?.Result.ResultType != ResultType.Success && result?.ErrorCode != ErrorCodes.UnknownBlockError)
         {
-            if (logger.IsWarn) logger.Warn($"Unable to get L2 block by parameter: {blockParameter}");
+            if (logger.IsWarn) logger.Warn($"Unable to get L2 block by parameter: {blockParameter}. Error: {result?.Result.Error}");
             await Task.Delay(L2ApiRetryDelayMilliseconds);
             result = l2EthRpc.eth_getBlockByNumber(blockParameter, true);
+        }
+
+        if (result.ErrorCode == ErrorCodes.UnknownBlockError)
+        {
+            return null;
         }
         return result.Data;
     }

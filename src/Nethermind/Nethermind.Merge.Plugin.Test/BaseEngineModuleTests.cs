@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -168,6 +169,7 @@ public partial class BaseEngineModuleTests
             new GetBlobsHandler(chain.TxPool),
             new GetInclusionListTransactionsHandler(chain.BlockTree, txPoolTxSource),
             new UpdatePayloadWithInclusionListHandler(chain.PayloadPreparationService!, chain.InclusionListTxSource),
+            Substitute.For<IEngineRequestsTracker>(),
             chain.SpecProvider,
             new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);

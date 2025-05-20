@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core.Collections;
+using Nethermind.Api;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -36,6 +36,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
         IHandler<ArrayPoolList<byte[]>> getInclusionListTransactionsHandler,
         IHandler<(string, byte[][]), string?> updatePayloadWithInclusionListHandler,
+        IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
         ILogManager logManager)
@@ -53,6 +54,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         _getBlobsHandler = getBlobsHandler;
         _getInclusionListTransactionsHandler = getInclusionListTransactionsHandler;
         _updatePayloadWithInclusionListHandler = updatePayloadWithInclusionListHandler;
+        _engineRequestsTracker = engineRequestsTracker;
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _gcKeeper = gcKeeper;
         _logger = logManager.GetClassLogger();

@@ -54,6 +54,6 @@ namespace Nethermind.Synchronization.ParallelSync
         public abstract void SyncModeSelectorOnChanged(SyncMode current);
         public abstract bool IsFinished { get; }
 
-        public void FallAsleep() => ChangeState(SyncFeedState.Dormant);
+        public virtual void FallAsleep() => ChangeState(SyncFeedState.Dormant);
     }
 }

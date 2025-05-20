@@ -13,19 +13,19 @@ internal class Program
 
     private static void Main(string[] args)
     {
-        CliOption<string> firstFileOption = new("--first-file", "-f")
+        Option<string> firstFileOption = new("--first-file", "-f")
         {
             Description = "The first file to be used for comparison",
             Required = true,
             HelpName = "path"
         };
-        CliOption<string> secondFileOption = new("--second-file", "-s")
+        Option<string> secondFileOption = new("--second-file", "-s")
         {
             Description = "The second file to be used for comparison",
             Required = true,
             HelpName = "path"
         };
-        CliRootCommand rootCommand = [firstFileOption, secondFileOption];
+        RootCommand rootCommand = [firstFileOption, secondFileOption];
 
         rootCommand.SetAction(parseResult =>
         {
@@ -45,7 +45,7 @@ internal class Program
                 : 2;
         });
 
-        CliConfiguration cli = new(rootCommand);
+        CommandLineConfiguration cli = new(rootCommand);
         cli.Invoke(args);
     }
 
