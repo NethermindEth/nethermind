@@ -115,7 +115,7 @@ namespace Nethermind.Store.Test
             db ??= new MemDb();
             return useFullTrieStore
                 ? TestTrieStoreFactory.Build(db, LimboLogs.Instance)
-                : new RawTrieStore(new NodeStorage(db));
+                : new TestRawTrieStore(new NodeStorage(db));
         }
     }
 }

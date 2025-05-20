@@ -167,7 +167,7 @@ public class SnapProviderTests
         List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
         List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();
 
-        StateTree stree = new StateTree(new RawTrieStore(new TestMemDb()), LimboLogs.Instance);
+        StateTree stree = new StateTree(new TestRawTrieStore(new TestMemDb()), LimboLogs.Instance);
         SnapProviderHelper.AddAccountRange(
                 stree,
                 0,

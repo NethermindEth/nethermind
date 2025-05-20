@@ -38,7 +38,7 @@ public class SnapServerTest
     {
         MemDb stateDbServer = new();
         MemDb codeDbServer = new();
-        RawTrieStore store = new RawTrieStore(stateDbServer);
+        TestRawTrieStore store = new TestRawTrieStore(stateDbServer);
         StateTree tree = new(store, LimboLogs.Instance);
         SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance, lastNStateRootTracker);
 
@@ -263,7 +263,7 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        RawTrieStore store = new RawTrieStore(stateDb);
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
 
         (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store);
 
@@ -303,7 +303,7 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        RawTrieStore store = new RawTrieStore(stateDb);
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
 
         (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store, 10000);
 
@@ -353,7 +353,7 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        RawTrieStore store = new RawTrieStore(stateDb);
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
 
         StateTree stateTree = new(store, LimboLogs.Instance);
 

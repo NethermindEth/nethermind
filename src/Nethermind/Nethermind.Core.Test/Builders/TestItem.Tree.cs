@@ -49,7 +49,7 @@ namespace Nethermind.Core.Test.Builders
 
             public static StateTree GetStateTree(ITrieStore? store = null)
             {
-                store ??= new RawTrieStore(new MemDb());
+                store ??= new TestRawTrieStore(new MemDb());
 
                 var stateTree = new StateTree(store.GetTrieStore(null), LimboLogs.Instance);
 
