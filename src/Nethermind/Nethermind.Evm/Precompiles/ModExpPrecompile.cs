@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -67,7 +67,7 @@ namespace Nethermind.Evm.Precompiles
                 UInt256 iterationCount = CalculateIterationCount(expLength, exp, releaseSpec.IsEip7883Enabled);
                 bool overflow = UInt256.MultiplyOverflow(complexity, iterationCount, out UInt256 result);
                 result /= 3;
-                return result > long.MaxValue || overflow ? long.MaxValue : Math.Max(releaseSpec.IsEip7883Enabled ? 500L : 200L, (long)result);
+                return result > long.MaxValue || overflow ? long.MaxValue : Math.Max(releaseSpec.IsEip7883Enabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExp, (long)result);
             }
             catch (OverflowException)
             {
@@ -210,7 +210,7 @@ namespace Nethermind.Evm.Precompiles
                         bitLength--;
                     }
 
-                    var multiplier = (UInt256)(isEip7883Enabled ? 16 : 8);
+                    UInt256 multiplier = (UInt256)(isEip7883Enabled ? 16 : 8);
                     bool overflow = UInt256.MultiplyOverflow(exponentLength - 32, multiplier, out UInt256 multiplicationResult);
                     overflow |= UInt256.AddOverflow(multiplicationResult, (UInt256)bitLength, out iterationCount);
                     if (overflow)
