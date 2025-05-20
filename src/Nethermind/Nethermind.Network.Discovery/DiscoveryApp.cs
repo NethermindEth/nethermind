@@ -24,44 +24,33 @@ namespace Nethermind.Network.Discovery;
 
 public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
 {
-    private readonly ITimestamper _timestamper;
-    private readonly ILogManager _logManager;
     private readonly ILogger _logger;
-    private readonly IMessageSerializationService _messageSerializationService;
     private readonly INetworkConfig _networkConfig;
-
-    private NettyDiscoveryHandler? _discoveryHandler;
-
-    private IKademliaNodeSource _kademliaNodeSource;
-    private DiscoveryPersistenceManager _persistenceManager;
-    private IKademliaDiscv4Adapter _discv4Adapter;
-    private IKademlia<PublicKey, Node> _kademlia;
+    private readonly IKademliaNodeSource _kademliaNodeSource;
+    private readonly DiscoveryPersistenceManager _persistenceManager;
+    private readonly IKademliaDiscv4Adapter _discv4Adapter;
+    private readonly IKademlia<PublicKey, Node> _kademlia;
+    private readonly Func<IChannel, NettyDiscoveryHandler> _discoveryHandlerFactory;
     private readonly ILifetimeScope _discv4Services;
 
+    private NettyDiscoveryHandler? _discoveryHandler;
     private Task? _runningTask;
-    private readonly IProcessExitSource _processExitSouce;
+    private readonly IProcessExitSource _processExitSource;
 
     public DiscoveryApp(
         ILifetimeScope rootScope,
         [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
-        IMessageSerializationService msgSerializationService,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
-        ITimestamper timestamper,
         IProcessExitSource processExitSource,
         ILogManager logManager)
     {
-        _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _logger = _logManager.GetClassLogger();
-        IDiscoveryConfig discoveryConfig1 = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
-        _messageSerializationService =
-            msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
-        _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-        _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-        _processExitSouce = processExitSource ?? throw new ArgumentNullException(nameof(processExitSource));
+        _logger = logManager.GetClassLogger();
+        _networkConfig = networkConfig;
+        _processExitSource = processExitSource;
 
         var bootNodes = new List<Node>();
-        NetworkNode[] bootnodes = NetworkNode.ParseNodes(discoveryConfig1.Bootnodes, _logger);
+        NetworkNode[] bootnodes = NetworkNode.ParseNodes(discoveryConfig.Bootnodes, _logger);
         if (bootnodes.Length == 0)
         {
             if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
@@ -81,11 +70,10 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
         _discv4Services = rootScope.BeginLifetimeScope(
             (builder) => builder
                 .AddModule(new DiscV4KademliaModule(nodeKey.PublicKey, bootNodes))
-                .AddSingleton<DiscoveryPersistenceManager>()
                 .AddSingleton<DiscV4Services>()
         );
 
-        (_kademliaNodeSource, _persistenceManager, _discv4Adapter, _kademlia) = _discv4Services.Resolve<DiscV4Services>();
+        (_kademliaNodeSource, _persistenceManager, _discv4Adapter, _kademlia, _discoveryHandlerFactory) = _discv4Services.Resolve<DiscV4Services>();
     }
 
     /// <summary>
@@ -95,8 +83,9 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
         IKademliaNodeSource NodeSource,
         DiscoveryPersistenceManager PersistenceManager,
         IKademliaDiscv4Adapter Discv4Adapter,
-        IKademlia<PublicKey, Node> Kademlia)
-    {
+        IKademlia<PublicKey, Node> Kademlia,
+        Func<IChannel, NettyDiscoveryHandler> NettyDiscoveryHandlerFactory
+    ) {
     }
 
     public Task StartAsync()
@@ -160,8 +149,7 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
 
     public void InitializeChannel(IChannel channel)
     {
-        _discoveryHandler = new NettyDiscoveryHandler(_discv4Adapter, channel, _messageSerializationService,
-            _timestamper, _logManager);
+        _discoveryHandler = _discoveryHandlerFactory(channel);
         _discv4Adapter.MsgSender = _discoveryHandler;
 
         _discoveryHandler.OnChannelActivated += OnChannelActivated;
@@ -179,7 +167,7 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
         // Explicitly use TaskScheduler.Default, otherwise it will use dotnetty's task scheduler which have a habit of
         // not working sometimes.
         _runningTask = Task.Factory
-            .StartNew(() => OnChannelActivated(_processExitSouce.Token), _processExitSouce.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default)
+            .StartNew(() => OnChannelActivated(_processExitSource.Token), _processExitSource.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default)
             .ContinueWith
             (
                 t =>
@@ -192,7 +180,7 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
                               (Exception)new NetworkingException(faultMessage, NetworkExceptionType.Discovery);
                     }
 
-                    if (t.IsCompleted && !_processExitSouce.Token.IsCancellationRequested)
+                    if (t.IsCompleted && !_processExitSource.Token.IsCancellationRequested)
                     {
                         _logger.Debug("Discovery App initialized.");
                     }

@@ -33,8 +33,10 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
             })
             .AddSingleton<KademliaDiscv4Adapter>()
             .AddSingleton<IKademliaDiscv4Adapter, KademliaDiscv4Adapter>()
+            .Bind<IDiscoveryMsgListener, IKademliaDiscv4Adapter>()
             .AddSingleton<IKademliaMessageSender<PublicKey, Node>>(c => c.Resolve<IKademliaDiscv4Adapter>())
             .AddSingleton<DiscoveryPersistenceManager>()
+            .AddSingleton<NettyDiscoveryHandler>()
             .AddSingleton<DiscoveryApp>();
     }
 }

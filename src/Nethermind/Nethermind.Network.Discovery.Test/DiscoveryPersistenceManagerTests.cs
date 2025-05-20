@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Kademlia;
@@ -24,6 +24,7 @@ namespace Nethermind.Network.Discovery.Test
     [Parallelizable(ParallelScope.Self)]
     public class DiscoveryPersistenceManagerTests
     {
+        private MemDb _discoveryDb = null!;
         private INetworkStorage _networkStorage = null!;
         private INodeStatsManager _nodeStatsManager = null!;
         private IKademliaDiscv4Adapter _discv4Adapter = null!;
@@ -35,7 +36,10 @@ namespace Nethermind.Network.Discovery.Test
         [SetUp]
         public void Setup()
         {
-            _networkStorage = Substitute.For<INetworkStorage>();
+            NetworkNodeDecoder.Init();
+
+            _discoveryDb = new MemDb();
+            _networkStorage = new NetworkStorage(_discoveryDb, LimboLogs.Instance);
             _nodeStatsManager = Substitute.For<INodeStatsManager>();
             _discv4Adapter = Substitute.For<IKademliaDiscv4Adapter>();
             _discoveryConfig = new DiscoveryConfig()
@@ -58,6 +62,7 @@ namespace Nethermind.Network.Discovery.Test
         public void Teardown()
         {
             _discv4Adapter?.DisposeAsync();
+            _discoveryDb.Dispose();
         }
 
         [Test]
@@ -70,7 +75,7 @@ namespace Nethermind.Network.Discovery.Test
                 new NetworkNode(TestItem.PublicKeyB, "192.168.1.2", 30303, 0)
             };
 
-            _networkStorage.GetPersistedNodes().Returns(networkNodes);
+            _networkStorage.UpdateNodes(networkNodes);
 
             await _persistenceManager.LoadPersistedNodes(cancellationToken);
 
@@ -89,7 +94,7 @@ namespace Nethermind.Network.Discovery.Test
                 new NetworkNode(TestItem.PublicKeyB, "192.168.1.2", 30303, 0)
             };
 
-            _networkStorage.GetPersistedNodes().Returns(networkNodes);
+            _networkStorage.UpdateNodes(networkNodes);
 
             // First ping succeeds, second one throws
             _discv4Adapter.Ping(
@@ -113,53 +118,19 @@ namespace Nethermind.Network.Discovery.Test
                 new Node(TestItem.PublicKeyA, "192.168.1.1", 30303),
                 new Node(TestItem.PublicKeyB, "192.168.1.2", 30303)
             };
-            var asIps = nodes.Select((n) => n.Address).ToArray();
 
-            var cancellationSource = new CancellationTokenSource()
-                .ThatCancelAfter(TimeSpan.FromMilliseconds(5000));
-
-            var persistenceTask = _persistenceManager.RunDiscoveryPersistenceCommit(cancellationSource.Token);
-
-            // Wait a bit to allow at least one persistence cycle to complete
-            await Task.Delay(_discoveryConfig.DiscoveryPersistenceInterval + 10, cancellationSource.Token);
-
-            await cancellationSource.CancelAsync();
-
-            _networkStorage.Received().StartBatch();
-            /*
-            _networkStorage.Received().UpdateNodes(Arg.Is<IEnumerable<NetworkNode>>((IEnumerable<NetworkNode> nn) =>
-            {
-                return Enumerable.SequenceEqual<IPEndPoint>(nn.Select((n) => new IPEndPoint(n.HostIp, n.Port)), asIps);
-            }));
-            */
-            _networkStorage.Received().Commit();
-        }
-
-        [Test]
-        [CancelAfter(10000)]
-        public async Task RunDiscoveryPersistenceCommit_Should_Handle_Exceptions(CancellationToken cancellationToken)
-        {
-            // Arrange
-            var nodes = new[]
-            {
-                new Node(TestItem.PublicKeyA, "192.168.1.1", 30303),
-                new Node(TestItem.PublicKeyB, "192.168.1.2", 30303)
-            };
+            var cls = new CancellationTokenSource().ThatCancelAfter(TimeSpan.FromMilliseconds(5000));
 
             _kademlia.IterateNodes().Returns(nodes);
-            _networkStorage.When(x => x.StartBatch()).Throw(new Exception("Test exception"));
 
-            // Act - start the persistence process
-            var persistenceTask = _persistenceManager.RunDiscoveryPersistenceCommit(cancellationToken);
+            _ = _persistenceManager.RunDiscoveryPersistenceCommit(cls.Token);
 
             // Wait a bit to allow at least one persistence cycle to complete
-            await Task.Delay(50, cancellationToken);
+            await Task.Delay(_discoveryConfig.DiscoveryPersistenceInterval * 2, cls.Token);
 
-            // Cancel the task so we can complete the test - No need for this as the CancelAfter will handle cancellation
-            // We can leave the rest of the code in the test unchanged
+            await cls.CancelAsync();
 
-            // If we got here without other exceptions, the error was properly handled
-            Assert.Pass();
+            _discoveryDb.Count.Should().Be(2);
         }
     }
 }
