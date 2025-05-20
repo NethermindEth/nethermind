@@ -9,7 +9,7 @@
 
     <ItemGroup>
       <PackageReference Include="System.CommandLine" />
-      <PackageReference Include="BouncyCastle.Cryptography" />
+      <PackageReference Include="BouncyCastle.Cryptography" Aliases="BouncyCastle" />
     </ItemGroup>
 
     <ItemGroup>
