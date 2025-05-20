@@ -35,6 +35,7 @@ namespace Nethermind.Consensus.Processing
         {
             private readonly ITransactionProcessorAdapter _transactionProcessor = new BuildUpTransactionProcessorAdapter(txProcessor);
             private readonly ILogger _logger = logManager.GetClassLogger();
+            private readonly LinkedHashSet<Transaction> _transactionsInBlock = new(ByHashTxComparer.Instance);
 
             public BlockProductionTransactionsExecutor(
                 IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
@@ -60,6 +61,10 @@ namespace Nethermind.Consensus.Processing
             {
             }
 
+            // todo: remove
+            // public bool IsTransactionInBlock(Transaction tx) => _transactionsInBlock.Contains(tx);
+            public bool IsTransactionInBlock(Transaction tx) => throw new NotImplementedException();
+
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
             event EventHandler<TxProcessedEventArgs>? IBlockProcessor.IBlockTransactionsExecutor.TransactionProcessed
@@ -79,6 +84,8 @@ namespace Nethermind.Consensus.Processing
             {
                 // We start with high number as don't want to resize too much
                 const int defaultTxCount = 512;
+
+                _transactionsInBlock.Clear();
 
                 BlockToProduce? blockToProduce = block as BlockToProduce;
 
@@ -138,6 +145,7 @@ namespace Nethermind.Consensus.Processing
 
                     if (result)
                     {
+                        _transactionsInBlock.Add(currentTx);
                         _transactionProcessed?.Invoke(this,
                             new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
                     }
