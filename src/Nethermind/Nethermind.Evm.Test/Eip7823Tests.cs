@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
@@ -47,6 +48,23 @@ public class Eip7823Tests
         {
             Assert.That(gas, Is.EqualTo(long.MaxValue));
         }
+    }
+
+    [TestCase("0x9e5faafc")]
+    [TestCase("0x85474728")]
+    [TestCase("0x9e281a98000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000021e19e0c9bab2400000")]
+    public void TestInvalid(string inputHex)
+    {
+        IReleaseSpec specDisabled = new Prague();
+        IReleaseSpec specEnabled = new Prague() { IsEip7823Enabled = true };
+
+        byte[] input = Bytes.FromHexString(inputHex);
+
+        Assert.Throws<OverflowException>(() => TestSuccess(input, specDisabled));
+        Assert.Throws<OverflowException>(() => TestSuccess(input, specEnabled));
+
+        Assert.That(TestGas(input, specDisabled), Is.EqualTo(long.MaxValue));
+        Assert.That(TestGas(input, specEnabled), Is.EqualTo(long.MaxValue));
     }
 
     private static IEnumerable<object> LimitTests

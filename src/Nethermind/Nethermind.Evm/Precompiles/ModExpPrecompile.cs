@@ -122,7 +122,7 @@ namespace Nethermind.Evm.Precompiles
             Metrics.ModExpPrecompile++;
 
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
-            if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
+            if (ExceedsMaxInputSize(releaseSpec, (uint)baseLength, (uint)expLength, (uint)modulusLength))
             {
                 return IPrecompile.Failure;
             }
