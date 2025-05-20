@@ -382,22 +382,22 @@ public class BlockValidator(
         return true;
     }
 
-    protected static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot) =>
+    public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot) =>
         ValidateTxRootMatchesTxs(block.Header, block.Body, out txRoot);
 
-    protected static bool ValidateTxRootMatchesTxs(BlockHeader header, BlockBody body, out Hash256 txRoot) =>
+    public static bool ValidateTxRootMatchesTxs(BlockHeader header, BlockBody body, out Hash256 txRoot) =>
         (txRoot = TxTrie.CalculateRoot(body.Transactions)) == header.TxRoot;
 
-    protected static bool ValidateUnclesHashMatches(Block block, out Hash256 unclesHash) =>
+    public static bool ValidateUnclesHashMatches(Block block, out Hash256 unclesHash) =>
         ValidateUnclesHashMatches(block.Header, block.Body, out unclesHash);
 
-    protected static bool ValidateUnclesHashMatches(BlockHeader header, BlockBody body, out Hash256 unclesHash) =>
+    public static bool ValidateUnclesHashMatches(BlockHeader header, BlockBody body, out Hash256 unclesHash) =>
         (unclesHash = UnclesHash.Calculate(body.Uncles)) == header.UnclesHash;
 
-    protected static bool ValidateWithdrawalsHashMatches(Block block, out Hash256? withdrawalsRoot) =>
+    public static bool ValidateWithdrawalsHashMatches(Block block, out Hash256? withdrawalsRoot) =>
         ValidateWithdrawalsHashMatches(block.Header, block.Body, out withdrawalsRoot);
 
-    protected static bool ValidateWithdrawalsHashMatches(BlockHeader header, BlockBody body, out Hash256? withdrawalsRoot)
+    public static bool ValidateWithdrawalsHashMatches(BlockHeader header, BlockBody body, out Hash256? withdrawalsRoot)
     {
         if (body.Withdrawals is null)
         {
