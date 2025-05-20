@@ -219,7 +219,7 @@ public class MainPruningTrieStoreFactory
         IDbProvider dbProvider,
         INodeStorageFactory nodeStorageFactory,
         IBlockTree blockTree,
-        IDisposer disposer,
+        IDisposableStack disposeStack,
         ILogManager logManager
         )
     {
@@ -263,7 +263,7 @@ public class MainPruningTrieStoreFactory
         if (stateDb is IFullPruningDb fullPruningDb)
         {
             PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(fullPruningDb, blockTree!, logManager);
-            disposer.AddInstanceForDisposal(triggerPersistenceStrategy);
+            disposeStack.Push(triggerPersistenceStrategy);
             persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
             pruningStrategy = new PruningTriggerPruningStrategy(fullPruningDb, pruningStrategy);
         }
