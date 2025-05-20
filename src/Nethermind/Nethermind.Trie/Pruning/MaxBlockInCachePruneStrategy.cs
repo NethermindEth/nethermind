@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.Trie.Pruning;
 
-public class MaxBlockInCachePruneStrategy(IPruningStrategy baseStrategy, long maxBlockFromPersisted, long pruneBoundary): IPruningStrategy
+public class MaxBlockInCachePruneStrategy(IPruningStrategy baseStrategy, long maxBlockFromPersisted, long pruneBoundary) : IPruningStrategy
 {
     public bool DeleteObsoleteKeys => baseStrategy.DeleteObsoleteKeys;
 
