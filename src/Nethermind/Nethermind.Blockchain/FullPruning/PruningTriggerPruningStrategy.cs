@@ -41,8 +41,8 @@ public class PruningTriggerPruningStrategy : IPruningStrategy, IDisposable
         bool inPruning = _inPruning != 0;
         if (inPruning)
         {
-            // `ShouldPersist` would cause all block to be persisted which is good, but we also need to trigger
-            // snapshot also, which normally only happens
+            // `ShouldPersist` in `PruningTriggerPersistenceStrategy` would cause all block to be persisted which is
+            // good, but we also need to trigger snapshot also, which normally only happens quite rarely.
             if (state.LatestCommittedBlock % 8 == 0)
             {
                 return true;
