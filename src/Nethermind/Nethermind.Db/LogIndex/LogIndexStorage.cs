@@ -205,7 +205,7 @@ namespace Nethermind.Db
             }
         }
 
-        private const bool IncludeTopicIndex = true;
+        private const bool IncludeTopicIndex = false;
 
         private static byte[] BuildTopicKey(Hash256 topic, byte topicIndex)
         {
