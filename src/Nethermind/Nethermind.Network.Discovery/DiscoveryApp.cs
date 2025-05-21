@@ -191,8 +191,8 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
     {
         try
         {
-            // Step 1 - read nodes and stats from db
-            await _persistenceManager!.LoadPersistedNodes(cancellationToken);
+            //Step 1 - read nodes and stats from db
+            await _persistenceManager.LoadPersistedNodes(cancellationToken);
 
             Task persistenceTask = _persistenceManager.RunDiscoveryPersistenceCommit(cancellationToken);
 
@@ -215,6 +215,7 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
             if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error during discovery initialization", e);
         }
     }
+
     public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken token)
     {
         return _kademliaNodeSource.DiscoverNodes(token);

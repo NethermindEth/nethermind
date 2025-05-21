@@ -9,6 +9,9 @@ using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats;
+using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery
