@@ -17,7 +17,7 @@ using NonBlocking;
 namespace Nethermind.Network.Discovery.Discv4;
 
 public class KademliaDiscv4Adapter(
-    Lazy<IKademliaMessageReceiver<PublicKey, Node>> kademliaMessageReceiver, // Cyclic dependency
+    Lazy<IKademlia<PublicKey, Node>> kademlia, // Cyclic dependency
     Lazy<INodeHealthTracker<Node>> nodeHealthTracker,
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
@@ -220,7 +220,7 @@ public class KademliaDiscv4Adapter(
         }
 
         PublicKey publicKey = new PublicKey(msg.SearchedNodeId);
-        Node[] nodes = await kademliaMessageReceiver.Value.FindNeighbours(node, publicKey, token);
+        Node[] nodes = kademlia.Value.GetKNeighbour(publicKey, node, false);
         if (nodes.Length <= 12)
         {
             await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes), token);
@@ -236,7 +236,6 @@ public class KademliaDiscv4Adapter(
     private async Task HandlePing(Node node, NodeSession session, PingMsg ping, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Receive ping from {node}");
-        await kademliaMessageReceiver.Value.Ping(node, token);
         PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), ping.Mdc!);
         session.OnPingReceived();
         await SendMessage(session, msg, token);

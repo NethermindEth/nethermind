@@ -237,12 +237,12 @@ public class KademliaSimulation
         readonly ValueHashNodeHashProvider _nodeHashProvider = new ValueHashNodeHashProvider();
         private readonly Random _random = new Random(0);
 
-        private bool TryGetReceiver(TestNode receiverHash, out IKademliaMessageReceiver<ValueHash256, TestNode> contentKademliaMessageReceiver)
+        private bool TryGetReceiver(TestNode receiverHash, out ReceiverForNode contentKademliaMessageReceiver)
         {
             contentKademliaMessageReceiver = null!;
             if (_nodes.TryGetValue(receiverHash.Hash, out var container))
             {
-                contentKademliaMessageReceiver = container!.Resolve<IKademliaMessageReceiver<ValueHash256, TestNode>>();
+                contentKademliaMessageReceiver = container!.Resolve<ReceiverForNode>();
                 return true;
             }
 
@@ -286,7 +286,7 @@ public class KademliaSimulation
 
                 await fabric.DoSimulateLatency(token);
                 fabric.Debug($"ping from {sender} to {node}");
-                if (fabric.TryGetReceiver(node, out IKademliaMessageReceiver<ValueHash256, TestNode> receiver))
+                if (fabric.TryGetReceiver(node, out ReceiverForNode receiver))
                 {
                     await receiver.Ping(sender, token);
                     return;
@@ -301,12 +301,26 @@ public class KademliaSimulation
 
                 await fabric.DoSimulateLatency(token);
                 fabric.Debug($"findn from {sender} to {node}");
-                if (fabric.TryGetReceiver(node, out IKademliaMessageReceiver<ValueHash256, TestNode> receiver))
+                if (fabric.TryGetReceiver(node, out ReceiverForNode receiver))
                 {
                     return (await receiver.FindNeighbours(sender, hash, token)).Select((node) => new TestNode(node.Hash)).ToArray();
                 }
 
                 throw new Exception($"unknown receiver {node}");
+            }
+        }
+
+        private class ReceiverForNode(IKademlia<ValueHash256, TestNode> kademlia, INodeHealthTracker<TestNode> nodeHealthTracker)
+        {
+            public Task Ping(TestNode node, CancellationToken token)
+            {
+                nodeHealthTracker.OnIncomingMessageFrom(node);
+                return Task.CompletedTask;
+            }
+
+            public Task<TestNode[]> FindNeighbours(TestNode node, ValueHash256 hash, CancellationToken token)
+            {
+                return Task.FromResult(kademlia.GetKNeighbour(hash, node));
             }
         }
 

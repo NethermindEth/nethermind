@@ -33,7 +33,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
     {
         private IKademliaDiscv4Adapter _adapter = null!;
 
-        private IKademliaMessageReceiver<PublicKey, Node> _kademliaMessageReceiver = null!;
+        private IKademlia<PublicKey, Node> _kademliaMessageReceiver = null!;
         private INodeHealthTracker<Node> _nodeHealthTracker = null!;
         private INetworkConfig _networkConfig = null!;
         private KademliaConfig<Node> _kademliaConfig = null!;
@@ -72,7 +72,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _testPublicKey = TestItem.PublicKeyA;
             _testNode = new Node(_testPublicKey, "192.168.1.1", 30303);
 
-            _kademliaMessageReceiver = Substitute.For<IKademliaMessageReceiver<PublicKey, Node>>();
+            _kademliaMessageReceiver = Substitute.For<IKademlia<PublicKey, Node>>();
             _nodeHealthTracker = Substitute.For<INodeHealthTracker<Node>>();
             _networkConfig = Substitute.For<INetworkConfig>();
             _networkConfig.MaxActivePeers.Returns(25);
@@ -94,7 +94,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             nodeRecordProvider.Current.Returns(_selfNodeRecord);
 
             _adapter = new KademliaDiscv4Adapter(
-                new Lazy<IKademliaMessageReceiver<PublicKey, Node>>(() => _kademliaMessageReceiver),
+                new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
                 new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
                 new DiscoveryConfig(),
                 _kademliaConfig,
@@ -232,7 +232,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             await Task.Delay(100);
 
-            await _kademliaMessageReceiver.Received(1).Ping(Arg.Is<Node>(n => n.Id == _receiver.Id), Arg.Any<CancellationToken>());
             await _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(m =>
                 m.FarAddress!.Equals(_receiver.Address) &&
                 m.PingMdc!.SequenceEqual(pingMsg.Mdc!)));
@@ -248,20 +247,18 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             findNodeMsg = AddReceiverFarAddress(findNodeMsg);
 
             Node[] expectedNodes = Enumerable.Repeat(new Node(TestItem.PublicKeyD, "192.168.1.3", 30303), 16).ToArray();
-            _kademliaMessageReceiver.FindNeighbours(
-                Arg.Any<Node>(),
+            _kademliaMessageReceiver.GetKNeighbour(
                 Arg.Any<PublicKey>(),
-                Arg.Any<CancellationToken>())
+                Arg.Any<Node>())
                 .Returns(expectedNodes);
 
             await _adapter.OnIncomingMsg(findNodeMsg);
 
             await Task.Delay(100);
 
-            await _kademliaMessageReceiver.Received(1).FindNeighbours(
-                Arg.Is<Node>(n => n.Id == _receiver.Id),
+            _kademliaMessageReceiver.GetKNeighbour(
                 Arg.Is<PublicKey>(pk => pk.Bytes!.SequenceEqual(_testPublicKey.Bytes!)),
-                Arg.Any<CancellationToken>());
+                Arg.Is<Node>(n => n.Id == _receiver.Id));
 
             // Send out two message instead of one because of MTU limit.
             await _msgSender.Received(1).SendMsg(Arg.Is<NeighborsMsg>(m =>

@@ -8,6 +8,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// <summary>
 /// Main kademlia interface. High level code is expected to interface with this interface.
 /// </summary>
+/// <typeparam name="TKey"></typeparam>
 /// <typeparam name="TNode"></typeparam>
 public interface IKademlia<TKey, TNode>
 {

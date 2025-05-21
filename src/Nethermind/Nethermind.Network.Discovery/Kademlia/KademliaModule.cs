@@ -7,6 +7,15 @@ using Nethermind.Network.Discovery.Discv4;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
+/// <summary>
+/// A kademlia module.
+/// Application is expeccted to expose a  <see cref="IKademliaMessageSender{TKey, TNode}"/>
+/// for the table maintenance to function.
+/// Additionally, application is expected to call <see cref="INodeHealthTracker{TNode}.OnIncomingMessageFrom" />
+/// and <see cref="INodeHealthTracker{TNode}.OnRequestFailed" /> respectedly.
+/// </summary>
+/// <typeparam name="TKey"></typeparam>
+/// <typeparam name="TNode"></typeparam>
 public class KademliaModule<TKey, TNode> : Module where TNode : notnull
 {
     protected override void Load(ContainerBuilder builder)
@@ -15,7 +24,6 @@ public class KademliaModule<TKey, TNode> : Module where TNode : notnull
 
         builder
             .AddSingleton<IKademlia<TKey, TNode>, Kademlia<TKey, TNode>>()
-            .AddSingleton<IKademliaMessageReceiver<TKey, TNode>, KademliaKademliaMessageReceiver<TKey, TNode>>()
             .AddSingleton<LookupKNearestNeighbour<TKey, TNode>>()
             .AddSingleton<OriginalLookupKNearestNeighbour<TKey, TNode>>()
             .AddSingleton<ILookupAlgo<TNode>>(provider =>
