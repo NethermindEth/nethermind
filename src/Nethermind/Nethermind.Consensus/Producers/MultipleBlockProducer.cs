@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.Producers
 
             try
             {
-                Block?[] blocks = await Task.WhenAll<Block?>(produceTasks.AsSpan());
+                Block?[] blocks = await Task.WhenAll<Block?>(produceTasks);
                 blocksWithProducers = blocks.Zip(_blockProducers);
             }
             catch (OperationCanceledException)

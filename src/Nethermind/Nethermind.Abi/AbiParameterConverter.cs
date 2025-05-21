@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Contracts.Json;
 
 public abstract class AbiParameterConverterBase<T> : JsonConverter<T> where T : AbiParameter, new()
 {
-    private static readonly Lock _registerLock = new();
+    private static readonly object _registerLock = new();
     private static IList<IAbiTypeFactory> _abiTypeFactories = Array.Empty<IAbiTypeFactory>();
 
     public static bool IsFactoryRegistered<TFactory>()

@@ -85,7 +85,7 @@ namespace Nethermind.Network
 
                     if (_pingTasks.Count > 0)
                     {
-                        bool[] tasks = await Task.WhenAll<bool>(CollectionsMarshal.AsSpan(_pingTasks));
+                        bool[] tasks = await Task.WhenAll<bool>(_pingTasks);
                         int tasksLength = tasks.Length;
                         if (tasksLength != 0)
                         {

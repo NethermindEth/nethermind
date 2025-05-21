@@ -28,7 +28,7 @@ namespace Nethermind.EthStats.Senders
             }
 
             (EmitMessage? emitMessage, string? messageType) = CreateMessage(message, type);
-            string payload = JsonSerializer.Serialize(emitMessage, JsonSerializerOptions.Web);
+            string payload = JsonSerializer.Serialize(emitMessage, JsonSerializerOptions.Default);
             if (_logger.IsTrace) _logger.Trace($"Sending ETH stats message '{messageType}': {payload}");
 
             client.Send(payload);

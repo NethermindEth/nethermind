@@ -433,7 +433,7 @@ namespace Nethermind.Network.P2P
             MarkDisconnected(disconnectReason, DisconnectType.Local, details);
         }
 
-        private readonly Lock _sessionStateLock = new();
+        private readonly object _sessionStateLock = new();
         public byte P2PVersion { get; private set; }
 
         private SessionState _state;

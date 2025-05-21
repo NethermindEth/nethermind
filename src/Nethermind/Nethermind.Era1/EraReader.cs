@@ -108,7 +108,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
                 blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
             }
         }, cancellation)).ToPooledList(verifyConcurrency);
-        await Task.WhenAll(workers.AsSpan());
+        await Task.WhenAll(workers);
 
         using AccumulatorCalculator calculator = new();
         foreach (var valueTuple in blockHashes.AsSpan())

@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc.Modules
 
         private readonly IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
-        private readonly Lock _updateRegistrationsLock = new();
+        private readonly object _updateRegistrationsLock = new();
         private readonly MethodInfo _registerMethod;
 
         public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, IJsonSerializer serializer, ILogManager logManager)

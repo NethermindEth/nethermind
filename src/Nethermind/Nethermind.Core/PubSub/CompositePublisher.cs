@@ -17,7 +17,7 @@ namespace Nethermind.Core.PubSub
                 tasks.Add(publishers[i].PublishAsync(data));
             }
 
-            await Task.WhenAll(tasks.AsSpan());
+            await Task.WhenAll(tasks);
         }
 
         public void Dispose()

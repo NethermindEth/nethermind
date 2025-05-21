@@ -10,7 +10,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
     public class ThreadSafeContractDataStoreCollectionDecorator<T> : IDictionaryContractDataStoreCollection<T>
     {
         private readonly IContractDataStoreCollection<T> _inner;
-        private readonly Lock _lock = new Lock();
+        private readonly object _lock = new();
 
         public ThreadSafeContractDataStoreCollectionDecorator(IContractDataStoreCollection<T> inner)
         {

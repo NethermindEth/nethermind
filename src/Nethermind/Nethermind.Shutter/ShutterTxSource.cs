@@ -26,7 +26,7 @@ public class ShutterTxSource(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private ulong _keyWaitTaskId = 0;
     private readonly Dictionary<ulong, Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>> _keyWaitTasks = [];
-    private readonly Lock _syncObject = new();
+    private readonly object _syncObject = new();
 
     public bool SupportsBlobs => false;
 

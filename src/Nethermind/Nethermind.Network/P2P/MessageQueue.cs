@@ -14,7 +14,7 @@ namespace Nethermind.Network.P2P
     {
         private bool _isClosed;
         private Request<TMsg, TData>? _currentRequest;
-        private readonly Lock _lock = new();
+        private readonly object _lock = new();
 
         private readonly Queue<Request<TMsg, TData>> _requestQueue = new();
 

@@ -22,7 +22,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockTree _blockTree;
         private Hash256 _lastHash;
-        private readonly Lock _lock = new Lock();
+        private readonly object _lock = new();
         private readonly ILogger _logger;
 
         protected internal ContractDataStore(IContractDataStoreCollection<T> collection, IDataContract<T> dataContract, IBlockTree blockTree, IReceiptFinder receiptFinder, ILogManager logManager)

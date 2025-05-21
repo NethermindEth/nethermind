@@ -37,7 +37,7 @@ namespace Nethermind.Network
         private readonly ManualResetEventSlim _peerUpdateRequested = new(false);
         private readonly PeerComparer _peerComparer = new();
         private readonly IPeerPool _peerPool;
-        private readonly Lock _lock = new();
+        private readonly object _lock = new();
         private readonly List<PeerStats> _candidates;
         private readonly RateLimiter _outgoingConnectionRateLimiter;
 
@@ -364,7 +364,7 @@ namespace Nethermind.Network
             }
 
             taskChannel.Writer.Complete();
-            await Task.WhenAll(tasks.AsSpan());
+            await Task.WhenAll(tasks);
         }
 
         private bool EnsureAvailableActivePeerSlot()

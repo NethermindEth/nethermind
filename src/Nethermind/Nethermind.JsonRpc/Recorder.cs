@@ -18,7 +18,7 @@ namespace Nethermind.JsonRpc
         private string _currentRecorderFilePath;
         private int _currentRecorderFileLength;
         private bool _isEnabled = true;
-        private readonly Lock _recorderSync = new();
+        private readonly object _recorderSync = new();
 
         public Recorder(string basePath, IFileSystem fileSystem, ILogger logger)
         {

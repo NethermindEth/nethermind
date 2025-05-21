@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Filters
     {
         private readonly TimeSpan _timeout;
         private int _currentFilterId = -1;
-        private readonly Lock _locker = new();
+        private readonly object _locker = new();
         private readonly ConcurrentDictionary<int, FilterBase> _filters = new();
         private readonly ITimer _timer;
 

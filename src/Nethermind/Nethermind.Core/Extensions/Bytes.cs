@@ -26,6 +26,7 @@ namespace Nethermind.Core.Extensions
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
+        public static readonly ISpanEqualityComparer<byte> SpanEqualityComparer = new SpanBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
         // The ReadOnlyMemory<byte> needs to be initialized = or it will be created each time.
         public static ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
@@ -39,7 +40,16 @@ namespace Nethermind.Core.Extensions
         public const string ZeroValue = "0";
         public const string EmptyHexValue = "0x";
 
-        private class BytesEqualityComparer : EqualityComparer<byte[]>, IAlternateEqualityComparer<ReadOnlySpan<byte>, byte[]>
+        
+
+        private class SpanBytesEqualityComparer : ISpanEqualityComparer<byte>
+        {
+            public bool Equals(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y) => AreEqual(x, y);
+
+            public int GetHashCode(ReadOnlySpan<byte> obj) => obj.FastHash();
+        }
+
+        private class BytesEqualityComparer : EqualityComparer<byte[]>
         {
             public byte[] Create(ReadOnlySpan<byte> alternate)
                 => alternate.ToArray();

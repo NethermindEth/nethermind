@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ITotalDifficultyStrategy _totalDifficultyStrategy;
         private FastBlocksAllocationStrategy _approximateAllocationStrategy = new FastBlocksAllocationStrategy(TransferSpeedType.Headers, 0, false);
 
-        private readonly Lock _handlerLock = new();
+        private readonly object _handlerLock = new();
 
         private readonly ulong _fastHeadersMemoryBudget;
         protected long _lowestRequestedHeaderNumber;

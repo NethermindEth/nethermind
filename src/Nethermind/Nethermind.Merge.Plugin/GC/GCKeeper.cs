@@ -15,7 +15,7 @@ namespace Nethermind.Merge.Plugin.GC;
 public class GCKeeper
 {
     private static ulong _forcedGcCount = 0;
-    private readonly Lock _lock = new();
+    private readonly object _lock = new();
     private readonly IGCStrategy _gcStrategy;
     private readonly ILogger _logger;
     private static readonly long _defaultSize = 512.MB();

@@ -39,7 +39,7 @@ public class CompositeNodeSource : INodeSource
         }
         finally
         {
-            await Task.WhenAll(feedTasks.AsSpan());
+            await Task.WhenAll(feedTasks);
         }
     }
 

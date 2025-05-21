@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Core.Crypto;
 
-public class Hash256AsKeyComparer : IEqualityComparer<Hash256AsKey>, IAlternateEqualityComparer<ValueHash256, Hash256AsKey>
+public class Hash256AsKeyComparer : IEqualityComparer<Hash256AsKey>
 {
     public static Hash256AsKeyComparer Instance { get; } = new();
 

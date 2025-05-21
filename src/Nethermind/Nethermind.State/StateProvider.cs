@@ -4,10 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -39,9 +36,7 @@ namespace Nethermind.State
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
-        private readonly IKeyValueStoreWithBatching _codeDb;
-        private Dictionary<Hash256AsKey, byte[]> _codeBatch;
-        private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
+        private readonly IKeyValueStore _codeDb;
 
         private readonly List<Change> _changes = new(Resettable.StartCapacity);
         internal readonly StateTree _tree;
@@ -50,7 +45,7 @@ namespace Nethermind.State
         private readonly bool _populatePreBlockCache;
 
         public StateProvider(IScopedTrieStore? trieStore,
-            IKeyValueStoreWithBatching codeDb,
+            IKeyValueStore codeDb,
             ILogManager logManager,
             StateTree? stateTree = null,
             ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null,
@@ -150,20 +145,19 @@ namespace Nethermind.State
             // or people copy and pasting popular contracts
             if (!_codeInsertFilter.Get(codeHash))
             {
-                if (_codeBatch is null)
+                if (!_codeDb.PreferWriteByArray)
                 {
-                    _codeBatch = new(Hash256AsKeyComparer.Instance);
-                    _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
+                    _codeDb.PutSpan(codeHash.Bytes, code.Span);
                 }
-                if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
+                else if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
                         && codeArray.Offset == 0
                         && codeArray.Count == code.Length)
                 {
-                    _codeBatchAlternate[codeHash] = codeArray.Array;
+                    _codeDb[codeHash.Bytes] = codeArray.Array;
                 }
                 else
                 {
-                    _codeBatchAlternate[codeHash] = code.ToArray();
+                    _codeDb[codeHash.Bytes] = code.ToArray();
                 }
 
                 _codeInsertFilter.Set(codeHash);
@@ -295,20 +289,14 @@ namespace Nethermind.State
         }
 
         public byte[] GetCode(Hash256 codeHash)
-            => GetCodeCore(in codeHash.ValueHash256);
+        {
+            byte[]? code = codeHash == Keccak.OfAnEmptyString ? [] : _codeDb[codeHash.Bytes];
+            return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
+        }
 
         public byte[] GetCode(ValueHash256 codeHash)
-            => GetCodeCore(in codeHash);
-
-        private byte[] GetCodeCore(in ValueHash256 codeHash)
         {
-            if (codeHash == Keccak.OfAnEmptyString.ValueHash256) return [];
-
-            if (_codeBatch is null || !_codeBatchAlternate.TryGetValue(codeHash, out byte[]? code))
-            {
-                code = _codeDb[codeHash.Bytes];
-            }
-
+            byte[]? code = codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : _codeDb[codeHash.Bytes];
             return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
         }
 
@@ -430,22 +418,26 @@ namespace Nethermind.State
             Commit(releaseSpec, NullStateTracer.Instance, commitRoots, isGenesis);
         }
 
-        private struct ChangeTrace(Account? before, Account? after)
+        private struct ChangeTrace
         {
-            public ChangeTrace(Account? after) : this(null, after)
+            public ChangeTrace(Account? before, Account? after)
             {
+                After = after;
+                Before = before;
             }
 
-            public Account? Before { get; set; } = before;
-            public Account? After { get; set; } = after;
+            public ChangeTrace(Account? after)
+            {
+                After = after;
+                Before = null;
+            }
+
+            public Account? Before { get; set; }
+            public Account? After { get; set; }
         }
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
         {
-            Task codeFlushTask = !commitRoots || _codeBatch is null || _codeBatch.Count == 0
-                ? Task.CompletedTask
-                : CommitCodeAsync();
-
             var currentPosition = _changes.Count - 1;
             if (currentPosition < 0)
             {
@@ -601,34 +593,6 @@ namespace Nethermind.State
             {
                 FlushToTree();
             }
-
-            codeFlushTask.GetAwaiter().GetResult();
-
-            Task CommitCodeAsync()
-            {
-                Dictionary<Hash256AsKey, byte[]> dict = Interlocked.Exchange(ref _codeBatch, null);
-                if (dict is null) return Task.CompletedTask;
-                _codeBatchAlternate = default;
-
-                return Task.Run(() =>
-                {
-                    using (var batch = _codeDb.StartWriteBatch())
-                    {
-                        // Insert ordered for improved performance
-                        foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
-                        {
-                            batch.PutSpan(kvp.Key.Value.Bytes, kvp.Value);
-                        }
-                    }
-
-                    // Reuse Dictionary if not already re-initialized
-                    dict.Clear();
-                    if (Interlocked.CompareExchange(ref _codeBatch, dict, null) is null)
-                    {
-                        _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
-                    }
-                });
-            }
         }
 
         private void FlushToTree()
@@ -680,12 +644,12 @@ namespace Nethermind.State
                         ? null
                         : beforeCodeHash == Keccak.OfAnEmptyString
                             ? []
-                            : GetCodeCore(in beforeCodeHash.ValueHash256);
+                            : _codeDb[beforeCodeHash.Bytes];
                     byte[]? afterCode = afterCodeHash is null
                         ? null
                         : afterCodeHash == Keccak.OfAnEmptyString
                             ? []
-                            : GetCodeCore(in afterCodeHash.ValueHash256);
+                            : _codeDb[afterCodeHash.Bytes];
 
                     if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
                     {
@@ -903,7 +867,6 @@ namespace Nethermind.State
             if (resetBlockChanges)
             {
                 _blockChanges.Clear();
-                _codeBatch?.Clear();
             }
             _intraTxCache.Clear();
             _committedThisRound.Clear();

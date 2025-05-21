@@ -716,7 +716,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 _lastPrunedShardIdx = (_lastPrunedShardIdx + 1) % _shardedDirtyNodeCount;
             }
 
-            Task.WaitAll(pruneTask.AsSpan());
+            Task.WaitAll(pruneTask.ToArray());
 
             RecalculateTotalMemoryUsage();
 
@@ -918,7 +918,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, persistedNodeRecorder, writeFlags, disposeQueue)))
                 .ToPooledList(parallelStartNodes.Count);
 
-            Task.WaitAll(persistNodeStartingFromTasks.AsSpan());
+            Task.WaitAll(persistNodeStartingFromTasks.ToArray());
         }
         finally
         {

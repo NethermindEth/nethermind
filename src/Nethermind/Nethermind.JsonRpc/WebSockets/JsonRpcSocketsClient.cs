@@ -32,10 +32,10 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     private record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner) : IAsyncDisposable
     {
-        private bool _disposed = false;
+        private int _disposed = 0; // Use int instead of bool for Interlocked operations
         public ValueTask DisposeAsync()
         {
-            if (Interlocked.CompareExchange(ref _disposed, true, false) == true) return ValueTask.CompletedTask;
+            if (Interlocked.CompareExchange(ref _disposed, 1, 0) == 1) return ValueTask.CompletedTask; // Adjusted to use int
             BufferOwner.Dispose();
             return ValueTask.CompletedTask;
         }

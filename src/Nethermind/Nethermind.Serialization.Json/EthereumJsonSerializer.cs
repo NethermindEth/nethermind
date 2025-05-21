@@ -63,7 +63,7 @@ namespace Nethermind.Serialization.Json
             var options = new JsonSerializerOptions
             {
                 WriteIndented = indented,
-                NewLine = "\n",
+                //NewLine = "\n",
                 IncludeFields = true,
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -96,7 +96,7 @@ namespace Nethermind.Serialization.Json
                 }
             };
 
-            options.Converters.AddRange(_additionalConverters);
+            options.Converters.AddRange((IList<JsonConverter>)_additionalConverters);
             options.Converters.AddRange(converters ?? Array.Empty<JsonConverter>());
 
             return options;
@@ -144,7 +144,7 @@ namespace Nethermind.Serialization.Json
         public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, CancellationToken cancellationToken, bool indented = false, bool leaveOpen = true)
         {
             var writer = GetPipeWriter(stream, leaveOpen);
-            await JsonSerializer.SerializeAsync(writer, value, indented ? JsonOptionsIndented : _jsonOptions, cancellationToken);
+            await JsonSerializer.SerializeAsync(writer.AsStream(), value, indented ? JsonOptionsIndented : _jsonOptions, cancellationToken);
             await writer.CompleteAsync();
 
             long outputCount = writer.WrittenCount;
@@ -152,7 +152,7 @@ namespace Nethermind.Serialization.Json
         }
 
         public Task SerializeAsync<T>(PipeWriter writer, T value, bool indented = false)
-            => JsonSerializer.SerializeAsync(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
+            => JsonSerializer.SerializeAsync(writer.AsStream(), value, indented ? JsonOptionsIndented : _jsonOptions);
 
         public static void SerializeToStream<T>(Stream stream, T value, bool indented = false)
         {
@@ -166,24 +166,22 @@ namespace Nethermind.Serialization.Json
         {
             ArgumentNullException.ThrowIfNullOrEmpty(innerPath);
 
-            ReadOnlySpan<char> pathSpan = innerPath.AsSpan();
-            int lastDot = pathSpan.LastIndexOf('.');
-            if (lastDot >= 0)
+            if (innerPath.Contains('.'))
             {
+                string[] parts = innerPath.Split('.');
                 JsonElement currentElement = element;
-                foreach (Range subPath in pathSpan[..lastDot].Split('.'))
+                for (int i = 0; i < parts.Length - 1; i++)
                 {
-                    if (!currentElement.TryGetProperty(pathSpan[subPath], out currentElement))
+                    if (!currentElement.TryGetProperty(parts[i], out currentElement))
                     {
                         value = default;
                         return false;
                     }
                 }
-                lastDot++;
-                return currentElement.TryGetProperty(pathSpan[lastDot..], out value);
+                return currentElement.TryGetProperty(parts[^1], out value);
             }
 
-            return element.TryGetProperty(pathSpan, out value);
+            return element.TryGetProperty(innerPath.AsSpan(), out value);
         }
     }
 }

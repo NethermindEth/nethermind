@@ -16,7 +16,7 @@ namespace Nethermind.Blockchain.Spec
         private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         private long _lastHeader = -1;
         private IReleaseSpec? _headerSpec;
-        private readonly Lock _lock = new();
+        private readonly object _lock = new();
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {

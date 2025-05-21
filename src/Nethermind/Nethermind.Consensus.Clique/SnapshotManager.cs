@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.Clique
             return extraData.Slice(0, extraData.Length - Clique.ExtraSealLength);
         }
 
-        private readonly Lock _snapshotCreationLock = new();
+        private readonly object _snapshotCreationLock = new();
 
         public ulong GetLastSignersCount() => _lastSignersCount;
 

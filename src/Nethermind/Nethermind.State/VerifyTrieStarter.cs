@@ -10,22 +10,19 @@ using Nethermind.Logging;
 
 namespace Nethermind.State;
 
-/// <summary>
-/// A small helper class that start VerifyTrie on another thread. Also check if it is already running to prevent running
-/// two verify trie at the same time.
-/// </summary>
-/// <param name="worldStateManager"></param>
-/// <param name="exitSource"></param>
-/// <param name="logManager"></param>
+// Fix for CS0452: Use an integer instead of a boolean for the Interlocked.CompareExchange operation.
+// The integer will act as a flag (0 = false, 1 = true).
+
 public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExitSource exitSource, ILogManager logManager) : IVerifyTrieStarter
 {
     private readonly ILogger _logger = logManager.GetClassLogger<VerifyTrieStarter>();
 
-    private bool _alreadyRunning = false;
+    private int _alreadyRunning = 0; // Use int instead of bool
 
     public bool TryStartVerifyTrie(BlockHeader stateAtBlock)
     {
-        if (Interlocked.CompareExchange(ref _alreadyRunning, true, false))
+        // CompareExchange now works with the integer flag
+        if (Interlocked.CompareExchange(ref _alreadyRunning, 1, 0) != 0)
         {
             return false;
         }
@@ -48,6 +45,11 @@ public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExi
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error($"Error in verify trie", e);
+            }
+            finally
+            {
+                // Reset the flag to allow future executions
+                Interlocked.Exchange(ref _alreadyRunning, 0);
             }
 
         }, TaskCreationOptions.LongRunning);

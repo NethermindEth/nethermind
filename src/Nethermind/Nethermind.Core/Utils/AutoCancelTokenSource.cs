@@ -42,7 +42,7 @@ public readonly struct AutoCancelTokenSource(CancellationTokenSource cancellatio
         CancellationTokenSource source = cancellationTokenSource;
 
         using ArrayPoolList<Task> tasks = allTasks.Select(CancelTokenSourceOnError).ToPooledList(allTasks.Count);
-        await Task.WhenAll(tasks.AsSpan());
+        await Task.WhenAll(tasks);
 
         async Task CancelTokenSourceOnError(Task innerTask)
         {

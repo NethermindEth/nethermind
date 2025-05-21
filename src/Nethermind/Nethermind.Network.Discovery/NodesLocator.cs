@@ -131,7 +131,7 @@ public class NodesLocator : INodesLocator
                 IEnumerable<Node> nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count);
 
                 using ArrayPoolList<Task<Result>> sendFindNodeTasks = SendFindNodes(searchedNodeId, nodesToSend, alreadyTriedNodes).ToPooledList(count);
-                Result[] results = await Task.WhenAll<Result>(sendFindNodeTasks.AsSpan());
+                Result[] results = await Task.WhenAll<Result>(sendFindNodeTasks);
 
                 if (results.Length == 0)
                 {

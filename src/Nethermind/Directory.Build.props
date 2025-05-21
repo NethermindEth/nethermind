@@ -7,7 +7,7 @@
     <LangVersion>13.0</LangVersion>
     <NuGetAuditMode>direct</NuGetAuditMode>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <UseArtifactsOutput>true</UseArtifactsOutput>
   </PropertyGroup>

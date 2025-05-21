@@ -76,7 +76,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
 
     private CancellationTokenSource? _internalTokenSource;
     private bool _isCompleted;
-    private readonly Lock _lockObject = new Lock();
+    private readonly object _lockObject = new();
 
     private BufferSegmentStack _bufferSegmentPool;
     private readonly bool _leaveOpen;

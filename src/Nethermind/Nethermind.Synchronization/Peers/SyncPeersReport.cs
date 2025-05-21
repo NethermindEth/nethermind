@@ -34,7 +34,7 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        private readonly Lock _writeLock = new();
+        private readonly object _writeLock = new();
 
         private IEnumerable<PeerInfo> OrderedPeers => _peerPool.InitializedPeers
             .OrderByDescending(static p => p.SyncPeer?.HeadNumber)

@@ -420,7 +420,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
         }
 
-        Task.WaitAll(commitTask.AsSpan());
+        Task.WaitAll(commitTask.ToArray());
 
         _storages.Clear();
     }

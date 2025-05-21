@@ -17,7 +17,7 @@ namespace Nethermind.Network
 {
     public class NetworkStorage : INetworkStorage
     {
-        private readonly Lock _lock = new();
+        private readonly object _lock = new();
         private readonly IFullDb _fullDb;
         private readonly ILogger _logger;
         private readonly Dictionary<PublicKey, NetworkNode> _nodesDict = new();

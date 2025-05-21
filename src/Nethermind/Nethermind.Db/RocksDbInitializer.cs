@@ -75,7 +75,7 @@ namespace Nethermind.Db
                 allInitializers.Add(Task.Run(() => registration.Invoke()));
             }
 
-            await Task.WhenAll(allInitializers.AsSpan());
+            await Task.WhenAll(allInitializers);
         }
 
         protected static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName[1..];

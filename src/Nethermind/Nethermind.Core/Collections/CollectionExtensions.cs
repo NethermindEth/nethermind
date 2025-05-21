@@ -37,7 +37,7 @@ namespace Nethermind.Core.Collections
             }
         }
 
-        [OverloadResolutionPriority(2)]
+        //[OverloadResolutionPriority(2)]
         public static void AddRange<T>(this ICollection<T> list, IList<T> items)
         {
             int count = items.Count;
@@ -47,7 +47,7 @@ namespace Nethermind.Core.Collections
             }
         }
 
-        [OverloadResolutionPriority(1)]
+        //[OverloadResolutionPriority(1)]
         public static void AddRange<T>(this ICollection<T> list, IReadOnlyList<T> items)
         {
             int count = items.Count;
@@ -57,7 +57,7 @@ namespace Nethermind.Core.Collections
             }
         }
 
-        [OverloadResolutionPriority(3)]
+        //[OverloadResolutionPriority(3)]
         public static void AddRange<T>(this ICollection<T> list, T[] items)
         {
             for (int index = 0; index < items.Length; index++)

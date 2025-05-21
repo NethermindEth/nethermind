@@ -150,7 +150,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 .Select(_ => Task.Run(BatchedThread))
                 .ToPooledList(trieVisitContext.MaxDegreeOfParallelism);
 
-            Task.WaitAll(tasks.AsSpan());
+            Task.WaitAll(tasks.ToArray());
         }
         catch (Exception)
         {

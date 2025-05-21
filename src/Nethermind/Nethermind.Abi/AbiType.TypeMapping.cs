@@ -13,7 +13,7 @@ namespace Nethermind.Abi
     using Nethermind.Int256;
     public partial class AbiType
     {
-        private static readonly Lock _registerLock = new();
+        private static readonly object _registerLock = new();
         private static FrozenDictionary<Type, AbiType> _typeMappings = CreateTypeMappings();
 
         protected static AbiType GetForCSharpType(Type type)

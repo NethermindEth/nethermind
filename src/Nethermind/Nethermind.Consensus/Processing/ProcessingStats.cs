@@ -115,7 +115,7 @@ namespace Nethermind.Consensus.Processing
 
         private void CaptureReportData(in BlockData data) => ThreadPool.UnsafeQueueUserWorkItem(_executeFromThreadPool, data, preferLocal: false);
 
-        private readonly Lock _reportLock = new();
+        private readonly object _reportLock = new();
         void ExecuteFromThreadPool(BlockData data)
         {
             try

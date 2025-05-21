@@ -14,7 +14,7 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public class SyncDispatcher<T> : IAsyncDisposable
     {
-        private readonly Lock _feedStateManipulation = new();
+        private readonly object _feedStateManipulation = new();
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
         private static readonly TimeSpan ActiveTaskDisposeTimeout = TimeSpan.FromSeconds(10);
 
@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly TimeSpan _emptyRequestDelay;
         private readonly int _allocateTimeoutMs;
 
-        private bool _disposed = false;
+        private int _disposed = 0; // Change _disposed from bool to int
 
         public SyncDispatcher(
             ISyncConfig syncConfig,
@@ -312,7 +312,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public async ValueTask DisposeAsync()
         {
-            if (Interlocked.CompareExchange(ref _disposed, true, false))
+            if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0) // Change _disposed to an integer
             {
                 return;
             }
