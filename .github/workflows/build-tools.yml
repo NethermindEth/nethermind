@@ -16,7 +16,7 @@ jobs:
         with:
           repository: VSadov/Satori
       - name: Install dependencies
-        run: apt-get update && apt-get install -y libkrb5-dev
+        run: sudo apt-get update && sudo apt-get install -y libkrb5-dev
       - name: Build
         run: |
           ./build.sh clr -c Release
