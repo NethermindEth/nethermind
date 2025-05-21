@@ -122,6 +122,7 @@ namespace Nethermind.Network.Discovery.Test
 
         [Test]
         [Retry(5)]
+        [Parallelizable(ParallelScope.None)]
         public async Task FindNodeSentReceivedTest()
         {
             ResetMetrics();
