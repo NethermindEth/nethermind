@@ -106,6 +106,12 @@ public class BlockchainBridgeTests
             false);
     }
 
+    [TearDown]
+    public void TearDown()
+    {
+        _filterStore.Dispose();
+    }
+
     [Test]
     public void get_transaction_returns_null_when_transaction_not_found()
     {

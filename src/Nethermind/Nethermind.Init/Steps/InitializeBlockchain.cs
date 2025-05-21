@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -130,10 +131,12 @@ namespace Nethermind.Init.Steps
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
 
-            IFilterStore filterStore = setApi.FilterStore = new FilterStore();
+            IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
+            IFilterStore filterStore = setApi.FilterStore = new FilterStore(getApi.TimerFactory, rpcConfig.FiltersTimeout);
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
+            _api.DisposeStack.Push(filterStore);
 
             BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
                 mainBlockProcessor,

@@ -66,4 +66,5 @@ public class JsonRpcConfig : IJsonRpcConfig
     public long? MaxSimulateBlocksCap { get; set; } = 256;
     public int EstimateErrorMargin { get; set; } = 150;
     public string[] CorsOrigins { get; set; } = ["*"];
+    public int FiltersTimeout { get; set; } = 900000;
 };

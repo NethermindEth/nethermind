@@ -106,7 +106,6 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max length of HTTP request body, in bytes.", DefaultValue = "30000000")]
     long? MaxRequestBodySize { get; set; }
 
-
     [ConfigItem(
         Description = "The max number of logs per response for the `eth_getLogs` JSON-RPC method. `0` to lift the limit.",
         DefaultValue = "20000")]
@@ -169,4 +168,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "The JSON-RPC server CORS origins.", DefaultValue = "*")]
     string[] CorsOrigins { get; set; }
+
+    [ConfigItem(Description = "The eth_filters timeout, in milliseconds.", DefaultValue = "900000")]
+    int FiltersTimeout { get; set; }
 }
