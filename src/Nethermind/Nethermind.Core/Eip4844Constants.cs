@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Int256;
@@ -17,6 +17,18 @@ public class Eip4844Constants
     /// </summary>
     /// <remarks>Defaults to 131072.</remarks>
     public const ulong GasPerBlob = 131072;
+
+    /// <summary>
+    /// Gets the <c>TARGET_BLOB_GAS_PER_BLOCK / GAS_PER_BLOB</c> parameter.
+    /// </summary>
+    /// <remarks>Defaults to 3338477.</remarks>
+    public static ulong DefaultTargetBlobCount { get; private set; } = 3;
+
+    /// <summary>
+    /// Gets the <c>MAX_BLOB_GAS_PER_BLOCK / GAS_PER_BLOB</c> parameter.
+    /// </summary>
+    /// <remarks>Defaults to 3338477.</remarks>
+    public static ulong DefaultMaxBlobCount { get; private set; } = 6;
 
     /// <summary>
     /// Gets the <c>BLOB_GASPRICE_UPDATE_FRACTION</c> parameter.

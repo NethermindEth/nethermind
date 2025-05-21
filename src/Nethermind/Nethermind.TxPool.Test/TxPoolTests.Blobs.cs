@@ -588,7 +588,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void RecoverAddress_should_work_correctly()
         {
-            Transaction tx = GetBlobTx(TestItem.PrivateKeyA);
+            Transaction tx = CreateBlobTx(TestItem.PrivateKeyA);
             _ethereumEcdsa.RecoverAddress(tx).Should().Be(tx.SenderAddress);
         }
 
@@ -608,7 +608,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
 
-            Transaction[] txs = { GetBlobTx(TestItem.PrivateKeyA), GetBlobTx(TestItem.PrivateKeyB) };
+            Transaction[] txs = { CreateBlobTx(TestItem.PrivateKeyA), CreateBlobTx(TestItem.PrivateKeyB) };
 
             _txPool.SubmitTx(txs[0], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             _txPool.SubmitTx(txs[1], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
@@ -653,8 +653,8 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressC, UInt256.MaxValue);
 
-            Transaction[] txsA = { GetBlobTx(TestItem.PrivateKeyA), GetBlobTx(TestItem.PrivateKeyB) };
-            Transaction[] txsB = { GetBlobTx(TestItem.PrivateKeyC) };
+            Transaction[] txsA = { CreateBlobTx(TestItem.PrivateKeyA), CreateBlobTx(TestItem.PrivateKeyB) };
+            Transaction[] txsB = { CreateBlobTx(TestItem.PrivateKeyC) };
 
             _txPool.SubmitTx(txsA[0], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             _txPool.SubmitTx(txsA[1], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
@@ -962,10 +962,10 @@ namespace Nethermind.TxPool.Test
                 switch (action)
                 {
                     case TestAction.AddV0:
-                        _txPool.SubmitTx(GetBlobTx(TestItem.PrivateKeyA, nonce++), TxHandlingOptions.None);
+                        _txPool.SubmitTx(CreateBlobTx(TestItem.PrivateKeyA, nonce++), TxHandlingOptions.None);
                         break;
                     case TestAction.AddV1:
-                        _txPool.SubmitTx(GetBlobTx(TestItem.PrivateKeyA, nonce++, releaseSpec: v1Spec), TxHandlingOptions.None);
+                        _txPool.SubmitTx(CreateBlobTx(TestItem.PrivateKeyA, nonce++, releaseSpec: v1Spec), TxHandlingOptions.None);
                         break;
                     case TestAction.Fork:
                         await AddBlock();
@@ -1048,8 +1048,8 @@ namespace Nethermind.TxPool.Test
                     Eip4844TransitionTimestamp = _blockTree.Head.Timestamp,
                     Eip7002TransitionTimestamp = _blockTree.Head.Timestamp + 1,
                     BlobSchedule = {
-                        { Cancun.Instance.Name, new ChainSpecBlobCountJson { Max = 5, Timestamp = _blockTree.Head.Timestamp } },
-                        { Prague.Instance.Name, new ChainSpecBlobCountJson { Max = 3, Timestamp = _blockTree.Head.Timestamp + 1 } },
+                        { new BlobScheduleSettings { Max = 5, Timestamp = _blockTree.Head.Timestamp  } },
+                        { new BlobScheduleSettings { Max = 3, Timestamp = _blockTree.Head.Timestamp + 1  } },
                     },
                 },
                 EngineChainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>()
@@ -1064,9 +1064,9 @@ namespace Nethermind.TxPool.Test
 
             UInt256 nonce = 0;
 
-            _txPool.SubmitTx(GetBlobTx(TestItem.PrivateKeyA, nonce++, 3), TxHandlingOptions.None);
-            _txPool.SubmitTx(GetBlobTx(TestItem.PrivateKeyA, nonce++, 5), TxHandlingOptions.None);
-            _txPool.SubmitTx(GetBlobTx(TestItem.PrivateKeyA, nonce++, 3), TxHandlingOptions.None);
+            _txPool.SubmitTx(CreateBlobTx(TestItem.PrivateKeyA, nonce++, 3), TxHandlingOptions.None);
+            _txPool.SubmitTx(CreateBlobTx(TestItem.PrivateKeyA, nonce++, 5), TxHandlingOptions.None);
+            _txPool.SubmitTx(CreateBlobTx(TestItem.PrivateKeyA, nonce++, 3), TxHandlingOptions.None);
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(3));
 

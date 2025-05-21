@@ -22,7 +22,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
-using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -826,18 +825,13 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [TestCaseSource(nameof(BlobScheduleActivationsTestCaseSource))]
-    public void Test_BlobScheduleActivations((string fork, ulong timestamp, ulong? blobSetting)[] settings, ulong[] expectedActivationSettings)
+    public void Test_BlobScheduleActivations((ulong fork, ulong timestamp, ulong? blobSetting)[] settings, ulong[] expectedActivationSettings)
     {
         ChainSpecBasedSpecProvider provider = new(new ChainSpec
         {
             Parameters = new ChainParameters
             {
-                Eip3651TransitionTimestamp = 0,
-                Eip4844TransitionTimestamp = settings.FirstOrDefault(s => s.fork.Equals(Cancun.Instance.Name, StringComparison.OrdinalIgnoreCase)).timestamp,
-                Eip7002TransitionTimestamp = settings.FirstOrDefault(s => s.fork.Equals(Prague.Instance.Name, StringComparison.OrdinalIgnoreCase)).timestamp,
-                BlobSchedule = settings
-                        .Where(s => s.blobSetting is not null)
-                        .ToDictionary(x => x.fork, x => new ChainSpecBlobCountJson { Max = x.blobSetting!.Value, Timestamp = x.timestamp })
+                BlobSchedule = [.. settings.Select(s => new BlobScheduleSettings { Max = s.blobSetting!.Value })]
             },
             EngineChainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>()
         });
@@ -960,7 +954,7 @@ public class ChainSpecBasedSpecProviderTests
 
 
     [TestCaseSource(nameof(UnorderedBlobScheduleActivationsTestCaseSource))]
-    public void Test_BlobScheduleActivations_Declined((string fork, ulong timestamp, ulong? blobSetting)[] settings)
+    public void Test_BlobScheduleActivations_Declined((ulong fork, ulong timestamp, ulong? blobSetting)[] settings)
     {
         EthereumJsonSerializer serializer = new();
         ChainSpecLoader loader = new(serializer);
@@ -969,12 +963,7 @@ public class ChainSpecBasedSpecProviderTests
         {
             Params = new ChainSpecParamsJson
             {
-                Eip3651TransitionTimestamp = 0,
-                Eip4844TransitionTimestamp = settings.FirstOrDefault(s => s.fork.Equals(Cancun.Instance.Name, StringComparison.OrdinalIgnoreCase)).timestamp,
-                Eip7002TransitionTimestamp = settings.FirstOrDefault(s => s.fork.Equals(Prague.Instance.Name, StringComparison.OrdinalIgnoreCase)).timestamp,
-                BlobSchedule = settings
-                         .Where(s => s.blobSetting is not null)
-                         .ToDictionary(x => x.fork, x => new ChainSpecBlobCountJson { Max = x.blobSetting!.Value, Timestamp = x.timestamp })
+                BlobSchedule = [.. settings.Select(x => new BlobScheduleSettings { Max = x.blobSetting!.Value, Timestamp = x.fork })]
             },
             Engine = new ChainSpecJson.EngineJson
             {

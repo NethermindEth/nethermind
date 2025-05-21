@@ -16,7 +16,6 @@ using Nethermind.Core.ExecutionRequest;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
@@ -181,7 +180,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             MergeForkIdTransition = chainSpecJson.Params.MergeForkIdTransition,
             TerminalTotalDifficulty = chainSpecJson.Params.TerminalTotalDifficulty,
             TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber,
-            BlobSchedule = new Dictionary<string, ChainSpecBlobCountJson>(chainSpecJson.Params.BlobSchedule, StringComparer.OrdinalIgnoreCase),
+            BlobSchedule = new(chainSpecJson.Params.BlobSchedule, Comparer<BlobScheduleSettings>.Create((a, b) => a.Timestamp.CompareTo(b.Timestamp))),
 
             Eip7594TransitionTimestamp = chainSpecJson.Params.Eip7594TransitionTimestamp,
         };
@@ -244,7 +243,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.CancunTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp;
         chainSpec.PragueTimestamp = chainSpec.Parameters.Eip7002TransitionTimestamp;
         chainSpec.OsakaTimestamp = chainSpec.Parameters.Eip7594TransitionTimestamp;
-        PrepareValidateBlobSchedule(chainSpec);
 
         // TheMerge parameters
         chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
@@ -258,26 +256,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                          .AllChainSpecParameters)
             {
                 chainSpecEngineParameters.ApplyToChainSpec(chainSpec);
-            }
-        }
-
-        static void PrepareValidateBlobSchedule(ChainSpec spec)
-        {
-            foreach ((string forkName, ChainSpecBlobCountJson parameters) in spec.Parameters.BlobSchedule)
-            {
-                if (Cancun.Instance.Name.Equals(forkName, StringComparison.OrdinalIgnoreCase)) parameters.Timestamp ??= spec.CancunTimestamp;
-                if (Prague.Instance.Name.Equals(forkName, StringComparison.OrdinalIgnoreCase)) parameters.Timestamp ??= spec.PragueTimestamp;
-                if (Osaka.Instance.Name.Equals(forkName, StringComparison.OrdinalIgnoreCase)) parameters.Timestamp ??= spec.OsakaTimestamp;
-            }
-
-            ulong timestamp = 0;
-
-            foreach (KeyValuePair<string, ChainSpecBlobCountJson> item in spec.Parameters.BlobSchedule)
-            {
-                if (item.Value.Timestamp is null) throw new InvalidDataException($"Blob schedule is incorrect: timestamp is not set for {item.Key}");
-                if (item.Value.Timestamp.Value < timestamp) throw new InvalidDataException("Blob schedule should be ordered by timestamp");
-
-                timestamp = item.Value.Timestamp.Value;
             }
         }
     }

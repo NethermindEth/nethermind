@@ -44,7 +44,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             AddTransitions(transitionBlockNumbers, _chainSpec, static n => n.EndsWith("BlockNumber") && n != "TerminalPoWBlockNumber");
             AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, static n => n.EndsWith("Transition"));
             AddTransitions(transitionTimestamps, _chainSpec.Parameters, static n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
-            AddBlobScheduleTransitions(transitionTimestamps, _chainSpec.Parameters.BlobSchedule, _chainSpec.Genesis?.Timestamp ?? 0);
+            AddBlobScheduleTransitions(transitionTimestamps, _chainSpec);
             TimestampFork = transitionTimestamps.Count > 0 ? transitionTimestamps.Min : ISpecProvider.TimestampForkNever;
 
             static void AddTransitions<T>(
@@ -87,19 +87,30 @@ namespace Nethermind.Specs.ChainSpecStyle
                 }
             }
 
-            static void AddBlobScheduleTransitions(
-                SortedSet<ulong> transitions,
-                Dictionary<string, ChainSpecBlobCountJson> blobSchedule,
-				ulong minTimestampExclusive)
+            static void AddBlobScheduleTransitions(SortedSet<ulong> transitions, ChainSpec chainSpec)
             {
-                foreach (ChainSpecBlobCountJson settings in blobSchedule.Values)
+                if (chainSpec.Parameters.BlobSchedule is not { Count: > 0 })
                 {
-                    if (settings.Timestamp <= minValueExclusive)
+                    return;
+                }
+
+                ulong genesisTimestamp = chainSpec.Genesis.Timestamp;
+                ulong eip4844Timestamp = chainSpec.Parameters.Eip4844TransitionTimestamp
+                    ?? throw new ArgumentException($"{nameof(chainSpec.Parameters.Eip4844TransitionTimestamp)} should be set in order to use {nameof(_chainSpec.Parameters.BlobSchedule)}");
+
+                foreach (BlobScheduleSettings settings in chainSpec.Parameters.BlobSchedule)
+                {
+                    if (settings.Timestamp < genesisTimestamp)
                     {
-                        continue;
+                        throw new ArgumentException($"{nameof(_chainSpec.Parameters.BlobSchedule)} should has timestamps set to the values more than of {nameof(chainSpec.Genesis)}");
                     }
 
-                    transitions.Add(settings.Timestamp.Value);
+                    if (settings.Timestamp < eip4844Timestamp)
+                    {
+                        throw new ArgumentException($"{nameof(_chainSpec.Parameters.BlobSchedule)} should has timestamps set to the values more than of {nameof(chainSpec.Parameters.Eip4844TransitionTimestamp)}");
+                    }
+
+                    transitions.Add(settings.Timestamp);
                 }
             }
 
@@ -271,7 +282,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             void SetBlobScheduleParameters()
             {
-                ChainSpecBlobCountJson blobSchedule = chainSpec.Parameters.BlobSchedule.Values.OrderByDescending(x => x.Timestamp).FirstOrDefault(x => x.Timestamp <= releaseStartTimestamp);
+                BlobScheduleSettings? blobSchedule = chainSpec.Parameters.BlobSchedule.FirstOrDefault(bs => bs.Timestamp <= releaseStartTimestamp);
 
                 if (blobSchedule is not null)
                 {
