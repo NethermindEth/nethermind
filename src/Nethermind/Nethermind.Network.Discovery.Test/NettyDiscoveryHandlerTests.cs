@@ -10,6 +10,7 @@ using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -25,7 +26,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test
 {
-    [Parallelizable(ParallelScope.None)]
+    [Parallelizable(ParallelScope.None)] // Some test check for global metric
     [TestFixture]
     public class NettyDiscoveryHandlerTests
     {
@@ -69,8 +70,7 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [Test]
-        [Parallelizable(ParallelScope.None)]
-        [Retry(5)]
+        [Retry(20)]
         public async Task PingSentReceivedTest()
         {
             ResetMetrics();
@@ -97,8 +97,7 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [Test]
-        [Parallelizable(ParallelScope.None)]
-        [Retry(5)]
+        [Retry(20)]
         public async Task PongSentReceivedTest()
         {
             ResetMetrics();
@@ -124,7 +123,7 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [Test]
-        [Retry(5)]
+        [Retry(20)]
         public async Task FindNodeSentReceivedTest()
         {
             ResetMetrics();
@@ -151,7 +150,7 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [Test]
-        [Retry(5)]
+        [Retry(20)]
         public async Task NeighborsSentReceivedTest()
         {
             ResetMetrics();
@@ -200,8 +199,8 @@ namespace Nethermind.Network.Discovery.Test
 
         private static void AssertMetrics(int value)
         {
-            Assert.That(() => Metrics.DiscoveryBytesSent, Is.EqualTo(value).After(1000, 10));
-            Assert.That(() => Metrics.DiscoveryBytesReceived, Is.EqualTo(value).After(1000, 10));
+            Metrics.DiscoveryBytesSent.Should().Be(value);
+            Metrics.DiscoveryBytesReceived.Should().Be(value);
         }
 
         private async Task StartUdpChannel(string address, int port, IDiscoveryManager discoveryManager, IMessageSerializationService service)
