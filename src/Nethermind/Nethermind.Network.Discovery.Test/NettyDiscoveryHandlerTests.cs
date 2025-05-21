@@ -4,18 +4,18 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Net.Sockets;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -25,7 +25,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test
 {
-    [Parallelizable(ParallelScope.None)] // Some test modify and check global metric
+    [Parallelizable(ParallelScope.None)]
     [TestFixture]
     public class NettyDiscoveryHandlerTests
     {
@@ -37,6 +37,7 @@ namespace Nethermind.Network.Discovery.Test
         private readonly IPEndPoint _address = new(IPAddress.Loopback, 10001);
         private readonly IPEndPoint _address2 = new(IPAddress.Loopback, 10002);
         private int _channelActivatedCounter;
+        private IChannelFactory _channelFactory = new LocalChannelFactory(nameof(NettyDiscoveryBaseHandler), new NetworkConfig());
 
         [SetUp]
         public async Task Initialize()
@@ -68,6 +69,7 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [Test]
+        [Parallelizable(ParallelScope.None)]
         [Retry(5)]
         public async Task PingSentReceivedTest()
         {
@@ -95,6 +97,7 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [Test]
+        [Parallelizable(ParallelScope.None)]
         [Retry(5)]
         public async Task PongSentReceivedTest()
         {
@@ -197,8 +200,8 @@ namespace Nethermind.Network.Discovery.Test
 
         private static void AssertMetrics(int value)
         {
-            Metrics.DiscoveryBytesSent.Should().Be(value);
-            Metrics.DiscoveryBytesReceived.Should().Be(value);
+            Assert.That(() => Metrics.DiscoveryBytesSent, Is.EqualTo(value).After(1000, 10));
+            Assert.That(() => Metrics.DiscoveryBytesReceived, Is.EqualTo(value).After(1000, 10));
         }
 
         private async Task StartUdpChannel(string address, int port, IDiscoveryManager discoveryManager, IMessageSerializationService service)
@@ -208,7 +211,7 @@ namespace Nethermind.Network.Discovery.Test
             Bootstrap bootstrap = new();
             bootstrap
                 .Group(group)
-                .ChannelFactory(() => new SocketDatagramChannel(AddressFamily.InterNetwork))
+                .ChannelFactory(() => _channelFactory.CreateDatagramChannel())
                 .Handler(new ActionChannelInitializer<IDatagramChannel>(x => InitializeChannel(x, discoveryManager, service)));
 
             _channels.Add(await bootstrap.BindAsync(IPAddress.Parse(address), port));
