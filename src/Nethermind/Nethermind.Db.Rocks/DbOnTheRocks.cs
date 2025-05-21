@@ -29,7 +29,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public partial class DbOnTheRocks : IDb, ITunableDb
+public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore
 {
     protected ILogger _logger;
 
@@ -878,6 +878,63 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             GC.RemoveMemoryPressure(span.Length);
         }
         _db.DangerousReleaseMemory(span);
+    }
+
+    public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out IntPtr handle, ReadFlags flags)
+        => GetNativeSlice(key, null, out handle, flags);
+
+    public unsafe ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, out IntPtr handle, ReadFlags flags)
+    {
+        // TODO: update when merged upstream: https://github.com/curiosity-ai/rocksdb-sharp/pull/61
+        // return _db.Get(key, cf, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions);
+
+        handle = default;
+        nint db = _db.Handle;
+        nint read_options = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions).Handle;
+        UIntPtr skLength = (UIntPtr)key.Length;
+        IntPtr errPtr;
+        IntPtr slice;
+        fixed (byte* ptr = &MemoryMarshal.GetReference(key))
+        {
+            slice = cf is null
+                        ? Native.Instance.rocksdb_get_pinned(db, read_options, ptr, skLength, out errPtr)
+                        : Native.Instance.rocksdb_get_pinned_cf(db, read_options, cf.Handle, ptr, skLength, out errPtr);
+        }
+
+        if (errPtr != IntPtr.Zero) ThrowRocksDbException(errPtr);
+        if (slice == IntPtr.Zero) return null;
+
+        try
+        {
+            IntPtr valuePtr = Native.Instance.rocksdb_pinnableslice_value(slice, out UIntPtr valueLength);
+            if (valuePtr == IntPtr.Zero)
+            {
+                Native.Instance.rocksdb_pinnableslice_destroy(slice);
+                return null;
+            }
+
+            int length = (int)valueLength;
+            handle = slice;
+            return new ReadOnlySpan<byte>((void*)valuePtr, length);
+        }
+        catch
+        {
+            Native.Instance.rocksdb_pinnableslice_destroy(slice);
+            throw;
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static unsafe void ThrowRocksDbException(nint errPtr)
+        {
+            throw new RocksDbException(errPtr);
+        }
+    }
+
+    public void DangerousReleaseHandle(IntPtr handle)
+    {
+        if (handle != default)
+            Native.Instance.rocksdb_pinnableslice_destroy(handle);
     }
 
     public void Remove(ReadOnlySpan<byte> key)

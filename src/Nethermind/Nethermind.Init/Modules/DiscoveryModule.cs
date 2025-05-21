@@ -124,6 +124,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 .AddSingleton<INodeLifecycleManagerFactory, NodeLifecycleManagerFactory>()
                 .AddSingleton<IDiscoveryManager, DiscoveryManager>()
                 .AddSingleton<INodesLocator, NodesLocator>()
+                .AddSingleton<DiscoveryPersistenceManager>()
                 .AddSingleton<DiscoveryApp>()
 
                 ;

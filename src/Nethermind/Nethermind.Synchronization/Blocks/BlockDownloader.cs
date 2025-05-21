@@ -357,7 +357,7 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                if (!BlockValidator.ValidateBodyAgainstHeader(entry.Header, body, out string errorMessage))
+                if (!_blockValidator.ValidateBodyAgainstHeader(entry.Header, body, out string errorMessage))
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, {errorMessage}");
 
