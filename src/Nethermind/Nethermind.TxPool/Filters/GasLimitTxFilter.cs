@@ -3,46 +3,58 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters
 {
-    /// <summary>
-    /// Ignores transactions that outright exceed block gas limit or configured max block gas limit.
-    /// </summary>
-    internal sealed class GasLimitTxFilter : IIncomingTxFilter
-    {
-        private readonly IChainHeadInfoProvider _chainHeadInfoProvider;
-        private readonly ILogger _logger;
-        private readonly long _configuredGasLimit;
+	/// <summary>
+	/// Ignores transactions that outright exceed block gas limit or configured max block gas limit.
+	/// </summary>
+	internal sealed class GasLimitTxFilter(
+			IChainHeadSpecProvider specProvider,
+			IChainHeadInfoProvider chainHeadInfoProvider,
+			ITxPoolConfig txPoolConfig,
+			ILogger logger) : IIncomingTxFilter
+	{
+		private readonly IChainHeadSpecProvider _specProvider = specProvider;
+		private readonly IChainHeadInfoProvider _chainHeadInfoProvider = chainHeadInfoProvider;
+		private readonly ILogger _logger = logger;
+		private readonly long _configuredGasLimit = txPoolConfig.GasLimit ?? long.MaxValue;
 
-        public GasLimitTxFilter(IChainHeadInfoProvider chainHeadInfoProvider, ITxPoolConfig txPoolConfig,
-            ILogger logger)
-        {
-            _chainHeadInfoProvider = chainHeadInfoProvider;
-            _logger = logger;
-            _configuredGasLimit = txPoolConfig.GasLimit ?? long.MaxValue;
-        }
+		public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
+		{
+			long txGasLimitCap = GetTxGasLimitCap();
 
-        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
-        {
-            long gasLimit = Math.Min(_chainHeadInfoProvider.BlockGasLimit ?? long.MaxValue, _configuredGasLimit);
-            if (tx.GasLimit > gasLimit)
-            {
-                Metrics.PendingTransactionsGasLimitTooHigh++;
+			if (tx.GasLimit > txGasLimitCap)
+			{
+				Metrics.PendingTransactionsGasLimitTooHigh++;
 
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, gas limit exceeded.");
-                }
+				if (_logger.IsTrace)
+				{
+					_logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, gas limit exceeded.");
+				}
 
-                bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
-                return isNotLocal ?
-                    AcceptTxResult.GasLimitExceeded :
-                    AcceptTxResult.GasLimitExceeded.WithMessage($"Gas limit: {gasLimit}, gas limit of rejected tx: {tx.GasLimit}");
-            }
+				bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
+				return isNotLocal ?
+					AcceptTxResult.GasLimitExceeded :
+					AcceptTxResult.GasLimitExceeded.WithMessage($"Tx gas limit cap: {txGasLimitCap}, gas limit of rejected tx: {tx.GasLimit}");
+			}
 
-            return AcceptTxResult.Accepted;
-        }
+			return AcceptTxResult.Accepted;
+		}
+
+		private long GetTxGasLimitCap()
+		{
+			IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
+
+			long gasLimit = Math.Min(_chainHeadInfoProvider.BlockGasLimit ?? long.MaxValue, _configuredGasLimit);
+			if (spec.IsEip7825Enabled)
+			{
+				gasLimit = Math.Min(gasLimit, Eip7825Constants.GetTxGasLimitCap(spec));
+			}
+
+			return gasLimit;
+		}
     }
 }
