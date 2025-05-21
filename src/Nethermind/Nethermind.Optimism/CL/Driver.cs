@@ -83,20 +83,32 @@ public class Driver : IDisposable
                             {
                                 await _decodingPipeline.DaDataWriter.WriteAsync(daDataSource, token);
                             }
+                            l1BridgeStep = _l1Bridge.Step(token);
                             break;
                         }
                         case L1BridgeStepResultType.Finalization:
                         {
                             await ProcessNewFinalized(result.NewFinalized!.Value, token);
+                            l1BridgeStep = _l1Bridge.Step(token);
                             break;
                         }
                         case L1BridgeStepResultType.Reorg:
                         {
                             await ProcessReorg(token);
+                            l1BridgeStep = _l1Bridge.Step(token);
+                            break;
+                        }
+                        case L1BridgeStepResultType.Skip:
+                        {
+                            l1BridgeStep = Task.Run(async () =>
+                            {
+                                await Task.Delay(120000, token);
+                                return await _l1Bridge.Step(token);
+                            });
                             break;
                         }
                     }
-                    l1BridgeStep = _l1Bridge.Step(token);
+
                     continue;
                 }
             }

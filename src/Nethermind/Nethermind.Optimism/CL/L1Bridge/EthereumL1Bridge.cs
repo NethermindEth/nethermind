@@ -52,7 +52,7 @@ public class EthereumL1Bridge : IL1Bridge
 
     public async Task<L1BridgeStepResult> Step(CancellationToken token)
     {
-        if (_logger.IsInfo) _logger.Info("Starting L1Bridge");
+        if (_logger.IsTrace) _logger.Trace("Executing L1 bridge step");
         try
         {
             L1Block newFinalized = await GetFinalized(token);
