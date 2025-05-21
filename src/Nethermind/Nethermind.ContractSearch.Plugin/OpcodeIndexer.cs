@@ -7,13 +7,13 @@ public sealed class OpcodeIndexer()
 {
     private readonly Dictionary<string, Instruction> _index = new();
 
-    public void Index(ReadOnlySpan<byte> code, ValueHash256 codehash)
+    public void Index( ValueHash256 codehash, ReadOnlySpan<byte> code)
     {
-        Index(_index, code, codehash);
+        Index(_index, codehash, code);
     }
 
     // adapted form il-evm
-    public static void Index(Dictionary<string, Instruction> index, ReadOnlySpan<byte> machineCode, ValueHash256 codehash)
+    public static void Index(Dictionary<string, Instruction> index, ValueHash256 codehash, ReadOnlySpan<byte> machineCode)
     {
         var slice = 0..machineCode.Length;
         OpcodeMetadata metadata = default;

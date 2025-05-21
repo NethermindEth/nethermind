@@ -14,6 +14,7 @@ public class ContractSearchRpcModule(IBlockTree blockTree, IWorldStateManager wo
     private readonly IBlockTree _blockTree = blockTree;
     private readonly IWorldStateManager _worldStateManager = worldStateManager;
     private readonly ILogger _logger = logManager.GetClassLogger();
+    private OpcodeIndexer _opcodeIndexer = new();
 
     public ResultWrapper<ContractSearchResult[]> search_contracts(byte[][] bytecodes)
     {
@@ -31,7 +32,7 @@ public class ContractSearchRpcModule(IBlockTree blockTree, IWorldStateManager wo
         List<ContractSearchResult> results = [];
 
         _worldStateManager.GlobalStateReader.RunTreeVisitor(
-            new ContractBytecodeSearchVisitor(bytecodes, results, _worldStateManager.GlobalStateReader, _logger),
+            new ContractBytecodeSearchVisitor(bytecodes, _opcodeIndexer, results, _worldStateManager.GlobalStateReader, _logger),
             head.StateRoot);
 
         return ResultWrapper<ContractSearchResult[]>.Success([.. results]);
@@ -46,6 +47,7 @@ public struct ContractSearchResult
 
 public class ContractBytecodeSearchVisitor(
     byte[][] searchBytecodes,
+    OpcodeIndexer opcodeIndexer,
     List<ContractSearchResult> results,
     IStateReader stateReader,
     ILogger logger) : ITreeVisitor<OldStyleTrieVisitContext>
@@ -55,6 +57,7 @@ public class ContractBytecodeSearchVisitor(
     private readonly IStateReader _stateReader = stateReader;
     private readonly ILogger _logger = logger;
     private Address _currentAddress = Address.Zero;
+    private OpcodeIndexer _opcodeIndexer = opcodeIndexer;
 
     public bool IsFullDbScan => true;
 
@@ -94,16 +97,17 @@ public class ContractBytecodeSearchVisitor(
         if (_logger.IsInfo) _logger.Info($"Searching contract at {_currentAddress}");
 
         if (!account.HasCode) return;
-        ValueHash256 key = account.CodeHash;
+        ValueHash256 codeHash = account.CodeHash;
 
-        ReadOnlySpan<byte> code = _stateReader.GetCode(key);
+        ReadOnlySpan<byte> code = _stateReader.GetCode(codeHash);
 
+        _opcodeIndexer.Index(codeHash, code);
         List<int> matchIndices = [];
 
         foreach (ReadOnlySpan<byte> searchCode in _searchBytecodes)
         {
 
-            var match = PatternSearch.SyntacticPatternSearch(code, searchCode);
+            var match = PatternSearch.SyntacticPatternSearch(codeHash, code, searchCode, _opcodeIndexer);
             if (match.Count == 0) match = PatternSearch.SemanticPatternSearch(code, searchCode);
             if (match.Count > 0)
             {

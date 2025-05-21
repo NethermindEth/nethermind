@@ -2,6 +2,9 @@ using System;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using System.Numerics;
+using Nethermind.Core.Crypto;
+using Nethermind.Evm;
+using System.Runtime.CompilerServices;
 
 public static class PatternSearch
 {
@@ -15,22 +18,31 @@ public static class PatternSearch
         return matchIndices;
     }
 
-    public static unsafe List<int> SyntacticPatternSearch(ReadOnlySpan<byte> byteCode, ReadOnlySpan<byte> pattern)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool Compare(ReadOnlySpan<byte> byteCode, int start, ReadOnlySpan<byte> pattern)
+    {
+        return byteCode.Slice(start, pattern.Length).SequenceEqual(pattern);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool CheckSyntax(ValueHash256 codeHash, ReadOnlySpan<byte> pattern, OpcodeIndexer opcodeIndexer)
+    {
+        return opcodeIndexer.Get(codeHash, 0) == (Instruction)pattern[0];
+    }
+
+
+    public static unsafe List<int> SyntacticPatternSearch(ValueHash256 codeHash,ReadOnlySpan<byte> byteCode, ReadOnlySpan<byte> pattern, OpcodeIndexer opcodeIndexer)
     {
         int codeLength = byteCode.Length;
         int patternLength = pattern.Length;
         List<int> matchIndices = [];
-        // receive the parsed byte code from the caller
-        // borrow code from il-evm with a modification to capture code indexes
-        // compare with match indexes to confirm.
 
         if (patternLength == 0 || codeLength < patternLength)
         {
-
             return matchIndices;
         }
 
-        byte last = pattern[patternLength - 1];
+        byte first = pattern[0];
 
         int[] skipTable = new int[256];
 
@@ -49,13 +61,13 @@ public static class PatternSearch
             if (Avx2.IsSupported)
             {
 
-                Vector256<byte> lastVec = Vector256.Create(last);
+                Vector256<byte> firstVec = Vector256.Create(first);
 
                 while (currentPos <= end - WindowSizeAvx2)
                 {
 
                     Vector256<byte> block = Avx.LoadVector256(ptr + currentPos + patternLength - 1);
-                    Vector256<byte> cmp = Avx2.CompareEqual(block, lastVec);
+                    Vector256<byte> cmp = Avx2.CompareEqual(block, firstVec);
                     int mask = Avx2.MoveMask(cmp);
                     while (mask != 0)
                     {
@@ -67,20 +79,9 @@ public static class PatternSearch
                             break;
                         }
 
-                        bool match = true;
-                        for (int j = 0; j < patternLength; j++)
-                        {
-                            byte h = byteCode[pos + j];
-                            byte n = pattern[j];
+                        bool match = Compare(byteCode, pos, pattern);
 
-                            if (h != n)
-                            {
-                                match = false;
-                                break;
-                            }
-                        }
-
-                        if (match)
+                        if (match && CheckSyntax(codeHash, pattern, opcodeIndexer))
                         {
                             matchIndices.Add(pos);
                         }
@@ -92,28 +93,15 @@ public static class PatternSearch
                 }
             }
 
-
             while (currentPos <= end)
             {
-                byte b = byteCode[currentPos + patternLength - 1];
+                byte b = byteCode[currentPos];
 
-                if (b == last)
+                if (b == first)
                 {
+                    bool match = Compare(byteCode, currentPos, pattern);
 
-                    bool match = true;
-                    for (int j = 0; j < patternLength; j++)
-                    {
-                        byte h = byteCode[currentPos + j];
-                        byte n = pattern[j];
-
-                        if (h != n)
-                        {
-                            match = false;
-                            break;
-                        }
-                    }
-
-                    if (match)
+                    if (match && CheckSyntax(codeHash, pattern, opcodeIndexer))
                     {
                         matchIndices.Add(currentPos);
                     }
