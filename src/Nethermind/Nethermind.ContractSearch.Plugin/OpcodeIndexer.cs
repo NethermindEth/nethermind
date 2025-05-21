@@ -7,7 +7,7 @@ public sealed class OpcodeIndexer()
 {
     private readonly Dictionary<string, Instruction> _index = new();
 
-    public void Index( ValueHash256 codehash, ReadOnlySpan<byte> code)
+    public void Index(ValueHash256 codehash, ReadOnlySpan<byte> code)
     {
         Index(_index, codehash, code);
     }

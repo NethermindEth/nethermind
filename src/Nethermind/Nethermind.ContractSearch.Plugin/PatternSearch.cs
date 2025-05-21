@@ -25,13 +25,13 @@ public static class PatternSearch
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool CheckSyntax(ValueHash256 codeHash, ReadOnlySpan<byte> pattern, OpcodeIndexer opcodeIndexer)
+    public static bool CheckSyntax(ValueHash256 codeHash, ReadOnlySpan<byte> pattern, int pos, OpcodeIndexer opcodeIndexer)
     {
-        return opcodeIndexer.Get(codeHash, 0) == (Instruction)pattern[0];
+        return opcodeIndexer.Get(codeHash, (uint)pos) == (Instruction)pattern[0];
     }
 
 
-    public static unsafe List<int> SyntacticPatternSearch(ValueHash256 codeHash,ReadOnlySpan<byte> byteCode, ReadOnlySpan<byte> pattern, OpcodeIndexer opcodeIndexer)
+    public static unsafe List<int> SyntacticPatternSearch(ValueHash256 codeHash, ReadOnlySpan<byte> byteCode, ReadOnlySpan<byte> pattern, OpcodeIndexer opcodeIndexer)
     {
         int codeLength = byteCode.Length;
         int patternLength = pattern.Length;
@@ -43,6 +43,7 @@ public static class PatternSearch
         }
 
         byte first = pattern[0];
+        byte last = pattern[patternLength - 1];
 
         int[] skipTable = new int[256];
 
@@ -61,13 +62,13 @@ public static class PatternSearch
             if (Avx2.IsSupported)
             {
 
-                Vector256<byte> firstVec = Vector256.Create(first);
+                Vector256<byte> lastVec = Vector256.Create(last);
 
                 while (currentPos <= end - WindowSizeAvx2)
                 {
 
                     Vector256<byte> block = Avx.LoadVector256(ptr + currentPos + patternLength - 1);
-                    Vector256<byte> cmp = Avx2.CompareEqual(block, firstVec);
+                    Vector256<byte> cmp = Avx2.CompareEqual(block, lastVec);
                     int mask = Avx2.MoveMask(cmp);
                     while (mask != 0)
                     {
@@ -81,7 +82,7 @@ public static class PatternSearch
 
                         bool match = Compare(byteCode, pos, pattern);
 
-                        if (match && CheckSyntax(codeHash, pattern, opcodeIndexer))
+                        if (match && CheckSyntax(codeHash, pattern, pos, opcodeIndexer))
                         {
                             matchIndices.Add(pos);
                         }
@@ -101,15 +102,15 @@ public static class PatternSearch
                 {
                     bool match = Compare(byteCode, currentPos, pattern);
 
-                    if (match && CheckSyntax(codeHash, pattern, opcodeIndexer))
+                    if (match && CheckSyntax(codeHash, pattern, currentPos, opcodeIndexer))
                     {
                         matchIndices.Add(currentPos);
                     }
                 }
 
-                int skip = skipTable[b];
+                //int skip = skipTable[b];
 
-                currentPos += skip;
+                currentPos += 1;
             }
         }
 
