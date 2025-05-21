@@ -89,7 +89,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             static void AddBlobScheduleTransitions(
                 SortedSet<ulong> transitions,
-                Dictionary<string, ChainSpecBlobCountJson> blobSchedule, ulong minValueExclusive)
+                Dictionary<string, ChainSpecBlobCountJson> blobSchedule,
+				ulong minTimestampExclusive)
             {
                 foreach (ChainSpecBlobCountJson settings in blobSchedule.Values)
                 {
@@ -280,8 +281,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                 }
                 else if (releaseSpec.Eip4844TransitionTimestamp <= releaseStartTimestamp)
                 {
-                    releaseSpec.TargetBlobCount = 3;
-                    releaseSpec.MaxBlobCount = 6;
+                    releaseSpec.TargetBlobCount = Eip4844Constants.DefaultTargetBlobCount;
+                    releaseSpec.MaxBlobCount = Eip4844Constants.DefaultMaxBlobCount;
                     releaseSpec.BlobBaseFeeUpdateFraction = Eip4844Constants.DefaultBlobGasPriceUpdateFraction;
                 }
             }
