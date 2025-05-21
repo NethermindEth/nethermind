@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -68,6 +69,7 @@ public class BodiesSyncFeedTests
         _feed = new BodiesSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
+            Always.Valid,
             _syncPointers,
             Substitute.For<ISyncPeerPool>(),
             _syncConfig,

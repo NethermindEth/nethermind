@@ -516,6 +516,13 @@ public partial class BlockDownloaderTests
             error = null;
             return true;
         }
+
+        public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? errorMessage)
+        {
+            Thread.Sleep(1000);
+            errorMessage = null;
+            return true;
+        }
     }
 
     [Test, MaxTime(7000)]
