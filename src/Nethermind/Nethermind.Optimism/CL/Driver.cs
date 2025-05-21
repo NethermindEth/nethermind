@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Decoding;
@@ -22,7 +21,6 @@ public class Driver : IDisposable
     private readonly IExecutionEngineManager _executionEngineManager;
     private readonly IDecodingPipeline _decodingPipeline;
     private readonly ISystemConfigDeriver _systemConfigDeriver;
-    private readonly ChannelReader<ulong> _finalizedL1BlocksChannel;
     private readonly IL1Bridge _l1Bridge;
     private readonly ulong _l2BlockTime;
 
@@ -38,7 +36,6 @@ public class Driver : IDisposable
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
         _l1Bridge = l1Bridge;
-        _finalizedL1BlocksChannel = l1Bridge.FinalizedL1BlocksChannel;
         _l2BlockTime = engineParameters.L2BlockTime.Value;
         _logger = logger;
         _l2Api = l2Api;
@@ -62,18 +59,10 @@ public class Driver : IDisposable
         {
             while (!token.IsCancellationRequested)
             {
-                Task finalizedBlockReady = _finalizedL1BlocksChannel.WaitToReadAsync(token).AsTask();
+                Task<L1BridgeStepResult> l1BridgeStep = _l1Bridge.Step(token);
                 Task nextBatchReady = _decodingPipeline.DecodedBatchesReader.WaitToReadAsync(token).AsTask();
 
-                // Driver processing priorities: reorg, finalized, new batch
-                await Task.WhenAny(finalizedBlockReady, nextBatchReady);
-
-                if (finalizedBlockReady.IsCompleted)
-                {
-                    ulong finalizedBlock = await _finalizedL1BlocksChannel.ReadAsync(token);
-                    await ProcessNewFinalized(finalizedBlock, token);
-                    continue;
-                }
+                await Task.WhenAny(l1BridgeStep, nextBatchReady);
 
                 if (nextBatchReady.IsCompleted)
                 {
@@ -82,10 +71,32 @@ public class Driver : IDisposable
                     continue;
                 }
 
-                L1BridgeStepResult stepResult = await _l1Bridge.Step(token);
-                if (stepResult == L1BridgeStepResult.Reorg)
+                if (l1BridgeStep.IsCompleted)
                 {
-                    await ProcessReorg(token);
+                    L1BridgeStepResult result = l1BridgeStep.Result;
+                    _logger.Warn(result.ToString());
+                    switch (result.Type)
+                    {
+                        case L1BridgeStepResultType.Block:
+                        {
+                            foreach (DaDataSource daDataSource in result.NewData!)
+                            {
+                                await _decodingPipeline.DaDataWriter.WriteAsync(daDataSource, token);
+                            }
+                            break;
+                        }
+                        case L1BridgeStepResultType.Finalization:
+                        {
+                            await ProcessNewFinalized(result.NewFinalized!.Value, token);
+                            break;
+                        }
+                        case L1BridgeStepResultType.Reorg:
+                        {
+                            await ProcessReorg(token);
+                            break;
+                        }
+                    }
+                    continue;
                 }
             }
         }
