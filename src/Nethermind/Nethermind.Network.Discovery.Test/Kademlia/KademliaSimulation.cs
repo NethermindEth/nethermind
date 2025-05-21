@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Core;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
@@ -19,23 +18,23 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
 
-[TestFixture(false, 3, 0)]
-[TestFixture(true, 1, 0)]
-[TestFixture(true, 1, 4)]
 [TestFixture(true, 3, 0)]
-[TestFixture(true, 3, 4)]
+[TestFixture(false, 1, 0)]
+[TestFixture(false, 1, 4)]
+[TestFixture(false, 3, 0)]
+[TestFixture(false, 3, 4)]
 public class KademliaSimulation
 {
     private readonly KademliaConfig<ValueHash256> _config;
 
-    public KademliaSimulation(bool useNewLookup, int alpha, int beta)
+    public KademliaSimulation(bool useOriginalLookup, int alpha, int beta)
     {
         _config = new KademliaConfig<ValueHash256>()
         {
             KSize = 20,
             Alpha = alpha,
             Beta = beta,
-            UseNewLookup = useNewLookup,
+            UseOriginalLookup = useOriginalLookup,
         };
     }
 
@@ -266,7 +265,7 @@ public class KademliaSimulation
                     Alpha = config.Alpha,
                     Beta = config.Beta,
                     RefreshInterval = TimeSpan.FromHours(1),
-                    UseNewLookup = config.UseNewLookup
+                    UseOriginalLookup = config.UseOriginalLookup
                 })
                 .AddSingleton<IKademliaMessageSender<ValueHash256, TestNode>>(new SenderForNode(nodeIDTestNode, this))
                 .AddSingleton<ReceiverForNode>()

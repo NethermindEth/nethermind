@@ -29,12 +29,12 @@ public class KademliaModule<TKey, TNode> : Module where TNode : notnull
             .AddSingleton<ILookupAlgo<TNode>>(provider =>
             {
                 KademliaConfig<TNode> config = provider.Resolve<KademliaConfig<TNode>>();
-                if (config.UseNewLookup)
+                if (config.UseOriginalLookup)
                 {
-                    return provider.Resolve<LookupKNearestNeighbour<TKey, TNode>>();
+                    return provider.Resolve<OriginalLookupKNearestNeighbour<TKey, TNode>>();
                 }
 
-                return provider.Resolve<OriginalLookupKNearestNeighbour<TKey, TNode>>();
+                return provider.Resolve<LookupKNearestNeighbour<TKey, TNode>>();
             })
             .AddSingleton<IIteratorNodeLookup, IteratorNodeLookup>()
             .AddSingleton<KBucketTree<TKey, TNode>>()

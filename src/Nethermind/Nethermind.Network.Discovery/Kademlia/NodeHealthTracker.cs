@@ -8,12 +8,6 @@ using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public interface INodeHealthTracker<TNode>
-{
-    void OnIncomingMessageFrom(TNode sender);
-    void OnRequestFailed(TNode node);
-}
-
 public class NodeHealthTracker<TKey, TNode>(
     KademliaConfig<TNode> config,
     IRoutingTable<TNode> routingTable,

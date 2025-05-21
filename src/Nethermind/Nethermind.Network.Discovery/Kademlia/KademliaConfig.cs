@@ -22,7 +22,6 @@ public class KademliaConfig<TNode>
 
     /// <summary>
     /// Beta, as in B in kademlia the kademlia paper, 4.2 Accelerated Lookups
-    /// Only works with tree based routing table.
     /// </summary>
     public int Beta { get; set; } = 2;
 
@@ -32,9 +31,9 @@ public class KademliaConfig<TNode>
     public TimeSpan RefreshInterval { get; set; } = TimeSpan.FromMinutes(30);
 
     /// <summary>
-    /// Use a different algorithm for the neighbour and value lookup.
+    /// Use a the original lookup algorithm as in the paper. Slower.
     /// </summary>
-    public bool UseNewLookup { get; set; } = true;
+    public bool UseOriginalLookup { get; set; }
 
     /// <summary>
     /// The timeout for each find neighbour call lookup
