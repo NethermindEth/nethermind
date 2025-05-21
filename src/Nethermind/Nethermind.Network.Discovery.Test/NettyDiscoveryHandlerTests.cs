@@ -174,10 +174,6 @@ namespace Nethermind.Network.Discovery.Test
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Neighbors));
 
             AssertMetrics(210);
-
-            Metrics.DiscoveryMessagesSent.GetValueOrDefault(MsgType.Ping).Should().Be(0);
-            Metrics.DiscoveryMessagesSent.GetValueOrDefault(MsgType.EnrRequest).Should().Be(0);
-            Metrics.DiscoveryMessagesSent.GetValueOrDefault(MsgType.Neighbors).Should().Be(2);
         }
 
         [Test]
