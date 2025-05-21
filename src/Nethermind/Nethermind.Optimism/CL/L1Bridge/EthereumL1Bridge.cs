@@ -167,7 +167,7 @@ public class EthereumL1Bridge : IL1Bridge
         DaDataSource[] result = new DaDataSource[transaction.BlobVersionedHashes.Length];
         for (int i = 0; i < transaction.BlobVersionedHashes.Length; i++)
         {
-            result[i] = new DaDataSource { DataOrigin = blockNumber, Data = blobSidecars[i].Blob, DataType = DaDataType.Calldata };
+            result[i] = new DaDataSource { DataOrigin = blockNumber, Data = blobSidecars[i].Blob, DataType = DaDataType.Blob };
         }
         return result;
     }
