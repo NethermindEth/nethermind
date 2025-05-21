@@ -29,6 +29,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 using Nethermind.Config;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Facade.Simulate;
 using Nethermind.State;
@@ -152,7 +153,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             specProvider ??= new TestSpecProvider(Berlin.Instance);
             await base.Build(specProvider, initialValues, addBlockOnStart);
-            IFilterStore filterStore = new FilterStore();
+            IFilterStore filterStore = new FilterStore(new TimerFactory());
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
             IReadOnlyBlockTree? roBlockTree = BlockTree!.AsReadOnly();
