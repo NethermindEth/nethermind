@@ -34,7 +34,6 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.TxSender);
         StepDependencyException.ThrowIfNull(_api.Wallet);
         StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
-        StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.Sealer);
@@ -48,6 +47,14 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         FeeHistoryOracle feeHistoryOracle = new(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
         _api.DisposeStack.Push(feeHistoryOracle);
 
+        // TODO: Add config to enable/disable?
+        TaikoGasPriceOracle taikoGasPriceOracle = new(
+            _api.BlockTree,
+            _api.SpecProvider,
+            feeHistoryOracle,
+            _api.LogManager,
+            _api.Config<IBlocksConfig>().MinGasPrice);
+        _api.GasPriceOracle = taikoGasPriceOracle;
 
         ModuleFactoryBase<ITaikoRpcModule> ethModuleFactory = new TaikoEthModuleFactory(
             JsonRpcConfig,
@@ -65,7 +72,6 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             feeHistoryOracle,
             _api.ProtocolsManager,
             _api.ConfigProvider.GetConfig<IBlocksConfig>().SecondsPerSlot,
-
             syncConfig,
             _api.L1OriginStore);
 
