@@ -25,7 +25,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test
 {
-    [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.None)] // Some test modify and check global metric
     [TestFixture]
     public class NettyDiscoveryHandlerTests
     {
@@ -122,7 +122,6 @@ namespace Nethermind.Network.Discovery.Test
 
         [Test]
         [Retry(5)]
-        [Parallelizable(ParallelScope.None)]
         public async Task FindNodeSentReceivedTest()
         {
             ResetMetrics();
