@@ -12,7 +12,6 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
-// TODO: Unit test, remove metric
 public class KademliaNodeSource : IKademliaNodeSource
 {
     private readonly IKademlia<PublicKey, Node> _kademlia;

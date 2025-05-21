@@ -16,7 +16,6 @@ using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
-// TODO: Hard rate limit.
 public class KademliaDiscv4Adapter(
     Lazy<IKademliaMessageReceiver<PublicKey, Node>> kademliaMessageReceiver, // Cyclic dependency
     Lazy<INodeHealthTracker<Node>> nodeHealthTracker,
