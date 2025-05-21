@@ -9,20 +9,20 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
 public class InvalidBlockInterceptor(
-    IBlockValidator headerValidator,
+    IBlockValidator blockValidator,
     IInvalidChainTracker invalidChainTracker,
     ILogManager logManager)
     : IBlockValidator
 {
     private readonly ILogger _logger = logManager.GetClassLogger<InvalidBlockInterceptor>();
 
-    public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => headerValidator.ValidateOrphanedBlock(block, out error);
+    public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => blockValidator.ValidateOrphanedBlock(block, out error);
 
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false) => Validate(header, parent, isUncle, out _);
 
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
-        bool result = headerValidator.Validate(header, parent, isUncle, out error);
+        bool result = blockValidator.Validate(header, parent, isUncle, out error);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad header {header}");
@@ -41,7 +41,7 @@ public class InvalidBlockInterceptor(
 
     public bool Validate(BlockHeader header, bool isUncle, [NotNullWhen(false)] out string? error)
     {
-        bool result = headerValidator.Validate(header, isUncle, out error);
+        bool result = blockValidator.Validate(header, isUncle, out error);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad header {header}");
@@ -58,7 +58,7 @@ public class InvalidBlockInterceptor(
 
     public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error, bool validateHashes = true)
     {
-        bool result = headerValidator.ValidateSuggestedBlock(block, out error, validateHashes);
+        bool result = blockValidator.ValidateSuggestedBlock(block, out error, validateHashes);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
@@ -77,7 +77,7 @@ public class InvalidBlockInterceptor(
 
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
     {
-        bool result = headerValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error);
+        bool result = blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {processedBlock}");
@@ -97,7 +97,7 @@ public class InvalidBlockInterceptor(
 
     public bool ValidateWithdrawals(Block block, out string? error)
     {
-        bool result = headerValidator.ValidateWithdrawals(block, out error);
+        bool result = blockValidator.ValidateWithdrawals(block, out error);
 
         if (!result)
         {
@@ -118,10 +118,11 @@ public class InvalidBlockInterceptor(
         return result;
     }
 
-    private static bool ShouldNotTrackInvalidation(Block block) =>
+    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? errorMessage) =>
+        blockValidator.ValidateBodyAgainstHeader(header, toBeValidated, out errorMessage);
+
+    private bool ShouldNotTrackInvalidation(Block block) =>
         ShouldNotTrackInvalidation(block.Header) ||
         // Body does not match header, but it does not mean the hash that the header point to is invalid.
-        !BlockValidator.ValidateTxRootMatchesTxs(block, out _) ||
-        !BlockValidator.ValidateUnclesHashMatches(block, out _) ||
-        !BlockValidator.ValidateWithdrawalsHashMatches(block, out _);
+        !blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out _);
 }
