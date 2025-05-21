@@ -11,7 +11,7 @@ namespace Nethermind.Optimism.Cl.Rpc;
 public interface IOptimismOptimismRpcModule : IRpcModule
 {
     [JsonRpcMethod(
-        IsImplemented = false,
+        IsImplemented = true,
         Description = "Get the output root at a specific block",
         IsSharable = true,
         ExampleResponse = """

@@ -31,7 +31,6 @@ public readonly struct L1Transaction
     public byte[]? Input { get; init; }
 }
 
-
 /// <remarks>
 /// https://specs.optimism.io/protocol/rollup-node.html?utm_source=op-docs&utm_medium=docs#l1blockref
 /// </remarks>
