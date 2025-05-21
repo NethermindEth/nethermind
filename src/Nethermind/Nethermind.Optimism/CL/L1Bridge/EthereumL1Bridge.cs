@@ -201,7 +201,7 @@ public class EthereumL1Bridge : IL1Bridge
         L1Block[] chainSegment = new L1Block[headNumber - segmentStartNumber - 1];
         for (ulong blockNumber = headNumber - 1; blockNumber > segmentStartNumber; blockNumber--)
         {
-            ulong i = blockNumber - segmentStartNumber;
+            ulong i = blockNumber - segmentStartNumber - 1;
             chainSegment[i] = await GetBlock(blockNumber, cancellationToken);
             if (currentHash != chainSegment[i].Hash)
             {
