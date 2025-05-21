@@ -192,20 +192,20 @@ public class EthereumL1Bridge : IL1Bridge
 
     private readonly Queue<L1BridgeStepResult> _unfinalizedL1BlocksQueue = new();
 
-    /// <remarks> Processes all blocks from range [{segmentStartNumber}, {headNumber}) </remarks>
+    /// <remarks> Processes all blocks from range ({segmentStartNumber}, {headNumber}) </remarks>
     private async Task<L1BridgeStepResult?> RollBack(Hash256 headParentHash, ulong headNumber, Hash256 segmentStartHash, ulong segmentStartNumber, CancellationToken cancellationToken)
     {
         if (headNumber <= segmentStartNumber) return null;
         if (_unfinalizedL1BlocksQueue.Count != 0) return _unfinalizedL1BlocksQueue.Dequeue();
         Hash256 currentHash = headParentHash;
-        L1Block[] chainSegment = new L1Block[headNumber - segmentStartNumber];
-        for (ulong blockNumber = headNumber - 1; blockNumber >= segmentStartNumber; blockNumber--)
+        L1Block[] chainSegment = new L1Block[headNumber - segmentStartNumber - 1];
+        for (ulong blockNumber = headNumber - 1; blockNumber > segmentStartNumber; blockNumber--)
         {
             ulong i = blockNumber - segmentStartNumber;
             chainSegment[i] = await GetBlock(blockNumber, cancellationToken);
             if (currentHash != chainSegment[i].Hash)
             {
-                LogReorg();
+                if (_logger.IsWarn) _logger.Warn($"L1 Reorg is detected. At position {blockNumber} expected hash {currentHash} but got {chainSegment[i].Hash}");
                 return L1BridgeStepResult.Reorg;
             }
             currentHash = chainSegment[i].ParentHash;
@@ -213,7 +213,7 @@ public class EthereumL1Bridge : IL1Bridge
 
         if (currentHash != segmentStartHash)
         {
-            LogReorg();
+            if (_logger.IsWarn) _logger.Warn($"L1 Reorg is detected. Current head hash mismatch. At position {segmentStartNumber + 1} expected hash {segmentStartNumber} but got {currentHash}");
             return L1BridgeStepResult.Reorg;
         }
 
