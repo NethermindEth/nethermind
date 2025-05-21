@@ -387,7 +387,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(bool value) => Encode(value ? (byte)1 : (byte)0);
 
-        public void Encode(int value) => Encode((long)value);
+        public void Encode(int value) => Encode((ulong)(long)value);
 
         public void Encode(long value) => Encode((ulong)value);
 
