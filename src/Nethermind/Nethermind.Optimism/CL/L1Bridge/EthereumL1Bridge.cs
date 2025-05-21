@@ -190,23 +190,6 @@ public class EthereumL1Bridge : IL1Bridge
         return null;
     }
 
-    /*
-       182     /// <remarks> Processes all blocks from range ({from}, {to}). It's safe only if {to} is finalized </remarks>
-       183     private async Task<L1BridgeStepResult?> BuildUp(ulong from, ulong to, CancellationToken cancellationToken)
-       184     {
-       185         _logger.Error($"Build up from {from} to {to}, cur head {_currentHead.Number}");
-       186         for (ulong i = from + 1; i < to; i++)
-       187         {
-       188             var block = await GetBlock(i, cancellationToken);
-       189             _logger.Error($"Processing {i} {_currentHead.Number} {block.Number}");
-       190             L1BridgeStepResult? result = await ProcessBlock(block, cancellationToken);
-       191             if (result is not null) return result;
-       192         }
-       193
-       194         return null;
-       195     }
-     */
-
     private readonly Queue<L1BridgeStepResult> _unfinalizedL1BlocksQueue = new();
 
     /// <remarks> Processes all blocks from range [{segmentStartNumber}, {headNumber}) </remarks>
@@ -218,7 +201,7 @@ public class EthereumL1Bridge : IL1Bridge
         L1Block[] chainSegment = new L1Block[headNumber - segmentStartNumber];
         for (ulong blockNumber = headNumber - 1; blockNumber >= segmentStartNumber; blockNumber--)
         {
-            ulong i = segmentStartNumber - blockNumber;
+            ulong i = blockNumber - segmentStartNumber;
             chainSegment[i] = await GetBlock(blockNumber, cancellationToken);
             if (currentHash != chainSegment[i].Hash)
             {
