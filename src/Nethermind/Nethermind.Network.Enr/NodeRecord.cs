@@ -22,7 +22,7 @@ public class NodeRecord
 
     private Hash256? _contentHash;
 
-    public SortedDictionary<string, EnrContentEntry> Entries { get; } = new();
+    private SortedDictionary<string, EnrContentEntry> Entries { get; } = new();
 
     /// <summary>
     /// This field is used when this <see cref="NodeRecord"/> is deserialized and an unknown entry is encountered.
