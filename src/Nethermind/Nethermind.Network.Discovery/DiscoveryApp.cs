@@ -165,6 +165,7 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
         // Make sure this is non blocking code, otherwise netty will not process messages
         // Explicitly use TaskScheduler.Default, otherwise it will use dotnetty's task scheduler which have a habit of
         // not working sometimes.
+        if (_processExitSource.Token.IsCancellationRequested) return;
         _runningTask = Task.Factory
             .StartNew(() => OnChannelActivated(_processExitSource.Token), _processExitSource.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default)
             .ContinueWith
