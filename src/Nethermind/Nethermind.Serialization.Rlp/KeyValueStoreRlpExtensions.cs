@@ -50,12 +50,12 @@ public static class KeyValueStoreRlpExtensions
             if (decoder is IRlpValueDecoder<TItem> valueDecoder)
             {
                 item = db is IReadOnlyNativeKeyValueStore native
-                    ? GetViaNative(native, key, valueDecoder, rlpBehaviors)
-                    : GetViaSpan(db, key, valueDecoder, rlpBehaviors);
+                    ? Get(native, key, valueDecoder, rlpBehaviors)
+                    : Get(db, key, valueDecoder, rlpBehaviors);
             }
             else
             {
-                item = GetViaArray(db, key, decoder, rlpBehaviors);
+                item = Get(db, key, decoder, rlpBehaviors);
             }
         }
 
@@ -67,7 +67,7 @@ public static class KeyValueStoreRlpExtensions
         return item;
     }
 
-    private static TItem? GetViaNative<TItem>(IReadOnlyNativeKeyValueStore db, ReadOnlySpan<byte> key, IRlpValueDecoder<TItem> valueDecoder, RlpBehaviors rlpBehaviors) where TItem : class
+    private static TItem? Get<TItem>(IReadOnlyNativeKeyValueStore db, ReadOnlySpan<byte> key, IRlpValueDecoder<TItem> valueDecoder, RlpBehaviors rlpBehaviors) where TItem : class
     {
         ReadOnlySpan<byte> data = db.GetNativeSlice(key, out IntPtr handle);
         if (data.IsNull())
@@ -91,7 +91,7 @@ public static class KeyValueStoreRlpExtensions
         }
     }
 
-    private static TItem? GetViaSpan<TItem>(IReadOnlyKeyValueStore db, ReadOnlySpan<byte> key, IRlpValueDecoder<TItem> valueDecoder, RlpBehaviors rlpBehaviors) where TItem : class
+    private static TItem? Get<TItem>(IReadOnlyKeyValueStore db, ReadOnlySpan<byte> key, IRlpValueDecoder<TItem> valueDecoder, RlpBehaviors rlpBehaviors) where TItem : class
     {
         Span<byte> data = db.GetSpan(key);
         if (data.IsNull())
@@ -115,7 +115,7 @@ public static class KeyValueStoreRlpExtensions
         }
     }
 
-    private static TItem? GetViaArray<TItem>(IReadOnlyKeyValueStore db, ReadOnlySpan<byte> key, IRlpStreamDecoder<TItem> decoder, RlpBehaviors rlpBehaviors) where TItem : class
+    private static TItem? Get<TItem>(IReadOnlyKeyValueStore db, ReadOnlySpan<byte> key, IRlpStreamDecoder<TItem> decoder, RlpBehaviors rlpBehaviors) where TItem : class
     {
         Span<byte> data = db.Get(key);
         if (data.IsNull())
