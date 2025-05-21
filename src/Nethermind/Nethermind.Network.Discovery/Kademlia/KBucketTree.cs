@@ -8,7 +8,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class KBucketTree<TKey, TNode> : IRoutingTable<TNode> where TNode : notnull
+public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
 {
     private class TreeNode
     {
