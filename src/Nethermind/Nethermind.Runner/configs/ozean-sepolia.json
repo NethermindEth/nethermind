@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/op-sepolia.json.zst",
-    "GenesisHash": "0x102de6ffb001480cc9b8b548fd05c34cd4f46ae4aa91759393db90ea0409887d",
-    "BaseDbPath": "nethermind_db/op-sepolia",
-    "LogFileName": "op-sepolia.log"
+    "ChainSpecPath": "chainspec/ozean-sepolia.json.zst",
+    "GenesisHash": "0xb32768b76d1a3e84947da1caf37443f46003bff8f24ceee43db387452cba5da1",
+    "BaseDbPath": "nethermind_db/ozean-sepolia",
+    "LogFileName": "ozean-sepolia.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -12,9 +12,7 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "FastSyncCatchUpHeightDelta": "10000000000",
-    "PivotNumber": 28000000,
-    "PivotHash": "0xd09a9a66ab3405b8a9a1ceaeecf257142ef05a8531d181ab6e2a1438407483be"
+    "FastSyncCatchUpHeightDelta": "10000000000"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -34,6 +32,6 @@
     "Enabled": true
   },
   "Optimism": {
-    "SequencerUrl": "https://sepolia-sequencer.optimism.io"
+    "SequencerUrl": "https://ozean-testnet.rpc.caldera.xyz/http"
   }
 }
