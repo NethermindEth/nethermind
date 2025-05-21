@@ -57,9 +57,9 @@ public class Driver : IDisposable
     {
         try
         {
+            Task<L1BridgeStepResult> l1BridgeStep = _l1Bridge.Step(token);
             while (!token.IsCancellationRequested)
             {
-                Task<L1BridgeStepResult> l1BridgeStep = _l1Bridge.Step(token);
                 Task nextBatchReady = _decodingPipeline.DecodedBatchesReader.WaitToReadAsync(token).AsTask();
 
                 await Task.WhenAny(l1BridgeStep, nextBatchReady);
@@ -96,6 +96,7 @@ public class Driver : IDisposable
                             break;
                         }
                     }
+                    l1BridgeStep = _l1Bridge.Step(token);
                     continue;
                 }
             }
