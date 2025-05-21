@@ -34,6 +34,6 @@ public sealed record OptimismOutputV0
         MessagePasserStorageRoot.Bytes.CopyTo(buffer[64..]);
         BlockHash.Bytes.CopyTo(buffer[96..]);
 
-        return new Hash256(buffer);
+        return Keccak.Compute(buffer);
     }
 }
