@@ -78,7 +78,7 @@ public class EthereumL1Bridge : IL1Bridge
                 return L1BridgeStepResult.Finalization(newFinalized.Number);
             }
 
-            result = await RollBack(newHead.Hash, newHeadNumber, _currentHead.Hash, _currentHead.Number, token);
+            result = await RollBack(newHead.ParentHash, newHeadNumber, _currentHead.Hash, _currentHead.Number, token);
             if (result is not null) return result;
             result = await ProcessBlock(newHead, token);
             if (result is not null) return result;
@@ -193,11 +193,11 @@ public class EthereumL1Bridge : IL1Bridge
     private readonly Queue<L1BridgeStepResult> _unfinalizedL1BlocksQueue = new();
 
     /// <remarks> Processes all blocks from range [{segmentStartNumber}, {headNumber}) </remarks>
-    private async Task<L1BridgeStepResult?> RollBack(Hash256 headHash, ulong headNumber, Hash256 segmentStartHash, ulong segmentStartNumber, CancellationToken cancellationToken)
+    private async Task<L1BridgeStepResult?> RollBack(Hash256 headParentHash, ulong headNumber, Hash256 segmentStartHash, ulong segmentStartNumber, CancellationToken cancellationToken)
     {
         if (headNumber <= segmentStartNumber) return null;
         if (_unfinalizedL1BlocksQueue.Count != 0) return _unfinalizedL1BlocksQueue.Dequeue();
-        Hash256 currentHash = headHash;
+        Hash256 currentHash = headParentHash;
         L1Block[] chainSegment = new L1Block[headNumber - segmentStartNumber];
         for (ulong blockNumber = headNumber - 1; blockNumber >= segmentStartNumber; blockNumber--)
         {
