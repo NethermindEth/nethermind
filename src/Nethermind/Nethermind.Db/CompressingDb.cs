@@ -112,7 +112,7 @@ namespace Nethermind.Db
                 byte[] decompressed = new byte[bytes.Length - PreambleLength + EmptyCodeHashStorageRoot.Length];
                 Span<byte> span = decompressed.AsSpan();
 
-                bytes.Slice(PreambleLength).CopyTo(span);
+                bytes.AsSpan(PreambleLength).CopyTo(span);
                 EmptyCodeHashStorageRoot.CopyTo(span[^EmptyCodeHashStorageRoot.Length..]);
 
                 return decompressed;
