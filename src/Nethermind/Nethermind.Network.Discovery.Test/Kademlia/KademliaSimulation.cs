@@ -269,6 +269,7 @@ public class KademliaSimulation
                     UseNewLookup = config.UseNewLookup
                 })
                 .AddSingleton<IKademliaMessageSender<ValueHash256, TestNode>>(new SenderForNode(nodeIDTestNode, this))
+                .AddSingleton<ReceiverForNode>()
                 .AddSingleton<Kademlia<ValueHash256, TestNode>>();
 
             var container = builder.Build();
@@ -320,6 +321,7 @@ public class KademliaSimulation
 
             public Task<TestNode[]> FindNeighbours(TestNode node, ValueHash256 hash, CancellationToken token)
             {
+                nodeHealthTracker.OnIncomingMessageFrom(node);
                 return Task.FromResult(kademlia.GetKNeighbour(hash, node));
             }
         }
