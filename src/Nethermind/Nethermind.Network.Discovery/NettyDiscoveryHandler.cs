@@ -144,8 +144,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         try
         {
             msg = Deserialize(type, new ArraySegment<byte>(msgBytes, 0, size));
-            IPEndPoint endPoint = (IPEndPoint)address;
-            msg.FarAddress = endPoint;
+            msg.FarAddress = (IPEndPoint)address;
         }
         catch (Exception e)
         {
