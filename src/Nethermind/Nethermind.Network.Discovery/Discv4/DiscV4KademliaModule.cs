@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Kademlia;
-using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;
@@ -17,7 +16,6 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
     {
         builder
             .AddModule(new KademliaModule<PublicKey, Node>())
-            .AddSingleton<INodeHashProvider<Node>, NodeNodeHashProvider>()
             .AddSingleton<IKeyOperator<PublicKey, Node>, NodeNodeHashProvider>()
             .AddSingleton<IKademliaNodeSource, KademliaNodeSource>()
             .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => new KademliaConfig<Node>()
@@ -31,6 +29,7 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
                 RefreshPingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PongTimeout),
                 BootNodes = bootNodes
             })
+            .AddSingleton<IIteratorNodeLookup, IteratorNodeLookup>()
             .AddSingleton<KademliaDiscv4Adapter>()
             .AddSingleton<IKademliaDiscv4Adapter, KademliaDiscv4Adapter>()
             .Bind<IDiscoveryMsgListener, IKademliaDiscv4Adapter>()
@@ -41,13 +40,8 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
     }
 }
 
-public class NodeNodeHashProvider : INodeHashProvider<Node>, IKeyOperator<PublicKey, Node>
+public class NodeNodeHashProvider : IKeyOperator<PublicKey, Node>
 {
-    public ValueHash256 GetHash(Node node)
-    {
-        return node.Id.Hash;
-    }
-
     public PublicKey GetKey(Node node)
     {
         return node.Id;

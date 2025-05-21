@@ -26,7 +26,6 @@ public class KademliaTests
         builder
             .AddModule(new KademliaModule<ValueHash256, ValueHash256>())
             .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
-            .AddSingleton<INodeHashProvider<ValueHash256>>(new ValueHashNodeHashProvider())
             .AddSingleton<IKeyOperator<ValueHash256, ValueHash256>>(new ValueHashNodeHashProvider())
             .AddSingleton(config)
             .AddSingleton(_kademliaMessageSender)
@@ -163,13 +162,8 @@ public class KademliaTests
         kad.GetAllAtDistance(250).ToHashSet().Should().BeEquivalentTo(testHashes[10..].ToHashSet());
     }
 
-    private class ValueHashNodeHashProvider : INodeHashProvider<ValueHash256>, IKeyOperator<ValueHash256, ValueHash256>
+    private class ValueHashNodeHashProvider : IKeyOperator<ValueHash256, ValueHash256>
     {
-        public ValueHash256 GetHash(ValueHash256 node)
-        {
-            return node;
-        }
-
         public ValueHash256 GetKey(ValueHash256 node)
         {
             return node;

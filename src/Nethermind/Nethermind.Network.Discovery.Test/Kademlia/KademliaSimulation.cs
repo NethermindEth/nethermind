@@ -195,13 +195,8 @@ public class KademliaSimulation
         return val;
     }
 
-    private class ValueHashNodeHashProvider : INodeHashProvider<TestNode>, IKeyOperator<ValueHash256, TestNode>
+    private class ValueHashNodeHashProvider : IKeyOperator<ValueHash256, TestNode>
     {
-        public ValueHash256 GetHash(TestNode node)
-        {
-            return node.Hash;
-        }
-
         public ValueHash256 GetKey(TestNode node)
         {
             return node.Hash;
@@ -256,7 +251,6 @@ public class KademliaSimulation
             builder
                 .AddModule(new KademliaModule<ValueHash256, TestNode>())
                 .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Error))
-                .AddSingleton<INodeHashProvider<TestNode>>(_nodeHashProvider)
                 .AddSingleton<IKeyOperator<ValueHash256, TestNode>>(_nodeHashProvider)
                 .AddSingleton(new KademliaConfig<TestNode>()
                 {

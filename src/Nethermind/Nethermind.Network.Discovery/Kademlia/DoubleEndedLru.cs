@@ -1,17 +1,14 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Lantern.Discv5.WireProtocol.Table;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-// TODO: Combine with LruCace?
 public class DoubleEndedLru<TNode>(int capacity) where TNode : notnull
 {
-    // Double check if can be done locklesly
     private McsLock _lock = new McsLock();
 
     private LinkedList<(ValueHash256, TNode)> _queue = new();

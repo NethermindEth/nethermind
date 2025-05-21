@@ -12,7 +12,6 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// <typeparam name="TNode"></typeparam>
 public interface IKademlia<TKey, TNode>
 {
-
     /// <summary>
     /// Add node to the table.
     /// </summary>

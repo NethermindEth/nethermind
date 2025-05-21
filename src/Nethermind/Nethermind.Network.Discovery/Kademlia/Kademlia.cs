@@ -10,7 +10,6 @@ namespace Nethermind.Network.Discovery.Kademlia;
 public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnull
 {
     private readonly IKademliaMessageSender<TKey, TNode> _kademliaMessageSender;
-    private readonly INodeHashProvider<TNode> _nodeHashProvider;
     private readonly IKeyOperator<TKey, TNode> _keyOperator;
     private readonly IRoutingTable<TNode> _routingTable;
     private readonly ILookupAlgo<TNode> _lookupAlgo;
@@ -18,14 +17,12 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
     private readonly ILogger _logger;
 
     private readonly TNode _currentNodeId;
-    private readonly TKey _currentNodeIdAsKey;
     private readonly ValueHash256 _currentNodeIdAsHash;
     private readonly int _kSize;
     private readonly TimeSpan _refreshInterval;
     private readonly IReadOnlyList<TNode> _bootNodes;
 
     public Kademlia(
-        INodeHashProvider<TNode> nodeHashProvider,
         IKeyOperator<TKey, TNode> keyOperator,
         IKademliaMessageSender<TKey, TNode> sender,
         IRoutingTable<TNode> routingTable,
@@ -34,7 +31,6 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         INodeHealthTracker<TNode> nodeHealthTracker,
         KademliaConfig<TNode> config)
     {
-        _nodeHashProvider = nodeHashProvider;
         _keyOperator = keyOperator;
         _kademliaMessageSender = sender;
         _routingTable = routingTable;
@@ -43,8 +39,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         _logger = logManager.GetClassLogger<Kademlia<TKey, TNode>>();
 
         _currentNodeId = config.CurrentNodeId;
-        _currentNodeIdAsKey = _keyOperator.GetKey(_currentNodeId);
-        _currentNodeIdAsHash = _nodeHashProvider.GetHash(_currentNodeId);
+        _currentNodeIdAsHash = _keyOperator.GetNodeHash(_currentNodeId);
         _kSize = config.KSize;
         _refreshInterval = config.RefreshInterval;
         _bootNodes = config.BootNodes;
@@ -59,9 +54,10 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
         // It add to routing table and does the whole refresh logid.
         _nodeHealthTracker.OnIncomingMessageFrom(node);
     }
+
     public void Remove(TNode node)
     {
-        _routingTable.Remove(_nodeHashProvider.GetHash(node));
+        _routingTable.Remove(_keyOperator.GetNodeHash(node));
     }
 
     public TNode[] GetAllAtDistance(int i)
@@ -71,7 +67,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
 
     private bool SameAsSelf(TNode node)
     {
-        return _nodeHashProvider.GetHash(node) == _currentNodeIdAsHash;
+        return _keyOperator.GetNodeHash(node) == _currentNodeIdAsHash;
     }
 
     public Task<TNode[]> LookupNodesClosest(TKey key, CancellationToken token, int? k = null)
@@ -124,10 +120,10 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
             }
         });
 
-        // TODO: Gonna need to decide a better log for this.
         if (_logger.IsInfo) _logger.Info($"Online bootnodes: {onlineBootNodes}");
 
-        await LookupNodesClosest(_currentNodeIdAsKey, token);
+        TKey currentNodeIdAsKey = _keyOperator.GetKey(_currentNodeId);
+        await LookupNodesClosest(currentNodeIdAsKey, token);
 
         token.ThrowIfCancellationRequested();
 
@@ -149,7 +145,7 @@ public class Kademlia<TKey, TNode> : IKademlia<TKey, TNode> where TNode : notnul
     public TNode[] GetKNeighbour(TKey target, TNode? excluding = default, bool excludeSelf = false)
     {
         ValueHash256? excludeHash = null;
-        if (excluding != null) excludeHash = _nodeHashProvider.GetHash(excluding);
+        if (excluding != null) excludeHash = _keyOperator.GetNodeHash(excluding);
         ValueHash256 hash = _keyOperator.GetKeyHash(target);
         return _routingTable.GetKNearestNeighbour(hash, excludeHash, excludeSelf);
     }
