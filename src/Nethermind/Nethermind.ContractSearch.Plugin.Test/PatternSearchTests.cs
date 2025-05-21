@@ -110,6 +110,13 @@ public class PatternSearchTests
                      .Done,
                      37
              ).SetName("PatternSearchTest4-long pattern");
+
+            yield return new TestCaseData(
+            new byte[] { 0x61, 0x60, 0x1 },  // PuSH2 (PUSH1 1)
+            new byte[] { 0x61, 0x1 },
+            0
+            ).SetName("PatternSearchTest4-syntax-should-not-match-push1");
+
         }
     }
 
