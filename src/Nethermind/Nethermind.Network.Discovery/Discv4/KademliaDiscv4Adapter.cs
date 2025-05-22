@@ -28,15 +28,11 @@ public class KademliaDiscv4Adapter(
     ILogManager logManager
 ) : IKademliaDiscv4Adapter
 {
-    private readonly TimeSpan _requestEnrTimeout = TimeSpan.FromSeconds(10);
+    private readonly TimeSpan _requestEnrTimeout = TimeSpan.FromMilliseconds(discoveryConfig.EnrTimeout);
     private readonly TimeSpan _findNeighbourTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
-    private readonly TimeSpan _pingTimeout = TimeSpan.FromSeconds(1);
-    private readonly TimeSpan _waitAfterPongDelay = TimeSpan.FromMilliseconds(500);
-
-    /// <summary>
-    /// This is the value set by other clients based on real network tests.
-    /// </summary>
-    private const int ExpirationTimeInSeconds = 20;
+    private readonly TimeSpan _pingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout);
+    private readonly TimeSpan _expirationTime = TimeSpan.FromMilliseconds(discoveryConfig.MessageExpiryTime);
+    private readonly TimeSpan _waitAfterPongDelay = TimeSpan.FromMilliseconds(discoveryConfig.BondWaitTime);
 
     private readonly ILogger _logger = logManager.GetClassLogger<KademliaDiscv4Adapter>();
     private readonly RateLimiter _outboundRateLimiter = new(discoveryConfig.MaxOutgoingMessagePerSecond);
@@ -57,6 +53,7 @@ public class KademliaDiscv4Adapter(
 
     private async Task EnsureOutgoingMessageBondedPeer(Node node, NodeSession nodeSession, CancellationToken token)
     {
+        // If we have received ping, then we have ponged which mean we should be bonded from their point of view
         if (nodeSession is { HasReceivedPing: true, NotTooManyFailure: true }) return;
 
         if (_logger.IsTrace) _logger.Trace($"Ensure session for node {node}");
@@ -150,7 +147,7 @@ public class KademliaDiscv4Adapter(
 
     private long CalculateExpirationTime()
     {
-        return ExpirationTimeInSeconds + timestamper.UnixTime.SecondsLong;
+        return (long)(_expirationTime.TotalSeconds + timestamper.UnixTime.SecondsLong);
     }
 
     #endregion
@@ -159,15 +156,12 @@ public class KademliaDiscv4Adapter(
     {
         using var cts = token.CreateChildTokenSource(_pingTimeout);
         token = cts.Token;
+        NodeSession session = GetSession(receiver);
 
         PingMsg msg = new PingMsg(receiver.Address, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.Address);
         msg.EnrSequence = nodeRecordProvider.Current.EnrSequence; // optional and does not seems to be used anywhere.
-
-        NodeSession session = GetSession(receiver);
-
         session.OnPingSent();
         _ = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, token);
-
         session.OnPongReceived();
     }
 
@@ -229,7 +223,7 @@ public class KademliaDiscv4Adapter(
         {
             // Split into two because the size of message when nodes is > 12 is larger than mtu size.
             await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[..12]), token);
-            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[12..]), token);
+            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes[12..16]), token);
         }
     }
 
@@ -242,6 +236,8 @@ public class KademliaDiscv4Adapter(
 
         if (!session.HasReceivedPong)
         {
+            // If we have never received any pong, then this peer is not bonded and we should not respond to any auth request.
+            // Send a ping to bond the peer.
             await Ping(node, token);
         }
     }
@@ -267,18 +263,20 @@ public class KademliaDiscv4Adapter(
             {
                 case MsgType.Ping:
                     PingMsg ping = (PingMsg)msg;
-                    if (!ValidatePingAddress(ping!))
-                    {
-                        return;
-                    }
+                    if (!ValidatePingAddress(ping)) return;
                     await HandlePing(node, session, ping, token);
+                    nodeHealthTracker.Value.OnIncomingMessageFrom(node);
                     break;
                 case MsgType.FindNode:
                     await HandleFindNode(node, session, (FindNodeMsg)msg, token);
+                    nodeHealthTracker.Value.OnIncomingMessageFrom(node);
                     break;
                 case MsgType.EnrRequest:
                     await HandleEnrRequest(node, session, (EnrRequestMsg)msg, token);
+                    nodeHealthTracker.Value.OnIncomingMessageFrom(node);
                     break;
+
+                // Unsolicited response.
                 case MsgType.Neighbors:
                 case MsgType.Pong:
                 case MsgType.EnrResponse:

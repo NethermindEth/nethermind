@@ -9,7 +9,7 @@ using Nethermind.Stats.Model;
 namespace Nethermind.Network.Discovery.Discv4;
 
 /// <summary>
-/// Interface for the KademliaDiscv4Adapter, which handles discovery protocol v4 message processing.
+/// Interfaces between <see cref="Kademlia{TKey,TNode}"/> and discv4. Largely handles the transport and session handling.
 /// </summary>
 public interface IKademliaDiscv4Adapter : IKademliaMessageSender<PublicKey, Node>, IDiscoveryMsgListener, IAsyncDisposable
 {

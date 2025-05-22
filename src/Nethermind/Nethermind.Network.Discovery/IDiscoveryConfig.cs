@@ -51,10 +51,28 @@ public interface IDiscoveryConfig : IConfig
     int SendNodeTimeout { get; }
 
     /// <summary>
-    /// Pong Timeout in ms
+    /// Enr request timeout in ms
     /// </summary>
-    [ConfigItem(DefaultValue = "15000")]
-    int PongTimeout { get; set; }
+    [ConfigItem(DefaultValue = "500")]
+    long EnrTimeout { get; set; }
+
+    /// <summary>
+    /// Ping timeout in ms
+    /// </summary>
+    [ConfigItem(DefaultValue = "1000")]
+    long PingTimeout { get; set; }
+
+    /// <summary>
+    /// Message expiry time in MS
+    /// </summary>
+    [ConfigItem(DefaultValue = "30000")]
+    long MessageExpiryTime { get; set; }
+
+    /// <summary>
+    /// Time to wait after attempting to bond with a ping message
+    /// </summary>
+    [ConfigItem(DefaultValue = "500")]
+    int BondWaitTime { get; set; }
 
     /// <summary>
     /// Boot Node Pong Timeout in ms
