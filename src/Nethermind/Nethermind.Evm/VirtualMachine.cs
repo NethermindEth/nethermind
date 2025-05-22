@@ -687,10 +687,10 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 //vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
             }
 
-            if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
+            if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed && vmState.Env.CodeInfo.MachineCode.Length < spec.MaxCodeSize)
             {
                 vmState.Env.CodeInfo.Codehash = Keccak.Compute(env.CodeInfo.MachineCode.Span);
-                //IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
+                IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
             }
         }
 
