@@ -30,7 +30,7 @@ public class DecodingPipeline(ILogger logger) : IDecodingPipeline
             {
                 if (Interlocked.CompareExchange(ref _resetRequested, 0, 0) == 1)
                 {
-                    await Clear(token);
+                    Clear(token);
                     Interlocked.Exchange(ref _resetRequested, 0);
                     _resetCompleted.SetResult();
                 }
@@ -79,14 +79,14 @@ public class DecodingPipeline(ILogger logger) : IDecodingPipeline
         }
     }
 
-    private async Task Clear(CancellationToken token)
+    private void Clear(CancellationToken token)
     {
-        while (await _inputChannel.Reader.WaitToReadAsync(token))
+        while (_inputChannel.Reader.Count > 0)
         {
             while (_inputChannel.Reader.TryRead(out _)) { }
         }
 
-        while (await _outputChannel.Reader.WaitToReadAsync(token))
+        while (_outputChannel.Reader.Count > 0)
         {
             while (_outputChannel.Reader.TryRead(out _)) { }
         }
