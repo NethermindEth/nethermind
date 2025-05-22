@@ -536,7 +536,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                             progress = (float)(totalAllLargeStorageProgress / totalLargeStorage);
 
-                            stateRangesReport = $"Snap         Large storage left {totalLargeStorage}: ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
+                            stateRangesReport = $"Snap          {totalLargeStorage} large storage left: ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
                         }
                     }
 
