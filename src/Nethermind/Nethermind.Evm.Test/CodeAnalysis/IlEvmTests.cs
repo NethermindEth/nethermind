@@ -1836,7 +1836,33 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .JUMP(0)
                     .Done, EvmExceptionType.StackUnderflow, turnOnAggressiveMode);
 
-                
+
+                long maxSize = 24.KiB();
+
+                byte[] bytecode = new byte[maxSize];
+                int index = 0;
+
+
+                byte[] segment = Prepare.EvmCode
+                    .PushData(1)
+                    .PushData(1)
+                    .ADD()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done;
+
+                while (index + segment.Length < bytecode.Length)
+                {
+                    Array.Copy(
+                        segment, 0,
+                        bytecode, index, segment.Length
+                        );
+
+                    index += segment.Length;
+                }
+
+                yield return ([Instruction.ADD | Instruction.SSTORE | Instruction.INVALID], bytecode, EvmExceptionType.StackUnderflow, turnOnAggressiveMode);
+
             }
 
             /*static IEnumerable<IReleaseSpec> GetAllFroksStarting<T>()
@@ -2031,6 +2057,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
         public void ILVM_AOT_Storage_Roundtrip((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, bool enableAggressiveMode, IReleaseSpec spec) testcase)
         {
+            String path = Path.Combine(Directory.GetCurrentDirectory(), "GeneratedContractsTests");
+            if (!Directory.Exists(path))
+            {
+                Directory.CreateDirectory(path);
+            }
+
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
                 IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
@@ -2039,7 +2071,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IlEvmContractsPerDllCount = 1,
                 IsIlEvmAggressiveModeEnabled = true,
                 IlEvmPersistPrecompiledContractsOnDisk = true,
-                IlEvmPrecompiledContractsPath = Directory.GetCurrentDirectory(),
+                IlEvmPrecompiledContractsPath = path,
             }, Prague.Instance);
 
             string fileName = Precompiler.GetTargetFileName();
@@ -2048,7 +2080,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             enhancedChain.ForceRunAnalysis(address, ILMode.FULL_AOT_MODE);
 
-            var assemblyPath = Path.Combine(Directory.GetCurrentDirectory(), fileName);
+            var assemblyPath = Path.Combine(path, fileName);
 
             Assembly assembly = Assembly.LoadFile(assemblyPath);
             MethodInfo method = assembly

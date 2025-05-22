@@ -673,7 +673,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if (_vmConfig.IsVmOptimizationEnabled && vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
             {
-                vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
+                vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger, spec);
             }
         }
 

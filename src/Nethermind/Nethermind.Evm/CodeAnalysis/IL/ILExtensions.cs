@@ -169,7 +169,7 @@ public static class StackEmit
 }
 public static class WordEmit
 {
-    public static void EmitShiftUInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, bool isLeft, Dictionary<EvmExceptionType, Label> exceptions, params ReadOnlySpan<Local> locals)
+    public static void EmitShiftUInt256Method<T>(Emit<T> il, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, bool isLeft, Dictionary<EvmExceptionType, Label> exceptions, params ReadOnlySpan<Local> locals)
     {
         MethodInfo shiftOp = typeof(UInt256).GetMethod(isLeft ? nameof(UInt256.LeftShift) : nameof(UInt256.RightShift));
         Label skipPop = il.DefineLabel(localNames.GetLabelName());
@@ -185,26 +185,26 @@ public static class WordEmit
         il.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
         il.Convert<uint>();
         il.StoreLocal(shiftBit);
-        il.StoreLocal(locals[0]);
+        il.StoreLocal(localNames.uint256A);
 
-        il.LoadLocalAddress(locals[0]);
+        il.LoadLocalAddress(localNames.uint256A);
         il.LoadConstant(Word.FullSize);
         il.Call(typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
         il.BranchIfFalse(skipPop);
 
         il.StackLoadPrevious(stack.headRef, stack.offset, 2);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[1]);
-        il.LoadLocalAddress(locals[1]);
+        il.StoreLocal(localNames.uint256B);
+        il.LoadLocalAddress(localNames.uint256B);
 
         il.LoadLocal(shiftBit);
 
-        il.LoadLocalAddress(uint256R);
+        il.LoadLocalAddress(localNames.uint256R);
 
         il.Call(shiftOp);
 
         il.CleanAndLoadWord(stack.headRef, stack.offset, 2);
-        il.LoadLocal(uint256R);
+        il.LoadLocal(localNames.uint256R);
         il.Call(Word.SetUInt256);
         il.Branch(endOfOpcode);
 
@@ -214,7 +214,7 @@ public static class WordEmit
 
         il.MarkLabel(endOfOpcode);
     }
-    public static void EmitShiftInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
+    public static void EmitShiftInt256Method<T>(Emit<T> il, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, Dictionary<EvmExceptionType, Label> exceptions)
     {
         Label aBiggerOrEqThan256 = il.DefineLabel(localNames.GetLabelName());
         Label signIsNeg = il.DefineLabel(localNames.GetLabelName());
@@ -224,13 +224,13 @@ public static class WordEmit
         // we the two uint256 from the locals.stackHeadRef
         il.StackLoadPrevious(stack.headRef, stack.offset, 1);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[0]);
+        il.StoreLocal(localNames.uint256A);
 
         il.StackLoadPrevious(stack.headRef, stack.offset, 2);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[1]);
+        il.StoreLocal(localNames.uint256B);
 
-        il.LoadLocalAddress(locals[0]);
+        il.LoadLocalAddress(localNames.uint256A);
         il.LoadConstant(Word.FullSize);
         il.Call(typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
         il.BranchIfFalse(aBiggerOrEqThan256);
@@ -238,22 +238,22 @@ public static class WordEmit
         using Local shiftBits = il.DeclareLocal<int>(localNames.GetLocalName());
 
 
-        il.LoadLocalAddress(locals[1]);
+        il.LoadLocalAddress(localNames.uint256B);
         il.Call(UnsafeEmit.GetAsMethodInfo<UInt256, Int256.Int256>());
-        il.LoadLocalAddress(locals[0]);
+        il.LoadLocalAddress(localNames.uint256A);
         il.LoadField(GetFieldInfo<UInt256>(nameof(UInt256.u0)));
         il.Convert<int>();
-        il.LoadLocalAddress(uint256R);
+        il.LoadLocalAddress(localNames.uint256R);
         il.Call(UnsafeEmit.GetAsMethodInfo<UInt256, Int256.Int256>());
         il.Call(typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.RightShift), [typeof(int), typeof(Int256.Int256).MakeByRefType()]));
         il.CleanAndLoadWord(stack.headRef, stack.offset, 2);
-        il.LoadLocal(uint256R);
+        il.LoadLocal(localNames.uint256R);
         il.Call(Word.SetUInt256);
         il.Branch(endOfOpcode);
 
         il.MarkLabel(aBiggerOrEqThan256);
 
-        il.LoadLocalAddress(locals[1]);
+        il.LoadLocalAddress(localNames.uint256B);
         il.Call(UnsafeEmit.GetAsMethodInfo<UInt256, Int256.Int256>());
         il.Call(GetPropertyInfo(typeof(Int256.Int256), nameof(Int256.Int256.Sign), false, out _));
         il.LoadConstant(0);
@@ -278,7 +278,7 @@ public static class WordEmit
 
         il.MarkLabel(endOfOpcode);
     }
-    public static void EmitBitwiseUInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
+    public static void EmitBitwiseUInt256Method<T>(Emit<T> il, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions)
     {
         // Note: Use Vector256 directoly if UInt256 does not use it internally
         // we the two uint256 from the stack.headRef
@@ -304,47 +304,47 @@ public static class WordEmit
         il.LoadLocal(vectorResult);
         il.Call(writeVector256Method);
     }
-    public static void EmitComparaisonUInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
+    public static void EmitComparaisonUInt256Method<T>(Emit<T> il, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions)
     {
         // we the two uint256 from the stack.headRef
         il.StackLoadPrevious(stack.headRef, stack.offset, 1);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[0]);
+        il.StoreLocal(localNames.uint256A);
         il.StackLoadPrevious(stack.headRef, stack.offset, 2);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[1]);
+        il.StoreLocal(localNames.uint256B);
 
         // invoke op  on the uint256
-        il.LoadLocalAddress(locals[0]);
-        il.LoadLocalAddress(locals[1]);
+        il.LoadLocalAddress(localNames.uint256A);
+        il.LoadLocalAddress(localNames.uint256B);
         il.Call(operation);
 
         // convert to conv_i
         il.Convert<int>();
         il.Call(ConvertionExplicit<UInt256, int>());
-        il.StoreLocal(uint256R);
+        il.StoreLocal(localNames.uint256R);
 
         // push the result to the stack.headRef
         il.CleanAndLoadWord(stack.headRef, stack.offset, 2);
-        il.LoadLocal(uint256R); // stack.headRef: word*, uint256
+        il.LoadLocal(localNames.uint256R); // stack.headRef: word*, uint256
         il.Call(Word.SetUInt256);
     }
-    public static void EmitComparaisonInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, bool isGreaterThan, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
+    public static void EmitComparaisonInt256Method<T>(Emit<T> il, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, bool isGreaterThan, Dictionary<EvmExceptionType, Label> exceptions)
     {
         Label endOpcodeHandling = il.DefineLabel(localNames.GetLabelName());
         Label pushOnehandling = il.DefineLabel(localNames.GetLabelName());
         // we the two uint256 from the stack.headRef
         il.StackLoadPrevious(stack.headRef, stack.offset, 1);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[0]);
+        il.StoreLocal(localNames.uint256A);
         il.StackLoadPrevious(stack.headRef, stack.offset, 2);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[1]);
+        il.StoreLocal(localNames.uint256B);
 
         // invoke op  on the uint256
-        il.LoadLocalAddress(locals[0]);
+        il.LoadLocalAddress(localNames.uint256A);
         il.Call(UnsafeEmit.GetAsMethodInfo<UInt256, Int256.Int256>());
-        il.LoadLocalAddress(locals[1]);
+        il.LoadLocalAddress(localNames.uint256B);
         il.Call(UnsafeEmit.GetAsMethodInfo<UInt256, Int256.Int256>());
         il.LoadObject<Int256.Int256>();
         il.Call(operation);
@@ -371,23 +371,21 @@ public static class WordEmit
         il.MarkLabel(endOpcodeHandling);
         il.Call(Word.SetUInt256);
     }
-    public static void EmitBinaryUInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
+    public static void EmitBinaryUInt256Method<T>(Emit<T> il, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions)
     {
         Label label = il.DefineLabel(localNames.GetLabelName());
         il.StackLoadPrevious(stack.headRef, stack.offset, 1);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[0]);
+        il.StoreLocal(localNames.uint256A);
         il.StackLoadPrevious(stack.headRef, stack.offset, 2);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[1]);
+        il.StoreLocal(localNames.uint256B);
 
-        // incase of custom handling, we branch to the label
-        customHandling?.Invoke(il, label, locals);
 
         // invoke op  on the uint256
-        il.LoadLocalAddress(locals[0]);
-        il.LoadLocalAddress(locals[1]);
-        il.LoadLocalAddress(uint256R);
+        il.LoadLocalAddress(localNames.uint256A);
+        il.LoadLocalAddress(localNames.uint256B);
+        il.LoadLocalAddress(localNames.uint256R);
         il.Call(operation);
 
         // skip the main handling
@@ -395,30 +393,28 @@ public static class WordEmit
 
         // push the result to the stack.headRef
         il.CleanAndLoadWord(stack.headRef, stack.offset, 2);
-        il.LoadLocal(uint256R); // stack.headRef: word*, uint256
+        il.LoadLocal(localNames.uint256R); // stack.headRef: word*, uint256
         il.Call(Word.SetUInt256);
     }
-    public static void EmitBinaryInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
+    public static void EmitBinaryInt256Method<T>(Emit<T> il, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions)
     {
         Label label = il.DefineLabel(localNames.GetLabelName());
 
         // we the two uint256 from the stack.headRef
         il.StackLoadPrevious(stack.headRef, stack.offset, 1);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[0]);
+        il.StoreLocal(localNames.uint256A);
         il.StackLoadPrevious(stack.headRef, stack.offset, 2);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[1]);
+        il.StoreLocal(localNames.uint256B);
 
-        // incase of custom handling, we branch to the label
-        customHandling?.Invoke(il, label, locals);
 
         // invoke op  on the uint256
-        il.LoadLocalAddress(locals[0]);
+        il.LoadLocalAddress(localNames.uint256A);
         il.Call(UnsafeEmit.GetAsMethodInfo<UInt256, Int256.Int256>());
-        il.LoadLocalAddress(locals[1]);
+        il.LoadLocalAddress(localNames.uint256B);
         il.Call(UnsafeEmit.GetAsMethodInfo<UInt256, Int256.Int256>());
-        il.LoadLocalAddress(uint256R);
+        il.LoadLocalAddress(localNames.uint256R);
         il.Call(UnsafeEmit.GetAsMethodInfo<UInt256, Int256.Int256>());
         il.Call(operation);
 
@@ -427,32 +423,29 @@ public static class WordEmit
 
         // push the result to the stack.headRef
         il.CleanAndLoadWord(stack.headRef, stack.offset, 2);
-        il.LoadLocal(uint256R); // stack.headRef: word*, uint256
+        il.LoadLocal(localNames.uint256R); // stack.headRef: word*, uint256
         il.Call(Word.SetUInt256);
     }
-    public static void EmitTrinaryUInt256Method<T>(Emit<T> il, Local uint256R, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
+    public static void EmitTrinaryUInt256Method<T>(Emit<T> il, Locals<T> localNames, (Local headRef, Local headIdx, int offset) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions)
     {
         Label label = il.DefineLabel(localNames.GetLabelName());
 
         // we the two uint256 from the locals.stackHeadRef
         il.StackLoadPrevious(stack.headRef, stack.offset, 1);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[0]);
+        il.StoreLocal(localNames.uint256A);
         il.StackLoadPrevious(stack.headRef, stack.offset, 2);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[1]);
+        il.StoreLocal(localNames.uint256B);
         il.StackLoadPrevious(stack.headRef, stack.offset, 3);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[2]);
-
-        // incase of custom handling, we branch to the label
-        customHandling?.Invoke(il, label, locals);
+        il.StoreLocal(localNames.uint256C);
 
         // invoke op  on the uint256
-        il.LoadLocalAddress(locals[0]);
-        il.LoadLocalAddress(locals[1]);
-        il.LoadLocalAddress(locals[2]);
-        il.LoadLocalAddress(uint256R);
+        il.LoadLocalAddress(localNames.uint256A);
+        il.LoadLocalAddress(localNames.uint256B);
+        il.LoadLocalAddress(localNames.uint256C);
+        il.LoadLocalAddress(localNames.uint256R);
         il.Call(operation);
 
         // skip the main handling
@@ -460,7 +453,7 @@ public static class WordEmit
 
         // push the result to the stack.headRef
         il.CleanAndLoadWord(stack.headRef, stack.offset, 3);
-        il.LoadLocal(uint256R); // stack.headRef: word*, uint256
+        il.LoadLocal(localNames.uint256R); // stack.headRef: word*, uint256
         il.Call(Word.SetUInt256);
     }
     public static void CallGetter<T>(this Emit<T> il, MethodInfo getterInfo, bool isLittleEndian)

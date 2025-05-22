@@ -96,7 +96,7 @@ internal static class OpcodeEmitter
 				EmitPush_bInstructions(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
 				return;
 			case Instruction.ADD:
-				EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+				EmitBinaryUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
 				return;
 			case Instruction.SUB:
 				EmitSubInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
@@ -124,37 +124,37 @@ internal static class OpcodeEmitter
 				EmitMulModInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
 				return;
 			case Instruction.SHL:
-				EmitShiftUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), isLeft: true, evmExceptionLabels, locals.uint256A, locals.uint256B);
+				EmitShiftUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), isLeft: true, evmExceptionLabels);
 				return;
 			case Instruction.SHR:
-				EmitShiftUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), isLeft: false, evmExceptionLabels, locals.uint256A, locals.uint256B);
+				EmitShiftUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), isLeft: false, evmExceptionLabels);
 				return;
 			case Instruction.SAR:
-				EmitShiftInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), evmExceptionLabels, locals.uint256A, locals.uint256B);
+				EmitShiftInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), evmExceptionLabels);
 				return;
 			case Instruction.AND:
-				EmitBitwiseUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseAnd), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
+				EmitBitwiseUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseAnd), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
 				return;
 			case Instruction.OR:
-				EmitBitwiseUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseOr), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
+				EmitBitwiseUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.BitwiseOr), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
 				return;
 			case Instruction.XOR:
-				EmitBitwiseUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.Xor), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
+				EmitBitwiseUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.Xor), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
 				return;
 			case Instruction.EXP:
 				EmitExpInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
 				return;
 			case Instruction.LT:
-				EmitComparaisonUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, locals.uint256A, locals.uint256B);
+				EmitComparaisonUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels);
 				return;
 			case Instruction.GT:
-				EmitComparaisonUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, locals.uint256A, locals.uint256B);
+				EmitComparaisonUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels);
 				return;
 			case Instruction.SLT:
-				EmitComparaisonInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), false, evmExceptionLabels, locals.uint256A, locals.uint256B);
+				EmitComparaisonInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), false, evmExceptionLabels);
 				return;
 			case Instruction.SGT:
-				EmitComparaisonInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, evmExceptionLabels, locals.uint256A, locals.uint256B);
+				EmitComparaisonInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, evmExceptionLabels);
 				return;
 			case Instruction.EQ:
 				EmitEqInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
@@ -1441,7 +1441,7 @@ internal static class OpcodeEmitters
 		method.BranchIfTrue(push0Zero);
 
 		method.MarkLabel(fallbackToUInt256Call);
-		EmitTrinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.MultiplyMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B, locals.uint256C);
+		EmitTrinaryUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.MultiplyMod), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
 		method.Branch(endofOpcode);
 
 		method.MarkLabel(push0Zero);
@@ -1469,7 +1469,7 @@ internal static class OpcodeEmitters
 		method.Branch(endofOpcode);
 
 		method.MarkLabel(fallbackToUInt256Call);
-		EmitTrinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.AddMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B, locals.uint256C);
+		EmitTrinaryUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.AddMod), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
 		method.MarkLabel(endofOpcode);
 	}
 
@@ -1504,7 +1504,7 @@ internal static class OpcodeEmitters
 		method.BranchIfTrue(pushALabel);
 
 		method.MarkLabel(fallBackToOldBehavior);
-		EmitBinaryInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Divide), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+		EmitBinaryInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Divide), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, evmExceptionLabels);
 		method.Branch(endofOpcode);
 
 		method.MarkLabel(pushZeroLabel);
@@ -1645,7 +1645,8 @@ internal static class OpcodeEmitters
 		method.LoadWorldState(locals, false);
 		method.LoadLocal(locals.address);
 		method.LoadSpec(locals, false);
-		method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
+        method.LoadConstant(false);
+		method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec), typeof(bool)]));
 		method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
 		method.StoreLocal(locals.localReadOnlyMemory);
 		method.LoadLocalAddress(locals.localReadOnlyMemory);
@@ -1714,7 +1715,8 @@ internal static class OpcodeEmitters
 		method.LoadWorldState(locals, false);
 		method.LoadLocal(locals.address);
 		method.LoadSpec(locals, false);
-		method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
+        method.LoadConstant(false);
+		method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec), typeof(bool)]));
 		method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
 
 		method.LoadLocalAddress(locals.uint256B);
@@ -1862,7 +1864,7 @@ internal static class OpcodeEmitters
 		method.EmitCheck(nameof(Word.IsOne), locals.wordRef256B);
 		method.BranchIfTrue(pushALabel);
 
-		EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+		EmitBinaryUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
 		method.Branch(endofOpcode);
 
 		method.MarkLabel(pushZeroLabel);
@@ -1892,7 +1894,7 @@ internal static class OpcodeEmitters
 		method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256B);
 		method.BranchIfTrue(bIsOneOrZero);
 
-		EmitBinaryInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Mod), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+		EmitBinaryInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Mod), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, evmExceptionLabels);
 		method.Branch(endofOpcode);
 
 		method.MarkLabel(bIsOneOrZero);
@@ -1915,7 +1917,7 @@ internal static class OpcodeEmitters
 		method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256B);
 		method.BranchIfTrue(pushZeroLabel);
 
-		EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+		EmitBinaryUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
 		method.Branch(endofOpcode);
 
 		method.MarkLabel(pushZeroLabel);
@@ -1955,7 +1957,7 @@ internal static class OpcodeEmitters
 		method.EmitCheck(nameof(Word.IsOne), locals.wordRef256B);
 		method.BranchIfTrue(pushItemA);
 
-		EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+		EmitBinaryUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
 		method.Branch(endofOpcode);
 
 		method.MarkLabel(push0Zero);
@@ -1988,7 +1990,7 @@ internal static class OpcodeEmitters
 		method.EmitCheck(nameof(Word.IsZero), locals.wordRef256B);
 		method.BranchIfTrue(pushItemA);
 
-		EmitBinaryUInt256Method(method, locals.uint256R, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, locals.uint256A, locals.uint256B);
+		EmitBinaryUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
 		method.Branch(endofOpcode);
 
 		method.MarkLabel(pushItemA);

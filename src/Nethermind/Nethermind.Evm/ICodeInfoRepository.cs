@@ -22,8 +22,8 @@ public interface ICodeInfoRepository
 
 public static class CodeInfoRepositoryExtensions
 {
-    public static CodeInfo GetCachedCodeInfo(this ICodeInfoRepository codeInfoRepository, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
-        => codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec, out _);
+    public static CodeInfo GetCachedCodeInfo(this ICodeInfoRepository codeInfoRepository, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, bool FollowDelegation)
+        => codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, FollowDelegation, vmSpec, out _);
     public static CodeInfo GetCachedCodeInfo(this ICodeInfoRepository codeInfoRepository, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
         => codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, true, vmSpec, out delegationAddress);
 }

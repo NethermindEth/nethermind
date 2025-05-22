@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeInfo : IThreadPoolWorkItem
@@ -23,9 +24,9 @@ namespace Nethermind.Evm.CodeAnalysis
         // IL-EVM
         private int _callCount;
 
-        public void NoticeExecution(IVMConfig vmConfig, ILogger logger)
+        public void NoticeExecution(IVMConfig vmConfig, ILogger logger, IReleaseSpec spec)
         {
-            if (MachineCode.Length <= 4) return;
+            if (MachineCode.Length <= 4 || MachineCode.Length > spec.MaxCodeSize) return;
 
             if (vmConfig.IlEvmEnabledMode == ILMode.NO_ILVM || !IlInfo.IsNotProcessed)
                 return;
