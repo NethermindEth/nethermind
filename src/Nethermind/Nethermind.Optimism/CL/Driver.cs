@@ -74,39 +74,39 @@ public class Driver : IDisposable
                 if (l1BridgeStep.IsCompleted)
                 {
                     L1BridgeStepResult result = l1BridgeStep.Result;
-                    _logger.Warn(result.ToString());
+                    if (_logger.IsInfo) _logger.Info(result.ToString());
                     switch (result.Type)
                     {
                         case L1BridgeStepResultType.Block:
-                        {
-                            foreach (DaDataSource daDataSource in result.NewData!)
                             {
-                                await _decodingPipeline.DaDataWriter.WriteAsync(daDataSource, token);
+                                foreach (DaDataSource daDataSource in result.NewData!)
+                                {
+                                    await _decodingPipeline.DaDataWriter.WriteAsync(daDataSource, token);
+                                }
+                                l1BridgeStep = _l1Bridge.Step(token);
+                                break;
                             }
-                            l1BridgeStep = _l1Bridge.Step(token);
-                            break;
-                        }
                         case L1BridgeStepResultType.Finalization:
-                        {
-                            await ProcessNewFinalized(result.NewFinalized!.Value, token);
-                            l1BridgeStep = _l1Bridge.Step(token);
-                            break;
-                        }
-                        case L1BridgeStepResultType.Reorg:
-                        {
-                            await ProcessReorg(token);
-                            l1BridgeStep = _l1Bridge.Step(token);
-                            break;
-                        }
-                        case L1BridgeStepResultType.Skip:
-                        {
-                            l1BridgeStep = Task.Run(async () =>
                             {
-                                await Task.Delay(12000, token);
-                                return await _l1Bridge.Step(token);
-                            }, token);
-                            break;
-                        }
+                                await ProcessNewFinalized(result.NewFinalized!.Value, token);
+                                l1BridgeStep = _l1Bridge.Step(token);
+                                break;
+                            }
+                        case L1BridgeStepResultType.Reorg:
+                            {
+                                await ProcessReorg(token);
+                                l1BridgeStep = _l1Bridge.Step(token);
+                                break;
+                            }
+                        case L1BridgeStepResultType.Skip:
+                            {
+                                l1BridgeStep = Task.Run(async () =>
+                                {
+                                    await Task.Delay(12000, token);
+                                    return await _l1Bridge.Step(token);
+                                }, token);
+                                break;
+                            }
                     }
 
                     continue;
@@ -126,7 +126,11 @@ public class Driver : IDisposable
 
     private async Task ProcessReorg(CancellationToken token)
     {
-        await Task.CompletedTask;
+        L2Block? block = await _l2Api.GetFinalizedBlock();
+        ArgumentNullException.ThrowIfNull(block);
+        Reset(block.Number);
+        _l1Bridge.Reset(BlockId.FromL1BlockInfo(block.L1BlockInfo));
+        await _decodingPipeline.Reset(token);
     }
 
     private readonly Queue<(ulong L1BatchOrigin, BlockId LastL2Block)> _safeBlocksQueue = new();
