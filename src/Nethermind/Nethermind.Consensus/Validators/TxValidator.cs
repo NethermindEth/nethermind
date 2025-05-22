@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using System.Reflection.Metadata.Ecma335;
 
 namespace Nethermind.Consensus.Validators;
 
@@ -335,4 +336,17 @@ public sealed class AuthorizationListTxValidator : ITxValidator
             null or { Length: 0 } => TxErrorMessages.MissingAuthorizationList,
             _ => ValidationResult.Success
         };
+}
+
+public sealed class GasLimitCapTxValidator : ITxValidator
+{
+	public static readonly GasLimitCapTxValidator Instance = new();
+	private GasLimitCapTxValidator() { }
+
+	public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+	{
+		long gasLimitCap = Eip7825Constants.GetTxGasLimitCap(releaseSpec);
+		return releaseSpec.IsEip7825Enabled && transaction.GasLimit > gasLimitCap ?
+			TxErrorMessages.TxGasLimitCapExceeded(transaction.GasLimit, gasLimitCap) : ValidationResult.Success;
+	}
 }
