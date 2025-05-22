@@ -22,13 +22,13 @@ public class Eip4844Constants
     /// Gets the <c>TARGET_BLOB_GAS_PER_BLOCK / GAS_PER_BLOB</c> parameter.
     /// </summary>
     /// <remarks>Defaults to 3338477.</remarks>
-    public static ulong DefaultTargetBlobCount { get; private set; } = 3;
+    public const ulong DefaultTargetBlobCount = 3;
 
     /// <summary>
     /// Gets the <c>MAX_BLOB_GAS_PER_BLOCK / GAS_PER_BLOB</c> parameter.
     /// </summary>
     /// <remarks>Defaults to 3338477.</remarks>
-    public static ulong DefaultMaxBlobCount { get; private set; } = 6;
+    public const ulong DefaultMaxBlobCount = 6;
 
     /// <summary>
     /// Gets the <c>BLOB_GASPRICE_UPDATE_FRACTION</c> parameter.
