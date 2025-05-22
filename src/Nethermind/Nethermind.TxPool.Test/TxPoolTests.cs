@@ -410,6 +410,24 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(AcceptTxResult.GasLimitExceeded);
         }
 
+        [Test]
+        public void should_ignore_tx_gas_limit_exceeded_for_eip7825()
+        {
+            ISpecProvider specProvider = new OverridableSpecProvider(
+				new TestSpecProvider(London.Instance),
+				static r => new OverridableReleaseSpec(r) { IsEip7825Enabled = true });
+
+            var config = new TxPoolConfig { GasLimit = long.MaxValue };
+            _txPool = CreatePool(config, specProvider);
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactionsCount().Should().Be(0);
+            result.Should().Be(AcceptTxResult.GasLimitExceeded);
+        }
+
         [TestCase(4, 0, nameof(AcceptTxResult.FeeTooLow))]
         [TestCase(4, 11, nameof(AcceptTxResult.FeeTooLow))]
         [TestCase(4, 12, nameof(AcceptTxResult.FeeTooLow))]
