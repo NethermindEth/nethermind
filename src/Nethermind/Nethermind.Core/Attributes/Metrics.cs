@@ -45,7 +45,7 @@ public sealed class SummaryMetricAttribute : Attribute
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
 public sealed class ExponentialPowerHistogramMetric : Attribute
 {
-    public string[] LabelNames { get; init;  } = [];
+    public string[] LabelNames { get; init; } = [];
     public double Start { get; set; }
     public double Factor { get; set; }
     public int Count { get; set; }

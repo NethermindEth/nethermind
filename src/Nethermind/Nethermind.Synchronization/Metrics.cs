@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization
         public static IMetricObserver SyncDispatcherHandleTimeMicros = NoopMetricObserver.Instance;
     }
 
-    public struct SnapRangeResult(bool isStorage, AddRangeResult result): IMetricLabels
+    public struct SnapRangeResult(bool isStorage, AddRangeResult result) : IMetricLabels
     {
         public string[] Labels => [isStorage ? "true" : "false", result.ToString()];
     }
