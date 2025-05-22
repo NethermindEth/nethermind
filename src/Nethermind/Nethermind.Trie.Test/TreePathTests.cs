@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -72,9 +73,9 @@ public class TreePathTests
             nibbles[i] = (byte)(i % 16);
         }
         TreePath path = new TreePath();
-        path = path.Append(nibbles[..partition]);
+        path = path.Append(nibbles.AsSpan(0, partition));
         path.Length.Should().Be(partition);
-        path = path.Append(nibbles[partition..]);
+        path = path.Append(nibbles.AsSpan(partition));
         path.Length.Should().Be(64);
 
         string asHex = path.Span.ToHexString();
