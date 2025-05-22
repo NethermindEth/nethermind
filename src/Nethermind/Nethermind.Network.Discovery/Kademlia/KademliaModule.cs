@@ -29,10 +29,8 @@ public class KademliaModule<TKey, TNode> : Module where TNode : notnull
 
         builder
             .AddSingleton<IKademlia<TKey, TNode>, Kademlia<TKey, TNode>>()
-            .AddSingleton<LookupKNearestNeighbour<TKey, TNode>>()
             .AddSingleton<ILookupAlgo<TNode>, LookupKNearestNeighbour<TKey, TNode>>()
             .AddSingleton<INodeHashProvider<TNode>, FromKeyNodeHashProvider<TKey, TNode>>()
-            .AddSingleton<KBucketTree<TNode>>()
             .AddSingleton<IRoutingTable<TNode>, KBucketTree<TNode>>()
             .AddSingleton<INodeHealthTracker<TNode>, NodeHealthTracker<TKey, TNode>>();
     }
