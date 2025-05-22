@@ -48,6 +48,8 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly ILogger _logger;
         private readonly IDb _db;
         string? _lastStateRangesReport;
+        private DateTimeOffset _lastLogTime = DateTimeOffset.MinValue;
+        private readonly TimeSpan _maxTimeBetweenLog = TimeSpan.FromSeconds(5);
 
         // Partitions are indexed by its limit keccak/address as they are keep in the request struct and remain the same
         // throughout the sync. So its easy.
@@ -481,11 +483,9 @@ namespace Nethermind.Synchronization.SnapSync
             _db.Flush();
         }
 
-        private DateTimeOffset _lastLogTime = DateTimeOffset.MinValue;
-
         private void LogRequest(string reqType)
         {
-            if (_reqCount % 100 == 0 || _lastLogTime < DateTimeOffset.Now - TimeSpan.FromSeconds(5))
+            if (_reqCount % 100 == 0 || _lastLogTime < DateTimeOffset.Now - _maxTimeBetweenLog)
             {
                 int totalPathProgress = 0;
                 foreach (KeyValuePair<ValueHash256, AccountRangePartition> kv in AccountRangePartitions)
@@ -537,7 +537,7 @@ namespace Nethermind.Synchronization.SnapSync
                         }
                     }
 
-                    if (_lastStateRangesReport != stateRangesReport || _lastLogTime < DateTimeOffset.Now - TimeSpan.FromSeconds(5))
+                    if (_lastStateRangesReport != stateRangesReport || _lastLogTime < DateTimeOffset.Now - _maxTimeBetweenLog)
                     {
                         _logger.Info(stateRangesReport);
                         _lastStateRangesReport = stateRangesReport;
