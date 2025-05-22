@@ -425,7 +425,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(tx);
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactionsCount().Should().Be(0);
-            result.Should().Be(AcceptTxResult.GasLimitExceeded);
+            result.Should().Be(AcceptTxResult.Invalid);
         }
 
         [TestCase(4, 0, nameof(AcceptTxResult.FeeTooLow))]
