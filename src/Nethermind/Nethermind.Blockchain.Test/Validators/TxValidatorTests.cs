@@ -633,7 +633,7 @@ public class TxValidatorTests
             .SignedAndResolved().TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-		// todo: change to osaka
+        // todo: change to osaka
         IReleaseSpec releaseSpec = new ReleaseSpec() { IsEip7825Enabled = true };
         ValidationResult result = txValidator.IsWellFormed(tx, releaseSpec);
 
