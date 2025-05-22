@@ -1,14 +1,14 @@
 namespace Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
 
-public abstract class Builder
+public interface Builder
 {
-    public abstract PatternStatsAnalyzer Build();
-    public abstract Builder SetSketch(CmSketch sketch);
-    public abstract Builder SetTopN(int topN);
-    public abstract Builder SetMinSupport(ulong support);
-    public abstract Builder SetCapacity(int capacity);
-    public abstract Builder SetBufferSizeForSketches(int size);
-    public abstract Builder SetSketchResetOrReuseThreshold(double error);
+    PatternStatsAnalyzer Build();
+    Builder SetSketch(CmSketch sketch);
+    Builder SetTopN(int topN);
+    Builder SetMinSupport(ulong support);
+    Builder SetCapacity(int capacity);
+    Builder SetBufferSizeForSketches(int size);
+    Builder SetSketchResetOrReuseThreshold(double error);
 }
 
 public class StatsAnalyzerBuilder : Builder
@@ -21,7 +21,7 @@ public class StatsAnalyzerBuilder : Builder
     private int? _topN;
 
 
-    public override PatternStatsAnalyzer Build()
+    public PatternStatsAnalyzer Build()
     {
         if (!_bufferSizeForSketches.HasValue)
             throw new InvalidOperationException("Buffer size for sketches must be set.");
@@ -40,38 +40,38 @@ public class StatsAnalyzerBuilder : Builder
             _bufferSizeForSketches.Value, _sketchResetOrReuseThreshold.Value);
     }
 
-    public override Builder SetBufferSizeForSketches(int size)
+    public Builder SetBufferSizeForSketches(int size)
     {
         _bufferSizeForSketches = size;
         return this;
     }
 
-    public override Builder SetCapacity(int capacity)
+    public Builder SetCapacity(int capacity)
     {
         _capacity = capacity;
         return this;
     }
 
-    public override Builder SetMinSupport(ulong support)
+    public Builder SetMinSupport(ulong support)
     {
         _minSupport = support;
         return this;
     }
 
 
-    public override Builder SetSketchResetOrReuseThreshold(double threshold)
+    public Builder SetSketchResetOrReuseThreshold(double threshold)
     {
         _sketchResetOrReuseThreshold = threshold;
         return this;
     }
 
-    public override Builder SetTopN(int topN)
+    public Builder SetTopN(int topN)
     {
         _topN = topN;
         return this;
     }
 
-    public override Builder SetSketch(CmSketch sketch)
+    public Builder SetSketch(CmSketch sketch)
     {
         _sketch = sketch;
         return this;
