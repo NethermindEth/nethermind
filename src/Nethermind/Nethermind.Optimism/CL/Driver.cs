@@ -102,9 +102,9 @@ public class Driver : IDisposable
                         {
                             l1BridgeStep = Task.Run(async () =>
                             {
-                                await Task.Delay(120000, token);
+                                await Task.Delay(12000, token);
                                 return await _l1Bridge.Step(token);
-                            });
+                            }, token);
                             break;
                         }
                     }
