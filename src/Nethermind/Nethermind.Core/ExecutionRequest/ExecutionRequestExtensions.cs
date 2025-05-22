@@ -31,16 +31,15 @@ public static class ExecutionRequestExtensions
             throw new ArgumentException("Flat encoded requests must be an array");
         }
 
-        using SHA256 sha256 = SHA256.Create();
         using ArrayPoolList<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);
         foreach (byte[] requests in flatEncodedRequests)
         {
             if (requests.Length <= 1) continue;
-            concatenatedHashes.AddRange(sha256.ComputeHash(requests));
+            concatenatedHashes.AddRange(SHA256.HashData(requests));
         }
 
         // Compute sha256 of the concatenated hashes
-        return new Hash256(sha256.ComputeHash(concatenatedHashes.UnsafeGetInternalArray(), 0, concatenatedHashes.Count));
+        return new Hash256(SHA256.HashData(concatenatedHashes.UnsafeGetInternalArray().AsSpan(0, concatenatedHashes.Count)));
     }
 
 
