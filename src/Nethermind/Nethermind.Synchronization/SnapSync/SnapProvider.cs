@@ -79,6 +79,7 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.ReportAccountRangePartitionFinished(request.LimitHash.Value);
             response.Dispose();
 
+            Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: false, result: result));
             return result;
         }
 
@@ -105,7 +106,6 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     _progressTracker.EnqueueAccountStorage(item);
                 }
-
 
                 using ArrayPoolList<ValueHash256> filteredCodeHashes = codeHashes.AsParallel().Where((code) =>
                 {
@@ -144,6 +144,7 @@ namespace Nethermind.Synchronization.SnapSync
                 _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count}), {request.StartingHash}");
 
                 _progressTracker.ReportStorageRangeRequestFinished(request.Copy());
+                Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: AddRangeResult.ExpiredRootHash));
 
                 return AddRangeResult.ExpiredRootHash;
             }
@@ -163,6 +164,7 @@ namespace Nethermind.Synchronization.SnapSync
                     }
 
                     result = AddStorageRangeForAccount(request, i, responses[i], proofs);
+                    Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: result));
 
                     slotCount += responses[i].Count;
                 }
@@ -198,6 +200,10 @@ namespace Nethermind.Synchronization.SnapSync
                 if (moreChildrenToRight)
                 {
                     _progressTracker.EnqueueStorageRange(request, accountIndex, slots[^1].Path);
+                }
+                else if (accountIndex == 0 && request.Accounts.Count == 1)
+                {
+                    _progressTracker.OnCompletedLargeStorage(pathWithAccount);
                 }
             }
             else if (result == AddRangeResult.MissingRootHashInProofs)

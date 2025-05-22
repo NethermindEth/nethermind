@@ -3,7 +3,9 @@
 
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Metric;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Synchronization
 {
@@ -73,5 +75,15 @@ namespace Nethermind.Synchronization
         [GaugeMetric]
         [Description("Sync time in seconds")]
         public static long SyncTime;
+
+        [DetailedMetric]
+        [Description("Snap range result")]
+        [KeyIsLabel("is_storage", "result")]
+        public static NonBlocking.ConcurrentDictionary<SnapRangeResult, long> SnapRangeResult { get; set; } = new();
+    }
+
+    public struct SnapRangeResult(bool isStorage, AddRangeResult result): IMetricLabels
+    {
+        public string[] Labels => [isStorage ? "true" : "false", result.ToString()];
     }
 }

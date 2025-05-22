@@ -38,6 +38,9 @@ namespace Nethermind.Synchronization.SnapSync
         private long _reqCount;
         private int _activeAccountRequests;
         private int _activeStorageRequests;
+        private ConcurrentDictionary<ValueHash256, LargeProgressStatus> _largeStorageProgress = new();
+        private long? _estimatedStorageRemaining = null;
+
         private int _activeCodeRequests;
         private int _activeAccRefreshRequests;
 
@@ -464,9 +467,11 @@ namespace Nethermind.Synchronization.SnapSync
             _db.Flush();
         }
 
+        private DateTimeOffset _lastLogTime = DateTimeOffset.MinValue;
+
         private void LogRequest(string reqType)
         {
-            if (_reqCount % 100 == 0)
+            if (_reqCount % 100 == 0 || _lastLogTime < DateTimeOffset.Now - TimeSpan.FromSeconds(5))
             {
                 int totalPathProgress = 0;
                 foreach (KeyValuePair<ValueHash256, AccountRangePartition> kv in AccountRangePartitions)
@@ -482,10 +487,41 @@ namespace Nethermind.Synchronization.SnapSync
                 if (_logger.IsInfo)
                 {
                     string stateRangesReport = $"Snap         State Ranges (Phase 1): ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
-                    if (_lastStateRangesReport != stateRangesReport)
+                    if (progress >= 1)
+                    {
+                        long storagesToRetrieve = StoragesToRetrieve.Count;
+                        if (_estimatedStorageRemaining == null)
+                        {
+                            _estimatedStorageRemaining = storagesToRetrieve + STORAGE_BATCH_SIZE;
+                        }
+
+                        if (storagesToRetrieve > 0)
+                        {
+                            progress = (float)((_estimatedStorageRemaining - storagesToRetrieve) / (float)_estimatedStorageRemaining);
+
+                            stateRangesReport = $"Snap         Remaining storage: ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
+                        }
+                        else
+                        {
+                            double totalAllLargeStorageProgress = 0;
+                            double totalLargeStorage = 0;
+                            foreach (var keyValuePair in _largeStorageProgress)
+                            {
+                                totalAllLargeStorageProgress += keyValuePair.Value.CalculateProgress();
+                                totalLargeStorage++;
+                            }
+
+                            progress = (float)(totalAllLargeStorageProgress / totalLargeStorage);
+
+                            stateRangesReport = $"Snap         Completing {totalLargeStorage} large storage: ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
+                        }
+                    }
+
+                    if (_lastStateRangesReport != stateRangesReport || _lastLogTime < DateTimeOffset.Now - TimeSpan.FromSeconds(5))
                     {
                         _logger.Info(stateRangesReport);
                         _lastStateRangesReport = stateRangesReport;
+                        _lastLogTime = DateTimeOffset.Now;
                     }
                 }
             }
@@ -508,7 +544,28 @@ namespace Nethermind.Synchronization.SnapSync
                 return false;
             }
 
+            StorageRange? range = item;
+            _largeStorageProgress.AddOrUpdate(item.Accounts[0].Path,
+                (key, progress) =>
+                {
+                    return new LargeProgressStatus(new ConcurrentDictionary<ValueHash256, double>())
+                        .UpdateProgress(progress);
+                },
+                (key, progress, range) => progress.UpdateProgress(range),
+                item
+            );
             return true;
+        }
+
+        public void OnCompletedLargeStorage(PathWithAccount pathWithAccount)
+        {
+            if (_largeStorageProgress.TryGetValue(pathWithAccount.Path, out LargeProgressStatus progressStatus))
+            {
+                if (progressStatus.OnCompletedPartition())
+                {
+                    _largeStorageProgress.Remove(pathWithAccount.Path, out LargeProgressStatus value);
+                }
+            }
         }
 
         // A partition of the top level account range starting from `AccountPathStart` to `AccountPathLimit` (exclusive).
@@ -525,6 +582,53 @@ namespace Nethermind.Synchronization.SnapSync
             while (NextSlotRange.TryDequeue(out StorageRange? range))
             {
                 range?.Dispose();
+            }
+        }
+
+        private class LargeProgressStatus(ConcurrentDictionary<ValueHash256, double> partitionProgress)
+        {
+            private int _totalPartition = 1;
+            private int _completedPartition = 0;
+
+            internal LargeProgressStatus UpdateProgress(StorageRange item)
+            {
+                double start = 0.0;
+                if (item.StartingHash is ValueHash256 startHash)
+                {
+                    start = BinaryPrimitives.ReadUInt32BigEndian(startHash.BytesAsSpan[..4]);
+                    start /= UInt32.MaxValue;
+                }
+
+                double end = start;
+                ValueHash256 limitHash = item.LimitHash ?? Keccak.MaxValue;
+                end = BinaryPrimitives.ReadUInt32BigEndian(limitHash.BytesAsSpan[..4]);
+                end /= UInt32.MaxValue;
+
+                double progress = end - start;
+                if (partitionProgress.TryAdd(limitHash, progress))
+                {
+                    Interlocked.Add(ref _totalPartition, 1);
+                }
+                partitionProgress.AddOrUpdate(limitHash, (k) => 0, (k, v) => progress);
+
+                return this;
+            }
+
+            internal double CalculateProgress()
+            {
+                double total = 0;
+                foreach (var keyValuePair in partitionProgress)
+                {
+                    total += keyValuePair.Value;
+                }
+
+                return total;
+            }
+
+            internal bool OnCompletedPartition()
+            {
+                // Determine if this tracker could be removed
+                return Interlocked.Add(ref _completedPartition, -1) == 0;
             }
         }
     }
