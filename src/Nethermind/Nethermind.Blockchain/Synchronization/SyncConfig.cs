@@ -83,7 +83,6 @@ namespace Nethermind.Blockchain.Synchronization
 
         public ulong FastHeadersMemoryBudget { get; set; } = (ulong)128.MB();
         public bool EnableSnapSyncStorageRangeSplit { get; set; } = false;
-        public int SnapHighStorageQueueThreshold { get; set; } = 120000;
         public int MaxTxInForwardSyncBuffer { get; set; } = 20000;
 
         public override string ToString()

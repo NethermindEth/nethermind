@@ -25,12 +25,11 @@ namespace Nethermind.Synchronization.SnapSync
         private const string NO_REQUEST = "Skipped Request";
 
         private const int STORAGE_BATCH_SIZE = 1_200;
-        public const int DEFAULT_HIGH_STORAGE_QUEUE_SIZE = STORAGE_BATCH_SIZE * 100;
+        public const int HIGH_STORAGE_QUEUE_SIZE = STORAGE_BATCH_SIZE * 100;
         private const int CODES_BATCH_SIZE = 1_000;
         public const int HIGH_CODES_QUEUE_SIZE = CODES_BATCH_SIZE * 5;
         private const uint StorageRangeSplitFactor = 2;
         internal static readonly byte[] ACC_PROGRESS_KEY = "AccountProgressKey"u8.ToArray();
-        private readonly int _highStorageQueueSize;
 
         // This does not need to be a lot as it spawn other requests. In fact 8 is probably too much. It is severely
         // bottlenecked by _syncCommit lock in SnapProviderHelper, which in turns is limited by the IO.
@@ -81,7 +80,6 @@ namespace Nethermind.Synchronization.SnapSync
 
             _accountRangePartitionCount = accountRangePartitionCount;
             _enableStorageRangeSplit = syncConfig.EnableSnapSyncStorageRangeSplit;
-            _highStorageQueueSize = syncConfig.SnapHighStorageQueueThreshold;
 
             SetupAccountRangePartition();
 
@@ -172,7 +170,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 nextBatch = CreateNextSlowRangeRequest(slotRange, rootHash, blockNumber);
             }
-            else if (StoragesToRetrieve.Count >= _highStorageQueueSize)
+            else if (StoragesToRetrieve.Count >= HIGH_STORAGE_QUEUE_SIZE)
             {
                 nextBatch = DequeStorageToRetrieveRequest(rootHash, blockNumber);
             }
@@ -294,7 +292,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             return _activeAccountRequests < _accountRangePartitionCount
                    && NextSlotRange.Count < 10
-                   && StoragesToRetrieve.Count < _highStorageQueueSize
+                   && StoragesToRetrieve.Count < HIGH_STORAGE_QUEUE_SIZE
                    && CodesToRetrieve.Count < HIGH_CODES_QUEUE_SIZE;
         }
 
@@ -539,7 +537,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                             progress = (float)(totalAllLargeStorageProgress / totalLargeStorage);
 
-                            stateRangesReport = $"Snap          Large storage left: {totalLargeStorage}, ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
+                            stateRangesReport = $"Snap         Large storage left: {totalLargeStorage} ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
                         }
                     }
 
