@@ -18,6 +18,12 @@ namespace Nethermind.Evm.Precompiles
     public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     {
         public static readonly ModExpPrecompile Instance = new();
+        /// <summary>
+        /// Maximum input size (in bytes) for the modular exponentiation operation under EIP-7823.
+        /// This constant defines the upper limit for the size of the input data that can be processed.
+        /// For more details, see: https://eips.ethereum.org/EIPS/eip-7823
+        /// </summary>
+        public const int ModExpMaxInputSizeEip7823 = 1024;
 
         private ModExpPrecompile()
         {
@@ -59,6 +65,11 @@ namespace Nethermind.Evm.Precompiles
                 UInt256 expLength = new(extendedInput.Slice(32, 32), true);
                 UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
 
+                if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
+                {
+                    return long.MaxValue;
+                }
+
                 UInt256 complexity = MultComplexity(baseLength, modulusLength);
 
                 UInt256 expLengthUpTo32 = UInt256.Min(32, expLength);
@@ -74,6 +85,10 @@ namespace Nethermind.Evm.Precompiles
                 return long.MaxValue;
             }
         }
+
+        private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, UInt256 baseLength, UInt256 expLength, UInt256 modulusLength)
+            => releaseSpec.IsEip7823Enabled &&
+                (baseLength > ModExpMaxInputSizeEip7823 || expLength > ModExpMaxInputSizeEip7823 || modulusLength > ModExpMaxInputSizeEip7823);
 
         private static mpz_t ImportDataToGmp(byte[] data)
         {
@@ -107,8 +122,12 @@ namespace Nethermind.Evm.Precompiles
             Metrics.ModExpPrecompile++;
 
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
+            if (ExceedsMaxInputSize(releaseSpec, (uint)baseLength, (uint)expLength, (uint)modulusLength))
+            {
+                return IPrecompile.Failure;
+            }
 
-            // if both are 0, than expLenght can be huge, which leads to potential buffer to big exception
+            // if both are 0, then expLength can be huge, which leads to a potential buffer too big exception
             if (baseLength == 0 && modulusLength == 0)
             {
                 return (Bytes.Empty, true);
