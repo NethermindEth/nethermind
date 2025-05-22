@@ -171,6 +171,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Enable storage range split.", DefaultValue = "false", HiddenFromDocs = true)]
     bool EnableSnapSyncStorageRangeSplit { get; set; }
 
+    [ConfigItem(Description = "_Technical._ Threshold of storage queue size at which snap will stop fetching more address. Increase for potentially faster snap sync at expense of memory.", DefaultValue = "120000", HiddenFromDocs = true)]
+    int SnapHighStorageQueueThreshold { get; set; }
+
     [ConfigItem(Description = "_Technical._ Max tx in forward sync buffer.", DefaultValue = "200000", HiddenFromDocs = true)]
     int MaxTxInForwardSyncBuffer { get; set; }
 }

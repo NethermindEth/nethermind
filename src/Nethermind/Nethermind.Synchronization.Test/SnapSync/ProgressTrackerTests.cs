@@ -96,7 +96,7 @@ public class ProgressTrackerTests
     {
         using ProgressTracker progressTracker = CreateProgressTracker();
 
-        for (int i = 0; i < ProgressTracker.HIGH_STORAGE_QUEUE_SIZE - 1; i++)
+        for (int i = 0; i < ProgressTracker.DEFAULT_HIGH_STORAGE_QUEUE_SIZE - 1; i++)
         {
             progressTracker.EnqueueAccountStorage(new PathWithAccount()
             {
@@ -120,7 +120,7 @@ public class ProgressTrackerTests
     {
         using ProgressTracker progressTracker = CreateProgressTracker();
 
-        for (int i = 0; i < ProgressTracker.HIGH_STORAGE_QUEUE_SIZE; i++)
+        for (int i = 0; i < ProgressTracker.DEFAULT_HIGH_STORAGE_QUEUE_SIZE; i++)
         {
             progressTracker.EnqueueAccountStorage(new PathWithAccount()
             {
