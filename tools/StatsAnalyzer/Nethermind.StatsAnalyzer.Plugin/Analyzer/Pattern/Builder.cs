@@ -23,6 +23,12 @@ public class StatsAnalyzerBuilder : Builder
 
     public PatternStatsAnalyzer Build()
     {
+        Check.ThrowIfNull(_bufferSizeForSketches, nameof(_bufferSizeForSketches));
+        Check.ThrowIfNull(_minSupport, nameof(_minSupport));
+        Check.ThrowIfNull(_capacity, nameof(_capacity));
+        Check.ThrowIfNull(_sketchResetOrReuseThreshold, nameof(_sketchResetOrReuseThreshold));
+        Check.ThrowIfNull(_topN, nameof(_topN));
+        Check.ThrowIfNull(_sketch, nameof(_sketch));
         if (!_bufferSizeForSketches.HasValue)
             throw new InvalidOperationException("Buffer size for sketches must be set.");
         if (!_minSupport.HasValue)
@@ -77,3 +83,5 @@ public class StatsAnalyzerBuilder : Builder
         return this;
     }
 }
+
+
