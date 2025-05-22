@@ -7,7 +7,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
-public class NodeNodeHashProvider : IKeyOperator<PublicKey, Node>
+public class PublicKeyKeyOperator : IKeyOperator<PublicKey, Node>
 {
     public PublicKey GetKey(Node node)
     {

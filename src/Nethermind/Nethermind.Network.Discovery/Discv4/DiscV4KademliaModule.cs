@@ -9,14 +9,31 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
+/// <summary>
+/// Specify the discv4 kademlia components. Mainly provide transport for <see cref="KademliaModule{TKey,TNode}"/>.
+/// Because kademlia can and probably will be reused outside of discv4, this module is meant to be added within a child
+/// lifecycle in <see cref="DiscoveryApp"/> to prevent unexpected conflict.
+/// </summary>
+/// <param name="masterNode"></param>
+/// <param name="bootNodes"></param>
 public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .AddModule(new KademliaModule<PublicKey, Node>())
-            .AddSingleton<IKeyOperator<PublicKey, Node>, NodeNodeHashProvider>()
+            // This two class contains the actual `INodeSource` logic. As in finding nodes within the network.
             .AddSingleton<IKademliaNodeSource, KademliaNodeSource>()
+            .AddSingleton<IIteratorNodeLookup, IteratorNodeLookup>()
+
+            // Some transport wiring.
+            .AddSingleton<IKademliaDiscv4Adapter, KademliaDiscv4Adapter>()
+            .Bind<IDiscoveryMsgListener, IKademliaDiscv4Adapter>()
+            .AddSingleton<NettyDiscoveryHandler>()
+
+            // Register the main kademlia module and integration
+            .AddModule(new KademliaModule<PublicKey, Node>())
+            .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaDiscv4Adapter>()
+            .AddSingleton<IKeyOperator<PublicKey, Node>, PublicKeyKeyOperator>()
             .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => new KademliaConfig<Node>()
             {
                 CurrentNodeId = new Node(masterNode, "127.0.0.1", 9999, true), // It actually only need masterNode.
@@ -29,12 +46,6 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
                 RefreshInterval = TimeSpan.FromMilliseconds(discoveryConfig.DiscoveryInterval),
                 BootNodes = bootNodes
             })
-            .AddSingleton<IIteratorNodeLookup, IteratorNodeLookup>()
-            .AddSingleton<IKademliaDiscv4Adapter, KademliaDiscv4Adapter>()
-            .Bind<IDiscoveryMsgListener, IKademliaDiscv4Adapter>()
-            .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaDiscv4Adapter>()
-            .AddSingleton<DiscoveryPersistenceManager>()
-            .AddSingleton<NettyDiscoveryHandler>()
-            .AddSingleton<DiscoveryApp>();
+            ;
     }
 }
