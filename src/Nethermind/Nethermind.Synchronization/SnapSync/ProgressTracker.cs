@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.SnapSync
         private int _activeStorageRequests;
         private ConcurrentDictionary<ValueHash256, LargeProgressStatus> _largeStorageProgress = new();
         private long? _estimatedStorageRemaining = null;
-        private bool _queuedStorageWasEmpty = false;
+        private bool _shouldStartLoggingLargeStorage = false;
 
         private int _activeCodeRequests;
         private int _activeAccRefreshRequests;
@@ -510,12 +510,14 @@ namespace Nethermind.Synchronization.SnapSync
                             _estimatedStorageRemaining = storagesToRetrieve;
                         }
 
-                        if (queuedStorage == 0)
+                        if (storagesToRetrieve < 100)
                         {
-                            _queuedStorageWasEmpty = true;
+                            // Not exactly accurate. It could be that total number of large storage is less than _largeStorageProgress.Count
+                            // But that should be promptly resolved
+                            _shouldStartLoggingLargeStorage = true;
                         }
 
-                        if (storagesToRetrieve > 0 && !_queuedStorageWasEmpty)
+                        if (storagesToRetrieve > 0 && !_shouldStartLoggingLargeStorage)
                         {
                             progress = (float)((_estimatedStorageRemaining - storagesToRetrieve) / (float)_estimatedStorageRemaining);
 
@@ -533,7 +535,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                             progress = (float)(totalAllLargeStorageProgress / totalLargeStorage);
 
-                            stateRangesReport = $"Snap         Completing {totalLargeStorage} large storage: ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
+                            stateRangesReport = $"Snap         Completing {queuedStorage} {totalLargeStorage} large storage: ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
                         }
                     }
 
@@ -564,7 +566,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return false;
             }
 
-            if (item.Accounts.Count >= 1)
+            if (item.Accounts.Count == 1)
             {
                 _largeStorageProgress.AddOrUpdate(item.Accounts[0].Path,
                     (key, progress) => new LargeProgressStatus(new ConcurrentDictionary<ValueHash256, double>()).UpdateProgress(progress),
@@ -606,8 +608,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private class LargeProgressStatus(ConcurrentDictionary<ValueHash256, double> partitionProgress)
         {
-            private int _totalPartition = 1;
-            private int _completedPartition = 0;
+            private int _totalPartition = 0;
 
             internal LargeProgressStatus UpdateProgress(StorageRange item)
             {
@@ -647,7 +648,7 @@ namespace Nethermind.Synchronization.SnapSync
             internal bool OnCompletedPartition()
             {
                 // Determine if this tracker could be removed
-                return Interlocked.Add(ref _completedPartition, -1) == 0;
+                return Interlocked.Decrement(ref _totalPartition) == 0;
             }
         }
     }
