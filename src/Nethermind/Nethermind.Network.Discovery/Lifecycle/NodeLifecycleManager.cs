@@ -170,7 +170,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
             return;
         }
 
-        if (_lastNeighbourSize + msg.Nodes.Length == 16)
+        if (_lastNeighbourSize + msg.Nodes.Count == 16)
         {
             // Turns out, other client will split the neighbour msg to two msg, whose size sum up to 16.
             // Happens about 70% of the time.
@@ -181,7 +181,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
             ProcessNodes(msg);
         }
 
-        _lastNeighbourSize = msg.Nodes.Length;
+        _lastNeighbourSize = msg.Nodes.Count;
         _isNeighborsExpected = false;
     }
 

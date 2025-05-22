@@ -25,7 +25,7 @@ namespace Nethermind.Core.Test.Modules;
 /// </summary>
 /// <param name="networkGroup">Something unique for each test. Unless they need to connect to each other.</param>
 /// <param name="networkConfig">Network config for LocalEndpoint.</param>
-internal class LocalChannelFactory(string networkGroup, INetworkConfig networkConfig) : IChannelFactory
+public class LocalChannelFactory(string networkGroup, INetworkConfig networkConfig) : IChannelFactory
 {
     private IPEndPoint LocalEndpoint = new IPEndPoint(IPAddress.Parse(networkConfig.LocalIp ?? "127.0.0.1"), networkConfig.P2PPort);
 

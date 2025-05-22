@@ -398,11 +398,11 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             if (account.Value.CodeHash is not null)
             {
                 string codeHashString = account.Value.CodeHash.ToString();
-                if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.ContainsKey(codeHashString)) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
+                if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.TryGetValue(codeHashString, out var codeHash)) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
                 chainSpec.Allocations[address] = new ChainSpecAllocation(
                     account.Value.Balance ?? UInt256.Zero,
                     account.Value.Nonce,
-                    chainSpecJson.CodeHashes[codeHashString],
+                    codeHash,
                     account.Value.Constructor,
                     account.Value.GetConvertedStorage());
             }
