@@ -140,7 +140,7 @@ public class Driver : IDisposable
         if (_logger.IsInfo) _logger.Info($"Processing new finalized L1 block. {newFinalized}");
         _currentFinalizedL1Block = newFinalized;
         BlockId? lastL2Block = null;
-        while(_safeBlocksQueue.Any())
+        while (_safeBlocksQueue.Any())
         {
             (ulong l1BatchOrigin, BlockId last) = _safeBlocksQueue.Peek();
             if (l1BatchOrigin > newFinalized)

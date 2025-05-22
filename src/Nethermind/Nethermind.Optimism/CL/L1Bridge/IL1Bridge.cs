@@ -36,8 +36,7 @@ public class L1BridgeStepResult
     public static L1BridgeStepResult Block(DaDataSource[] data) =>
         new() { Type = L1BridgeStepResultType.Block, NewData = data };
 
-    public static L1BridgeStepResult Finalization(ulong blockNumber) => new()
-        { Type = L1BridgeStepResultType.Finalization, NewFinalized = blockNumber };
+    public static L1BridgeStepResult Finalization(ulong blockNumber) => new() { Type = L1BridgeStepResultType.Finalization, NewFinalized = blockNumber };
 
     public L1BridgeStepResultType Type { private set; get; }
     public DaDataSource[]? NewData { private set; get; }
