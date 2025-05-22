@@ -5,11 +5,13 @@ namespace Nethermind.Sockets;
 
 public readonly struct ReceiveResult
 {
-    public readonly bool IsNull;
+    private readonly bool _isNotNull;
+
+    public readonly bool IsNull => !_isNotNull;
 
     public ReceiveResult()
     {
-        IsNull = false;
+        _isNotNull = true;
     }
 
     public int Read { get; init; }

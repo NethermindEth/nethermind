@@ -54,7 +54,7 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
         try
         {
             ReceiveResult result = await _stream.ReceiveAsync(buffer, cancellationToken);
-            while (result.Closed == false)
+            while (!result.IsNull && result.Closed == false)
             {
                 currentMessageLength += result.Read;
 
