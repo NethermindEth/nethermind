@@ -26,6 +26,7 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
 
                 LookupFindNeighbourHardTimout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout), // TODO: This seems very low.
                 RefreshPingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout),
+                RefreshInterval = TimeSpan.FromMilliseconds(discoveryConfig.DiscoveryInterval),
                 BootNodes = bootNodes
             })
             .AddSingleton<IIteratorNodeLookup, IteratorNodeLookup>()

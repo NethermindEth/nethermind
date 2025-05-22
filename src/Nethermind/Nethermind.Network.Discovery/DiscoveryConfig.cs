@@ -18,8 +18,10 @@ public class DiscoveryConfig : IDiscoveryConfig
     public int EvictionCheckInterval { get; set; } = 75;
 
     public int SendNodeTimeout { get; set; } = 500;
-
-    public int PongTimeout { get; set; } = 1000 * 5;
+    public long EnrTimeout { get; set; } = 1000;
+    public long PingTimeout { get; set; } = 1000;
+    public long MessageExpiryTime { get; set; } = 30000;
+    public int BondWaitTime { get; set; } = 500;
 
     public int BootnodePongTimeout { get; set; } = 1000 * 100;
 

@@ -18,6 +18,7 @@ public interface IDiscoveryConfig : IConfig
     /// Buckets count.
     /// </summary>
     [ConfigItem(DisabledForCli = true)]
+    [Obsolete]
     int BucketsCount { get; set; }
 
     /// <summary>
@@ -36,12 +37,14 @@ public interface IDiscoveryConfig : IConfig
     /// Max Discovery Rounds
     /// </summary>
     [ConfigItem(DefaultValue = "8")]
+    [Obsolete]
     int MaxDiscoveryRounds { get; }
 
     /// <summary>
     /// Eviction check interval in ms
     /// </summary>
     [ConfigItem(DefaultValue = "75")]
+    [Obsolete]
     int EvictionCheckInterval { get; }
 
     /// <summary>
@@ -53,7 +56,7 @@ public interface IDiscoveryConfig : IConfig
     /// <summary>
     /// Enr request timeout in ms
     /// </summary>
-    [ConfigItem(DefaultValue = "500")]
+    [ConfigItem(DefaultValue = "1000")]
     long EnrTimeout { get; set; }
 
     /// <summary>
@@ -78,12 +81,14 @@ public interface IDiscoveryConfig : IConfig
     /// Boot Node Pong Timeout in ms
     /// </summary>
     [ConfigItem(DefaultValue = "100000")]
+    [Obsolete]
     int BootnodePongTimeout { get; }
 
     /// <summary>
     /// Pong Timeout in ms
     /// </summary>
     [ConfigItem(DefaultValue = "3")]
+    [Obsolete]
     int PingRetryCount { get; }
 
     /// <summary>
@@ -102,6 +107,7 @@ public interface IDiscoveryConfig : IConfig
     /// Time between discovery cycles in milliseconds
     /// </summary>
     [ConfigItem(DefaultValue = "50")]
+    [Obsolete]
     int DiscoveryNewCycleWaitTime { get; }
 
     /// <summary>
@@ -125,9 +131,11 @@ public interface IDiscoveryConfig : IConfig
     /// Count of NodeLifecycleManagers to remove in one cleanup cycle
     /// </summary>
     [ConfigItem(DefaultValue = "4000")]
+    [Obsolete]
     int NodeLifecycleManagersCleanupCount { get; }
 
     [ConfigItem(DefaultValue = "0.05")]
+    [Obsolete]
     float DropFullBucketNodeProbability { get; set; }
 
     [ConfigItem(Description = "Limit number of outgoing discovery message per second.", DefaultValue = "100", HiddenFromDocs = true)]
