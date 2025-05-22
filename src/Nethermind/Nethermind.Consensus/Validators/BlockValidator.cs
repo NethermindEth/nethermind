@@ -355,10 +355,10 @@ public class BlockValidator(
         return true;
     }
 
-    public static bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
+    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
         ValidateBodyAgainstHeader(header, toBeValidated, out _);
 
-    public static bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? errorMessage)
+    public virtual bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? errorMessage)
     {
         if (!ValidateTxRootMatchesTxs(header, toBeValidated, out Hash256? txRoot))
         {

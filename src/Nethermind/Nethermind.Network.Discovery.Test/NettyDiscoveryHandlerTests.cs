@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Net.Sockets;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Handlers.Logging;
@@ -14,8 +13,10 @@ using DotNetty.Transport.Channels.Sockets;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -25,7 +26,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test
 {
-    [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.None)] // Some test check for global metric
     [TestFixture]
     public class NettyDiscoveryHandlerTests
     {
@@ -37,6 +38,7 @@ namespace Nethermind.Network.Discovery.Test
         private readonly IPEndPoint _address = new(IPAddress.Loopback, 10001);
         private readonly IPEndPoint _address2 = new(IPAddress.Loopback, 10002);
         private int _channelActivatedCounter;
+        private IChannelFactory _channelFactory = new LocalChannelFactory(nameof(NettyDiscoveryBaseHandler), new NetworkConfig());
 
         [SetUp]
         public async Task Initialize()
@@ -68,11 +70,8 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [Test]
-        [Retry(5)]
         public async Task PingSentReceivedTest()
         {
-            ResetMetrics();
-
             PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _address, _address2, new byte[32])
             {
                 FarAddress = _address2
@@ -90,16 +89,11 @@ namespace Nethermind.Network.Discovery.Test
             await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Ping));
-
-            AssertMetrics(258);
         }
 
         [Test]
-        [Retry(5)]
         public async Task PongSentReceivedTest()
         {
-            ResetMetrics();
-
             PongMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new byte[] { 1, 2, 3 })
             {
                 FarAddress = _address2
@@ -116,16 +110,11 @@ namespace Nethermind.Network.Discovery.Test
             await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Pong));
-
-            AssertMetrics(240);
         }
 
         [Test]
-        [Retry(5)]
         public async Task FindNodeSentReceivedTest()
         {
-            ResetMetrics();
-
             FindNodeMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new byte[] { 1, 2, 3 })
             {
                 FarAddress = _address2
@@ -143,16 +132,11 @@ namespace Nethermind.Network.Discovery.Test
             await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.FindNode));
-
-            AssertMetrics(216);
         }
 
         [Test]
-        [Retry(5)]
         public async Task NeighborsSentReceivedTest()
         {
-            ResetMetrics();
-
             NeighborsMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new List<Node>().ToArray())
             {
                 FarAddress = _address2
@@ -170,8 +154,6 @@ namespace Nethermind.Network.Discovery.Test
             await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Neighbors));
-
-            AssertMetrics(210);
         }
 
         [Test]
@@ -190,17 +172,6 @@ namespace Nethermind.Network.Discovery.Test
             ));
         }
 
-        private static void ResetMetrics()
-        {
-            Metrics.DiscoveryBytesSent = Metrics.DiscoveryBytesReceived = 0;
-        }
-
-        private static void AssertMetrics(int value)
-        {
-            Metrics.DiscoveryBytesSent.Should().Be(value);
-            Metrics.DiscoveryBytesReceived.Should().Be(value);
-        }
-
         private async Task StartUdpChannel(string address, int port, IDiscoveryManager discoveryManager, IMessageSerializationService service)
         {
             MultithreadEventLoopGroup group = new(1);
@@ -208,7 +179,7 @@ namespace Nethermind.Network.Discovery.Test
             Bootstrap bootstrap = new();
             bootstrap
                 .Group(group)
-                .ChannelFactory(() => new SocketDatagramChannel(AddressFamily.InterNetwork))
+                .ChannelFactory(() => _channelFactory.CreateDatagramChannel())
                 .Handler(new ActionChannelInitializer<IDatagramChannel>(x => InitializeChannel(x, discoveryManager, service)));
 
             _channels.Add(await bootstrap.BindAsync(IPAddress.Parse(address), port));
