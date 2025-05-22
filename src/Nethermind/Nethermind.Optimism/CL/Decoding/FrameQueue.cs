@@ -54,4 +54,9 @@ public class FrameQueue(ILogger logger) : IFrameQueue
 
         return null;
     }
+    public void Clear()
+    {
+        _latestFrame = null;
+
+    }
 }
