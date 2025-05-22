@@ -85,7 +85,7 @@ public class VirtualMachine : IVirtualMachine
             IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
             IlEvmPersistPrecompiledContractsOnDisk = false,
             IlEvmPrecompiledContractsPath = Path.Combine(Directory.GetCurrentDirectory(), "AotCache"),
-            IsIlEvmAggressiveModeEnabled = true,
+            IsIlEvmAggressiveModeEnabled = !logger.IsTrace,
             IsILEvmEnabled = true,
             IlEvmAnalysisCoreUsage = 0.5f
         };
