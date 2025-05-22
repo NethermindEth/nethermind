@@ -40,6 +40,7 @@ namespace Nethermind.Synchronization.SnapSync
         private int _activeStorageRequests;
         private ConcurrentDictionary<ValueHash256, LargeProgressStatus> _largeStorageProgress = new();
         private long? _estimatedStorageRemaining = null;
+        private bool _queuedStorageWasEmpty = false;
 
         private int _activeCodeRequests;
         private int _activeAccRefreshRequests;
@@ -502,13 +503,19 @@ namespace Nethermind.Synchronization.SnapSync
                     string stateRangesReport = $"Snap         State Ranges (Phase 1): ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
                     if (progress >= 1)
                     {
-                        long storagesToRetrieve = StoragesToRetrieve.Count + _activeStorageRequests;
+                        long queuedStorage = StoragesToRetrieve.Count;
+                        long storagesToRetrieve = queuedStorage + _activeStorageRequests;
                         if (_estimatedStorageRemaining == null)
                         {
                             _estimatedStorageRemaining = storagesToRetrieve;
                         }
 
-                        if (storagesToRetrieve > 0)
+                        if (queuedStorage == 0)
+                        {
+                            _queuedStorageWasEmpty = true;
+                        }
+
+                        if (storagesToRetrieve > 0 && !_queuedStorageWasEmpty)
                         {
                             progress = (float)((_estimatedStorageRemaining - storagesToRetrieve) / (float)_estimatedStorageRemaining);
 
@@ -517,7 +524,7 @@ namespace Nethermind.Synchronization.SnapSync
                         else
                         {
                             double totalAllLargeStorageProgress = 0;
-                            double totalLargeStorage = 0;
+                            double totalLargeStorage = queuedStorage;
                             foreach (var keyValuePair in _largeStorageProgress)
                             {
                                 totalAllLargeStorageProgress += keyValuePair.Value.CalculateProgress();
@@ -557,11 +564,15 @@ namespace Nethermind.Synchronization.SnapSync
                 return false;
             }
 
-            _largeStorageProgress.AddOrUpdate(item.Accounts[0].Path,
-                (key, progress) => new LargeProgressStatus(new ConcurrentDictionary<ValueHash256, double>()).UpdateProgress(progress),
-                (key, progress, range) => progress.UpdateProgress(range),
-                item
-            );
+            if (item.Accounts.Count >= 1)
+            {
+                _largeStorageProgress.AddOrUpdate(item.Accounts[0].Path,
+                    (key, progress) => new LargeProgressStatus(new ConcurrentDictionary<ValueHash256, double>()).UpdateProgress(progress),
+                    (key, progress, range) => progress.UpdateProgress(range),
+                    item
+                );
+            }
+
             return true;
         }
 
