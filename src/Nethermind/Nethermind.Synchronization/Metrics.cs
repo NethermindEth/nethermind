@@ -80,6 +80,21 @@ namespace Nethermind.Synchronization
         [Description("Snap range result")]
         [KeyIsLabel("is_storage", "result")]
         public static NonBlocking.ConcurrentDictionary<SnapRangeResult, long> SnapRangeResult { get; set; } = new();
+
+        [ExponentialPowerHistogramMetric(LabelNames = ["sync_type"], Start = 10, Factor = 10, Count = 5)]
+        [Description("Sync dispatcher time in prepare request. High value indicate slow processing in preparing request.")]
+        [DetailedMetric]
+        public static IMetricObserver SyncDispatcherPrepareRequestTimeMicros = NoopMetricObserver.Instance;
+
+        [ExponentialPowerHistogramMetric(LabelNames = ["sync_type"], Start = 10, Factor = 10, Count = 5)]
+        [Description("Sinc dispatcher time in dispatch. High value indicate slow peer or internet.")]
+        [DetailedMetric]
+        public static IMetricObserver SyncDispatcherDispatchTimeMicros = NoopMetricObserver.Instance;
+
+        [ExponentialPowerHistogramMetric(LabelNames = ["sync_type"], Start = 10, Factor = 10, Count = 5)]
+        [Description("Sync dispatcher time in handle. High value indicate slow processing.")]
+        [DetailedMetric]
+        public static IMetricObserver SyncDispatcherHandleTimeMicros = NoopMetricObserver.Instance;
     }
 
     public struct SnapRangeResult(bool isStorage, AddRangeResult result): IMetricLabels
