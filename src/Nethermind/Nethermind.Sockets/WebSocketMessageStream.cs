@@ -86,7 +86,7 @@ public sealed class WebSocketMessageStream : Stream, IMessageBorderPreservingStr
 
     public override void Write(byte[] buffer, int offset, int count) => WriteAsync(buffer, offset, count).GetAwaiter().GetResult();
 
-    public async Task<int> WriteEndOfMessageAsync()
+    public async ValueTask<int> WriteEndOfMessageAsync()
     {
         await _socket.SendAsync(ReadOnlyMemory<byte>.Empty, WebSocketMessageType.Text, true, CancellationToken.None);
         return 0;
@@ -94,9 +94,9 @@ public sealed class WebSocketMessageStream : Stream, IMessageBorderPreservingStr
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_socket is null, _socket);
 
-    public async Task<ReceiveResult?> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
+    public async ValueTask<ReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
     {
-        if (_socket.State != WebSocketState.Open) return null;
+        if (_socket.State != WebSocketState.Open) return default;
 
         try
         {

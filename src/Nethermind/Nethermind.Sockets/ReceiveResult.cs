@@ -3,8 +3,15 @@
 
 namespace Nethermind.Sockets;
 
-public sealed class ReceiveResult
+public readonly struct ReceiveResult
 {
+    public readonly bool IsNull;
+
+    public ReceiveResult()
+    {
+        IsNull = false;
+    }
+
     public int Read { get; init; }
     public bool EndOfMessage { get; init; }
     public bool Closed { get; init; }
