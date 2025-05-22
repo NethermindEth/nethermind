@@ -60,18 +60,14 @@
     "minGasLimit": "0x1388",
     "registrar": "0x0000000000000000000000000000000000000000",
     "MergeForkIdTransition": "0x0",
-    "blobSchedule": {
-      "cancun": {
-        "target": 3,
-        "max": 6,
-        "baseFeeUpdateFraction": "0x32f0ed"
-      },
-      "prague": {
+    "blobSchedule": [
+      {
+        "timestamp": "0x67BCEAC0",
         "target": 6,
         "max": 9,
-        "baseFeeUpdateFraction":  "0x4c6964"
+        "baseFeeUpdateFraction": "0x4c6964"
       }
-    }
+    ]
   },
   "genesis": {
     "seal": {
