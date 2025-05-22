@@ -13,13 +13,11 @@ namespace Nethermind.Optimism.CL.Decoding;
 public class DecodingPipeline(ILogger logger) : IDecodingPipeline
 {
     private readonly Channel<DaDataSource> _inputChannel = Channel.CreateUnbounded<DaDataSource>();
-    private readonly Channel<(BatchV1, ulong)> _outputChannel = Channel.CreateBounded<(BatchV1, ulong)>(3);
+    private readonly Channel<(BatchV1, ulong)> _outputChannel = Channel.CreateUnbounded<(BatchV1, ulong)>();
     private readonly IFrameQueue _frameQueue = new FrameQueue(logger);
 
     public ChannelWriter<DaDataSource> DaDataWriter => _inputChannel.Writer;
     public ChannelReader<(BatchV1, ulong)> DecodedBatchesReader => _outputChannel.Reader;
-
-    private int _resetRequested = 0;
 
     public async Task Run(CancellationToken token)
     {
@@ -28,16 +26,19 @@ public class DecodingPipeline(ILogger logger) : IDecodingPipeline
         {
             while (!token.IsCancellationRequested)
             {
-                if (Interlocked.CompareExchange(ref _resetRequested, 0, 0) == 1)
+                Task newDataReady = _inputChannel.Reader.WaitToReadAsync(token).AsTask();
+                await Task.WhenAny(newDataReady, _resetRequested.Task);
+
+                if (_resetRequested.Task.IsCompleted)
                 {
-                    Clear(token);
-                    Interlocked.Exchange(ref _resetRequested, 0);
+                    Clear();
+                    _resetRequested = new();
                     _resetCompleted.SetResult();
+                    continue;
                 }
 
-                buffer.Clear();
                 var daData = await _inputChannel.Reader.ReadAsync(token);
-
+                buffer.Clear();
                 try
                 {
                     Memory<byte> decodedData;
@@ -79,7 +80,7 @@ public class DecodingPipeline(ILogger logger) : IDecodingPipeline
         }
     }
 
-    private void Clear(CancellationToken token)
+    private void Clear()
     {
         while (_inputChannel.Reader.Count > 0)
         {
@@ -95,10 +96,12 @@ public class DecodingPipeline(ILogger logger) : IDecodingPipeline
     }
 
     private TaskCompletionSource _resetCompleted = new();
+    private TaskCompletionSource _resetRequested = new();
 
     public async Task Reset(CancellationToken token)
     {
-        Interlocked.Exchange(ref _resetRequested, 1);
+        if (logger.IsInfo) logger.Info("Resetting decoding pipeline");
+        _resetRequested.SetResult();
         await _resetCompleted.Task;
         _resetCompleted = new();
     }
