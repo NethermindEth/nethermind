@@ -81,7 +81,8 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
         IKademliaDiscv4Adapter Discv4Adapter,
         IKademlia<PublicKey, Node> Kademlia,
         Func<IChannel, NettyDiscoveryHandler> NettyDiscoveryHandlerFactory
-    ) {
+    )
+    {
     }
 
     public Task StartAsync()
