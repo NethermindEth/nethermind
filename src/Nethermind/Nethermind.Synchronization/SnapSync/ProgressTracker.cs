@@ -501,7 +501,7 @@ namespace Nethermind.Synchronization.SnapSync
                 if (_logger.IsInfo)
                 {
                     string stateRangesReport = $"Snap         State Ranges (Phase 1): ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
-                    if (progress >= 1)
+                    if (progress >= 0.995)
                     {
                         long queuedStorage = StoragesToRetrieve.Count;
                         long storagesToRetrieve = queuedStorage + _activeStorageRequests;
