@@ -35,13 +35,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public static readonly ulong SoftOutgoingMessageSizeLimit = (ulong)2.MB();
         public Node Node => Session?.Node;
         public string ClientId => Node?.ClientId;
-        public UInt256 TotalDifficulty { get; set; }
+        public virtual UInt256? TotalDifficulty { get; set; } = 0; // for compatibility with old code, which relies on 0 being the default value
         public PublicKey Id => Node.Id;
         string ITxPoolPeer.Enode => Node?.ToString();
 
         public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
         protected BackgroundTaskSchedulerWrapper BackgroundTaskScheduler { get; }
+
+        public abstract bool AlwaysNotifyOfNewBlock { get; }
 
         public long HeadNumber { get; set; }
         public Hash256 HeadHash { get; set; }

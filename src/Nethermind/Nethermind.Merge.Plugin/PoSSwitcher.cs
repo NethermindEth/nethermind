@@ -52,6 +52,8 @@ namespace Nethermind.Merge.Plugin
         private bool _terminalBlockExplicitSpecified;
         private UInt256? _finalTotalDifficulty;
 
+        private bool _transitionFired = false;
+
         public PoSSwitcher(
             IMergeConfig mergeConfig,
             ISyncConfig syncConfig,
@@ -111,6 +113,18 @@ namespace Nethermind.Merge.Plugin
                     _finalTotalDifficulty = genesisDifficulty;
                 }
             }
+
+            CheckTransitioned();
+        }
+
+        private void CheckTransitioned()
+        {
+            if (!_transitionFired && TransitionFinished)
+            {
+                _transitionFired = true;
+                Transitioned?.Invoke(this, EventArgs.Empty);
+                Transitioned = null; // Unsubscribe all, since we won't fire it again
+            }
         }
 
         private void CheckIfTerminalBlockReached(object? sender, BlockEventArgs e)
@@ -121,6 +135,7 @@ namespace Nethermind.Merge.Plugin
         private void LoadFinalizedBlockHash()
         {
             _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
+            CheckTransitioned();
         }
 
         public bool TryUpdateTerminalBlock(BlockHeader header)
@@ -166,6 +181,7 @@ namespace Nethermind.Merge.Plugin
                 }
 
                 _finalizedBlockHash = finalizedHash;
+                CheckTransitioned();
             }
         }
 
@@ -230,6 +246,7 @@ namespace Nethermind.Merge.Plugin
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
 
         public UInt256? FinalTotalDifficulty => _finalTotalDifficulty;
+        public event EventHandler? Transitioned;
 
         public Hash256 ConfiguredTerminalBlockHash => _mergeConfig.TerminalBlockHashParsed;
 

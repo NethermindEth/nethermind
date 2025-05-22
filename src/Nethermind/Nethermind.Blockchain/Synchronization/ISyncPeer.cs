@@ -21,11 +21,24 @@ namespace Nethermind.Blockchain.Synchronization
         string ClientId => Node?.ClientId;
         NodeClientType ClientType => Node?.ClientType ?? NodeClientType.Unknown;
         Hash256 HeadHash { get; set; }
-        UInt256 TotalDifficulty { get; set; }
+
+        /// <summary>
+        /// Total difficulty of the peer.
+        /// <c>null</c> means peer is available post-merge only and does not support/provide TD.
+        /// </summary>
+        UInt256? TotalDifficulty { get; set; }
+
         bool IsInitialized { get; set; }
         bool IsPriority { get; set; }
         byte ProtocolVersion { get; }
         string ProtocolCode { get; }
+
+        /// <summary>
+        /// If <c>false</c> node will stop receiving notifications about new blocks
+        /// after FIRST_FINALIZED_BLOCK (see https://eips.ethereum.org/EIPS/eip-3675#devp2p).
+        /// </summary>
+        bool AlwaysNotifyOfNewBlock => false;
+
         void Disconnect(DisconnectReason reason, string details);
         Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token);
         Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);

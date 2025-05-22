@@ -39,7 +39,7 @@ public class PowForwardHeaderProvider(
     private const int MinCachedHeaderBatchSize = 32;
 
     private IPeerAllocationStrategy _bestPeerAllocationStrategy =
-        new TotalDiffStrategy(new BlocksSyncPeerAllocationStrategy(null), TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
+        new TotalDiffStrategy(new BlocksSyncPeerAllocationStrategy(null), StrategySelectionType.AtLeastTheSame);
 
     private PeerInfo? _currentBestPeer;
     private IOwnedReadOnlyList<BlockHeader>? _lastResponseBatch = null;
@@ -306,7 +306,7 @@ public class PowForwardHeaderProvider(
 
     protected virtual bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
     {
-        return bestPeer!.TotalDifficulty > (blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0);
+        return (bestPeer!.TotalDifficulty ?? 0) > (blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0);
     }
 
     protected virtual IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> headers)

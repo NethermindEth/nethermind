@@ -30,6 +30,8 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -60,6 +62,7 @@ public partial class EthRpcModule(
     IGasPriceOracle gasPriceOracle,
     IEthSyncingInfo ethSyncingInfo,
     IFeeHistoryOracle feeHistoryOracle,
+    IProtocolsManager protocolsManager,
     ulong? secondsPerSlot) : IEthRpcModule
 {
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
@@ -76,6 +79,7 @@ public partial class EthRpcModule(
     protected readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
     protected readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
+    protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
 
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
@@ -85,7 +89,7 @@ public partial class EthRpcModule(
 
     public ResultWrapper<string> eth_protocolVersion()
     {
-        int highestVersion = P2PProtocolInfoProvider.GetHighestVersionOfEthProtocol();
+        int highestVersion = _protocolsManager.GetHighestProtocolVersion(Protocol.Eth);
         return ResultWrapper<string>.Success(highestVersion.ToHexString());
     }
 
