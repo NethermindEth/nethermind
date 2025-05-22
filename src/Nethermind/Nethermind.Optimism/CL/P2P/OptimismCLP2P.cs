@@ -157,7 +157,7 @@ public class OptimismCLP2P : IDisposable
                             break;
                         }
 
-                        if (await _executionEngineManager.ProcessNewP2PExecutionPayload(missingPayload) == P2PPayloadStatus.Valid)
+                        if (await _executionEngineManager.ProcessNewP2PExecutionPayload(missingPayload, token) == P2PPayloadStatus.Valid)
                         {
                             _headNumber = (ulong)missingPayload.BlockNumber;
                         }
@@ -173,7 +173,7 @@ public class OptimismCLP2P : IDisposable
                     continue;
                 }
 
-                if (await _executionEngineManager.ProcessNewP2PExecutionPayload(payload) == P2PPayloadStatus.Valid)
+                if (await _executionEngineManager.ProcessNewP2PExecutionPayload(payload, token) == P2PPayloadStatus.Valid)
                 {
                     _headNumber = (ulong)payload.BlockNumber;
                 }

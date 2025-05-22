@@ -75,9 +75,9 @@ public class OptimismOptimismRpcModule(
         // TODO: We need to use `fullTxs` due to serialization issues
 
         var currentL1 = L1BlockRef.Zero;
-        if (decodingPipeline.DecodedBatchesReader.TryPeek(out var pendingBatch))
+        if (decodingPipeline.DecodedBatchesReader.TryPeek(out (BatchV1 Batch, ulong L1BatchOrigin) pendingBatch))
         {
-            var currentL1Block = await l1Api.GetBlockByNumber(pendingBatch.L1OriginNum, fullTxs: true);
+            var currentL1Block = await l1Api.GetBlockByNumber(pendingBatch.L1BatchOrigin, fullTxs: true);
             // NOTE: If we got a batch from this block, then the L1 client must have it
             ArgumentNullException.ThrowIfNull(currentL1Block);
             currentL1 = L1BlockRef.From(currentL1Block.Value);

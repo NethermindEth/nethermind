@@ -301,7 +301,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), _api.EthereumJsonSerializer, _api.EthereumEcdsa, _api.LogManager);
 
             IDecodingPipeline decodingPipeline = new DecodingPipeline(_api.LogManager);
-            IL1Bridge l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, decodingPipeline, clParameters, _api.LogManager);
+            IL1Bridge l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, clParameters, _api.LogManager);
             IL1ConfigValidator l1ConfigValidator = new L1ConfigValidator(ethApi, _api.LogManager);
 
             ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(clParameters.SystemConfigProxy);

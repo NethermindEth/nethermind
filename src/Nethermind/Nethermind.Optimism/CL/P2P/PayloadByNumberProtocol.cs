@@ -102,7 +102,7 @@ public class PayloadByNumberProtocol : ISessionProtocol<ulong, ExecutionPayloadV
                 totalRead += bytesRead;
             }
 
-            return _payloadDecoder.DecodePayload(buffer[..totalRead]);
+            return _payloadDecoder.DecodePayload(buffer.AsSpan(0, totalRead));
         }
         catch (Exception e)
         {
