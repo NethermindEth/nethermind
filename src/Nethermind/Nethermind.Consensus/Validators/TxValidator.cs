@@ -28,7 +28,7 @@ public sealed class TxValidator : ITxValidator
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
-			GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance
         ]));
         RegisterValidator(TxType.AccessList, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip2930Enabled),
@@ -38,7 +38,7 @@ public sealed class TxValidator : ITxValidator
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
-			GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance
         ]));
         RegisterValidator(TxType.EIP1559, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip1559Enabled),
@@ -49,7 +49,7 @@ public sealed class TxValidator : ITxValidator
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
-			GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance
         ]));
         RegisterValidator(TxType.Blob, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled),
@@ -61,7 +61,7 @@ public sealed class TxValidator : ITxValidator
             BlobFieldsTxValidator.Instance,
             MempoolBlobTxValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
-			GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance
         ]));
         RegisterValidator(TxType.SetCode, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip7702Enabled),
@@ -73,7 +73,7 @@ public sealed class TxValidator : ITxValidator
             NonBlobFieldsTxValidator.Instance,
             NoContractCreationTxValidator.Instance,
             AuthorizationListTxValidator.Instance,
-			GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance
         ]));
     }
 

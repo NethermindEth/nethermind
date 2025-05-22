@@ -414,8 +414,8 @@ namespace Nethermind.TxPool.Test
         public void should_ignore_tx_gas_limit_exceeded_for_eip7825()
         {
             ISpecProvider specProvider = new OverridableSpecProvider(
-				new TestSpecProvider(London.Instance),
-				static r => new OverridableReleaseSpec(r) { IsEip7825Enabled = true });
+                new TestSpecProvider(London.Instance),
+                static r => new OverridableReleaseSpec(r) { IsEip7825Enabled = true });
 
             var config = new TxPoolConfig { GasLimit = long.MaxValue };
             _txPool = CreatePool(config, specProvider);
