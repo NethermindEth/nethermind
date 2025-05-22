@@ -52,7 +52,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
 
         TreeNode current = _root;
         // As in, what would be the depth of the node assuming all branch on the traversal is populated.
-        int logDistance = Hash256XorUtils.MaxDistance - Hash256XorUtils.CalculateDistance(_currentNodeHash, nodeHash);
+        int logDistance = Hash256XorUtils.MaxDistance - Hash256XorUtils.CalculateLogDistance(_currentNodeHash, nodeHash);
         int depth = 0;
         while (true)
         {
@@ -172,7 +172,7 @@ public class KBucketTree<TNode> : IRoutingTable<TNode> where TNode : notnull
             if (depth <= targetDepth)
             {
                 result.AddRange(node.Bucket.GetAllWithHash()
-                    .Where(kv => Hash256XorUtils.CalculateDistance(kv.Item1, _currentNodeHash) == distance)
+                    .Where(kv => Hash256XorUtils.CalculateLogDistance(kv.Item1, _currentNodeHash) == distance)
                     .Select(kv => kv.Item2));
             }
             else

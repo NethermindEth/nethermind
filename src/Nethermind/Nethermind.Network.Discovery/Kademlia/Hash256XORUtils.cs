@@ -1,24 +1,20 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Numerics;
-using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
 public static class Hash256XorUtils
 {
-    public static int CalculateDistance(ValueHash256 h1, ValueHash256 h2)
+    public static int CalculateLogDistance(ValueHash256 h1, ValueHash256 h2)
     {
+        ValueHash256 xor = XorDistance(h1, h2);
         int zeros = 0;
         for (int i = 0; i < 32; i += 1)
         {
-            byte b1 = h1.Bytes[i];
-            byte b2 = h2.Bytes[i];
-            byte xord = (byte)(b1 ^ b2);
+            byte xord = xor.Bytes[i];
             if (xord == 0)
             {
                 zeros += 8;
@@ -34,24 +30,24 @@ public static class Hash256XorUtils
 
             break;
         }
-
         return MaxDistance - zeros;
     }
 
-    public static UInt256 CalculateDistanceUInt256(ValueHash256 h1, ValueHash256 h2)
-    {
-        ValueHash256 xored = XorDistance(h1, h2);
-        // TODO: Make this more efficirent/simd it.
-        for (int i = 0; i < 32; i++)
-        {
-            xored.BytesAsSpan[i] = (byte)(h1.BytesAsSpan[i] ^ h2.BytesAsSpan[i]);
-        }
+    public static int MaxDistance => 256;
 
-        UInt256 XORed = new UInt256(xored.BytesAsSpan, true);
-        return XORed;
+    public static int Compare(ValueHash256 a, ValueHash256 b, ValueHash256 c)
+    {
+        ValueHash256 ac = XorDistance(a, c);
+        ValueHash256 bc = XorDistance(b, c);
+        return ac.CompareTo(bc);
     }
 
-    public static int MaxDistance => 256;
+    public static ValueHash256 XorDistance(ValueHash256 hash1, ValueHash256 hash2)
+    {
+        ValueHash256 bc = new ValueHash256();
+        (new Vector<byte>(hash1.BytesAsSpan) ^ new Vector<byte>(hash2.BytesAsSpan)).CopyTo(bc.BytesAsSpan);
+        return bc;
+    }
 
     public static ValueHash256 GetRandomHashAtDistance(ValueHash256 currentHash, int distance)
     {
@@ -71,18 +67,7 @@ public static class Hash256XorUtils
         return CopyForRandom(currentHash, randomized, MaxDistance - distance);
     }
 
-    public static int Compare(ValueHash256 a, ValueHash256 b, ValueHash256 c)
-    {
-        ValueHash256 ac = new ValueHash256();
-        (new Vector<byte>(a.BytesAsSpan) ^ new Vector<byte>(c.BytesAsSpan)).CopyTo(ac.BytesAsSpan);
-
-        ValueHash256 bc = new ValueHash256();
-        (new Vector<byte>(b.BytesAsSpan) ^ new Vector<byte>(c.BytesAsSpan)).CopyTo(bc.BytesAsSpan);
-
-        return ac.CompareTo(bc);
-    }
-
-    public static ValueHash256 CopyForRandom(ValueHash256 currentHash, ValueHash256 randomizedHash, int distance)
+    private static ValueHash256 CopyForRandom(ValueHash256 currentHash, ValueHash256 randomizedHash, int distance)
     {
         if (distance >= 256) return currentHash;
 
@@ -110,22 +95,5 @@ public static class Hash256XorUtils
         }
 
         return randomizedHash;
-    }
-
-    public static ValueHash256 XorDistance(ValueHash256 hash1, ValueHash256 hash2)
-    {
-        byte[] xorBytes = new byte[hash1.Bytes.Length];
-        for (int i = 0; i < xorBytes.Length; i++)
-        {
-            xorBytes[i] = (byte)(hash1.Bytes[i] ^ hash2.Bytes[i]);
-        }
-        return new ValueHash256(xorBytes);
-    }
-
-    public static ValueHash256 GetOppositeHash(ValueHash256 hash)
-    {
-        ValueHash256 opposite = new ValueHash256();
-        (~(new Vector<byte>(hash.BytesAsSpan))).CopyTo(opposite.BytesAsSpan);
-        return opposite;
     }
 }
