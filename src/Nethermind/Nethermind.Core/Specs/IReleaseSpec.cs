@@ -315,7 +315,6 @@ namespace Nethermind.Core.Specs
         bool IsEofEnabled { get; }
 
         /// <summary>
-        /// <summary>
         /// Transactions that allows code delegation for EOA
         /// </summary>
         bool IsEip7702Enabled { get; }
@@ -324,6 +323,11 @@ namespace Nethermind.Core.Specs
         /// Transactions that allows code delegation for EOA
         /// </summary>
         bool IsEip7918Enabled { get; }
+
+        /// <summary>
+        /// Set upper bounds for MODEXP
+        /// </summary>
+        bool IsEip7823Enabled { get; }
 
         /// <summary>
         /// Blob base fee collection for Gnosis

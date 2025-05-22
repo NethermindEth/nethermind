@@ -62,7 +62,7 @@ public class OptimismCL : IDisposable
         IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa, _logger);
 
         _decodingPipeline = new DecodingPipeline(_logger);
-        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, engineParameters, _decodingPipeline, _logger);
+        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, engineParameters, _logger);
 
         _l1ConfigValidator = new L1ConfigValidator(ethApi, logManager);
 
@@ -119,23 +119,18 @@ public class OptimismCL : IDisposable
                 await Task.WhenAll(
                     p2pTask,
                     _decodingPipeline.Run(_cancellationTokenSource.Token),
-                    _l1Bridge.Run(_cancellationTokenSource.Token),
                     _driver.Run(_cancellationTokenSource.Token)
                 );
             }
             else
             {
-                _l1Bridge.Reset(finalized.L1BlockInfo);
-                Task decodingPipelineTask = _decodingPipeline.Run(_cancellationTokenSource.Token);
+                _l1Bridge.Reset(BlockId.FromL1BlockInfo(finalized.L1BlockInfo));
                 _driver.Reset(finalized.Number);
-                Task driverTask = _driver.Run(_cancellationTokenSource.Token);
-                await _l1Bridge.ProcessUntilHead(_cancellationTokenSource.Token);
                 _p2p.Reset((await _l2Api.GetHeadBlock()).Number);
                 await Task.WhenAll(
                     _p2p.Run(_cancellationTokenSource.Token),
-                    decodingPipelineTask,
-                    _l1Bridge.Run(_cancellationTokenSource.Token),
-                    driverTask
+                    _decodingPipeline.Run(_cancellationTokenSource.Token),
+                    _driver.Run(_cancellationTokenSource.Token)
                 );
             }
         }
