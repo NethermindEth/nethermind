@@ -14,7 +14,7 @@ public class Osaka : Prague
     {
         Name = "Osaka";
         IsEofEnabled = true;
-        IsEip7825Enabled = true;
+        // IsEip7825Enabled = true;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Osaka());
