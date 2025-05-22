@@ -155,7 +155,6 @@ namespace Nethermind.Evm.TransactionProcessing
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
             if (!(result = ValidateSender(tx, header, spec, tracer, opts))) return result;
-            if (!(result = ValidateGasLimit(tx, header, spec, tracer, opts))) return result;
             if (!(result = BuyGas(tx, blCtx, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee))) return result;
             if (!(result = IncrementNonce(tx, header, spec, tracer, opts))) return result;
 
@@ -448,19 +447,6 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 TraceLogInvalidTx(tx, "SENDER_IS_CONTRACT");
                 return TransactionResult.SenderHasDeployedCode;
-            }
-
-            return TransactionResult.Ok;
-        }
-
-        protected virtual TransactionResult ValidateGasLimit(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
-        {
-            bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
-
-            if (validate && spec.IsEip7825Enabled && tx.GasLimit > Eip7825Constants.GetTxGasLimitCap(spec))
-            {
-                TraceLogInvalidTx(tx, "TX_GAS_LIMIT_OVER_CAP");
-                return TransactionResult.TransactionGasLimitOverCap;
             }
 
             return TransactionResult.Ok;
@@ -926,6 +912,5 @@ namespace Nethermind.Evm.TransactionProcessing
         public static readonly TransactionResult SenderNotSpecified = "sender not specified";
         public static readonly TransactionResult TransactionSizeOverMaxInitCodeSize = "EIP-3860 - transaction size over max init code size";
         public static readonly TransactionResult WrongTransactionNonce = "wrong transaction nonce";
-        public static readonly TransactionResult TransactionGasLimitOverCap = "EIP-7825 - transaction gas limit over cap";
     }
 }
