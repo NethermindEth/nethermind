@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using Nethermind.Evm;
 
 namespace Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
@@ -131,14 +132,14 @@ public readonly struct NGram(ulong value = NGram.Null) : IEquatable<NGram>
 
     public static string ToString(ulong ngram)
     {
-        var s = "";
+        var stringBuilder = new StringBuilder();
         foreach (var instruction in ToInstructions(ngram))
         {
-            s += $"{instruction.ToString()}";
-            s = s.PadRight(s.Length + 1);
+            stringBuilder.Append(instruction.ToString());
+            stringBuilder.Append(" ");
         }
 
-        return s.Trim();
+        return stringBuilder.ToString().TrimEnd();
     }
 
     public override string ToString()
