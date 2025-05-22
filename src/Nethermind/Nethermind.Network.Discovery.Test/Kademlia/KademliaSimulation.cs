@@ -18,23 +18,22 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
 
-[TestFixture(true, 3, 0)]
-[TestFixture(false, 1, 0)]
-[TestFixture(false, 1, 4)]
-[TestFixture(false, 3, 0)]
-[TestFixture(false, 3, 4)]
+[TestFixture(3, 0)]
+[TestFixture(1, 0)]
+[TestFixture(1, 4)]
+[TestFixture(3, 0)]
+[TestFixture(3, 4)]
 public class KademliaSimulation
 {
     private readonly KademliaConfig<ValueHash256> _config;
 
-    public KademliaSimulation(bool useOriginalLookup, int alpha, int beta)
+    public KademliaSimulation(int alpha, int beta)
     {
         _config = new KademliaConfig<ValueHash256>()
         {
             KSize = 20,
             Alpha = alpha,
             Beta = beta,
-            UseOriginalLookup = useOriginalLookup,
         };
     }
 
@@ -259,7 +258,6 @@ public class KademliaSimulation
                     Alpha = config.Alpha,
                     Beta = config.Beta,
                     RefreshInterval = TimeSpan.FromHours(1),
-                    UseOriginalLookup = config.UseOriginalLookup
                 })
                 .AddSingleton<IKademliaMessageSender<ValueHash256, TestNode>>(new SenderForNode(nodeIDTestNode, this))
                 .AddSingleton<ReceiverForNode>()

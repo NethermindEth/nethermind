@@ -31,11 +31,6 @@ public class KademliaConfig<TNode>
     public TimeSpan RefreshInterval { get; set; } = TimeSpan.FromMinutes(30);
 
     /// <summary>
-    /// Use a the original lookup algorithm as in the paper. Slower.
-    /// </summary>
-    public bool UseOriginalLookup { get; set; }
-
-    /// <summary>
     /// The timeout for each find neighbour call lookup
     /// </summary>
     public TimeSpan LookupFindNeighbourHardTimout { get; set; } = TimeSpan.FromSeconds(10);
