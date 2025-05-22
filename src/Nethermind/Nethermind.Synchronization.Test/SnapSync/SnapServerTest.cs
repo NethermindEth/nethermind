@@ -303,7 +303,7 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        TrieStore store = new(stateDb, LimboLogs.Instance);
+        TrieStore store = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
 
         (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store);
 
