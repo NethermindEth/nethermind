@@ -90,7 +90,7 @@ public class PayloadByNumberProtocol(ulong chainId, IPayloadDecoder payloadDecod
                 totalRead += bytesRead;
             }
 
-            return payloadDecoder.DecodePayload(buffer[..totalRead]);
+            return payloadDecoder.DecodePayload(buffer.AsSpan(0, totalRead));
         }
         catch (Exception e)
         {
