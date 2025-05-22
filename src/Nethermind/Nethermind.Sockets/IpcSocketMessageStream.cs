@@ -75,8 +75,7 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
         {
             Closed = read == 0,
             Read = read > 0 && buffer[read - 1] == Delimiter ? read - 1 : read,
-            EndOfMessage = endOfMessage,
-            CloseStatusDescription = null
+            EndOfMessage = endOfMessage
         };
     }
 
