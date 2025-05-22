@@ -1045,8 +1045,7 @@ namespace Nethermind.TxPool.Test
             {
                 Parameters = new ChainParameters
                 {
-                    Eip4844TransitionTimestamp = _blockTree.Head.Timestamp,
-                    Eip7002TransitionTimestamp = _blockTree.Head.Timestamp + 1,
+                    Eip4844TransitionTimestamp = 0,
                     BlobSchedule = {
                         { new BlobScheduleSettings { Max = 5, Timestamp = _blockTree.Head.Timestamp  } },
                         { new BlobScheduleSettings { Max = 3, Timestamp = _blockTree.Head.Timestamp + 1  } },

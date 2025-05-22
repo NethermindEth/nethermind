@@ -94,20 +94,20 @@ namespace Nethermind.Specs.ChainSpecStyle
                     return;
                 }
 
-                ulong genesisTimestamp = chainSpec.Genesis.Timestamp;
+                ulong genesisTimestamp = chainSpec.Genesis?.Timestamp ?? 0;
                 ulong eip4844Timestamp = chainSpec.Parameters.Eip4844TransitionTimestamp
                     ?? throw new ArgumentException($"{nameof(chainSpec.Parameters.Eip4844TransitionTimestamp)} should be set in order to use {nameof(_chainSpec.Parameters.BlobSchedule)}");
 
                 foreach (BlobScheduleSettings settings in chainSpec.Parameters.BlobSchedule)
                 {
-                    if (settings.Timestamp < genesisTimestamp)
+                    if (settings.Timestamp == genesisTimestamp)
                     {
-                        throw new ArgumentException($"{nameof(_chainSpec.Parameters.BlobSchedule)} should has timestamps set to the values more than of {nameof(chainSpec.Genesis)}");
+                        continue;
                     }
 
                     if (settings.Timestamp < eip4844Timestamp)
                     {
-                        throw new ArgumentException($"{nameof(_chainSpec.Parameters.BlobSchedule)} should has timestamps set to the values more than of {nameof(chainSpec.Parameters.Eip4844TransitionTimestamp)}");
+                        throw new ArgumentException($"{nameof(_chainSpec.Parameters.BlobSchedule)} should has timestamps set to the values more than of {nameof(chainSpec.Parameters.Eip4844TransitionTimestamp)}, EIP-4844 is activated at {chainSpec.Parameters.Eip4844TransitionTimestamp}, but the settings are scheduled at {settings.Timestamp} ");
                     }
 
                     transitions.Add(settings.Timestamp);
@@ -282,7 +282,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             void SetBlobScheduleParameters()
             {
-                BlobScheduleSettings? blobSchedule = chainSpec.Parameters.BlobSchedule.FirstOrDefault(bs => bs.Timestamp <= releaseStartTimestamp);
+                BlobScheduleSettings? blobSchedule = chainSpec.Parameters.BlobSchedule.OrderByDescending(bs => bs).FirstOrDefault(bs => bs.Timestamp <= releaseStartTimestamp);
 
                 if (blobSchedule is not null)
                 {

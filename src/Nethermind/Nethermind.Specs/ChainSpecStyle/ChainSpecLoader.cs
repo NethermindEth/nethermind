@@ -180,7 +180,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             MergeForkIdTransition = chainSpecJson.Params.MergeForkIdTransition,
             TerminalTotalDifficulty = chainSpecJson.Params.TerminalTotalDifficulty,
             TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber,
-            BlobSchedule = new(chainSpecJson.Params.BlobSchedule, Comparer<BlobScheduleSettings>.Create((a, b) => a.Timestamp.CompareTo(b.Timestamp))),
+            BlobSchedule = [.. chainSpecJson.Params.BlobSchedule],
 
             Eip7594TransitionTimestamp = chainSpecJson.Params.Eip7594TransitionTimestamp,
         };
