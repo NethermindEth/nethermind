@@ -114,8 +114,6 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
 
                 .AddNetworkStorage(DbNames.DiscoveryNodes, "discoveryNodes")
                 .AddSingleton<DiscoveryV5App>()
-
-                .AddSingleton<DiscoveryPersistenceManager>()
                 .AddSingleton<DiscoveryApp>()
 
                 ;

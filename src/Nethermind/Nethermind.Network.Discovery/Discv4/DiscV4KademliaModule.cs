@@ -21,6 +21,8 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
     protected override void Load(ContainerBuilder builder)
     {
         builder
+            .AddSingleton<DiscoveryPersistenceManager>()
+
             // This two class contains the actual `INodeSource` logic. As in finding nodes within the network.
             .AddSingleton<IKademliaNodeSource, KademliaNodeSource>()
             .AddSingleton<IIteratorNodeLookup, IteratorNodeLookup>()
