@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
@@ -62,7 +63,7 @@ namespace Nethermind.Synchronization
         [GaugeMetric]
         [Description("Number of sync peers.")]
         [KeyIsLabel("client_type")]
-        public static NonBlocking.ConcurrentDictionary<NodeClientType, long> SyncPeers { get; set; } = new();
+        public static ConcurrentDictionary<NodeClientType, long> SyncPeers { get; set; } = new();
 
         [GaugeMetric]
         [Description("Number of priority peers.")]
@@ -79,7 +80,7 @@ namespace Nethermind.Synchronization
         [DetailedMetric]
         [Description("Snap range result")]
         [KeyIsLabel("is_storage", "result")]
-        public static NonBlocking.ConcurrentDictionary<SnapRangeResult, long> SnapRangeResult { get; set; } = new();
+        public static ConcurrentDictionary<SnapRangeResult, long> SnapRangeResult { get; set; } = new();
 
         [ExponentialPowerHistogramMetric(LabelNames = ["sync_type"], Start = 10, Factor = 10, Count = 5)]
         [Description("Sync dispatcher time in prepare request. High value indicate slow processing in preparing request.")]
