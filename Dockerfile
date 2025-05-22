@@ -12,13 +12,13 @@ ARG TARGETARCH
 COPY src/Nethermind src/Nethermind
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-    dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \
-      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
+  dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc true \
+  -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
 
-# A temporary symlink to support the old executable name
-RUN ln -s -r /publish/nethermind /publish/Nethermind.Runner
+RUN git clone https://github.com/rubo/satori-bin.git && \
+  cp -rf ./satori-bin/linux-x64/* /publish
 
-FROM mcr.microsoft.com/dotnet/aspnet:9.0-noble
+FROM ubuntu:noble
 
 WORKDIR /nethermind
 
