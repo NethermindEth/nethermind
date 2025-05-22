@@ -219,13 +219,16 @@ namespace Nethermind.Synchronization.SnapSync
 
         private SnapSyncBatch DequeStorageToRetrieveRequest(Hash256 rootHash, long blockNumber)
         {
-            Interlocked.Increment(ref _activeStorageRequests);
+            Interlocked.Increment(ref _activeStorageRequests); // for race condition so that snap does not exit prematurely
 
             ArrayPoolList<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
             for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
             {
                 storagesToQuery.Add(storage);
             }
+
+            Interlocked.Add(ref _activeStorageRequests, storagesToQuery.Count);
+            Interlocked.Decrement(ref _activeStorageRequests);
 
             StorageRange storageRange = new()
             {
@@ -328,7 +331,7 @@ namespace Nethermind.Synchronization.SnapSync
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault(), StorageHashLimit = hashLimit ?? Keccak.MaxValue });
         }
 
-        public void ReportFullStorageRequestFinished(IEnumerable<PathWithAccount>? storages = null)
+        public void ReportFullStorageRequestFinished(int originalStorageCount, IEnumerable<PathWithAccount>? storages = null)
         {
             if (storages is not null)
             {
@@ -338,10 +341,10 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            Interlocked.Decrement(ref _activeStorageRequests);
+            Interlocked.Add(ref _activeStorageRequests, -originalStorageCount);
         }
 
-        public void EnqueueStorageRange(StorageRange? storageRange)
+        public void EnqueueNextSlot(StorageRange? storageRange)
         {
             if (storageRange is not null)
             {
@@ -349,7 +352,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void EnqueueStorageRange(StorageRange parentRequest, int accountIndex, ValueHash256 lastProcessedHash)
+        public void EnqueueNextSlot(StorageRange parentRequest, int accountIndex, ValueHash256 lastProcessedHash)
         {
             ValueHash256 limitHash = parentRequest.LimitHash ?? Keccak.MaxValue;
             if (lastProcessedHash > limitHash)
@@ -397,11 +400,21 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void ReportStorageRangeRequestFinished(StorageRange? storageRange = null)
+        public void RetryStorageRange(StorageRange storageRange)
         {
-            EnqueueStorageRange(storageRange);
+            if (storageRange.Accounts.Count == 1)
+            {
+                EnqueueNextSlot(storageRange);
+            }
+            else
+            {
+                foreach (PathWithAccount account in storageRange.Accounts)
+                {
+                    EnqueueAccountStorage(account);
+                }
+            }
 
-            Interlocked.Decrement(ref _activeStorageRequests);
+            Interlocked.Add(ref _activeStorageRequests, -(storageRange?.Accounts.Count ?? 0));
         }
 
         public void ReportAccountRangePartitionFinished(in ValueHash256 hashLimit)
@@ -489,10 +502,10 @@ namespace Nethermind.Synchronization.SnapSync
                     string stateRangesReport = $"Snap         State Ranges (Phase 1): ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
                     if (progress >= 1)
                     {
-                        long storagesToRetrieve = StoragesToRetrieve.Count;
+                        long storagesToRetrieve = StoragesToRetrieve.Count + _activeStorageRequests;
                         if (_estimatedStorageRemaining == null)
                         {
-                            _estimatedStorageRemaining = storagesToRetrieve + STORAGE_BATCH_SIZE;
+                            _estimatedStorageRemaining = storagesToRetrieve;
                         }
 
                         if (storagesToRetrieve > 0)
@@ -544,13 +557,8 @@ namespace Nethermind.Synchronization.SnapSync
                 return false;
             }
 
-            StorageRange? range = item;
             _largeStorageProgress.AddOrUpdate(item.Accounts[0].Path,
-                (key, progress) =>
-                {
-                    return new LargeProgressStatus(new ConcurrentDictionary<ValueHash256, double>())
-                        .UpdateProgress(progress);
-                },
+                (key, progress) => new LargeProgressStatus(new ConcurrentDictionary<ValueHash256, double>()).UpdateProgress(progress),
                 (key, progress, range) => progress.UpdateProgress(range),
                 item
             );
