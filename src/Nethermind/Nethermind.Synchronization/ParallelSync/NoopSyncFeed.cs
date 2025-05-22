@@ -42,5 +42,5 @@ public class NoopSyncFeed<T> : ISyncFeed<T>
     }
 
     public bool IsFinished { get; } = true;
-    public string FeedName => "noop";
+    public string FeedName => nameof(NoopSyncFeed<T>);
 }
