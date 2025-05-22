@@ -27,7 +27,8 @@ public sealed class TxValidator : ITxValidator
             new LegacySignatureTxValidator(chainId),
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
-            NonSetCodeFieldsTxValidator.Instance
+            NonSetCodeFieldsTxValidator.Instance,
+			GasLimitCapTxValidator.Instance
         ]));
         RegisterValidator(TxType.AccessList, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip2930Enabled),
@@ -36,7 +37,8 @@ public sealed class TxValidator : ITxValidator
             new ExpectedChainIdTxValidator(chainId),
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
-            NonSetCodeFieldsTxValidator.Instance
+            NonSetCodeFieldsTxValidator.Instance,
+			GasLimitCapTxValidator.Instance
         ]));
         RegisterValidator(TxType.EIP1559, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip1559Enabled),
@@ -46,7 +48,8 @@ public sealed class TxValidator : ITxValidator
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
-            NonSetCodeFieldsTxValidator.Instance
+            NonSetCodeFieldsTxValidator.Instance,
+			GasLimitCapTxValidator.Instance
         ]));
         RegisterValidator(TxType.Blob, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled),
@@ -57,7 +60,8 @@ public sealed class TxValidator : ITxValidator
             ContractSizeTxValidator.Instance,
             BlobFieldsTxValidator.Instance,
             MempoolBlobTxValidator.Instance,
-            NonSetCodeFieldsTxValidator.Instance
+            NonSetCodeFieldsTxValidator.Instance,
+			GasLimitCapTxValidator.Instance
         ]));
         RegisterValidator(TxType.SetCode, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip7702Enabled),
@@ -69,6 +73,7 @@ public sealed class TxValidator : ITxValidator
             NonBlobFieldsTxValidator.Instance,
             NoContractCreationTxValidator.Instance,
             AuthorizationListTxValidator.Instance,
+			GasLimitCapTxValidator.Instance
         ]));
     }
 

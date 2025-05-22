@@ -582,6 +582,7 @@ public class TxValidatorTests
 
         Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).AsBool, Is.False);
     }
+
     [Test]
     public void IsWellFormed_NullAuthorizationList_ReturnsFalse()
     {
@@ -621,6 +622,24 @@ public class TxValidatorTests
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
         Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).Error, Is.EqualTo(TxErrorMessages.NotAllowedAuthorizationList));
+    }
+
+    [Test]
+    public void IsWellFormed_TransactionWithGasLimitExceedingEip7825Cap_ReturnsFalse()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved().TestObject;
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ValidationResult result = txValidator.IsWellFormed(tx, Osaka.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.TxGasLimitCapExceeded(tx.GasLimit, Eip7825Constants.DefaultTxGasLimitCap)));
+        }
     }
 
     private static byte[] MakeArray(int count, params byte[] elements) =>
