@@ -167,6 +167,19 @@ public class CmSketch(int numberOfhashFunctions, int numberOfBuckets)
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong Fnv1A(ulong value, long seed, ulong offsetBasis, ulong prime, int sizeInBytes)
+    {
+        var startHash = offsetBasis;
+        var hash = 0UL; // for 0 size
+        for (var i = 0; i < sizeInBytes; i++)
+        {
+            startHash = (startHash ^ (byte)((value >> (i * 8)) & 0xFF)) * prime;
+            startHash = (startHash ^ (byte)((seed >> (i * 8)) & 0xFF)) * prime;
+            hash = startHash;
+        }
+        return hash;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong Fnv1A64(ulong value, long seed)
@@ -175,23 +188,6 @@ public class CmSketch(int numberOfhashFunctions, int numberOfBuckets)
         const ulong fnvOffsetBasis64 = 14695981039346656037; //64-bit
         const ulong fnvPrime64 = 1099511628211; //64-bit
 
-        var hash = (fnvOffsetBasis64 ^ (byte)(value & 0xFF)) * fnvPrime64;
-        hash = (hash ^ (byte)(seed & 0xFF)) * fnvPrime64;
-        hash = (hash ^ (byte)((value >> 8) & 0xFF)) * fnvPrime64;
-        hash = (hash ^ (byte)((seed >> 8) & 0xFF)) * fnvPrime64;
-        hash = (hash ^ (byte)((value >> 16) & 0xFF)) * fnvPrime64;
-        hash = (hash ^ (byte)((seed >> 16) & 0xFF)) * fnvPrime64;
-        hash = (hash ^ (byte)((value >> 24) & 0xFF)) * fnvPrime64;
-        hash = (hash ^ (byte)((seed >> 24) & 0xFF)) * fnvPrime64;
-        hash = (hash ^ (byte)((value >> 32) & 0xFF)) * fnvPrime64;
-        hash = (hash ^ (byte)((seed >> 32) & 0xFF)) * fnvPrime64;
-        hash = (hash ^ (byte)((value >> 40) & 0xFF)) * fnvPrime64;
-        hash = (hash ^ (byte)((seed >> 40) & 0xFF)) * fnvPrime64;
-        hash = (hash ^ (byte)((value >> 48) & 0xFF)) * fnvPrime64;
-        hash = (hash ^ (byte)((seed >> 48) & 0xFF)) * fnvPrime64;
-        hash = (hash ^ (byte)((value >> 56) & 0xFF)) * fnvPrime64;
-        hash = (hash ^ (byte)((seed >> 56) & 0xFF)) * fnvPrime64;
-
-        return hash;
+        return Fnv1A(value, seed, fnvOffsetBasis64, fnvPrime64, 8);
     }
 }
