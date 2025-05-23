@@ -677,7 +677,7 @@ namespace Nethermind.TxPool
             UInt256? previousTxBottleneck = null;
             int i = 0;
             UInt256 cumulativeCost = 0;
-            ProofVersion headSpec = _specProvider.GetCurrentHeadSpec().BlobProofVersion;
+            IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
             bool dropBlobs = false;
 
             foreach (Transaction tx in transactions)
@@ -691,7 +691,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    dropBlobs |= tx.SupportsBlobs && tx.GetProofVersion() != headSpec;
+                    dropBlobs |= tx.SupportsBlobs && (tx.GetProofVersion() != headSpec.BlobProofVersion || (ulong)tx.BlobVersionedHashes!.Length > headSpec.MaxBlobCount);
 
                     if (dropBlobs)
                     {
