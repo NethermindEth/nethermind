@@ -36,4 +36,4 @@ public struct PriceCache
             return false;
         }
     }
-} 
+}
