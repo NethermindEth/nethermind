@@ -157,6 +157,35 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task ForwardHeaderProvider_ReturnedSameHeaders_EvenAfterSuggestion()
+    {
+        long headNumber = 200;
+        int fastSyncLag = 10;
+        bool withReceipts = true;
+        long chainLength = headNumber + 1;
+
+        IForwardHeaderProvider mockForwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
+
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
+        {
+            FastSync = true,
+            StateMinDistanceFromHead = fastSyncLag,
+        }),
+            configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
+
+        Context ctx = node.Resolve<Context>();
+        SyncPeerMock syncPeer = new(chainLength, withReceipts, Response.AllCorrect | Response.WithTransactions);
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        mockForwardHeaderProvider.GetBlockHeaders(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())!
+            .Returns((c) => syncPeer.GetBlockHeaders(0, 200, 0, default));
+
+        Func<Task> act = async () => await ctx.FastSyncUntilNoRequest(peerInfo);
+        await act.Should().NotThrowAsync();
+    }
+
+    [Test]
     public async Task Ancestor_lookup_simple()
     {
         IBlockTree instance = CachedBlockTreeBuilder.OfLength(1024);

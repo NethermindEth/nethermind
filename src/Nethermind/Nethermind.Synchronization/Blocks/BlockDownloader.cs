@@ -140,8 +140,10 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (previousStartingHeaderNumber == headers[0].Number)
                 {
-                    // Note: Could be change in peer or a fork.
-                    throw new InvalidOperationException("Forward header starting block number did not changed. This is unexpected");
+                    // When the block is suggested right between a `NewPayload` and `ForkChoiceUpdatedHandler` the block is not added because it was added already
+                    // by NP, but it still a beacon block because `FCU` has not happened yet. Causing this situation.
+                    if (_logger.IsDebug) _logger.Debug($"Forward header starting block number did not changed from {previousStartingHeaderNumber}.");
+                    return null;
                 }
                 previousStartingHeaderNumber = headers[0].Number;
 
