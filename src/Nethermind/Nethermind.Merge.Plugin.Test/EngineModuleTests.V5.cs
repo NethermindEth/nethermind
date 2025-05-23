@@ -59,7 +59,7 @@ public partial class EngineModuleTests
         else
         {
             result.Result.Should().Be(Result.Success);
-            result.Data.Should().BeEquivalentTo(ArraySegment<BlobAndProofV2>.Empty);
+            result.Data.Should().BeNull();
         }
     }
 
@@ -118,7 +118,7 @@ public partial class EngineModuleTests
         ResultWrapper<IEnumerable<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
 
         result.Result.Should().Be(Result.Success);
-        result.Data.Should().BeEquivalentTo(ArraySegment<BlobAndProofV2>.Empty);
+        result.Data.Should().BeNull();
     }
 
     [Test]
@@ -151,7 +151,7 @@ public partial class EngineModuleTests
         if (multiplier > 1)
         {
             result.Result.Should().Be(Result.Success);
-            result.Data.Should().BeEquivalentTo(ArraySegment<BlobAndProofV2>.Empty);
+            result.Data.Should().BeNull();
         }
         else
         {
