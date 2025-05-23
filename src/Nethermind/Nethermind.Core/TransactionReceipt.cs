@@ -62,7 +62,13 @@ namespace Nethermind.Core
         ///     Removed in EIP-658
         /// </summary>
         public Hash256? PostTransactionState { get; set; }
-        public Bloom? Bloom { get => _boom ?? CalculateBloom(); set => _boom = value; }
+        public Bloom? Bloom
+        {
+            get => _boom is null || (_boom.IsZero() && Logs?.Length > 0)
+                ? CalculateBloom()
+                : _boom;
+            set => _boom = value;
+        }
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
 
