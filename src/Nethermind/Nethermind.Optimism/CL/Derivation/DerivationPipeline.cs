@@ -22,16 +22,17 @@ public class DerivationPipeline(
     ulong l2GenesisTimestamp,
     ulong l2BlockTime,
     ulong chainId,
-    ILogger logger) : IDerivationPipeline
+    ILogManager logManager) : IDerivationPipeline
 {
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public async IAsyncEnumerable<PayloadAttributesRef> DerivePayloadAttributes(L2Block l2Parent, BatchV1 batch,
         [EnumeratorCancellation] CancellationToken token)
     {
-        if (logger.IsInfo) logger.Info($"Processing batch RelTimestamp: {batch.RelTimestamp}");
-        ulong expectedParentNumber = batch.RelTimestamp / 2 - 1;
         ArgumentNullException.ThrowIfNull(l2Parent);
-        if (expectedParentNumber != l2Parent.Number)
+        ulong firstBlockNumber = batch.RelTimestamp / l2BlockTime;
+        if (_logger.IsInfo) _logger.Info($"Processing batch. Block numbers from {firstBlockNumber} to {firstBlockNumber + batch.BlockCount - 1}");
+        if (firstBlockNumber - 1 != l2Parent.Number)
         {
             throw new ArgumentException("Old batch");
         }
@@ -39,7 +40,7 @@ public class DerivationPipeline(
         (L1Block[]? l1Origins, ReceiptForRpc[][]? l1Receipts) = await GetL1Origins(batch, token);
         if (l1Origins is null || l1Receipts is null)
         {
-            if (logger.IsWarn) logger.Warn($"Unable to get L1 Origins for span batch. RelTimestamp: {batch.RelTimestamp}");
+            if (_logger.IsWarn) _logger.Warn($"Unable to get L1 Origins for span batch. RelTimestamp: {batch.RelTimestamp}");
             throw new Exception("Unable to get L1 Origins");
         }
 
@@ -61,8 +62,8 @@ public class DerivationPipeline(
                 l1Receipts[originIdx]);
             if (payloadAttributes is null)
             {
-                if (logger.IsWarn)
-                    logger.Warn($"Unable to derive payload attributes. Batch timestamp: {singularBatch.Timestamp}");
+                if (_logger.IsWarn)
+                    _logger.Warn($"Unable to derive payload attributes. Batch timestamp: {singularBatch.Timestamp}");
                 yield break;
             }
 
@@ -70,8 +71,6 @@ public class DerivationPipeline(
 
             l2ParentPayloadAttributes = payloadAttributes;
         }
-
-        if (logger.IsInfo) logger.Info($"Processed batch RelTimestamp: {batch.RelTimestamp}");
     }
 
     private async Task<(L1Block[]?, ReceiptForRpc[][]?)> GetL1Origins(BatchV1 batch, CancellationToken token)
@@ -81,7 +80,7 @@ public class DerivationPipeline(
         L1Block lastL1Origin = await l1Bridge.GetBlock(lastL1OriginNum, token);
         if (!lastL1Origin.Hash.Bytes.StartsWith(batch.L1OriginCheck.Span))
         {
-            logger.Warn($"Batch with invalid origin. Expected {batch.L1OriginCheck.ToHexString()}, Got {lastL1Origin.Hash}");
+            _logger.Warn($"Batch with invalid origin. Expected {batch.L1OriginCheck.ToHexString()}, Got {lastL1Origin.Hash}");
             return (null, null);
         }
         var l1Origins = new L1Block[numberOfL1Origins];
