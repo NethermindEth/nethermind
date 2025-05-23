@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using CkzgLib;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Crypto;
 
@@ -30,8 +31,8 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
 
     public void ComputeProofsAndCommitments(ShardBlobNetworkWrapper wrapper)
     {
-        Span<byte> cells = stackalloc byte[Ckzg.BytesPerCell * Ckzg.CellsPerExtBlob];
-        Span<byte> proofs = stackalloc byte[Ckzg.BytesPerProof * Ckzg.CellsPerExtBlob];
+        using ArrayPoolSpan<byte> cells = new(Ckzg.BytesPerCell * Ckzg.CellsPerExtBlob);
+        using ArrayPoolSpan<byte> proofs = new(Ckzg.BytesPerProof * Ckzg.CellsPerExtBlob);
 
         for (int i = 0; i < wrapper.Blobs.Length; i++)
         {
