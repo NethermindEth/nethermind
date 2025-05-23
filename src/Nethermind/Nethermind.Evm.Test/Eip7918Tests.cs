@@ -20,9 +20,9 @@ public class Eip7918Tests : VirtualMachineTestsBase
         IReleaseSpec spec)
     {
         BlockHeader parentHeader = Build.A.BlockHeader
-			.WithBlobGasUsed(BlobGasCalculator.CalculateBlobGas(testCase.parentBlobsCount))
-			.WithExcessBlobGas(testCase.parentExcessBlobGas)
-			.WithBaseFee(testCase.parentBaseFee).TestObject;
+            .WithBlobGasUsed(BlobGasCalculator.CalculateBlobGas(testCase.parentBlobsCount))
+            .WithExcessBlobGas(testCase.parentExcessBlobGas)
+            .WithBaseFee(testCase.parentBaseFee).TestObject;
 
         Assert.That(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec),
             Is.EqualTo(testCase.expectedExcessBlobGas));
@@ -47,10 +47,10 @@ public class Eip7918Tests : VirtualMachineTestsBase
     {
         yield return (spec.GetTargetBlobGasPerBlock() + 1, 0, 1_000_000_000, (spec.GetTargetBlobGasPerBlock() + 1) / 3);
         yield return (
-			spec.GetTargetBlobGasPerBlock(),
-			(int)spec.TargetBlobCount,
-			1_000_000_000,
-			2 * spec.GetTargetBlobGasPerBlock() / 3);
+            spec.GetTargetBlobGasPerBlock(),
+            (int)spec.TargetBlobCount,
+            1_000_000_000,
+            2 * spec.GetTargetBlobGasPerBlock() / 3);
         yield return (spec.GetTargetBlobGasPerBlock() + 1, 0, 1, 1);
     }
 }
