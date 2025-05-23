@@ -284,6 +284,11 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             void SetBlobScheduleParameters()
             {
+                if (releaseSpec.Eip4844TransitionTimestamp > releaseStartTimestamp)
+                {
+                    return;
+                }
+
                 BlobScheduleSettings? blobSchedule = chainSpec.Parameters.BlobSchedule.OrderByDescending(bs => bs).FirstOrDefault(bs => bs.Timestamp <= releaseStartTimestamp);
 
                 if (blobSchedule is not null)
