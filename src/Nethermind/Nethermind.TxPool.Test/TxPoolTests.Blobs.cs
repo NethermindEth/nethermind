@@ -717,7 +717,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction[] blobTxs = new Transaction[poolSize * 2];
 
-            IBlobProofsManager blobProofsManager = IBlobProofsManager.For(ProofVersion.V1);
+            IBlobProofsBuilder blobProofsBuilder = IBlobProofsManager.For(ProofVersion.V1);
 
             // adding 2x more txs than pool capacity. First half will be evicted
             for (int i = 0; i < poolSize * 2; i++)
@@ -737,9 +737,9 @@ namespace Nethermind.TxPool.Test
                     byte[] blobs = new byte[Ckzg.BytesPerBlob];
                     blobs[0] = (byte)(i % 256);
 
-                    var networkWrapper = blobProofsManager.AllocateWrapper(blobs);
-                    blobProofsManager.ComputeProofsAndCommitments(networkWrapper);
-                    byte[][] hashes = blobProofsManager.ComputeHashes(networkWrapper);
+                    var networkWrapper = blobProofsBuilder.AllocateWrapper(blobs);
+                    blobProofsBuilder.ComputeProofsAndCommitments(networkWrapper);
+                    byte[][] hashes = blobProofsBuilder.ComputeHashes(networkWrapper);
 
                     blobTxs[i].NetworkWrapper = networkWrapper;
                     blobTxs[i].BlobVersionedHashes = hashes;

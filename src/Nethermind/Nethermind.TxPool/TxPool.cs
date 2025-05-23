@@ -537,8 +537,8 @@ namespace Nethermind.TxPool
 
                 foreach (byte[] blob in wrapper.Blobs)
                 {
-                    using ArrayPoolList<byte> cellProofsOfOneBlob = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof);
-                    KzgPolynomialCommitments.ComputeCellProofs(blob, cellProofsOfOneBlob.AsSpan());
+                    using ArrayPoolSpan<byte> cellProofsOfOneBlob = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof);
+                    KzgPolynomialCommitments.ComputeCellProofs(blob, cellProofsOfOneBlob);
                     byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.BytesPerProof).ToArray();
                     cellProofs.AddRange(cellProofsSeparated);
                 }

@@ -75,21 +75,10 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
 
     public bool ValidateProofs(ShardBlobNetworkWrapper wrapper)
     {
-        int length = wrapper.Blobs.Length * Ckzg.BytesPerBlob * 2;
-        byte[] cellsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> cells = new(cellsArray, 0, length);
-
-        length = wrapper.Blobs.Length * Ckzg.BytesPerCommitment * Ckzg.CellsPerExtBlob;
-        byte[] flatCommitmentsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatCommitments = new(flatCommitmentsArray, 0, length);
-
-        length = wrapper.Blobs.Length * Ckzg.BytesPerProof * Ckzg.CellsPerExtBlob;
-        byte[] flatProofsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatProofs = new(flatProofsArray, 0, length);
-
-        length = wrapper.Blobs.Length * Ckzg.CellsPerExtBlob;
-        ulong[] indicesArray = ArrayPool<ulong>.Shared.Rent(length);
-        Span<ulong> indices = new(indicesArray, 0, length);
+        using ArrayPoolSpan<byte> cells = new(wrapper.Blobs.Length * Ckzg.BytesPerBlob * 2);
+        using ArrayPoolSpan<byte> flatCommitments = new(wrapper.Blobs.Length * Ckzg.BytesPerCommitment * Ckzg.CellsPerExtBlob);
+        using ArrayPoolSpan<byte> flatProofs = new(wrapper.Blobs.Length * Ckzg.BytesPerProof * Ckzg.CellsPerExtBlob);
+        using ArrayPoolSpan<ulong> indices = new(wrapper.Blobs.Length * Ckzg.CellsPerExtBlob);
 
         try
         {
@@ -114,13 +103,6 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {
             return false;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(cellsArray);
-            ArrayPool<byte>.Shared.Return(flatCommitmentsArray);
-            ArrayPool<byte>.Shared.Return(flatProofsArray);
-            ArrayPool<ulong>.Shared.Return(indicesArray);
         }
     }
 }
