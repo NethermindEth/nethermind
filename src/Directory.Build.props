@@ -1,6 +1,8 @@
 <Project>
 
   <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <InvariantGlobalization>true</InvariantGlobalization>
     <LangVersion>13.0</LangVersion>
     <NuGetAuditMode>direct</NuGetAuditMode>
