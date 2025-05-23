@@ -31,4 +31,13 @@ public class NibblePathCommonPrefixBenchmark
                key.CommonPrefixLength(path) +
                key.CommonPrefixLength(path);
     }
+
+    [Benchmark(Baseline = true)]
+    public int Baseline()
+    {
+        Span<byte> a = [1, 2, 3];
+        Span<byte> b = [1, 2, 4];
+
+        return a.CommonPrefixLength(b);
+    }
 }

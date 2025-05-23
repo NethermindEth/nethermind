@@ -333,79 +333,9 @@ public readonly ref struct NibblePath
             var result = (byte)((_b >> (1 - _odd)) & NibbleMask);
 
             _odd = (byte)(1 - _odd);
-            if (_odd == 0)
-                _b = ref Unsafe.Add(ref _b, 1);
+            _b = ref Unsafe.Add(ref _b, 1 - _odd);
 
             return result;
-        }
-
-        public static int CommonPrefixLength(ref NibbleAccessor a, ref NibbleAccessor b, int length)
-        {
-            if (length == 0)
-            {
-                return 0;
-            }
-
-            int left = 0;
-            int right = 0;
-
-            const int one = 1;
-            const int two = 2;
-
-            int at = 0;
-
-            // special handling for 1, 2, 3 nibbles at the beginning end
-            if ((length & (one | two)) != 0)
-            {
-                if ((length & one) != 0)
-                {
-                    left |= a.GetAndMove() << (NibbleShift * 3);
-                    right |= b.GetAndMove() << (NibbleShift * 3);
-
-                    at++;
-                }
-
-                if ((length & two) != 0)
-                {
-                    left |= (a.GetAndMove() << NibbleShift) | (b.GetAndMove() << (NibbleShift * (3 - at)));
-                    right |= (a.GetAndMove() << NibbleShift) | (b.GetAndMove() << (NibbleShift * (3 - at)));
-
-                    at += 2;
-                }
-            }
-
-            var xor = left ^ right;
-            if (xor != 0)
-            {
-                at += BitOperations.LeadingZeroCount((uint)xor) / NibbleShift;
-                goto Result;
-            }
-
-            Debug.Assert((length - at) % 4 == 0);
-
-            for (; at < (length - 4); at += 4)
-            {
-                left = a.GetAndMove() << (NibbleShift * 3) |
-                       a.GetAndMove() << (NibbleShift * 2) |
-                       a.GetAndMove() << (NibbleShift * 1) |
-                       a.GetAndMove() << (NibbleShift * 0);
-
-
-                right = b.GetAndMove() << (NibbleShift * 3) |
-                        b.GetAndMove() << (NibbleShift * 2) |
-                        b.GetAndMove() << (NibbleShift * 1) |
-                        b.GetAndMove() << (NibbleShift * 0);
-
-                xor = left ^ right;
-                if (xor != 0)
-                {
-                    at += BitOperations.LeadingZeroCount((uint)xor) / NibbleShift;
-                    goto Result;
-                }
-            }
-
-        Result:
-            return at;
         }
     }
 
@@ -948,6 +878,7 @@ public readonly ref struct NibblePath
         public override string ToString() => ToHexString();
 
         // The only path where it's executed it's an extension check. Extensions are not that long.
+        [SkipLocalsInit]
         public int CommonPrefixLength(in NibblePath other)
         {
             var length = Math.Min(other.Length, Length);
@@ -958,12 +889,16 @@ public readonly ref struct NibblePath
             NibbleAccessor a = new NibbleAccessor(ref Unsafe.Add(ref d, 1 - odd), odd);
             NibbleAccessor b = new NibbleAccessor(ref other._span, other._odd);
 
-            if (length < 2)
+            int i = 0;
+            for (; i < length; i++)
             {
-                return length == 1 && a.GetAndMove() == b.GetAndMove() ? 1 : 0;
+                if (a.GetAndMove() != b.GetAndMove())
+                {
+                    break;
+                }
             }
 
-            return NibbleAccessor.CommonPrefixLength(ref a, ref b, length);
+            return i;
         }
 
         // PSHUFB mask to pick bytes [0,2,4,…,14] then zero the rest
