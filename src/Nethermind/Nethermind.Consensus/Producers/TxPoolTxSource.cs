@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.Producers
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             long blockNumber = parent.Number + 1;
-            IReleaseSpec spec = payloadAttributes is not null ? _specProvider.GetSpec(new ForkActivation(parent.Number + 1, payloadAttributes.Timestamp)) : _specProvider.GetSpec(parent);
+            IReleaseSpec spec = payloadAttributes is not null ? _specProvider.GetSpec(blockNumber, payloadAttributes.Timestamp) : _specProvider.GetSpec(parent);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
             IDictionary<AddressAsKey, Transaction[]> pendingTransactions = filterSource ?
                 _transactionPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee) :
