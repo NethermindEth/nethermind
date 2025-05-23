@@ -7,11 +7,12 @@ using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class GetPayloadV5Result(Block block, UInt256 blockFees, BlobsBundleV2 blobsBundle, byte[][] executionRequests) : GetPayloadV4Result(block, blockFees, null!, executionRequests)
+public class GetPayloadV5Result(Block block, UInt256 blockFees, BlobsBundleV2 blobsBundle, byte[][] executionRequests, bool shouldOverrideBuilder) : GetPayloadV4Result(block, blockFees, null!, executionRequests, shouldOverrideBuilder)
 {
     public new BlobsBundleV2 BlobsBundle { get; } = blobsBundle;
 
     public override string ToString() =>
         $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}, ExecutionRequests count : {ExecutionRequests?.Length}}}";
-    public override bool ValidateFork(ISpecProvider specProvider) => specProvider.GetSpec(new ForkActivation(ExecutionPayload.BlockNumber, ExecutionPayload.Timestamp)).IsEip7594Enabled;
+
+    public override bool ValidateFork(ISpecProvider specProvider) => specProvider.GetSpec(ExecutionPayload.BlockNumber, ExecutionPayload.Timestamp).IsEip7594Enabled;
 }

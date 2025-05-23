@@ -49,7 +49,7 @@ public partial class EngineModuleTests
             request.Add(Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<IEnumerable<BlobAndProofV2>> result = await rpcModule.engine_getBlobsV2(request.ToArray());
+        ResultWrapper<IEnumerable<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2(request.ToArray());
 
         if (requestSize > 128)
         {
@@ -69,7 +69,7 @@ public partial class EngineModuleTests
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
 
-        ResultWrapper<IEnumerable<BlobAndProofV2>> result = await rpcModule.engine_getBlobsV2([]);
+        ResultWrapper<IEnumerable<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2([]);
 
         result.Result.Should().Be(Result.Success);
         result.Data.Should().BeEquivalentTo(ArraySegment<BlobAndProofV2>.Empty);
@@ -90,12 +90,14 @@ public partial class EngineModuleTests
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
-        ResultWrapper<IEnumerable<BlobAndProofV2>> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
+        ResultWrapper<IEnumerable<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
-        result.Data.Select(static b => b.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-        result.Data.Select(static b => b.Proofs.Length).Should().HaveCount(numberOfBlobs);
-        result.Data.Select(static b => b.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
+
+        result.Data.Should().NotBeNull();
+        result.Data!.Select(static b => b.Blob).Should().BeEquivalentTo(wrapper.Blobs);
+        result.Data!.Select(static b => b.Proofs.Length).Should().HaveCount(numberOfBlobs);
+        result.Data!.Select(static b => b.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
     }
 
     [Test]
@@ -113,7 +115,7 @@ public partial class EngineModuleTests
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         // requesting hashes that are not present in TxPool
-        ResultWrapper<IEnumerable<BlobAndProofV2>> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
+        ResultWrapper<IEnumerable<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2(blobTx.BlobVersionedHashes!);
 
         result.Result.Should().Be(Result.Success);
         result.Data.Should().BeEquivalentTo(ArraySegment<BlobAndProofV2>.Empty);
@@ -145,7 +147,7 @@ public partial class EngineModuleTests
             blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<IEnumerable<BlobAndProofV2>> result = await rpcModule.engine_getBlobsV2(blobVersionedHashesRequest.ToArray());
+        ResultWrapper<IEnumerable<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2(blobVersionedHashesRequest.ToArray());
         if (multiplier > 1)
         {
             result.Result.Should().Be(Result.Success);
@@ -154,9 +156,11 @@ public partial class EngineModuleTests
         else
         {
             ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
-            result.Data.Select(static b => b.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-            result.Data.Select(static b => b.Proofs.Length).Should().HaveCount(numberOfBlobs);
-            result.Data.Select(static b => b.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
+
+            result.Data.Should().NotBeNull();
+            result.Data!.Select(static b => b.Blob).Should().BeEquivalentTo(wrapper.Blobs);
+            result.Data!.Select(static b => b.Proofs.Length).Should().HaveCount(numberOfBlobs);
+            result.Data!.Select(static b => b.Proofs).Should().BeEquivalentTo(wrapper.Proofs.Chunk(128));
         }
     }
 }

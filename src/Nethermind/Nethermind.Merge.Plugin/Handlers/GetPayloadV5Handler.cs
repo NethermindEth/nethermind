@@ -23,9 +23,6 @@ public class GetPayloadV5Handler(
 {
     protected override GetPayloadV5Result GetPayloadResultFromBlock(IBlockProductionContext context)
     {
-        return new(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV2(context.CurrentBestBlock!), context.CurrentBestBlock!.ExecutionRequests!)
-        {
-            ShouldOverrideBuilder = ShouldOverrideBuilder(context.CurrentBestBlock!)
-        };
+        return new(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV2(context.CurrentBestBlock!), context.CurrentBestBlock!.ExecutionRequests!, ShouldOverrideBuilder(context.CurrentBestBlock!));
     }
 }

@@ -202,16 +202,17 @@ namespace Nethermind.TxPool
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
-        public bool TryGetBlobAndProof(byte[] blobVersionedHash,
+
+
+        public bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof)
-            => _blobTransactions.TryGetBlobAndProof(blobVersionedHash, out blob, out proof);
+            => _blobTransactions.TryGetBlobAndProofV0(blobVersionedHash, out blob, out proof);
 
-
-        public bool TryGetBlobAndProofV2(byte[] blobVersionedHash,
+        public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[][]? cellProofs)
-            => _blobTransactions.TryGetBlobAndProofV2(blobVersionedHash, out blob, out cellProofs);
+            => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
 
         public int GetBlobCounts(byte[][] blobVersionedHashes)
             => _blobTransactions.GetBlobCounts(blobVersionedHashes);
@@ -532,12 +533,12 @@ namespace Nethermind.TxPool
                 && tx is { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V0 } wrapper }
                 && _headInfo.CurrentProofVersion == ProofVersion.V1)
             {
-                List<byte[]> cellProofs = new List<byte[]>(Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
+                using ArrayPoolList<byte[]> cellProofs = new(Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
 
                 foreach (byte[] blob in wrapper.Blobs)
                 {
-                    byte[] cellProofsOfOneBlob = new byte[Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof];
-                    KzgPolynomialCommitments.ComputeCellProofs(blob, cellProofsOfOneBlob);
+                    using ArrayPoolList<byte> cellProofsOfOneBlob = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof);
+                    KzgPolynomialCommitments.ComputeCellProofs(blob, cellProofsOfOneBlob.AsSpan());
                     byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.BytesPerProof).ToArray();
                     cellProofs.AddRange(cellProofsSeparated);
                 }
@@ -676,6 +677,8 @@ namespace Nethermind.TxPool
             UInt256? previousTxBottleneck = null;
             int i = 0;
             UInt256 cumulativeCost = 0;
+            ProofVersion headSpec = _specProvider.GetCurrentHeadSpec().BlobProofVersion;
+            bool drop = false;
 
             foreach (Transaction tx in transactions)
             {
@@ -688,6 +691,15 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
+                    drop |= tx.SupportsBlobs && tx.GetProofVersion() != headSpec;
+
+                    if (drop)
+                    {
+                        _hashCache.DeleteFromLongTerm(tx.Hash!);
+                        updateTx(transactions, tx, changedGasBottleneck: null, lastElement);
+                        continue;
+                    }
+
                     previousTxBottleneck ??= tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
 
@@ -774,26 +786,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    if (transactions.Any(t => t.SupportsBlobs))
-                    {
-                        IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
-                        bool drop = false;
-
-                        foreach (Transaction txn in transactions)
-                        {
-                            drop |= txn.GetProofVersion() != headSpec.BlobProofVersion || (ulong)txn.BlobVersionedHashes!.Length > headSpec.MaxBlobCount;
-
-                            if (drop)
-                            {
-                                _hashCache.DeleteFromLongTerm(txn.Hash!);
-                                updateTx(transactions, txn, changedGasBottleneck: null, lastElement);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        UpdateGasBottleneck(transactions, currentNonce, balance, lastElement, updateTx);
-                    }
+                   UpdateGasBottleneck(transactions, currentNonce, balance, lastElement, updateTx);
                 }
             }
         }

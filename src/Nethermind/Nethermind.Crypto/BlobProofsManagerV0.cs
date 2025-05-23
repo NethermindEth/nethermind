@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using CkzgLib;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Crypto;
 
@@ -67,16 +68,13 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
         }
 
         int length = wrapper.Blobs.Length * Ckzg.BytesPerBlob;
-        byte[] flatBlobsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatBlobs = new(flatBlobsArray, 0, length);
+        using ArrayPoolSpan<byte> flatBlobs = new(length);
 
         length = wrapper.Blobs.Length * Ckzg.BytesPerCommitment;
-        byte[] flatCommitmentsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatCommitments = new(flatCommitmentsArray, 0, length);
+        using ArrayPoolSpan<byte> flatCommitments = new(length);
 
         length = wrapper.Blobs.Length * Ckzg.BytesPerProof;
-        byte[] flatProofsArray = ArrayPool<byte>.Shared.Rent(length);
-        Span<byte> flatProofs = new(flatProofsArray, 0, length);
+        using ArrayPoolSpan<byte> flatProofs = new(length);
 
         for (int i = 0; i < wrapper.Blobs.Length; i++)
         {
@@ -92,12 +90,6 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {
             return false;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(flatBlobsArray);
-            ArrayPool<byte>.Shared.Return(flatCommitmentsArray);
-            ArrayPool<byte>.Shared.Return(flatProofsArray);
         }
     }
 }

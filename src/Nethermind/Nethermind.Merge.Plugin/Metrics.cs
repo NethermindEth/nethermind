@@ -37,7 +37,7 @@ namespace Nethermind.Merge.Plugin
         public static int GetBlobsRequestsSuccessTotal { get; set; }
 
         [GaugeMetric]
-        [Description("Number of responses to engine_getBlobsV1 and engine_getBlobsV2 without all requested blobs")]
+        [Description("Number of responses to engine_getBlobsVX without all requested blobs")]
         public static int GetBlobsRequestsFailureTotal { get; set; }
 
         [CounterMetric]

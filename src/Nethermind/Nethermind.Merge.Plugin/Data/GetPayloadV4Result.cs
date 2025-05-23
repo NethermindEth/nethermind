@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class GetPayloadV4Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle, byte[][] executionRequests) : GetPayloadV3Result<ExecutionPayloadV3>(block, blockFees, blobsBundle)
+public class GetPayloadV4Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle, byte[][] executionRequests, bool shouldOverrideBuilder) : GetPayloadV3Result<ExecutionPayloadV3>(block, blockFees, blobsBundle, shouldOverrideBuilder)
 {
     public byte[][]? ExecutionRequests { get; } = executionRequests;
 
