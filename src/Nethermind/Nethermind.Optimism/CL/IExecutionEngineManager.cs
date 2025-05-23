@@ -11,7 +11,7 @@ namespace Nethermind.Optimism.CL;
 public interface IExecutionEngineManager
 {
     Task Initialize();
-    Task<ulong?> GetCurrentFinalizedBlockNumber();
+    Task<(BlockId Head, BlockId Finalized, BlockId Safe)> GetCurrentBlocks();
     Task<BlockId?> ProcessNewDerivedPayloadAttributes(PayloadAttributesRef payloadAttributes, CancellationToken token);
     Task<bool> FinalizeBlock(BlockId finalizedBlock, CancellationToken token);
     Task<P2PPayloadStatus> ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayloadV3, CancellationToken token);

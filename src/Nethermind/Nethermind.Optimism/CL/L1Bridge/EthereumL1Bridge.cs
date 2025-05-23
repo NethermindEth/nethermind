@@ -20,7 +20,6 @@ public class EthereumL1Bridge : IL1Bridge
     private const int L1EpochSlotSize = 32;
     private const int L1SlotTimeMilliseconds = 12000;
     private const int L1EpochTimeMilliseconds = L1EpochSlotSize * L1SlotTimeMilliseconds;
-
     private readonly IEthApi _ethL1Api;
     private readonly IBeaconApi _beaconApi;
     private readonly ILogger _logger;
@@ -36,18 +35,18 @@ public class EthereumL1Bridge : IL1Bridge
         IEthApi ethL1Rpc,
         IBeaconApi beaconApi,
         CLChainSpecEngineParameters engineParameters,
-        ILogger logger)
+        ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(engineParameters.L1BeaconGenesisSlotTime);
         ArgumentNullException.ThrowIfNull(engineParameters.BatcherInboxAddress);
         ArgumentNullException.ThrowIfNull(engineParameters.BatchSubmitter);
-        _logger = logger;
+
         _ethL1Api = ethL1Rpc;
         _beaconApi = beaconApi;
-
         _batchSubmitter = engineParameters.BatchSubmitter;
         _batcherInboxAddress = engineParameters.BatcherInboxAddress;
         _l1BeaconGenesisSlotTime = engineParameters.L1BeaconGenesisSlotTime.Value;
+        _logger = logManager.GetClassLogger();
     }
 
     public async Task<L1BridgeStepResult> Step(CancellationToken token)
