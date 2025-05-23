@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using CkzgLib;
+using DotNetty.Common.Utilities;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
@@ -24,7 +27,17 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
         => comparer.GetBlobReplacementComparer();
 
-    public bool TryGetBlobAndProof<TProof>(
+    public bool TryGetBlobAndProofV0(
+       byte[] requestedBlobVersionedHash,
+       [NotNullWhen(true)] out byte[]? blob,
+       [NotNullWhen(true)] out byte[]? proof) => TryGetBlobAndProof(requestedBlobVersionedHash, out blob, out proof, ProofVersion.V0, (proofs, index) => proofs[index]);
+
+    public bool TryGetBlobAndProofV1(
+       byte[] requestedBlobVersionedHash,
+       [NotNullWhen(true)] out byte[]? blob,
+       [NotNullWhen(true)] out byte[][]? proof) => TryGetBlobAndProof<byte[][]>(requestedBlobVersionedHash, out blob, out proof, ProofVersion.V1, (proofs, index) => [.. proofs.Slice(Ckzg.CellsPerExtBlob * index, Ckzg.CellsPerExtBlob)]);
+
+    private bool TryGetBlobAndProof<TProof>(
         byte[] requestedBlobVersionedHash,
         [NotNullWhen(true)] out byte[]? blob,
         [NotNullWhen(true)] out TProof? proof,

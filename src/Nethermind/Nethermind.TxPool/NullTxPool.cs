@@ -63,7 +63,7 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool TryGetBlobAndProof(byte[] blobVersionedHash,
+        public bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof)
         {
