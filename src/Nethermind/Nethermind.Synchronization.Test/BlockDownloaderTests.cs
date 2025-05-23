@@ -167,10 +167,10 @@ public partial class BlockDownloaderTests
         IForwardHeaderProvider mockForwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
 
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
-            {
-                FastSync = true,
-                StateMinDistanceFromHead = fastSyncLag,
-            }),
+        {
+            FastSync = true,
+            StateMinDistanceFromHead = fastSyncLag,
+        }),
             configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
 
         Context ctx = node.Resolve<Context>();
