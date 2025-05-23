@@ -7,7 +7,18 @@ using Nethermind.Core;
 
 namespace Nethermind.Crypto;
 
-public interface IBlobProofsManager
+public interface IBlobProofsManager : IBlobProofsBuilder, IBlobProofsVerifier
+{
+    static IBlobProofsManager For
+        (ProofVersion version) => version switch
+        {
+            ProofVersion.V0 => BlobProofsManagerV0.Instance,
+            ProofVersion.V1 => BlobProofsManagerV1.Instance,
+            _ => throw new NotSupportedException(),
+        };
+}
+
+public interface IBlobProofsBuilder
 {
     ShardBlobNetworkWrapper AllocateWrapper(params ReadOnlySpan<byte[]> blobs);
 
@@ -23,6 +34,12 @@ public interface IBlobProofsManager
     }
 
     void ComputeProofsAndCommitments(ShardBlobNetworkWrapper preallocatedWrappers);
+
+}
+
+public interface IBlobProofsVerifier
+{
+
     bool ValidateLengths(ShardBlobNetworkWrapper blobs);
     public bool ValidateHashes(ShardBlobNetworkWrapper blobs, byte[][] blobVersionedHashes)
     {
@@ -48,12 +65,4 @@ public interface IBlobProofsManager
     }
 
     bool ValidateProofs(ShardBlobNetworkWrapper blobs);
-
-    static IBlobProofsManager For
-        (ProofVersion version) => version switch
-        {
-            ProofVersion.V0 => BlobProofsManagerV0.Instance,
-            ProofVersion.V1 => BlobProofsManagerV1.Instance,
-            _ => throw new NotSupportedException(),
-        };
 }

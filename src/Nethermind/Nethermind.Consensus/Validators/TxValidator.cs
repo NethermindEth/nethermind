@@ -3,8 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using CkzgLib;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -253,7 +251,7 @@ public sealed class MempoolBlobTxValidator : ITxValidator
                 return TxErrorMessages.InvalidProofVersion;
             }
 
-            IBlobProofsManager proofsManager = IBlobProofsManager.For(wrapper.Version);
+            IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
 
             return !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
                    !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
