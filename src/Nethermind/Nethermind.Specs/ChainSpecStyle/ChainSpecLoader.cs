@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -181,7 +181,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             MergeForkIdTransition = chainSpecJson.Params.MergeForkIdTransition,
             TerminalTotalDifficulty = chainSpecJson.Params.TerminalTotalDifficulty,
             TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber,
-            BlobSchedule = new Dictionary<string, ChainSpecBlobCountJson>(chainSpecJson.Params.BlobSchedule, StringComparer.OrdinalIgnoreCase),
+            BlobSchedule = chainSpecJson.Params.BlobSchedule,
 
             Eip7594TransitionTimestamp = chainSpecJson.Params.Eip7594TransitionTimestamp,
         };
