@@ -116,7 +116,7 @@ public abstract class ConfigFileTestsBase
             string singleWildcardBase = singleWildcard.Replace("^", string.Empty);
             IEnumerable<string> result = groups.TryGetValue(singleWildcardBase, out IEnumerable<string>? value) ? value : Enumerable.Repeat(singleWildcardBase, 1);
 
-            if (singleWildcard.StartsWith("^"))
+            if (singleWildcard.StartsWith('^'))
             {
                 result = Configs.Except(result);
             }

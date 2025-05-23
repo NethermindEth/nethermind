@@ -129,7 +129,7 @@ namespace Nethermind.Core
         public AccountStruct ToStruct() => new(Nonce, Balance, StorageRoot, CodeHash);
     }
 
-    public readonly struct AccountStruct
+    public readonly struct AccountStruct : IEquatable<AccountStruct>
     {
         private static readonly AccountStruct _totallyEmpty = Account.TotallyEmpty.ToStruct();
         public static ref readonly AccountStruct TotallyEmpty => ref _totallyEmpty;
@@ -197,6 +197,14 @@ namespace Nethermind.Core
                     Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in CodeHash)) |
                     Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in _storageRoot))) == default;
             }
+        }
+
+        public bool Equals(AccountStruct other)
+        {
+            return _nonce == other.Nonce &&
+                   _balance == other.Balance &&
+                   CodeHash == other.CodeHash &&
+                   StorageRoot == other.StorageRoot;
         }
     }
 }

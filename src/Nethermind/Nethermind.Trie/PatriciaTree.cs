@@ -179,8 +179,7 @@ namespace Nethermind.Trie
                         {
                             path.AppendMut(i);
                             TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, i);
-                            Commit(committer, ref path, new NodeCommitInfo(childNode!, node, i),
-                                maxLevelForConcurrentCommit);
+                            Commit(committer, ref path, new NodeCommitInfo(childNode!, node, i), maxLevelForConcurrentCommit);
                             path.TruncateOne();
                         }
                         else
@@ -196,8 +195,7 @@ namespace Nethermind.Trie
                 {
                     Task CreateTaskForPath(TreePath childPath, TrieNode childNode, int idx) => Task.Run(() =>
                     {
-                        Commit(committer, ref childPath, new NodeCommitInfo(childNode!, node, idx),
-                            maxLevelForConcurrentCommit);
+                        Commit(committer, ref childPath, new NodeCommitInfo(childNode!, node, idx), maxLevelForConcurrentCommit);
                         committer.ReturnConcurrencyQuota();
                     });
 
@@ -218,8 +216,7 @@ namespace Nethermind.Trie
                             {
                                 path.AppendMut(i);
                                 TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, i);
-                                Commit(committer, ref path, new NodeCommitInfo(childNode!, node, i),
-                                    maxLevelForConcurrentCommit);
+                                Commit(committer, ref path, new NodeCommitInfo(childNode!, node, i), maxLevelForConcurrentCommit);
                                 path.TruncateOne();
                             }
                         }
@@ -250,14 +247,12 @@ namespace Nethermind.Trie
 
                 if (extensionChild.IsDirty)
                 {
-                    Commit(committer, ref path, new NodeCommitInfo(extensionChild, node, 0),
-                        maxLevelForConcurrentCommit);
+                    Commit(committer, ref path, new NodeCommitInfo(extensionChild, node, 0), maxLevelForConcurrentCommit);
                 }
                 else
                 {
                     if (_logger.IsTrace) TraceExtensionSkip(extensionChild);
                 }
-
                 path.TruncateMut(previousPathLength);
             }
 
@@ -278,8 +273,7 @@ namespace Nethermind.Trie
 
             [DoesNotReturn]
             [StackTraceHidden]
-            static void ThrowInvalidExtension() =>
-                throw new InvalidOperationException("An attempt to store an extension without a child.");
+            static void ThrowInvalidExtension() => throw new InvalidOperationException("An attempt to store an extension without a child.");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(TrieNode node, ref TreePath path, int i)
@@ -460,8 +454,7 @@ namespace Nethermind.Trie
 
             void Trace(in ReadOnlySpan<byte> rawKey, in CappedArray<byte> value)
             {
-                _logger.Trace(
-                    $"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
+                _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
             }
 
             [DoesNotReturn]
@@ -491,13 +484,11 @@ namespace Nethermind.Trie
             in CappedArray<byte> updateValue,
             in NibblePath updatePath,
             bool isUpdate,
-            bool ignoreMissingDelete = true,
             Hash256? startRootHash = null,
             bool isNodeRead = false)
         {
             TraverseContext traverseContext =
-                new(updatePath, ref updatePathTreePath, updateValue, isUpdate, ignoreMissingDelete,
-                    isNodeRead: isNodeRead);
+                new(updatePath, ref updatePathTreePath, updateValue, isUpdate, isNodeRead: isNodeRead);
 
             if (startRootHash is not null)
             {
@@ -529,9 +520,9 @@ namespace Nethermind.Trie
                     TreePath startingPath = TreePath.Empty;
                     ResolveNode(RootRef, in traverseContext, in startingPath);
                     if (_logger.IsTrace) TraceNode(in traverseContext);
-                    return ref RootRef.IsBranch
-                        ? ref TraverseBranches(RootRef, ref startingPath, traverseContext)
-                        : ref TraverseNode(RootRef, traverseContext, ref startingPath);
+                    return ref RootRef.IsBranch ?
+                        ref TraverseBranches(RootRef, ref startingPath, traverseContext) :
+                        ref TraverseNode(RootRef, traverseContext, ref startingPath);
                 }
             }
 
@@ -573,15 +564,13 @@ namespace Nethermind.Trie
             [StackTraceHidden]
             static void ThrowDecodingError(TrieNode node, in TreePath path, RlpException rlpException)
             {
-                var exception = new TrieNodeException($"Error when decoding node {node.Keccak}", path,
-                    node.Keccak ?? Keccak.Zero, rlpException);
+                var exception = new TrieNodeException($"Error when decoding node {node.Keccak}", path, node.Keccak ?? Keccak.Zero, rlpException);
                 exception = (TrieNodeException)ExceptionDispatchInfo.SetCurrentStackTrace(exception);
                 throw exception;
             }
         }
 
-        private ref readonly CappedArray<byte> TraverseNode(TrieNode node, scoped in TraverseContext traverseContext,
-            scoped ref TreePath path)
+        private ref readonly CappedArray<byte> TraverseNode(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
         {
             if (_logger.IsTrace) Trace(node, traverseContext);
 
@@ -603,8 +592,7 @@ namespace Nethermind.Trie
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(TrieNode node, in TraverseContext traverseContext)
             {
-                _logger.Trace(
-                    $"Traversing {node} to {(traverseContext.IsReadValue ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
+                _logger.Trace($"Traversing {node} to {(traverseContext.IsReadValue ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
             }
 
             [DoesNotReturn]
@@ -889,8 +877,7 @@ namespace Nethermind.Trie
                 => throw new InvalidOperationException($"An attempt to set a null node as a child of the {node}");
         }
 
-        private ref readonly CappedArray<byte> TraverseBranches(TrieNode node, scoped ref TreePath path,
-            TraverseContext traverseContext)
+        private ref readonly CappedArray<byte> TraverseBranches(TrieNode node, scoped ref TreePath path, TraverseContext traverseContext)
         {
             while (true)
             {
@@ -925,8 +912,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private ref readonly CappedArray<byte> TraverseLeaf(TrieNode node, scoped in TraverseContext traverseContext,
-            scoped ref TreePath path)
+        private ref readonly CappedArray<byte> TraverseLeaf(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
         {
             if (node.Key.IsNull)
             {
@@ -1153,8 +1139,7 @@ namespace Nethermind.Trie
             return ref traverseContext.UpdateValue;
         }
 
-        private ref readonly CappedArray<byte> ResolveBranchNode(TrieNode node,
-            scoped in TraverseContext traverseContext)
+        private ref readonly CappedArray<byte> ResolveBranchNode(TrieNode node, scoped in TraverseContext traverseContext)
         {
             // all these cases when the path ends on the branch assume a trie with values in the branches
             // which is not possible within the Ethereum protocol which has keys of the same length (64)
@@ -1163,7 +1148,6 @@ namespace Nethermind.Trie
             {
                 return ref node.FullRlp;
             }
-
             if (traverseContext.IsReadValue)
             {
                 return ref node.ValueRef;
