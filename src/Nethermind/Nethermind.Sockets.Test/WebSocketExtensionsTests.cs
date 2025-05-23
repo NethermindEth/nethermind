@@ -250,4 +250,11 @@ public class WebSocketExtensionsTests
 
         await webSocketsClient.ReceiveLoopAsync(cts.Token);
     }
+
+    [Test]
+    public void Correct_isnull_on_result()
+    {
+        Assert.That(new ReceiveResult().IsNull, Is.False);
+        Assert.That(default(ReceiveResult).IsNull, Is.True);
+    }
 }
