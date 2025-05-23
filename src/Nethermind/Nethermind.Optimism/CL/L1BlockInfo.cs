@@ -8,10 +8,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Int256;
-using Nethermind.Optimism.CL.L1Bridge;
+using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Specs.Forks;
 
-namespace Nethermind.Optimism.CL.Derivation;
+namespace Nethermind.Optimism.CL;
 
 public class L1BlockInfo
 {
