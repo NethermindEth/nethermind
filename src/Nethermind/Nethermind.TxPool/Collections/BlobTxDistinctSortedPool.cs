@@ -35,7 +35,8 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     public bool TryGetBlobAndProofV1(
        byte[] requestedBlobVersionedHash,
        [NotNullWhen(true)] out byte[]? blob,
-       [NotNullWhen(true)] out byte[][]? proof) => TryGetBlobAndProof<byte[][]>(requestedBlobVersionedHash, out blob, out proof, ProofVersion.V1, (proofs, index) => [.. proofs.Slice(Ckzg.CellsPerExtBlob * index, Ckzg.CellsPerExtBlob)]);
+       [NotNullWhen(true)] out byte[][]? proof) => TryGetBlobAndProof(requestedBlobVersionedHash, out blob, out proof, ProofVersion.V1, (proofs, index)
+           => [.. proofs.Slice(Ckzg.CellsPerExtBlob * index, Ckzg.CellsPerExtBlob)]);
 
     private bool TryGetBlobAndProof<TProof>(
         byte[] requestedBlobVersionedHash,
