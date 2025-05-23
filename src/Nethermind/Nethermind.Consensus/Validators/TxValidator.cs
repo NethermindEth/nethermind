@@ -30,11 +30,13 @@ public sealed class TxValidator : ITxValidator
             NonSetCodeFieldsTxValidator.Instance,
             GasLimitCapTxValidator.Instance
         ]));
+
+        var expectedChainIdTxValidator = new ExpectedChainIdTxValidator(chainId);
         RegisterValidator(TxType.AccessList, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip2930Enabled),
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
-            new ExpectedChainIdTxValidator(chainId),
+            expectedChainIdTxValidator,
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
@@ -44,7 +46,7 @@ public sealed class TxValidator : ITxValidator
             new ReleaseSpecTxValidator(static spec => spec.IsEip1559Enabled),
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
-            new ExpectedChainIdTxValidator(chainId),
+            expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
@@ -55,7 +57,7 @@ public sealed class TxValidator : ITxValidator
             new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled),
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
-            new ExpectedChainIdTxValidator(chainId),
+            expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
             BlobFieldsTxValidator.Instance,
@@ -67,7 +69,7 @@ public sealed class TxValidator : ITxValidator
             new ReleaseSpecTxValidator(static spec => spec.IsEip7702Enabled),
             IntrinsicGasTxValidator.Instance,
             SignatureTxValidator.Instance,
-            new ExpectedChainIdTxValidator(chainId),
+            expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
