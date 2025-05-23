@@ -11,16 +11,18 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>>
+public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?>
 {
     private const int MaxRequest = 128;
 
-    public Task<ResultWrapper<IEnumerable<BlobAndProofV2>>> HandleAsync(byte[][] request)
+    private static readonly Task<ResultWrapper<IEnumerable<BlobAndProofV2>?>> NotFound = Task.FromResult(ResultWrapper<IEnumerable<BlobAndProofV2>?>.Success(null));
+
+    public Task<ResultWrapper<IEnumerable<BlobAndProofV2>?>> HandleAsync(byte[][] request)
     {
         if (request.Length > MaxRequest)
         {
             var error = $"The number of requested blobs must not exceed {MaxRequest}";
-            return ResultWrapper<IEnumerable<BlobAndProofV2>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            return ResultWrapper<IEnumerable<BlobAndProofV2>?>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
         Metrics.GetBlobsRequestsTotal += request.Length;
@@ -49,12 +51,12 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumer
         }
 
         Metrics.GetBlobsRequestsSuccessTotal++;
-        return ResultWrapper<IEnumerable<BlobAndProofV2>>.Success(response.ToList());
+        return ResultWrapper<IEnumerable<BlobAndProofV2>?>.Success(response.ToList());
     }
 
-    private ResultWrapper<IEnumerable<BlobAndProofV2>> ReturnEmptyArray()
+    private Task<ResultWrapper<IEnumerable<BlobAndProofV2>?>> ReturnEmptyArray()
     {
         Metrics.GetBlobsRequestsFailureTotal++;
-        return ResultWrapper<IEnumerable<BlobAndProofV2>>.Success([]);
+        return NotFound;
     }
 }
