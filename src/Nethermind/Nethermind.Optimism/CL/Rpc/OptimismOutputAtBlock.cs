@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Optimism.CL;
 
@@ -25,6 +26,7 @@ public sealed record OptimismOutputV0
     public required Hash256 MessagePasserStorageRoot { get; init; }
     public required Hash256 BlockHash { get; init; }
 
+    [SkipLocalsInit]
     public Hash256 Root()
     {
         Span<byte> buffer = stackalloc byte[128];
