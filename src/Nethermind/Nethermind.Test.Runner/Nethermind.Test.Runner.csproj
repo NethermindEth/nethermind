@@ -9,7 +9,7 @@
     <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
     <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
     <ServerGarbageCollection>true</ServerGarbageCollection>
-    <StartupObject>Nethermind.Test.Runner.Program</StartupObject>
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
   </PropertyGroup>
 
   <ItemGroup>
