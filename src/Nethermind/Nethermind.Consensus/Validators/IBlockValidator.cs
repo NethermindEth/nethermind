@@ -11,4 +11,5 @@ public interface IBlockValidator : IHeaderValidator, IWithdrawalValidator
     bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error);
     bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error, bool validateHashes = true);
     bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error);
+    bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? errorMessage);
 }

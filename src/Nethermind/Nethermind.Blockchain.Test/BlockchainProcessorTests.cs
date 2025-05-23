@@ -87,9 +87,8 @@ public class BlockchainProcessorTests
                         Hash256 hash = suggestedBlock.Hash!;
                         if (!_allowed.Contains(hash))
                         {
-                            if (_allowedToFail.Contains(hash))
+                            if (_allowedToFail.Remove(hash))
                             {
-                                _allowedToFail.Remove(hash);
                                 BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), []));
                                 throw new InvalidBlockException(suggestedBlock, "allowed to fail");
                             }

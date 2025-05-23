@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
@@ -35,9 +36,9 @@ public class ExecutionEngineManager(
 
     private readonly SemaphoreSlim _semaphore = new(1, 1);
 
-    public async Task<bool> ProcessNewDerivedPayloadAttributes(PayloadAttributesRef payloadAttributes)
+    public async Task<BlockId?> ProcessNewDerivedPayloadAttributes(PayloadAttributesRef payloadAttributes, CancellationToken token)
     {
-        await _semaphore.WaitAsync();
+        await _semaphore.WaitAsync(token);
         try
         {
             if (_currentHead.Number >= payloadAttributes.Number)
@@ -47,32 +48,51 @@ public class ExecutionEngineManager(
                 if (_derivedBlocksVerifier.ComparePayloadAttributes(
                         actualBlock.PayloadAttributes, payloadAttributes.PayloadAttributes, payloadAttributes.Number))
                 {
-                    BlockId newFinalized = BlockId.FromL2Block(actualBlock);
-                    return await SendForkChoiceUpdated(_currentHead, newFinalized, newFinalized);
+                    BlockId newSafe = BlockId.FromL2Block(actualBlock);
+                    return await SendForkChoiceUpdated(_currentHead, _currentFinalizedHead, newSafe) ? newSafe : null;
                 }
 
-                return false;
+                return null;
             }
 
             if (logger.IsInfo) logger.Info($"Derived payload. Number: {payloadAttributes.Number}");
             ExecutionPayloadV3? executionPayload = await BuildBlockWithPayloadAttributes(payloadAttributes);
             if (executionPayload is null)
             {
-                return false;
+                return null;
             }
 
             BlockId newHead = BlockId.FromExecutionPayload(executionPayload);
-            return await SendForkChoiceUpdated(newHead, newHead, newHead);
+            return await SendForkChoiceUpdated(newHead, _currentFinalizedHead, newHead) ? newHead : null;
         }
         finally
         {
             _semaphore.Release();
         }
     }
-
-    public async Task<P2PPayloadStatus> ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayload)
+    public async Task<bool> FinalizeBlock(BlockId finalizedBlock, CancellationToken token)
     {
-        await _semaphore.WaitAsync();
+        if (logger.IsInfo) logger.Info($"Finalizing L2 Block {finalizedBlock}");
+        await _semaphore.WaitAsync(token);
+        try
+        {
+            return await SendForkChoiceUpdated(_currentHead, finalizedBlock, _currentSafeHead);
+        }
+        catch (Exception e)
+        {
+            if (logger.IsWarn) logger.Warn($"Exception during block finalization: {e}");
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+
+        return false;
+    }
+
+    public async Task<P2PPayloadStatus> ProcessNewP2PExecutionPayload(ExecutionPayloadV3 executionPayload, CancellationToken token)
+    {
+        await _semaphore.WaitAsync(token);
         try
         {
             if (_currentHead.Number >= (ulong)executionPayload.BlockNumber)
@@ -193,9 +213,9 @@ public class ExecutionEngineManager(
     private async Task<bool> SendForkChoiceUpdated(
         BlockId headBlock, BlockId finalizedBlock, BlockId safeBlock)
     {
-        bool shouldUpdate = _currentHead.IsNewerThan(headBlock) ||
-                            _currentFinalizedHead.IsNewerThan(finalizedBlock) ||
-                            _currentSafeHead.IsNewerThan(safeBlock);
+        bool shouldUpdate = _currentHead.IsOlderThan(headBlock) ||
+                            _currentFinalizedHead.IsOlderThan(finalizedBlock) ||
+                            _currentSafeHead.IsOlderThan(safeBlock);
 
         if (!shouldUpdate)
         {
