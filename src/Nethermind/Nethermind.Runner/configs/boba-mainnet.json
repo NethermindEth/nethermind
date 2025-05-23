@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/worldchain-sepolia.json.zst",
-    "GenesisHash": "0xf1deb67ee953f94d8545d2647918687fa8ba1f30fa6103771f11b7c483984070",
-    "BaseDbPath": "nethermind_db/worldchain-sepolia",
-    "LogFileName": "worldchain-sepolia.log"
+    "ChainSpecPath": "chainspec/boba-mainnet.json.zst",
+    "GenesisHash": "0x0a555516317be2719d9befcbcca5f5516b6b7ce0f05b759f5a166b697a8a0fbd",
+    "BaseDbPath": "nethermind_db/boba-mainnet",
+    "LogFileName": "boba-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -12,9 +12,7 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "FastSyncCatchUpHeightDelta": "10000000000",
-    "PivotNumber": 13630000,
-    "PivotHash": "0xf6f805c4aa2118f0a8da7ad7daf40d799c03697cfcc0066d1bb1aa5a1c5ea248"
+    "FastSyncCatchUpHeightDelta": "10000000000"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -34,6 +32,6 @@
     "Enabled": true
   },
   "Optimism": {
-    "SequencerUrl": "https://worldchain-sepolia-sequencer.g.alchemy.com"
+    "SequencerUrl": "https://mainnet.boba.network"
   }
 }
