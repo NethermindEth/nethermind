@@ -9,7 +9,7 @@ namespace Nethermind.Evm;
 
 public static class BlobGasCalculator
 {
-    private const int FloorExecutionGasEip7918 = Transaction.BaseTxGasCost;
+    public const int FloorExecutionGasEip7918 = Transaction.BaseTxGasCost;
 
     public static ulong CalculateBlobGas(int blobCount) =>
         (ulong)blobCount * Eip4844Constants.GasPerBlob;

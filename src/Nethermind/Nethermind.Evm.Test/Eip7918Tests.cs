@@ -16,66 +16,41 @@ public class Eip7918Tests : VirtualMachineTestsBase
     [Test]
     [TestCaseSource(nameof(GenerateTestCases))]
     public void Excess_blob_gas_is_calculated_properly(
-        (ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas) testCase,
-        IReleaseSpec spec,
-        bool areBlobsEnabled)
+        (ulong parentExcessBlobGas, int parentBlobsCount, ulong parentBaseFee, ulong expectedExcessBlobGas) testCase,
+        IReleaseSpec spec)
     {
         BlockHeader parentHeader = Build.A.BlockHeader
-            .WithBlobGasUsed(BlobGasCalculator.CalculateBlobGas(testCase.parentBlobsCount))
-            .WithExcessBlobGas(testCase.parentExcessBlobGas).TestObject;
+			.WithBlobGasUsed(BlobGasCalculator.CalculateBlobGas(testCase.parentBlobsCount))
+			.WithExcessBlobGas(testCase.parentExcessBlobGas)
+			.WithBaseFee(testCase.parentBaseFee).TestObject;
 
         Assert.That(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec),
-            Is.EqualTo(areBlobsEnabled ? testCase.expectedExcessBlobGas : null));
+            Is.EqualTo(testCase.expectedExcessBlobGas));
     }
 
     private static IEnumerable<TestCaseData> GenerateTestCases()
     {
-        (IReleaseSpec Instance, bool)[] specs =
-        [
-            (Homestead.Instance, false),
-            (Frontier.Instance, false),
-            (SpuriousDragon.Instance, false),
-            (TangerineWhistle.Instance, false),
-            (Byzantium.Instance, false),
-            (Constantinople.Instance, false),
-            (ConstantinopleFix.Instance, false),
-            (Istanbul.Instance, false),
-            (MuirGlacier.Instance, false),
-            (Berlin.Instance, false),
-            (GrayGlacier.Instance, false),
-            (Shanghai.Instance, false),
-            (Cancun.Instance, true),
-            (Prague.Instance, true)
-        ];
+        IReleaseSpec[] specs = [Osaka.Instance];
 
-        foreach ((IReleaseSpec spec, bool areBlobsEnabled) in specs)
+        foreach (IReleaseSpec spec in specs)
         {
-            foreach ((ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas) testCase in ExcessBlobGasTestCaseSource(spec))
+            foreach ((ulong parentExcessBlobGas, int parentBlobsCount, ulong parentBaseFee, ulong expectedExcessBlobGas) testCase in ExcessBlobGasTestCaseSource(spec))
             {
-                yield return new TestCaseData(testCase, spec, areBlobsEnabled)
+                yield return new TestCaseData(testCase, spec)
                     .SetName($"ExcessBlobGasTest_{spec.GetType().Name}_{testCase}");
             }
         }
     }
 
-    private static IEnumerable<(ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas)>
+    private static IEnumerable<(ulong parentExcessBlobGas, int parentBlobsCount, ulong parentBaseFee, ulong expectedExcessBlobGas)>
         ExcessBlobGasTestCaseSource(IReleaseSpec spec)
     {
-        yield return (0, 0, 0);
-        yield return (0, (int)spec.TargetBlobCount - 1, 0);
-        yield return (0, (int)spec.TargetBlobCount, 0);
-        yield return (100000, (int)spec.TargetBlobCount, 100000);
-        yield return (0, (int)spec.TargetBlobCount + 1, Eip4844Constants.GasPerBlob * 1);
-        yield return (spec.GetTargetBlobGasPerBlock(), 1, Eip4844Constants.GasPerBlob * 1);
-        yield return (spec.GetTargetBlobGasPerBlock(), 0, 0);
-        yield return (spec.GetTargetBlobGasPerBlock(), 2, Eip4844Constants.GasPerBlob * 2);
-        yield return (spec.GetMaxBlobGasPerBlock(), 1, (spec.MaxBlobCount + 1 - spec.TargetBlobCount) * Eip4844Constants.GasPerBlob);
-        yield return (1, (int)spec.TargetBlobCount, 1);
+        yield return (spec.GetTargetBlobGasPerBlock() + 1, 0, 1_000_000_000, (spec.GetTargetBlobGasPerBlock() + 1) / 3);
         yield return (
-            spec.GetMaxBlobGasPerBlock(),
-            (int)spec.MaxBlobCount,
-            (spec.MaxBlobCount * 2 - spec.TargetBlobCount) * Eip4844Constants.GasPerBlob
-        );
+			spec.GetTargetBlobGasPerBlock(),
+			(int)spec.TargetBlobCount,
+			1_000_000_000,
+			2 * spec.GetTargetBlobGasPerBlock() / 3);
+        yield return (spec.GetTargetBlobGasPerBlock() + 1, 0, 1, 1);
     }
-
 }
