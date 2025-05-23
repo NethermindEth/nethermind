@@ -178,8 +178,10 @@ public readonly ref struct NibblePath
                 byteLength += 1;
             }
 
-            ReadOnlySpan<byte> leftSpan = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref left, position), byteLength);
-            ReadOnlySpan<byte> rightSpan = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref right, position), byteLength);
+            ReadOnlySpan<byte> leftSpan =
+                MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref left, position), byteLength);
+            ReadOnlySpan<byte> rightSpan =
+                MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref right, position), byteLength);
             var divergence = leftSpan.CommonPrefixLength(rightSpan);
 
             position += divergence * 2;
@@ -292,9 +294,6 @@ public readonly ref struct NibblePath
                 // Last nibble already consumed, reduce the length
                 length -= 1;
             }
-
-            if (length == 0)
-                return true;
 
             Debug.Assert(length % 2 == 0);
 
@@ -880,7 +879,7 @@ public readonly ref struct NibblePath
             int i = 0;
             for (; i < length; i++)
             {
-                if (GetAt(ref a, i, oddA) !=  GetAt(ref b, i, oddB))
+                if (GetAt(ref a, i, oddA) != GetAt(ref b, i, oddB))
                 {
                     break;
                 }
