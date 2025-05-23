@@ -24,7 +24,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
         => comparer.GetBlobReplacementComparer();
 
-    public bool TryGetBlobAndProof(byte[] requestedBlobVersionedHash,
+    public bool TryGetBlobAndProofV0(byte[] requestedBlobVersionedHash,
         [NotNullWhen(true)] out byte[]? blob,
         [NotNullWhen(true)] out byte[]? proof)
     {
@@ -59,7 +59,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return false;
     }
 
-    public bool TryGetBlobAndProofV2(byte[] requestedBlobVersionedHash,
+    public bool TryGetBlobAndProofV1(byte[] requestedBlobVersionedHash,
         [NotNullWhen(true)] out byte[]? blob,
         [NotNullWhen(true)] out byte[][]? cellProofs)
     {

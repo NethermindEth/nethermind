@@ -36,22 +36,31 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumer
             return ReturnEmptyArray();
         }
 
-        using ArrayPoolList<BlobAndProofV2> response = new(request.Length);
-        foreach (byte[] requestedBlobVersionedHash in request)
-        {
-            if (txPool.TryGetBlobAndProofV2(requestedBlobVersionedHash, out byte[]? blob, out byte[][]? cellProofs))
-            {
-                response.Add(new BlobAndProofV2(blob, cellProofs));
-            }
-            else
-            {
-                // fail if we were not able to collect full blob data
-                return ReturnEmptyArray();
-            }
-        }
+        ArrayPoolList<BlobAndProofV2> response = new(request.Length);
 
-        Metrics.GetBlobsRequestsSuccessTotal++;
-        return ResultWrapper<IEnumerable<BlobAndProofV2>?>.Success(response.ToList());
+        try
+        {
+            foreach (byte[] requestedBlobVersionedHash in request)
+            {
+                if (txPool.TryGetBlobAndProofV1(requestedBlobVersionedHash, out byte[]? blob, out byte[][]? cellProofs))
+                {
+                    response.Add(new BlobAndProofV2(blob, cellProofs));
+                }
+                else
+                {
+                    // fail if we were not able to collect full blob data
+                    response.Dispose();
+                    return ReturnEmptyArray();
+                }
+            }
+
+            Metrics.GetBlobsRequestsSuccessTotal++;
+            return ResultWrapper<IEnumerable<BlobAndProofV2>?>.Success(response.ToList());
+        }
+        catch
+        {
+            response.Dispose();
+        }
     }
 
     private Task<ResultWrapper<IEnumerable<BlobAndProofV2>?>> ReturnEmptyArray()

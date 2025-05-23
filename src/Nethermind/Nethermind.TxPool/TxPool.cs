@@ -205,13 +205,13 @@ namespace Nethermind.TxPool
         public bool TryGetBlobAndProof(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof)
-            => _blobTransactions.TryGetBlobAndProof(blobVersionedHash, out blob, out proof);
+            => _blobTransactions.TryGetBlobAndProofV0(blobVersionedHash, out blob, out proof);
 
 
-        public bool TryGetBlobAndProofV2(byte[] blobVersionedHash,
+        public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[][]? cellProofs)
-            => _blobTransactions.TryGetBlobAndProofV2(blobVersionedHash, out blob, out cellProofs);
+            => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
 
         public int GetBlobCounts(byte[][] blobVersionedHashes)
             => _blobTransactions.GetBlobCounts(blobVersionedHashes);
@@ -790,10 +790,8 @@ namespace Nethermind.TxPool
                             }
                         }
                     }
-                    else
-                    {
-                        UpdateGasBottleneck(transactions, currentNonce, balance, lastElement, updateTx);
-                    }
+
+                    UpdateGasBottleneck(transactions, currentNonce, balance, lastElement, updateTx);
                 }
             }
         }

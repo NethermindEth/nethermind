@@ -819,7 +819,7 @@ namespace Nethermind.TxPool.Test
 
                     for (int j = 0; j < 100; j++)
                     {
-                        blobPool.TryGetBlobAndProof(expectedBlobVersionedHash.ToBytes(), out _, out _).Should().BeTrue();
+                        blobPool.TryGetBlobAndProofV0(expectedBlobVersionedHash.ToBytes(), out _, out _).Should().BeTrue();
                     }
 
                     // removing 50% of txs
