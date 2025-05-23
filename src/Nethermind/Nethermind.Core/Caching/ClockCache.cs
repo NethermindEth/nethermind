@@ -58,11 +58,15 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
 
         if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
         {
-            _cacheMap[key] = new(val, ov.Offset);
-            MarkAccessed(ov.Offset);
-            return false;
+            // Fast path: atomic update using TryUpdate
+            if (_cacheMap.TryUpdate(key, new(val, ov.Offset), comparisonValue: ov))
+            {
+                MarkAccessed(ov.Offset);
+                return false;
+            }
         }
 
+        // Fallback to slow path with lock
         return SetSlow(key, val);
     }
 
@@ -167,9 +171,12 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
     }
 
     [StructLayout(LayoutKind.Auto)]
-    private readonly struct LruCacheItem(TValue v, int offset)
+    private readonly struct LruCacheItem(TValue v, int offset) : IEquatable<LruCacheItem>
     {
         public readonly TValue Value = v;
         public readonly int Offset = offset;
+
+        public bool Equals(LruCacheItem other)
+            => other.Offset == Offset && EqualityComparer<TValue>.Default.Equals(other.Value, Value);
     }
 }
