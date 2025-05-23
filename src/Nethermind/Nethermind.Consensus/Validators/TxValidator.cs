@@ -350,7 +350,7 @@ public sealed class GasLimitCapTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
         long gasLimitCap = Eip7825Constants.GetTxGasLimitCap(releaseSpec);
-        return releaseSpec.IsEip7825Enabled && transaction.GasLimit > gasLimitCap ?
+        return transaction.GasLimit > gasLimitCap ?
             TxErrorMessages.TxGasLimitCapExceeded(transaction.GasLimit, gasLimitCap) : ValidationResult.Success;
     }
 }
