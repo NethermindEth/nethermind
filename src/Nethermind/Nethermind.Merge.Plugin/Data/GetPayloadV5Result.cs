@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class GetPayloadV5Result(Block block, UInt256 blockFees, BlobsBundleV2 blobsBundle, byte[][] executionRequests) : GetPayloadV4Result(block, blockFees, null!, executionRequests)
+public class GetPayloadV5Result(Block block, UInt256 blockFees, BlobsBundleV2 blobsBundle, byte[][] executionRequests, bool shouldOverrideBuilder) : GetPayloadV4Result(block, blockFees, null!, executionRequests, shouldOverrideBuilder)
 {
     public new BlobsBundleV2 BlobsBundle { get; } = blobsBundle;
 

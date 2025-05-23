@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class GetPayloadV3Result<TVersionedExecutionPayload>(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle)
+public class GetPayloadV3Result<TVersionedExecutionPayload>(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle, bool shouldOverrideBuilder)
     : GetPayloadV2Result<TVersionedExecutionPayload>(block, blockFees)
     where TVersionedExecutionPayload : ExecutionPayloadV3, IExecutionPayloadParams, IExecutionPayloadFactory<TVersionedExecutionPayload>
 {
@@ -19,9 +19,9 @@ public class GetPayloadV3Result<TVersionedExecutionPayload>(Block block, UInt256
         return spec.IsEip4844Enabled && !spec.IsEip7623Enabled;
     }
 
-    public bool ShouldOverrideBuilder { get; init; }
+    public bool ShouldOverrideBuilder { get; } = shouldOverrideBuilder;
     public override string ToString() =>
         $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}}}";
 }
 
-public class GetPayloadV3Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle) : GetPayloadV3Result<ExecutionPayloadV3>(block, blockFees, blobsBundle);
+public class GetPayloadV3Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle, bool shouldOverrideBuilder) : GetPayloadV3Result<ExecutionPayloadV3>(block, blockFees, blobsBundle, shouldOverrideBuilder);

@@ -1,16 +1,16 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices;
-using CkzgLib;
-using DotNetty.Common.Utilities;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.TxPool.Collections;
 
@@ -24,11 +24,14 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
         => comparer.GetBlobReplacementComparer();
 
-    public bool TryGetBlobAndProofV0(byte[] requestedBlobVersionedHash,
+    public bool TryGetBlobAndProof<TProof>(
+        byte[] requestedBlobVersionedHash,
         [NotNullWhen(true)] out byte[]? blob,
-        [NotNullWhen(true)] out byte[]? proof)
+        [NotNullWhen(true)] out TProof? proof,
+        ProofVersion requiredVersion,
+        Func<byte[][], int, TProof> proofSelector)
     {
-        using var lockRelease = Lock.Acquire();
+        using McsLock.Disposable lockRelease = Lock.Acquire();
 
         if (BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes))
         {
@@ -41,12 +44,12 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                         if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
                             && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
                         {
-                            if (wrapper is not { Version: ProofVersion.V0 })
+                            if (wrapper is null || wrapper.Version != requiredVersion)
                             {
                                 break;
                             }
                             blob = wrapper.Blobs[indexOfBlob];
-                            proof = wrapper.Proofs[indexOfBlob];
+                            proof = proofSelector(wrapper.Proofs, indexOfBlob)!;
                             return true;
                         }
                     }
@@ -56,42 +59,6 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
         blob = default;
         proof = default;
-        return false;
-    }
-
-    public bool TryGetBlobAndProofV1(byte[] requestedBlobVersionedHash,
-        [NotNullWhen(true)] out byte[]? blob,
-        [NotNullWhen(true)] out byte[][]? cellProofs)
-    {
-        using var lockRelease = Lock.Acquire();
-
-        if (BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes))
-        {
-            foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
-            {
-                if (TryGetValueNonLocked(hash, out Transaction? blobTx) && blobTx.BlobVersionedHashes?.Length > 0)
-                {
-                    for (int indexOfBlob = 0; indexOfBlob < blobTx.BlobVersionedHashes.Length; indexOfBlob++)
-                    {
-                        if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
-                            && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
-                        {
-                            if (wrapper is not { Version: ProofVersion.V1 })
-                            {
-                                break;
-                            }
-
-                            blob = wrapper.Blobs[indexOfBlob];
-                            cellProofs = wrapper.Proofs.Slice(Ckzg.CellsPerExtBlob * indexOfBlob, Ckzg.CellsPerExtBlob);
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-
-        blob = default;
-        cellProofs = default;
         return false;
     }
 

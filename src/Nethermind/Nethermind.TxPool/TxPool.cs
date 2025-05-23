@@ -202,16 +202,20 @@ namespace Nethermind.TxPool
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
+
+        internal static byte[] SelectProofV0(byte[][] proofs, int index) => proofs[index];
+
         public bool TryGetBlobAndProof(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof)
-            => _blobTransactions.TryGetBlobAndProofV0(blobVersionedHash, out blob, out proof);
+            => _blobTransactions.TryGetBlobAndProof(blobVersionedHash, out blob, out proof, ProofVersion.V0, SelectProofV0);
 
+        internal static byte[][] SelectProofV1(byte[][] proofs, int index) => [.. proofs.Slice(Ckzg.CellsPerExtBlob * index, Ckzg.CellsPerExtBlob)];
 
         public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[][]? cellProofs)
-            => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
+            => _blobTransactions.TryGetBlobAndProof(blobVersionedHash, out blob, out cellProofs, ProofVersion.V1, SelectProofV1);
 
         public int GetBlobCounts(byte[][] blobVersionedHashes)
             => _blobTransactions.GetBlobCounts(blobVersionedHashes);

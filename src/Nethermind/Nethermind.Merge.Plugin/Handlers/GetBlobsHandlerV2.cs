@@ -60,6 +60,7 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<byte[][], IEnumer
         catch
         {
             response.Dispose();
+            throw;
         }
     }
 
