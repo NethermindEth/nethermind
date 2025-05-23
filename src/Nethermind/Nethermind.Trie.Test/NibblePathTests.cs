@@ -278,9 +278,9 @@ public class NibblePathTests
         var length = path.Length;
 
         NibblePath a = path.SliceTo(length - 1);
-        NibblePath b = path.SliceFrom(1);
+        NibblePath.Key b = (NibblePath.Key)path.SliceFrom(1);
 
-        a.Length.Should().Be(b.Length);
+        a.Length.Should().Be((byte)b.Length);
         a.Equals(b).Should().BeTrue();
     }
 
@@ -288,9 +288,8 @@ public class NibblePathTests
     public void Equals_oddity_aligned()
     {
         var a = NibblePath.FromKey([0x12, 0x34]);
-        var b = NibblePath.FromKey([0x12, 0x34]);
+        NibblePath.Key b = (NibblePath.Key)NibblePath.FromKey([0x12, 0x34]);
 
         a.Equals(b).Should().BeTrue();
     }
-
 }

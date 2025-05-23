@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -140,73 +139,83 @@ public readonly ref struct NibblePath
 
     public int CommonPrefixLength(in NibblePath other)
     {
-        int at = 0;
-
         var length = Math.Min(other.Length, Length);
         if (length == 0)
         {
             // special case, empty is different at zero
-            goto Result;
+            return 0;
         }
 
-        int left = 0;
-        int right = 0;
-
-        const int one = 1;
-        const int two = 2;
-
-        // special handling for 1, 2, 3 nibbles at the beginning end
-        if ((length & (one | two)) != 0)
+        if (_odd == other._odd)
         {
-            if ((length & one) != 0)
-            {
-                left |= GetAt(0) << (NibbleShift * 3);
-                right |= other.GetAt(0) << (NibbleShift * 3);
+            // The most common case in Trie.
+            // As paths will start on the same level, the odd will be encoded same way for them.
+            // This means that an unrolled version can be used.
 
-                at++;
+            ref var left = ref _span;
+            ref var right = ref other._span;
+
+            var position = 0;
+            var isOdd = (_odd & OddBit) != 0;
+            if (isOdd)
+            {
+                // This means that the first byte is not a whole byte
+                if ((left & NibbleMask) != (right & NibbleMask))
+                {
+                    // First nibble differs
+                    return 0;
+                }
+
+                // The first nibbles are equal. Let's start comparing at next byte
+                position = 1;
             }
 
-            if ((length & two) != 0)
+            // Byte length is half of the nibble length
+            var byteLength = length / 2;
+            if (!isOdd && (length & 1) > 0)
             {
-                left |= ((GetAt(at) << NibbleShift) | GetAt(at + 1)) << (NibbleShift * (3 - at));
-                right |= ((other.GetAt(at) << NibbleShift) | other.GetAt(at + 1)) << (NibbleShift * (3 - at));
-
-                at += 2;
+                // If not isOdd, but the length is odd, then we need to add one more byte
+                byteLength += 1;
             }
-        }
 
-        var xor = left ^ right;
-        if (xor != 0)
-        {
-            at += BitOperations.LeadingZeroCount((uint)xor) / NibbleShift;
-            goto Result;
-        }
+            ReadOnlySpan<byte> leftSpan = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref left, position), byteLength);
+            ReadOnlySpan<byte> rightSpan = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref right, position), byteLength);
+            var divergence = leftSpan.CommonPrefixLength(rightSpan);
 
-        Debug.Assert((length - at) % 4 == 0);
-
-        for (; at < (length - 4); at += 4)
-        {
-            left = GetAt(at) << (NibbleShift * 3) |
-                   GetAt(at + 1) << (NibbleShift * 2) |
-                   GetAt(at + 2) << (NibbleShift * 1) |
-                   GetAt(at + 3) << (NibbleShift * 0);
-
-
-            right = other.GetAt(at) << (NibbleShift * 3) |
-                    other.GetAt(at + 1) << (NibbleShift * 2) |
-                    other.GetAt(at + 2) << (NibbleShift * 1) |
-                    other.GetAt(at + 3) << (NibbleShift * 0);
-
-            xor = left ^ right;
-            if (xor != 0)
+            position += divergence * 2;
+            if (divergence == leftSpan.Length)
             {
-                at += BitOperations.LeadingZeroCount((uint)xor) / NibbleShift;
-                goto Result;
+                // Remove the extra nibble that made it up to a full byte, if added.
+                return Math.Min(length, position);
             }
+
+            // Check which nibble is different
+            if ((leftSpan[divergence] & 0xf0) == (rightSpan[divergence] & 0xf0))
+            {
+                // Are equal, so the next nibble is the one that differs
+                return position + 1;
+            }
+
+            return position;
         }
 
-    Result:
-        return at;
+        return Fallback(in this, in other, length);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static int Fallback(in NibblePath @this, in NibblePath other, int length)
+        {
+            // fallback, the slow path version to make the method work in any case
+            int i = 0;
+            for (; i < length; i++)
+            {
+                if (@this.GetAt(i) != other.GetAt(i))
+                {
+                    return i;
+                }
+            }
+
+            return length;
+        }
     }
 
     public override string ToString()
@@ -231,18 +240,14 @@ public readonly ref struct NibblePath
 
     private static readonly char[] Hex = "0123456789ABCDEF".ToArray();
 
-
-    public bool Equals(Key key) => Equals(key.AsPath());
-
-    public bool Equals(in NibblePath other)
+    public bool Equals(Key other)
     {
         if (other.Length != Length)
             return false;
 
         // Same length
-
         ref var left = ref _span;
-        ref var right = ref other._span;
+        ref var right = ref other.Span;
         var length = Length;
 
         if (Unsafe.AreSame(ref left, ref right))
@@ -251,11 +256,12 @@ public readonly ref struct NibblePath
             return true;
         }
 
-        if (other._odd == _odd)
-        {
-            // Oddity is the same
+        var odd = other.Odd;
 
-            if (other._odd == OddBit)
+        if (odd == _odd)
+        {
+            // Oddity is the same, check if they are odd or even
+            if (odd == OddBit)
             {
                 // This means that the first byte represents just one nibble
                 if (((left ^ right) & NibbleMask) > 0)
@@ -298,44 +304,22 @@ public readonly ref struct NibblePath
             return leftSpan.SequenceEqual(rightSpan);
         }
 
-        // Not aligned fallback. Should not occur
-        return Fallback(in this, in other);
+        // Not aligned fallback. Should not occur on leaf level.
+        return Fallback(in this, other);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static bool Fallback(in NibblePath @this, in NibblePath other)
+        static bool Fallback(in NibblePath @this, Key other)
         {
             // fallback, the slow path version to make the method work in any case
             for (int i = 0; i < @this.Length; i++)
             {
-                if (@this.GetAt(i) != other.GetAt(i))
+                if (@this.GetAt(i) != other[i])
                 {
                     return false;
                 }
             }
 
             return true;
-        }
-    }
-
-    private ref struct NibbleAccessor
-    {
-        private ref byte _b;
-        private byte _odd;
-
-        public NibbleAccessor(ref byte b, byte odd)
-        {
-            _b = ref b;
-            _odd = odd;
-        }
-
-        public byte GetAndMove()
-        {
-            var result = (byte)((_b >> (1 - _odd)) & NibbleMask);
-
-            _odd = (byte)(1 - _odd);
-            _b = ref Unsafe.Add(ref _b, 1 - _odd);
-
-            return result;
         }
     }
 
@@ -423,6 +407,8 @@ public readonly ref struct NibblePath
 
             return length == 0 ? default : new NibblePath(ref _data[1 - odd], odd, length);
         }
+
+        internal ref byte Span => ref _data[1 - Odd];
 
         public int MemorySize => _data is null || ReferenceEquals(_data, EmptyBytes)
             ? 0
@@ -553,7 +539,7 @@ public readonly ref struct NibblePath
         }
 
         private bool IsOdd => (_data[0] & OddFlag) == OddFlag;
-        private byte Odd => (byte)((_data[0] & OddFlag) >> OddFlagShift);
+        public byte Odd => (byte)((_data[0] & OddFlag) >> OddFlagShift);
 
         /// <remarks>
         /// The slice will be used mostly by the <see cref="NodeType.Extension"/> and usually should be quite short.
