@@ -133,5 +133,7 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public bool HasStateForRoot(Hash256 stateRoot) => innerState.HasStateForRoot(stateRoot);
 
-    public UInt256 GetBalance(Address account) => innerState.GetBalance(account);
+    public ref readonly UInt256 GetBalance(Address account) => ref innerState.GetBalance(account);
+
+    UInt256 IAccountStateProvider.GetBalance(Address address) => innerState.GetBalance(address);
 }

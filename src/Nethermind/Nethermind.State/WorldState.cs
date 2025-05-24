@@ -184,7 +184,9 @@ namespace Nethermind.State
 
         public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);
 
-        public UInt256 GetBalance(Address address) => _stateProvider.GetBalance(address);
+        public ref readonly UInt256 GetBalance(Address address) => ref _stateProvider.GetBalance(address);
+
+        UInt256 IAccountStateProvider.GetBalance(Address address) => _stateProvider.GetBalance(address);
 
         public ValueHash256 GetStorageRoot(Address address) => _stateProvider.GetStorageRoot(address);
 

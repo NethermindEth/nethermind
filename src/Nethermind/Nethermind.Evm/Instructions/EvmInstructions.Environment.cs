@@ -351,7 +351,7 @@ internal static partial class EvmInstructions
         // Charge gas for account access. If insufficient gas remains, abort.
         if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
 
-        UInt256 result = vm.WorldState.GetBalance(address);
+        ref readonly UInt256 result = ref vm.WorldState.GetBalance(address);
         stack.PushUInt256(in result);
 
         return EvmExceptionType.None;
@@ -378,7 +378,7 @@ internal static partial class EvmInstructions
         gasAvailable -= GasCostOf.SelfBalance;
 
         // Get balance for currently executing account.
-        UInt256 result = vm.WorldState.GetBalance(vm.EvmState.Env.ExecutingAccount);
+        ref readonly UInt256 result = ref vm.WorldState.GetBalance(vm.EvmState.Env.ExecutingAccount);
         stack.PushUInt256(in result);
 
         return EvmExceptionType.None;

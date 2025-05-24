@@ -26,6 +26,8 @@ namespace Nethermind.State
 {
     internal class StateProvider
     {
+        private static readonly UInt256 _zero = UInt256.Zero;
+
         private readonly Dictionary<AddressAsKey, Stack<int>> _intraTxCache = new();
         private readonly HashSet<AddressAsKey> _committedThisRound = new();
         private readonly HashSet<AddressAsKey> _nullAccountReads = new();
@@ -135,10 +137,10 @@ namespace Nethermind.State
             return account is null ? throw new InvalidOperationException($"Account {address} is null when accessing storage root") : account.StorageRoot;
         }
 
-        public UInt256 GetBalance(Address address)
+        public ref readonly UInt256 GetBalance(Address address)
         {
             Account? account = GetThroughCache(address);
-            return account?.Balance ?? UInt256.Zero;
+            return ref account is not null ? ref account.Balance : ref _zero;
         }
 
         public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
