@@ -1,11 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <OutputType>Exe</OutputType>
+      <OutputType>Exe</OutputType>
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.24517.1" />
+      <PackageReference Include="System.CommandLine" />
       <ProjectReference Include="..\..\src\Nethermind\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
       <ProjectReference Include="..\..\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />
       <ProjectReference Include="..\..\src\Nethermind\Nethermind.Evm\Nethermind.Evm.csproj" />

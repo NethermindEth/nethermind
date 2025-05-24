@@ -315,10 +315,14 @@ namespace Nethermind.Core.Specs
         bool IsEofEnabled { get; }
 
         /// <summary>
-        /// <summary>
         /// Transactions that allows code delegation for EOA
         /// </summary>
         bool IsEip7702Enabled { get; }
+
+        /// <summary>
+        /// Set upper bounds for MODEXP
+        /// </summary>
+        bool IsEip7823Enabled { get; }
 
         /// <summary>
         /// Blob base fee collection for Gnosis
@@ -343,6 +347,11 @@ namespace Nethermind.Core.Specs
         ///  Increase call data cost
         /// </summary>
         bool IsEip7623Enabled { get; }
+
+        /// <summary>
+        ///  Transaction gas limit cap
+        /// </summary>
+        bool IsEip7825Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.
