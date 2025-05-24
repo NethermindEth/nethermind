@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.AuRa
             _nethermindApi = nethermindApi as AuRaNethermindApi;
             if (_nethermindApi is not null)
             {
-                _blockProducerStarter = new(_nethermindApi);
+                _blockProducerStarter = _nethermindApi.CreateStartBlockProducer();
             }
             return Task.CompletedTask;
         }
