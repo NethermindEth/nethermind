@@ -22,18 +22,17 @@ internal static partial class EvmInstructions
     /// Defines an environment introspection operation that returns a byte span.
     /// Implementations should provide a static gas cost and a static Operation method.
     /// </summary>
-    public interface IOpEnvBytes
+    public interface IOpEnvAddress
     {
         /// <summary>
         /// The gas cost for the operation.
         /// </summary>
         virtual static long GasCost => GasCostOf.Base;
         /// <summary>
-        /// Executes the operation and returns the result as a byte span.
+        /// Executes the operation and returns the result as address.
         /// </summary>
         /// <param name="vmState">The current virtual machine state.</param>
-        /// <param name="result">The resulting bytes.</param>
-        abstract static void Operation(EvmState vmState, out Span<byte> result);
+        abstract static Address Operation(EvmState vmState);
     }
 
     /// <summary>
@@ -77,7 +76,7 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Executes an environment introspection opcode that returns a byte span.
+    /// Executes an environment introspection opcode that returns an Address.
     /// Generic parameter TOpEnv defines the concrete operation.
     /// </summary>
     /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
@@ -87,17 +86,17 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvBytes<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpEnv : struct, IOpEnvBytes
+    public static EvmExceptionType InstructionEnvAddress<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TOpEnv : struct, IOpEnvAddress
     {
         // Deduct the gas cost as defined by the operation implementation.
         gasAvailable -= TOpEnv.GasCost;
 
         // Execute the operation and retrieve the result.
-        TOpEnv.Operation(vm.EvmState, out Span<byte> result);
+        Address result = TOpEnv.Operation(vm.EvmState);
 
         // Push the resulting bytes onto the EVM stack.
-        stack.PushBytes(result);
+        stack.PushAddress(result);
 
         return EvmExceptionType.None;
     }
@@ -272,37 +271,37 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Returns the address of the currently executing account.
     /// </summary>
-    public struct OpAddress : IOpEnvBytes
+    public struct OpAddress : IOpEnvAddress
     {
-        public static void Operation(EvmState vmState, out Span<byte> result)
-            => result = vmState.Env.ExecutingAccount.Bytes;
+        public static Address Operation(EvmState vmState)
+            => vmState.Env.ExecutingAccount;
     }
 
     /// <summary>
     /// Returns the address of the caller of the current execution context.
     /// </summary>
-    public struct OpCaller : IOpEnvBytes
+    public struct OpCaller : IOpEnvAddress
     {
-        public static void Operation(EvmState vmState, out Span<byte> result)
-            => result = vmState.Env.Caller.Bytes;
+        public static Address Operation(EvmState vmState)
+            => vmState.Env.Caller;
     }
 
     /// <summary>
     /// Returns the origin address of the transaction.
     /// </summary>
-    public struct OpOrigin : IOpEnvBytes
+    public struct OpOrigin : IOpEnvAddress
     {
-        public static void Operation(EvmState vmState, out Span<byte> result)
-            => result = vmState.Env.TxExecutionContext.Origin.Bytes;
+        public static Address Operation(EvmState vmState)
+            => vmState.Env.TxExecutionContext.Origin;
     }
 
     /// <summary>
     /// Returns the coinbase (beneficiary) address for the current block.
     /// </summary>
-    public struct OpCoinbase : IOpEnvBytes
+    public struct OpCoinbase : IOpEnvAddress
     {
-        public static void Operation(EvmState vmState, out Span<byte> result)
-            => result = vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasBeneficiary.Bytes;
+        public static Address Operation(EvmState vmState)
+            => vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasBeneficiary;
     }
 
     /// <summary>

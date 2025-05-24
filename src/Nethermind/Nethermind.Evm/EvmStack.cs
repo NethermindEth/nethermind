@@ -186,6 +186,27 @@ public ref struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void PushAddress(Address address)
+    {
+        ref byte value = ref MemoryMarshal.GetArrayDataReference(address.Bytes);
+        // Address size
+        _tracer?.TraceBytes(in value, 20);
+
+        ref byte bytes = ref PushBytesRef();
+
+        // First 4+8 bytes are zero
+        Unsafe.As<byte, ulong>(ref bytes) = 0;
+        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(ulong))) = 0;
+
+        // 20 bytes which is uint+Vector128
+        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(uint) + sizeof(ulong)))
+            = Unsafe.As<byte, uint>(ref value);
+
+        Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref bytes, sizeof(ulong) + sizeof(ulong)))
+            = Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref value, sizeof(uint)));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Push32Bytes(in Word value)
     {
         _tracer?.TraceWord(in value);
