@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
@@ -93,5 +93,12 @@ namespace Nethermind.TxPool
             => IsOverflowWhenAddingTxCostToCumulative(tx, UInt256.Zero, out txCost);
 
         public static bool IsInMempoolForm(this Transaction tx) => tx.NetworkWrapper is not null;
+
+        public static ProofVersion GetProofVersion(this Transaction mempoolTx) => mempoolTx switch
+        {
+            LightTransaction lt => lt.ProofVersion,
+            { NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion v } } => v,
+            _ => ProofVersion.V0,
+        };
     }
 }

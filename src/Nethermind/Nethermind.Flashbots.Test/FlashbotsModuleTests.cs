@@ -33,7 +33,7 @@ public partial class FlashbotsModuleTests
 
         Block block = CreateBlock(chain);
 
-        GetPayloadV3Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block));
+        GetPayloadV3Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), false);
 
         BuilderBlockValidationRequest BlockRequest = new(
             new BidTrace(

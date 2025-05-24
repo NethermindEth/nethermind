@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -32,7 +32,6 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
-using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.TxPool;
@@ -130,20 +129,19 @@ public partial class EngineModuleTests
         responseFirst.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    public async Task GetPayloadV3_should_return_all_the_blobs(int blobTxCount)
+    [Test]
+    public async Task GetPayloadV3_should_return_all_the_blobs([Values(0, 1, 2, 3, 4)] int blobTxCount, [Values(true, false)] bool oneBlobPerTx)
     {
-        (IEngineRpcModule rpcModule, string? payloadId, _, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, blobTxCount);
+        (IEngineRpcModule rpcModule, string? payloadId, _, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, blobTxCount, oneBlobPerTx: oneBlobPerTx);
         ResultWrapper<GetPayloadV3Result?> result = await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!));
         BlobsBundleV1 getPayloadResultBlobsBundle = result.Data!.BlobsBundle!;
         Assert.That(result.Data.ExecutionPayload.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobTxCount)));
         Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
+        ShardBlobNetworkWrapper wrapper = new ShardBlobNetworkWrapper(getPayloadResultBlobsBundle.Blobs,
+            getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V1);
+        Assert.That(IBlobProofsManager.For(ProofVersion.V0).ValidateProofs(wrapper), Is.True);
     }
 
     [TestCase(false, PayloadStatus.Valid)]
@@ -379,6 +377,7 @@ public partial class EngineModuleTests
                  Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
                  Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
                  Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
+                 Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
                  newPayloadHandlerMock,
                  Substitute.For<IForkchoiceUpdatedHandler>(),
                  Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
@@ -386,6 +385,7 @@ public partial class EngineModuleTests
                  Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
                  Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
                  Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
+                 Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?>>(),
                  Substitute.For<IEngineRequestsTracker>(),
                  chain.SpecProvider,
                  new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
@@ -906,7 +906,7 @@ public partial class EngineModuleTests
     }
 
     private async Task<(IEngineRpcModule, string?, Transaction[], MergeTestBlockchain chain)> BuildAndGetPayloadV3Result(
-        IReleaseSpec spec, int transactionCount = 0)
+        IReleaseSpec spec, int transactionCount = 0, bool oneBlobPerTx = true)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec, null);
         IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
@@ -920,7 +920,7 @@ public partial class EngineModuleTests
 
         if (transactionCount is not 0)
         {
-            txs = BuildTransactions(chain, currentHeadHash, TestItem.PrivateKeyA, TestItem.AddressB, (uint)transactionCount, 0, out _, out _, 1);
+            txs = BuildTransactions(chain, currentHeadHash, TestItem.PrivateKeyA, TestItem.AddressB, oneBlobPerTx ? (uint)transactionCount : 1, 0, out _, out _, oneBlobPerTx ? 1 : transactionCount, spec);
             chain.AddTransactions(txs);
         }
 
