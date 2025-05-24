@@ -47,7 +47,7 @@ internal static partial class EvmInstructions
         /// </summary>
         /// <param name="vmState">The current virtual machine state.</param>
         /// <param name="result">The resulting 256-bit unsigned integer.</param>
-        abstract static void Operation(EvmState vmState, out UInt256 result);
+        abstract static ref readonly UInt256 Operation(EvmState vmState);
     }
 
     /// <summary>
@@ -117,7 +117,7 @@ internal static partial class EvmInstructions
     {
         gasAvailable -= TOpEnv.GasCost;
 
-        TOpEnv.Operation(vm.EvmState, out UInt256 result);
+        ref readonly UInt256 result = ref TOpEnv.Operation(vm.EvmState);
 
         stack.PushUInt256(in result);
 
@@ -227,8 +227,8 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBaseFee : IOpEnvUInt256
     {
-        public static void Operation(EvmState vmState, out UInt256 result)
-            => result = vmState.Env.TxExecutionContext.BlockExecutionContext.Header.BaseFeePerGas;
+        public static ref readonly UInt256 Operation(EvmState vmState)
+            => ref vmState.Env.TxExecutionContext.BlockExecutionContext.Header.BaseFeePerGas;
     }
 
     /// <summary>
@@ -237,13 +237,13 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBlobBaseFee : IOpEnvUInt256
     {
-        public static void Operation(EvmState vmState, out UInt256 result)
+        public static ref readonly UInt256 Operation(EvmState vmState)
         {
-            // If the blob base fee is missing, this opcode is invalid.
-            UInt256? blobBaseFee = vmState.Env.TxExecutionContext.BlockExecutionContext.BlobBaseFee;
-            if (!blobBaseFee.HasValue) ThrowBadInstruction();
+            ref readonly BlockExecutionContext context = ref vmState.Env.TxExecutionContext.BlockExecutionContext;
+            // If the blob base fee is missing (no ExcessBlobGas set), this opcode is invalid.
+            if (!context.Header.ExcessBlobGas.HasValue) ThrowBadInstruction();
 
-            result = blobBaseFee.Value;
+            return ref context.BlobBaseFee;
 
             [DoesNotReturn]
             [StackTraceHidden]
@@ -256,8 +256,8 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpGasPrice : IOpEnvUInt256
     {
-        public static void Operation(EvmState vmState, out UInt256 result)
-            => result = vmState.Env.TxExecutionContext.GasPrice;
+        public static ref readonly UInt256 Operation(EvmState vmState)
+            => ref vmState.Env.TxExecutionContext.GasPrice;
     }
 
     /// <summary>
@@ -265,8 +265,8 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCallValue : IOpEnvUInt256
     {
-        public static void Operation(EvmState vmState, out UInt256 result)
-            => result = vmState.Env.Value;
+        public static ref readonly UInt256 Operation(EvmState vmState)
+            => ref vmState.Env.Value;
     }
 
     /// <summary>

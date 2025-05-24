@@ -15,7 +15,7 @@ namespace Nethermind.Evm
     {
         public readonly BlockExecutionContext BlockExecutionContext = blockExecutionContext;
         public Address Origin { get; } = origin;
-        public UInt256 GasPrice { get; } = gasPrice;
+        public readonly UInt256 GasPrice = gasPrice;
         public byte[][]? BlobVersionedHashes { get; } = blobVersionedHashes;
         public ICodeInfoRepository CodeInfoRepository { get; } = codeInfoRepository;
     }
