@@ -237,7 +237,7 @@ namespace Nethermind.Init.Steps
                 _api.RewardCalculatorSource.Get(transactionProcessor),
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
                 worldState,
-                _api.ReceiptStorage,
+                _api.ReceiptStorage!,
                 transactionProcessor,
                 new BeaconBlockRootHandler(transactionProcessor, worldState),
                 new BlockhashStore(_api.SpecProvider!, worldState),

@@ -213,7 +213,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 NoBlockRewards.Instance,
                 new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
                 scope.WorldState,
-                api.ReceiptStorage,
+                api.ReceiptStorage!,
                 scope.TransactionProcessor,
                 new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
                 new BlockhashStore(api.SpecProvider, scope.WorldState),

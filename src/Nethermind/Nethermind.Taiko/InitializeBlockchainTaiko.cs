@@ -60,7 +60,7 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
             _api.RewardCalculatorSource.Get(transactionProcessor),
             new BlockInvalidTxExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
             worldState,
-            _api.ReceiptStorage,
+            _api.ReceiptStorage!,
             transactionProcessor,
             new BeaconBlockRootHandler(transactionProcessor, worldState),
             new BlockhashStore(_api.SpecProvider, worldState),
