@@ -1075,7 +1075,7 @@ public sealed unsafe partial class VirtualMachine(
         vmState.InitializeStacks();
 
         // Create an EVM stack using the current stack head, tracer, and data stack slice.
-        EvmStack stack = new(vmState.DataStackHead, _txTracer, vmState.DataStack.AsAlignedSpan(alignment: 32, size: StackPool.StackLength));
+        EvmStack stack = new(vmState.DataStackHead, _txTracer, vmState.DataStack.AsAlignedSpan(alignment: EvmStack.WordSize, size: StackPool.StackLength));
 
         // Cache the available gas from the state for local use.
         long gasAvailable = vmState.GasAvailable;
@@ -1360,7 +1360,7 @@ public sealed unsafe partial class VirtualMachine(
 
         if (_txTracer.IsTracingStack)
         {
-            Memory<byte> stackMemory = vmState.DataStack.AsAlignedMemory(alignment: 32, size: StackPool.StackLength).Slice(0, stackValue.Head * EvmStack.WordSize);
+            Memory<byte> stackMemory = vmState.DataStack.AsAlignedMemory(alignment: EvmStack.WordSize, size: StackPool.StackLength).Slice(0, stackValue.Head * EvmStack.WordSize);
             _txTracer.SetOperationStack(new TraceStack(stackMemory));
         }
     }
