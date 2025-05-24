@@ -3,6 +3,7 @@
 
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
@@ -26,6 +27,22 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             get => base.FinalizationManager as IAuRaBlockFinalizationManager;
             set => base.FinalizationManager = value;
         }
+
+        private TxAuRaFilterBuilders? _txAuRaFilterBuilders = null;
+
+        public TxAuRaFilterBuilders TxAuRaFilterBuilders => _txAuRaFilterBuilders ??= new TxAuRaFilterBuilders(
+            this.ChainSpec,
+            this.SpecProvider,
+            this.Config<IBlocksConfig>(),
+            this.Config<IAuraConfig>(),
+            this.AbiEncoder,
+            this.WorldStateManager!,
+            this.BlockTree!,
+            this.ReceiptFinder!,
+            this.TransactionPermissionContractVersions,
+            this.TxFilterCache,
+            this.LogManager
+        );
 
         private PermissionBasedTxFilter.Cache? _txFilterCache = null;
         public PermissionBasedTxFilter.Cache TxFilterCache => _txFilterCache ??= new PermissionBasedTxFilter.Cache();

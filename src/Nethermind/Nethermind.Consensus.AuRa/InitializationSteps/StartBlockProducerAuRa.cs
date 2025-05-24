@@ -115,8 +115,7 @@ public class StartBlockProducerAuRa
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
 
-        ITxFilter auRaTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilter(
-            _api,
+        ITxFilter auRaTxFilter = _api.TxAuRaFilterBuilders.CreateAuRaTxFilter(
             new LocalTxFilter(_api.EngineSigner));
 
         _validator = new AuRaValidatorFactory(_api.AbiEncoder,
@@ -167,12 +166,12 @@ public class StartBlockProducerAuRa
 
     internal TxPoolTxSource CreateTxPoolTxSource()
     {
-        _txPriorityContract = TxAuRaFilterBuilders.CreateTxPrioritySources(_api);
+        _txPriorityContract = _api.TxAuRaFilterBuilders.CreateTxPrioritySources();
         _localDataSource = _api.TxPriorityContractLocalDataSource;
 
         if (_txPriorityContract is not null || _localDataSource is not null)
         {
-            _minGasPricesContractDataStore = TxAuRaFilterBuilders.CreateMinGasPricesDataStore(_api, _txPriorityContract, _localDataSource)!;
+            _minGasPricesContractDataStore = _api.TxAuRaFilterBuilders.CreateMinGasPricesDataStore(_txPriorityContract, _localDataSource)!;
             _api.DisposeStack.Push(_minGasPricesContractDataStore);
 
             ContractDataStore<Address> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
@@ -270,7 +269,7 @@ public class StartBlockProducerAuRa
         return new TxPoolTxSource(_api.TxPool, _api.SpecProvider, _api.TransactionComparerProvider, _api.LogManager, txFilterPipeline);
     }
 
-    private ITxFilter CreateAuraTxFilterForProducer() => TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(_api, _minGasPricesContractDataStore);
+    private ITxFilter CreateAuraTxFilterForProducer() => _api.TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(_minGasPricesContractDataStore);
 
     private ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource)
     {
@@ -342,7 +341,7 @@ public class StartBlockProducerAuRa
             txSource = new GeneratedTxSource(txSource, transactionSealer, _api.StateReader, _api.LogManager);
         }
 
-        ITxFilter? txPermissionFilter = TxAuRaFilterBuilders.CreateTxPermissionFilter(_api);
+        ITxFilter? txPermissionFilter = _api.TxAuRaFilterBuilders.CreateTxPermissionFilter();
         if (txPermissionFilter is not null)
         {
             // we now only need to filter generated transactions here, as regular ones are filtered on TxPoolTxSource filter based on CreateTxSourceFilter method
