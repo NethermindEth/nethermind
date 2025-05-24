@@ -154,20 +154,18 @@ namespace Nethermind.Core.Extensions
         private unsafe static int GetAlignmentOffset(this byte[] array, uint alignment)
         {
             ArgumentNullException.ThrowIfNull(array);
-            ArgumentOutOfRangeException.ThrowIfNotEqual(BitOperations.IsPow2(alignment), true);
+            ArgumentOutOfRangeException.ThrowIfNotEqual(BitOperations.IsPow2(alignment), true, nameof(alignment));
 
             // The input array should be pinned and we are just using the Pointer to
             // calculate alignment, not using data so not creating memory hole.
-            ulong address = (ulong)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
+            nuint address = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
 
-            // Compute how far off we are from the next alignment boundary
-            //   address % alignment  gives the current mis-alignment
-            //   (alignment - mis) % alignment  is the adjustment needed (0 if already aligned)
-            uint misalignment = (uint)(address % alignment);
-            uint adjustment = (alignment - misalignment) % alignment;
-            int offset = (int)adjustment;
+            // mask = alignment - 1
+            uint mask = alignment - 1;
+            // address & mask is misalignment, so (–address) & mask is exactly the adjustment
+            uint adjustment = (uint)((-(nint)address) & mask);
 
-            return offset;
+            return (int)adjustment;
         }
 
         public unsafe static Span<byte> AsAlignedSpan(this byte[] array, uint alignment, int size)
