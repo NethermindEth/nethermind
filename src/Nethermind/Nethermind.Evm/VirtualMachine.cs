@@ -1187,6 +1187,7 @@ public sealed unsafe partial class VirtualMachine(
         // Or have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
         fixed (OpCode* opcodeMethods = &_opcodeMethods[0])
         {
+            ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
             // Iterate over the instructions using a while loop because opcodes may modify the program counter.
             while ((uint)programCounter < (uint)codeSection.Length)
             {
@@ -1195,7 +1196,7 @@ public sealed unsafe partial class VirtualMachine(
                 debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
                 // Fetch the current instruction from the code section.
-                Instruction instruction = codeSection[programCounter];
+                Instruction instruction = Unsafe.Add(ref code, programCounter);
 
                 // If cancellation is enabled and cancellation has been requested, throw an exception.
                 if (TCancelable.IsActive && _txTracer.IsCancelled)
