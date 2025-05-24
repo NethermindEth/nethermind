@@ -151,34 +151,6 @@ namespace Nethermind.Core.Extensions
             b |= (byte)mask;
         }
 
-        private unsafe static int GetAlignmentOffset(this byte[] array, uint alignment)
-        {
-            ArgumentNullException.ThrowIfNull(array);
-            ArgumentOutOfRangeException.ThrowIfNotEqual(BitOperations.IsPow2(alignment), true, nameof(alignment));
-
-            // The input array should be pinned and we are just using the Pointer to
-            // calculate alignment, not using data so not creating memory hole.
-            nuint address = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
-
-            uint mask = alignment - 1;
-            // address & mask is misalignment, so (–address) & mask is exactly the adjustment
-            uint adjustment = (uint)((-(nint)address) & mask);
-
-            return (int)adjustment;
-        }
-
-        public unsafe static Span<byte> AsAlignedSpan(this byte[] array, uint alignment, int size)
-        {
-            int offset = array.GetAlignmentOffset(alignment);
-            return array.AsSpan(offset, size);
-        }
-
-        public unsafe static Memory<byte> AsAlignedMemory(this byte[] array, uint alignment, int size)
-        {
-            int offset = array.GetAlignmentOffset(alignment);
-            return array.AsMemory(offset, size);
-        }
-
         public static int GetHighestSetBitIndex(this byte b)
             => 32 - BitOperations.LeadingZeroCount((uint)b);
 
