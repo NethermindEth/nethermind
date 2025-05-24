@@ -74,7 +74,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         ICodeInfo cachedCodeInfo = InternalGetCachedCode(worldState, codeSource, vmSpec);
 
-        if (TryGetDelegatedAddress(cachedCodeInfo.MachineCode.Span, out delegationAddress))
+        if (!cachedCodeInfo.IsEmpty && TryGetDelegatedAddress(cachedCodeInfo.MachineCode.Span, out delegationAddress))
         {
             if (followDelegation)
                 cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress, vmSpec);
