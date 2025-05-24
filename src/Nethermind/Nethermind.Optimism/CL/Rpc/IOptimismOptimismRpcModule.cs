@@ -11,7 +11,7 @@ namespace Nethermind.Optimism.Cl.Rpc;
 public interface IOptimismOptimismRpcModule : IRpcModule
 {
     [JsonRpcMethod(
-        IsImplemented = true,
+        IsImplemented = false,
         Description = "Get the output root at a specific block",
         IsSharable = true,
         ExampleResponse = """
@@ -134,7 +134,7 @@ public interface IOptimismOptimismRpcModule : IRpcModule
     public Task<ResultWrapper<OptimismOutputAtBlock>> optimism_outputAtBlock(ulong blockNumber);
 
     [JsonRpcMethod(
-        IsImplemented = true,
+        IsImplemented = false,
         Description = "Get the synchronization status.",
         IsSharable = true,
         ExampleResponse = """
@@ -240,7 +240,7 @@ public interface IOptimismOptimismRpcModule : IRpcModule
     public Task<ResultWrapper<OptimismSyncStatus>> optimism_syncStatus();
 
     [JsonRpcMethod(
-        IsImplemented = true,
+        IsImplemented = false,
         Description = "Get the rollup configuration parameters.",
         IsSharable = true,
         ExampleResponse = """
@@ -279,7 +279,7 @@ public interface IOptimismOptimismRpcModule : IRpcModule
     public Task<ResultWrapper<OptimismRollupConfig>> optimism_rollupConfig();
 
     [JsonRpcMethod(
-        IsImplemented = true,
+        IsImplemented = false,
         Description = "Get the software version.",
         IsSharable = true,
         ExampleResponse = "1.31.10")]
