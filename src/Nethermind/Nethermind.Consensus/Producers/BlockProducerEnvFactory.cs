@@ -140,13 +140,13 @@ namespace Nethermind.Consensus.Producers
             IReceiptStorage receiptStorage,
             ILogManager logManager,
             IBlocksConfig blocksConfig) =>
-            BlockProcessor.CreateForTestDontUseThisISwear(specProvider,
+            new BlockProcessor(
+                specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
                 TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
                 readOnlyTxProcessingEnv.WorldState,
                 receiptStorage,
-                readOnlyTxProcessingEnv.TransactionProcessor,
                 new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor, readOnlyTxProcessingEnv.WorldState),
                 new BlockhashStore(_specProvider, readOnlyTxProcessingEnv.WorldState),
                 logManager,

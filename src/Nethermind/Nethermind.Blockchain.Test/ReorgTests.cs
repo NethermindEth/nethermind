@@ -8,9 +8,11 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -91,16 +93,18 @@ public class ReorgTests
             codeInfoRepository,
             LimboLogs.Instance);
 
-        BlockProcessor blockProcessor = BlockProcessor.CreateForTestDontUseThisISwear(MainnetSpecProvider.Instance,
+        BlockProcessor blockProcessor = new BlockProcessor(
+            MainnetSpecProvider.Instance,
             Always.Valid,
             new RewardCalculator(specProvider),
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
-            transactionProcessor,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             new BlockhashStore(MainnetSpecProvider.Instance, stateProvider),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor));
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
             blockProcessor,

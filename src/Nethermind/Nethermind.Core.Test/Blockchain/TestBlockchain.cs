@@ -22,6 +22,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
@@ -366,18 +367,18 @@ public class TestBlockchain : IDisposable
     }
 
     protected virtual IBlockProcessor CreateBlockProcessor(IWorldState state) =>
-        Consensus.Processing.BlockProcessor.CreateForTestDontUseThisISwear(SpecProvider,
+        new BlockProcessor(SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, state),
             state,
             ReceiptStorage,
-            TxProcessor,
             new BeaconBlockRootHandler(TxProcessor, state),
             new BlockhashStore(SpecProvider, state),
             LogManager,
-            preWarmer: CreateBlockCachePreWarmer(),
-            executionRequestsProcessor: MainExecutionRequestsProcessor);
+            new WithdrawalProcessor(state, LogManager),
+            MainExecutionRequestsProcessor,
+            preWarmer: CreateBlockCachePreWarmer());
 
 
     protected IBlockCachePreWarmer CreateBlockCachePreWarmer() =>

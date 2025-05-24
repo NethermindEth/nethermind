@@ -23,7 +23,6 @@ using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -54,37 +53,6 @@ public partial class BlockProcessor(
 
     private const int MaxUncommittedBlocks = 64;
     private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
-
-    public static BlockProcessor CreateForTestDontUseThisISwear(
-        ISpecProvider specProvider,
-        IBlockValidator blockValidator,
-        IRewardCalculator rewardCalculator,
-        IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
-        IWorldState stateProvider,
-        IReceiptStorage receiptStorage,
-        ITransactionProcessor transactionProcessor,
-        IBeaconBlockRootHandler beaconBlockRootHandler,
-        IBlockhashStore blockHashStore,
-        ILogManager logManager,
-        IWithdrawalProcessor? withdrawalProcessor = null,
-        IBlockCachePreWarmer? preWarmer = null,
-        IExecutionRequestsProcessor? executionRequestsProcessor = null
-    )
-    {
-        return new BlockProcessor(
-            specProvider,
-            blockValidator,
-            rewardCalculator,
-            blockTransactionsExecutor,
-            stateProvider,
-            receiptStorage,
-            beaconBlockRootHandler,
-            blockHashStore,
-            logManager,
-            withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager),
-            executionRequestsProcessor ?? new ExecutionRequestsProcessor(transactionProcessor),
-            preWarmer);
-    }
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls

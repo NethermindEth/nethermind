@@ -21,7 +21,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -33,7 +32,6 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
@@ -370,19 +368,19 @@ public partial class BaseEngineModuleTests
         {
             WithdrawalProcessor = new WithdrawalProcessor(worldState, LogManager);
 
-            IBlockProcessor processor = Consensus.Processing.BlockProcessor.CreateForTestDontUseThisISwear(SpecProvider,
+            IBlockProcessor processor = new BlockProcessor(
+                SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, worldState),
                 worldState,
                 ReceiptStorage,
-                TxProcessor,
                 new BeaconBlockRootHandler(TxProcessor, worldState),
                 new BlockhashStore(SpecProvider, worldState),
                 LogManager,
                 WithdrawalProcessor,
-                preWarmer: CreateBlockCachePreWarmer(),
-                executionRequestsProcessor: new ExecutionRequestsProcessor(TxProcessor));
+                ExecutionRequestsProcessorOverride ?? MainExecutionRequestsProcessor,
+                CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }

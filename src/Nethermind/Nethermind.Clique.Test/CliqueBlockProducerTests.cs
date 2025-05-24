@@ -37,6 +37,8 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.Withdrawals;
 
 namespace Nethermind.Clique.Test;
 
@@ -147,16 +149,22 @@ public class CliqueBlockProducerTests
                 new VirtualMachine(blockhashProvider, specProvider, nodeLogManager),
                 codeInfoRepository,
                 nodeLogManager);
-            BlockProcessor blockProcessor = BlockProcessor.CreateForTestDontUseThisISwear(testnetSpecProvider,
+            IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider);
+            IBeaconBlockRootHandler beaconBlockRootHandler = new BeaconBlockRootHandler(transactionProcessor, stateProvider);
+            IBlockhashStore blockHashStore = new BlockhashStore(testnetSpecProvider, stateProvider);
+            BlockProcessor blockProcessor = new BlockProcessor(
+                testnetSpecProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+                blockTransactionsExecutor,
                 stateProvider,
                 NullReceiptStorage.Instance,
-                transactionProcessor,
-                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-                new BlockhashStore(testnetSpecProvider, stateProvider),
-                nodeLogManager);
+                beaconBlockRootHandler,
+                blockHashStore,
+                nodeLogManager,
+                (IWithdrawalProcessor)null ?? new WithdrawalProcessor(stateProvider, nodeLogManager),
+                (IExecutionRequestsProcessor)null ?? new ExecutionRequestsProcessor(transactionProcessor),
+                null);
 
             BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
             processor.Start();
@@ -183,16 +191,22 @@ public class CliqueBlockProducerTests
             VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
             TransactionProcessor minerTransactionProcessor = new(testnetSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
 
-            BlockProcessor minerBlockProcessor = BlockProcessor.CreateForTestDontUseThisISwear(testnetSpecProvider,
+            IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor1 = new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, testnetSpecProvider, _logManager);
+            IBeaconBlockRootHandler beaconBlockRootHandler1 = new BeaconBlockRootHandler(minerTransactionProcessor, minerStateProvider);
+            IBlockhashStore blockHashStore1 = new BlockhashStore(testnetSpecProvider, minerStateProvider);
+            BlockProcessor minerBlockProcessor = new BlockProcessor(
+                testnetSpecProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, testnetSpecProvider, _logManager),
+                blockTransactionsExecutor1,
                 minerStateProvider,
                 NullReceiptStorage.Instance,
-                minerTransactionProcessor,
-                new BeaconBlockRootHandler(minerTransactionProcessor, minerStateProvider),
-                new BlockhashStore(testnetSpecProvider, minerStateProvider),
-                nodeLogManager);
+                beaconBlockRootHandler1,
+                blockHashStore1,
+                nodeLogManager,
+                (IWithdrawalProcessor)null ?? new WithdrawalProcessor(minerStateProvider, nodeLogManager),
+                (IExecutionRequestsProcessor)null ?? new ExecutionRequestsProcessor(minerTransactionProcessor),
+                null);
 
             BlockchainProcessor minerProcessor = new(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
 

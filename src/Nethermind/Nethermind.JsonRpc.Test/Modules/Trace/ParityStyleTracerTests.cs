@@ -33,6 +33,8 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using Nethermind.Facade;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Test;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace;
@@ -72,16 +74,18 @@ public class ParityStyleTracerTests
         TransactionProcessor transactionProcessor = new(specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
         _poSSwitcher = Substitute.For<IPoSSwitcher>();
-        BlockProcessor blockProcessor = BlockProcessor.CreateForTestDontUseThisISwear(specProvider,
+        BlockProcessor blockProcessor = new BlockProcessor(
+            specProvider,
             Always.Valid,
             new MergeRpcRewardCalculator(NoBlockRewards.Instance, _poSSwitcher),
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
-            transactionProcessor,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             new BlockhashStore(specProvider, stateProvider),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor));
 
         RecoverSignatures txRecovery = new(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, specProvider, LimboLogs.Instance);
         _processor = new BlockchainProcessor(_blockTree, blockProcessor, txRecovery, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);
