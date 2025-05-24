@@ -320,7 +320,7 @@ internal static partial class EvmInstructions
     {
         gasAvailable -= GasCostOf.Base;
         // The chain ID is stored as a byte array in the VM
-        stack.PushBytes(vm.ChainId);
+        stack.Push32Bytes(in vm.ChainId);
 
         return EvmExceptionType.None;
     }
