@@ -192,9 +192,7 @@ namespace Nethermind.State
 
         public byte[] GetCode(Address address) => _stateProvider.GetCode(address);
 
-        public byte[] GetCode(Hash256 codeHash) => _stateProvider.GetCode(in codeHash.ValueHash256);
-
-        public byte[] GetCode(ValueHash256 codeHash) => _stateProvider.GetCode(codeHash);
+        public byte[] GetCode(in ValueHash256 codeHash) => _stateProvider.GetCode(in codeHash);
 
         public ref readonly ValueHash256 GetCodeHash(Address address) => ref _stateProvider.GetCodeHash(address);
 

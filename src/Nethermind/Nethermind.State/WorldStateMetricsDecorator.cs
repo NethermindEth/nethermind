@@ -116,9 +116,7 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public byte[]? GetCode(Address address) => innerState.GetCode(address);
 
-    public byte[]? GetCode(Hash256 codeHash) => innerState.GetCode(codeHash);
-
-    public byte[]? GetCode(ValueHash256 codeHash) => innerState.GetCode(codeHash);
+    public byte[]? GetCode(in ValueHash256 codeHash) => innerState.GetCode(in codeHash);
 
     public bool IsContract(Address address) => innerState.IsContract(address);
 
