@@ -444,7 +444,7 @@ public ref struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ref byte PeekBytesByRef()
+    public readonly ref byte PeekBytesByRef()
     {
         int head = Head;
         if (head-- == 0)
