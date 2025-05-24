@@ -98,6 +98,6 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITransactionComparerProvider transactionComparerProvider,
         ILogManager logManager)
     {
-        return new StartBlockProducerAuRa(_auraApi).CreateTxPoolTxSource();
+        return _auraApi.CreateStartBlockProducer().CreateTxPoolTxSource();
     }
 }

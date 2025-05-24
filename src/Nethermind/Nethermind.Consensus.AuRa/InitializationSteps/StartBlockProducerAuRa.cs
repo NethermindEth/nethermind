@@ -29,28 +29,25 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
-public class StartBlockProducerAuRa
+// Note: Not a step!! Its a factory of some kind!
+// Note: Stateful!! Can't use a singleton!
+public class StartBlockProducerAuRa(
+    AuRaNethermindApi api,
+    IAuraConfig auraConfig
+)
 {
-    private readonly AuRaNethermindApi _api;
-    private readonly AuRaChainSpecEngineParameters _parameters;
+    private readonly AuRaNethermindApi _api = api;
+    private readonly AuRaChainSpecEngineParameters _parameters = api.ChainSpec.EngineChainSpecParametersProvider
+        .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
     private BlockProducerEnv? _blockProducerContext;
-    private INethermindApi NethermindApi => _api;
 
-    private readonly IAuraConfig _auraConfig;
+    private readonly IAuraConfig _auraConfig = auraConfig;
     private IAuRaValidator? _validator;
     private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
     private TxPriorityContract? _txPriorityContract;
     private TxPriorityContract.LocalDataSource? _localDataSource;
     private IAuRaStepCalculator? _stepCalculator;
-
-    public StartBlockProducerAuRa(AuRaNethermindApi api)
-    {
-        _api = api;
-        _parameters = _api.ChainSpec.EngineChainSpecParametersProvider
-            .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-        _auraConfig = NethermindApi.Config<IAuraConfig>();
-    }
 
     private IAuRaStepCalculator StepCalculator
     {
@@ -128,7 +125,7 @@ public class StartBlockProducerAuRa
                 _api.FinalizationManager,
                 NullTxSender.Instance,
                 NullTxPool.Instance,
-                NethermindApi.Config<IBlocksConfig>(),
+                _api.Config<IBlocksConfig>(),
                 _api.LogManager,
                 _api.EngineSigner,
                 _api.SpecProvider,
