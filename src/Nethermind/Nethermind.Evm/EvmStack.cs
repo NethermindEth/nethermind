@@ -187,7 +187,8 @@ public ref struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushAddress(Address address) => Push20Bytes(ref MemoryMarshal.GetArrayDataReference(address.Bytes));
+    public void PushAddress(Address address)
+        => Push20Bytes(ref MemoryMarshal.GetArrayDataReference(address.Bytes));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Push32Bytes(in Word value)
@@ -200,14 +201,7 @@ public ref struct EvmStack
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Push32Bytes(in ValueHash256 hash)
-    {
-        ref readonly Word value = ref Unsafe.As<ValueHash256, Word>(ref Unsafe.AsRef(in hash));
-
-        _tracer?.TraceWord(in value);
-
-        ref byte bytes = ref PushBytesRef();
-        Unsafe.As<byte, Word>(ref bytes) = value;
-    }
+        => Push32Bytes(in Unsafe.As<ValueHash256, Word>(ref Unsafe.AsRef(in hash)));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushLeftPaddedBytes(ReadOnlySpan<byte> value, int paddingLength)
