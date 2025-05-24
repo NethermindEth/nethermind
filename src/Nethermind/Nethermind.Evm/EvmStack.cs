@@ -19,6 +19,7 @@ namespace Nethermind.Evm;
 
 using Word = Vector256<byte>;
 using HalfWord = Vector128<byte>;
+using static Unsafe;
 
 [StructLayout(LayoutKind.Auto)]
 public ref struct EvmStack
@@ -50,7 +51,7 @@ public ref struct EvmStack
             ThrowEvmStackOverflowException();
         }
 
-        return ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
+        return ref Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
     }
 
     public void PushBytes(scoped ReadOnlySpan<byte> value)
@@ -61,12 +62,12 @@ public ref struct EvmStack
         if (value.Length != WordSize)
         {
             // Not full entry, clear first
-            Unsafe.As<byte, Word>(ref bytes) = default;
-            value.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref bytes, WordSize - value.Length), value.Length));
+            As<byte, Word>(ref bytes) = default;
+            value.CopyTo(MemoryMarshal.CreateSpan(ref Add(ref bytes, WordSize - value.Length), value.Length));
         }
         else
         {
-            Unsafe.As<byte, Word>(ref bytes) = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
+            As<byte, Word>(ref bytes) = As<byte, Word>(ref MemoryMarshal.GetReference(value));
         }
     }
 
@@ -79,12 +80,12 @@ public ref struct EvmStack
         if (valueSpan.Length != WordSize)
         {
             // Not full entry, clear first
-            Unsafe.As<byte, Word>(ref bytes) = default;
+            As<byte, Word>(ref bytes) = default;
             valueSpan.CopyTo(MemoryMarshal.CreateSpan(ref bytes, value.Length));
         }
         else
         {
-            Unsafe.As<byte, Word>(ref bytes) = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(valueSpan));
+            As<byte, Word>(ref bytes) = As<byte, Word>(ref MemoryMarshal.GetReference(valueSpan));
         }
     }
 
@@ -95,8 +96,8 @@ public ref struct EvmStack
 
         ref byte bytes = ref PushBytesRef();
         // Not full entry, clear first
-        Unsafe.As<byte, Word>(ref bytes) = default;
-        Unsafe.Add(ref bytes, WordSize - sizeof(byte)) = value;
+        As<byte, Word>(ref bytes) = default;
+        Add(ref bytes, WordSize - sizeof(byte)) = value;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -108,11 +109,11 @@ public ref struct EvmStack
         ref byte bytes = ref PushBytesRef();
 
         // Clear 32 bytes
-        Unsafe.As<byte, Word>(ref bytes) = default;
+        As<byte, Word>(ref bytes) = default;
 
         // Copy 2 bytes
-        Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, sizeof(HalfWord) + sizeof(ulong) + sizeof(uint) + sizeof(ushort)))
-            = Unsafe.As<byte, ushort>(ref value);
+        As<byte, ushort>(ref Add(ref bytes, sizeof(HalfWord) + sizeof(ulong) + sizeof(uint) + sizeof(ushort)))
+            = As<byte, ushort>(ref value);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -124,13 +125,13 @@ public ref struct EvmStack
         ref byte bytes = ref PushBytesRef();
 
         // First 16+8+4 bytes are zero
-        Unsafe.As<byte, HalfWord>(ref bytes) = default;
-        Unsafe.As<byte, ulong>(ref Unsafe.Add(ref bytes, sizeof(HalfWord))) = default;
-        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(HalfWord) + sizeof(ulong))) = default;
+        As<byte, HalfWord>(ref bytes) = default;
+        As<byte, ulong>(ref Add(ref bytes, sizeof(HalfWord))) = default;
+        As<byte, uint>(ref Add(ref bytes, sizeof(HalfWord) + sizeof(ulong))) = default;
 
         // Copy 4 bytes
-        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(HalfWord) + sizeof(ulong) + sizeof(uint)))
-            = Unsafe.As<byte, uint>(ref value);
+        As<byte, uint>(ref Add(ref bytes, sizeof(HalfWord) + sizeof(ulong) + sizeof(uint)))
+            = As<byte, uint>(ref value);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -142,12 +143,12 @@ public ref struct EvmStack
         ref byte bytes = ref PushBytesRef();
 
         // First 16+8 bytes are zero
-        Unsafe.As<byte, HalfWord>(ref bytes) = default;
-        Unsafe.As<byte, ulong>(ref Unsafe.Add(ref bytes, sizeof(HalfWord))) = default;
+        As<byte, HalfWord>(ref bytes) = default;
+        As<byte, ulong>(ref Add(ref bytes, sizeof(HalfWord))) = default;
 
         // Copy 8 bytes
-        Unsafe.As<byte, ulong>(ref Unsafe.Add(ref bytes, sizeof(HalfWord) + sizeof(ulong)))
-            = Unsafe.As<byte, ulong>(ref value);
+        As<byte, ulong>(ref Add(ref bytes, sizeof(HalfWord) + sizeof(ulong)))
+            = As<byte, ulong>(ref value);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -159,11 +160,11 @@ public ref struct EvmStack
         ref byte bytes = ref PushBytesRef();
 
         // First 16 bytes are zero
-        Unsafe.As<byte, HalfWord>(ref bytes) = default;
+        As<byte, HalfWord>(ref bytes) = default;
 
         // Copy 16 bytes
-        Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref bytes, sizeof(HalfWord)))
-            = Unsafe.As<byte, HalfWord>(ref value);
+        As<byte, HalfWord>(ref Add(ref bytes, sizeof(HalfWord)))
+            = As<byte, HalfWord>(ref value);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -175,15 +176,15 @@ public ref struct EvmStack
         ref byte bytes = ref PushBytesRef();
 
         // First 4+8 bytes are zero
-        Unsafe.As<byte, ulong>(ref bytes) = 0;
-        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(ulong))) = 0;
+        As<byte, ulong>(ref bytes) = 0;
+        As<byte, uint>(ref Add(ref bytes, sizeof(ulong))) = 0;
 
         // 20 bytes which is uint+Vector128
-        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(uint) + sizeof(ulong)))
-            = Unsafe.As<byte, uint>(ref value);
+        As<byte, uint>(ref Add(ref bytes, sizeof(uint) + sizeof(ulong)))
+            = As<byte, uint>(ref value);
 
-        Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref bytes, sizeof(ulong) + sizeof(ulong)))
-            = Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref value, sizeof(uint)));
+        As<byte, HalfWord>(ref Add(ref bytes, sizeof(ulong) + sizeof(ulong)))
+            = As<byte, HalfWord>(ref Add(ref value, sizeof(uint)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -196,15 +197,15 @@ public ref struct EvmStack
         ref byte bytes = ref PushBytesRef();
 
         // First 4+8 bytes are zero
-        Unsafe.As<byte, ulong>(ref bytes) = 0;
-        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(ulong))) = 0;
+        As<byte, ulong>(ref bytes) = 0;
+        As<byte, uint>(ref Add(ref bytes, sizeof(ulong))) = 0;
 
         // 20 bytes which is uint+Vector128
-        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(uint) + sizeof(ulong)))
-            = Unsafe.As<byte, uint>(ref value);
+        As<byte, uint>(ref Add(ref bytes, sizeof(uint) + sizeof(ulong)))
+            = As<byte, uint>(ref value);
 
-        Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref bytes, sizeof(ulong) + sizeof(ulong)))
-            = Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref value, sizeof(uint)));
+        As<byte, HalfWord>(ref Add(ref bytes, sizeof(ulong) + sizeof(ulong)))
+            = As<byte, HalfWord>(ref Add(ref value, sizeof(uint)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -213,18 +214,18 @@ public ref struct EvmStack
         _tracer?.TraceWord(in value);
 
         ref byte bytes = ref PushBytesRef();
-        Unsafe.As<byte, Word>(ref bytes) = value;
+        As<byte, Word>(ref bytes) = value;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Push32Bytes(in ValueHash256 hash)
     {
-        ref readonly Word value = ref Unsafe.As<ValueHash256, Word>(ref Unsafe.AsRef(in hash));
+        ref readonly Word value = ref As<ValueHash256, Word>(ref AsRef(in hash));
 
         _tracer?.TraceWord(in value);
 
         ref byte bytes = ref PushBytesRef();
-        Unsafe.As<byte, Word>(ref bytes) = value;
+        As<byte, Word>(ref bytes) = value;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -236,12 +237,12 @@ public ref struct EvmStack
         if (value.Length != WordSize)
         {
             // Not full entry, clear first
-            Unsafe.As<byte, Word>(ref bytes) = default;
-            value.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref bytes, WordSize - paddingLength), value.Length));
+            As<byte, Word>(ref bytes) = default;
+            value.CopyTo(MemoryMarshal.CreateSpan(ref Add(ref bytes, WordSize - paddingLength), value.Length));
         }
         else
         {
-            Unsafe.As<byte, Word>(ref bytes) = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
+            As<byte, Word>(ref bytes) = As<byte, Word>(ref MemoryMarshal.GetReference(value));
         }
     }
 
@@ -251,8 +252,8 @@ public ref struct EvmStack
 
         ref byte bytes = ref PushBytesRef();
         // Not full entry, clear first
-        Unsafe.As<byte, Word>(ref bytes) = default;
-        Unsafe.Add(ref bytes, WordSize - sizeof(byte)) = 1;
+        As<byte, Word>(ref bytes) = default;
+        Add(ref bytes, WordSize - sizeof(byte)) = 1;
     }
 
     public void PushZero()
@@ -260,7 +261,7 @@ public ref struct EvmStack
         _tracer?.ReportStackPush(Bytes.ZeroByteSpan);
 
         ref byte bytes = ref PushBytesRef();
-        Unsafe.As<byte, Word>(ref bytes) = default;
+        As<byte, Word>(ref bytes) = default;
     }
 
     public unsafe void PushUInt32(uint value)
@@ -270,16 +271,16 @@ public ref struct EvmStack
             value = BinaryPrimitives.ReverseEndianness(value);
         }
         // uint size
-        _tracer?.TraceBytes(in Unsafe.As<uint, byte>(ref value), sizeof(uint));
+        _tracer?.TraceBytes(in As<uint, byte>(ref value), sizeof(uint));
 
         ref byte bytes = ref PushBytesRef();
         // First 16+8+4 bytes are zero
-        Unsafe.As<byte, HalfWord>(ref bytes) = default;
-        Unsafe.As<byte, ulong>(ref Unsafe.Add(ref bytes, sizeof(HalfWord))) = default;
-        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(HalfWord) + sizeof(ulong))) = default;
+        As<byte, HalfWord>(ref bytes) = default;
+        As<byte, ulong>(ref Add(ref bytes, sizeof(HalfWord))) = default;
+        As<byte, uint>(ref Add(ref bytes, sizeof(HalfWord) + sizeof(ulong))) = default;
 
         // Copy 4 bytes
-        Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(HalfWord) + sizeof(ulong) + sizeof(uint)))
+        As<byte, uint>(ref Add(ref bytes, sizeof(HalfWord) + sizeof(ulong) + sizeof(uint)))
             = value;
     }
 
@@ -290,15 +291,15 @@ public ref struct EvmStack
             value = BinaryPrimitives.ReverseEndianness(value);
         }
         // uint size
-        _tracer?.TraceBytes(in Unsafe.As<ulong, byte>(ref value), sizeof(ulong));
+        _tracer?.TraceBytes(in As<ulong, byte>(ref value), sizeof(ulong));
 
         ref byte bytes = ref PushBytesRef();
         // First 16+8 bytes are zero
-        Unsafe.As<byte, HalfWord>(ref bytes) = default;
-        Unsafe.As<byte, ulong>(ref Unsafe.Add(ref bytes, sizeof(HalfWord))) = default;
+        As<byte, HalfWord>(ref bytes) = default;
+        As<byte, ulong>(ref Add(ref bytes, sizeof(HalfWord))) = default;
 
         // Copy 8 bytes
-        Unsafe.As<byte, ulong>(ref Unsafe.Add(ref bytes, sizeof(HalfWord) + sizeof(ulong)))
+        As<byte, ulong>(ref Add(ref bytes, sizeof(HalfWord) + sizeof(ulong)))
             = value;
     }
 
@@ -320,14 +321,14 @@ public ref struct EvmStack
                 0x0001020304050607ul).AsByte();
             if (Avx512Vbmi.VL.IsSupported)
             {
-                Word data = Unsafe.As<UInt256, Word>(ref Unsafe.AsRef(in value));
-                Unsafe.WriteUnaligned(ref bytes, Avx512Vbmi.VL.PermuteVar32x8(data, shuffle));
+                Word data = As<UInt256, Word>(ref AsRef(in value));
+                WriteUnaligned(ref bytes, Avx512Vbmi.VL.PermuteVar32x8(data, shuffle));
             }
             else if (Avx2.IsSupported)
             {
-                Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(in value));
+                Vector256<ulong> permute = As<UInt256, Vector256<ulong>>(ref AsRef(in value));
                 Vector256<ulong> convert = Avx2.Permute4x64(permute, 0b_01_00_11_10);
-                Unsafe.WriteUnaligned(ref bytes, Avx2.Shuffle(Unsafe.As<Vector256<ulong>, Word>(ref convert), shuffle));
+                WriteUnaligned(ref bytes, Avx2.Shuffle(As<Vector256<ulong>, Word>(ref convert), shuffle));
             }
         }
         else
@@ -348,7 +349,7 @@ public ref struct EvmStack
                 u0 = value.u0;
             }
 
-            Unsafe.WriteUnaligned(ref bytes, Vector256.Create(u3, u2, u1, u0));
+            WriteUnaligned(ref bytes, Vector256.Create(u3, u2, u1, u0));
         }
 
         _tracer?.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref bytes, WordSize));
@@ -357,7 +358,7 @@ public ref struct EvmStack
     public void PushSignedInt256(in Int256.Int256 value)
     {
         // tail call into UInt256
-        PushUInt256(in Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
+        PushUInt256(in As<Int256.Int256, UInt256>(ref AsRef(in value)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -381,13 +382,13 @@ public ref struct EvmStack
     /// <param name="result">The returned value.</param>
     public bool PopUInt256(out UInt256 result)
     {
-        Unsafe.SkipInit(out result);
+        SkipInit(out result);
         ref byte bytes = ref PopBytesByRef();
-        if (Unsafe.IsNullRef(ref bytes)) return false;
+        if (IsNullRef(ref bytes)) return false;
 
         if (Avx2.IsSupported)
         {
-            Word data = Unsafe.ReadUnaligned<Word>(ref bytes);
+            Word data = ReadUnaligned<Word>(ref bytes);
             Word shuffle = Vector256.Create(
                 0x18191a1b1c1d1e1ful,
                 0x1011121314151617ul,
@@ -396,13 +397,13 @@ public ref struct EvmStack
             if (Avx512Vbmi.VL.IsSupported)
             {
                 Word convert = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
-                result = Unsafe.As<Word, UInt256>(ref convert);
+                result = As<Word, UInt256>(ref convert);
             }
             else
             {
                 Word convert = Avx2.Shuffle(data, shuffle);
-                Vector256<ulong> permute = Avx2.Permute4x64(Unsafe.As<Word, Vector256<ulong>>(ref convert), 0b_01_00_11_10);
-                result = Unsafe.As<Vector256<ulong>, UInt256>(ref permute);
+                Vector256<ulong> permute = Avx2.Permute4x64(As<Word, Vector256<ulong>>(ref convert), 0b_01_00_11_10);
+                result = As<Vector256<ulong>, UInt256>(ref permute);
             }
         }
         else
@@ -411,17 +412,17 @@ public ref struct EvmStack
             if (BitConverter.IsLittleEndian)
             {
                 // Combine read and switch endianness to movbe reg, mem
-                u3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref bytes));
-                u2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong))));
-                u1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong))));
-                u0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong))));
+                u3 = BinaryPrimitives.ReverseEndianness(ReadUnaligned<ulong>(ref bytes));
+                u2 = BinaryPrimitives.ReverseEndianness(ReadUnaligned<ulong>(ref Add(ref bytes, sizeof(ulong))));
+                u1 = BinaryPrimitives.ReverseEndianness(ReadUnaligned<ulong>(ref Add(ref bytes, 2 * sizeof(ulong))));
+                u0 = BinaryPrimitives.ReverseEndianness(ReadUnaligned<ulong>(ref Add(ref bytes, 3 * sizeof(ulong))));
             }
             else
             {
-                u3 = Unsafe.ReadUnaligned<ulong>(ref bytes);
-                u2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong)));
-                u1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong)));
-                u0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong)));
+                u3 = ReadUnaligned<ulong>(ref bytes);
+                u2 = ReadUnaligned<ulong>(ref Add(ref bytes, sizeof(ulong)));
+                u1 = ReadUnaligned<ulong>(ref Add(ref bytes, 2 * sizeof(ulong)));
+                u0 = ReadUnaligned<ulong>(ref Add(ref bytes, 3 * sizeof(ulong)));
             }
 
             result = new UInt256(u0, u1, u2, u3);
@@ -439,7 +440,7 @@ public ref struct EvmStack
         }
 
         ref byte bytes = ref _bytes[head * WordSize];
-        return Unsafe.ReadUnaligned<UInt256>(ref bytes).IsZero;
+        return ReadUnaligned<UInt256>(ref bytes).IsZero;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -448,9 +449,9 @@ public ref struct EvmStack
         int head = Head;
         if (head-- == 0)
         {
-            return ref Unsafe.NullRef<byte>();
+            return ref NullRef<byte>();
         }
-        return ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
+        return ref Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
     }
 
     public readonly Span<byte> PeekWord256()
@@ -484,17 +485,17 @@ public ref struct EvmStack
         int head = Head;
         if (head == 0)
         {
-            return ref Unsafe.NullRef<byte>();
+            return ref NullRef<byte>();
         }
         head--;
         Head = head;
-        return ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
+        return ref Add(ref MemoryMarshal.GetReference(_bytes), head * WordSize);
     }
 
     public Span<byte> PopWord256()
     {
         ref byte bytes = ref PopBytesByRef();
-        if (Unsafe.IsNullRef(ref bytes)) ThrowEvmStackUnderflowException();
+        if (IsNullRef(ref bytes)) ThrowEvmStackUnderflowException();
 
         return MemoryMarshal.CreateSpan(ref bytes, WordSize);
     }
@@ -515,9 +516,9 @@ public ref struct EvmStack
     {
         ref byte bytes = ref PopBytesByRef();
 
-        if (Unsafe.IsNullRef(ref bytes)) ThrowEvmStackUnderflowException();
+        if (IsNullRef(ref bytes)) ThrowEvmStackUnderflowException();
 
-        return Unsafe.Add(ref bytes, WordSize - sizeof(byte));
+        return Add(ref bytes, WordSize - sizeof(byte));
     }
 
     public bool Dup(in int depth)
@@ -526,10 +527,10 @@ public ref struct EvmStack
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
-        ref byte from = ref Unsafe.Add(ref bytes, (Head - depth) * WordSize);
-        ref byte to = ref Unsafe.Add(ref bytes, Head * WordSize);
+        ref byte from = ref Add(ref bytes, (Head - depth) * WordSize);
+        ref byte to = ref Add(ref bytes, Head * WordSize);
 
-        Unsafe.WriteUnaligned(ref to, Unsafe.ReadUnaligned<Word>(ref from));
+        WriteUnaligned(ref to, ReadUnaligned<Word>(ref from));
 
         if (_tracer is not null) Trace(depth);
 
@@ -550,12 +551,12 @@ public ref struct EvmStack
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
-        ref byte bottom = ref Unsafe.Add(ref bytes, (Head - depth) * WordSize);
-        ref byte top = ref Unsafe.Add(ref bytes, (Head - 1) * WordSize);
+        ref byte bottom = ref Add(ref bytes, (Head - depth) * WordSize);
+        ref byte top = ref Add(ref bytes, (Head - 1) * WordSize);
 
-        Word buffer = Unsafe.ReadUnaligned<Word>(ref bottom);
-        Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));
-        Unsafe.WriteUnaligned(ref top, buffer);
+        Word buffer = ReadUnaligned<Word>(ref bottom);
+        WriteUnaligned(ref bottom, ReadUnaligned<Word>(ref top));
+        WriteUnaligned(ref top, buffer);
 
         if (_tracer is not null) Trace(depth);
 
@@ -569,12 +570,12 @@ public ref struct EvmStack
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
-        ref byte first = ref Unsafe.Add(ref bytes, (Head - n) * WordSize);
-        ref byte second = ref Unsafe.Add(ref bytes, (Head - m) * WordSize);
+        ref byte first = ref Add(ref bytes, (Head - n) * WordSize);
+        ref byte second = ref Add(ref bytes, (Head - m) * WordSize);
 
-        Word buffer = Unsafe.ReadUnaligned<Word>(ref first);
-        Unsafe.WriteUnaligned(ref first, Unsafe.ReadUnaligned<Word>(ref second));
-        Unsafe.WriteUnaligned(ref second, buffer);
+        Word buffer = ReadUnaligned<Word>(ref first);
+        WriteUnaligned(ref first, ReadUnaligned<Word>(ref second));
+        WriteUnaligned(ref second, buffer);
 
         if (_tracer is not null) Trace(maxDepth);
 
