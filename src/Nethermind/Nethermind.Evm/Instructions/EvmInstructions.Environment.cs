@@ -417,7 +417,8 @@ internal static partial class EvmInstructions
         else
         {
             // Otherwise, push the account's code hash.
-            stack.PushBytes(state.GetCodeHash(address).Bytes);
+            ValueHash256 hash = state.GetCodeHash(address);
+            stack.Push32Bytes(in hash);
         }
 
         return EvmExceptionType.None;
@@ -500,7 +501,7 @@ internal static partial class EvmInstructions
         // Use the random value if post-merge; otherwise, use block difficulty.
         if (header.IsPostMerge)
         {
-            stack.Push32Bytes(in Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in header.Random.ValueHash256)));
+            stack.Push32Bytes(in header.Random.ValueHash256);
         }
         else
         {

@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -209,6 +210,17 @@ public ref struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Push32Bytes(in Word value)
     {
+        _tracer?.TraceWord(in value);
+
+        ref byte bytes = ref PushBytesRef();
+        Unsafe.As<byte, Word>(ref bytes) = value;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Push32Bytes(in ValueHash256 hash)
+    {
+        ref readonly Word value = ref Unsafe.As<ValueHash256, Word>(ref Unsafe.AsRef(in hash));
+
         _tracer?.TraceWord(in value);
 
         ref byte bytes = ref PushBytesRef();
