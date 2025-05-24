@@ -93,8 +93,37 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         public StartBlockProducerAuRa CreateStartBlockProducer()
         {
             return new StartBlockProducerAuRa(
-                this,
-                this.Config<IAuraConfig>());
+                this.SpecProvider,
+                this.ChainSpec,
+                this.ConfigProvider.GetConfig<IBlocksConfig>(),
+                this.Config<IAuraConfig>(),
+                this.BlockProcessingQueue!,
+                this.BlockTree!,
+                this.Sealer!,
+                this.Timestamper,
+                this.ReportingValidator!,
+                this.ReceiptStorage!,
+                this.ValidatorStore,
+                this.FinalizationManager!,
+                this.EngineSigner!,
+                this.GasPriceOracle!,
+                this.ReportingContractValidatorCache,
+                this.DisposeStack,
+                this.GasLimitCalculatorCache!,
+                this.AbiEncoder,
+                this.WorldStateManager!,
+                this.TxAuRaFilterBuilders!,
+                this.TxPriorityContractLocalDataSource!,
+                this.TxPool!,
+                this.StateReader,
+                this.TransactionComparerProvider,
+                this.BlockPreprocessor,
+                this.NodeKey,
+                this.CryptoRandom,
+                this.BlockValidator,
+                this.RewardCalculatorSource,
+                this.BlockProducerEnvFactory,
+                this.LogManager);
         }
     }
 }

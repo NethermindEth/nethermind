@@ -4,6 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -25,6 +26,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
+using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -120,31 +122,58 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         protected override Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null) =>
             base.Build(builder =>
             {
-                builder.AddDecorator<ISpecProvider>((ctx, specProvider) =>
-                {
-                    // I guess ideally, just make a wrapper for `ISpecProvider` that replace only SealEngine.
-                    ISpecProvider unwrappedSpecProvider = specProvider;
-                    while (unwrappedSpecProvider is OverridableSpecProvider overridableSpecProvider) unwrappedSpecProvider = overridableSpecProvider.SpecProvider;
-                    if (unwrappedSpecProvider is TestSingleReleaseSpecProvider provider) provider.SealEngine = SealEngineType;
-                    return specProvider;
-                });
+                builder
+                    .AddDecorator<ISpecProvider>((ctx, specProvider) =>
+                    {
+                        // I guess ideally, just make a wrapper for `ISpecProvider` that replace only SealEngine.
+                        ISpecProvider unwrappedSpecProvider = specProvider;
+                        while (unwrappedSpecProvider is OverridableSpecProvider overridableSpecProvider)
+                            unwrappedSpecProvider = overridableSpecProvider.SpecProvider;
+                        if (unwrappedSpecProvider is TestSingleReleaseSpecProvider provider)
+                            provider.SealEngine = SealEngineType;
+                        return specProvider;
+                    })
+
+                    // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
+                    // as normally, test blockchain don't use INethermindApi at all
+                    .AddSingleton<IAbiEncoder>(Nethermind.Abi.AbiEncoder.Instance)
+                    .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
+                    .AddSingleton<NethermindApi.Dependencies>()
+                    .AddSingleton<AuRaNethermindApi>()
+                    .AddDecorator<AuRaNethermindApi>((ctx, api) =>
+                    {
+                        // Yes getting from `TestBlockchain` itself, since steps are not run
+                        // and some of these are not from DI. you know... chicken and egg, but dont forgot about rooster.
+                        api.DbProvider = DbProvider;
+                        api.TxPool = TxPool;
+                        api.TransactionComparerProvider = TransactionComparerProvider;
+                        return api;
+                    });
                 configurer?.Invoke(builder);
             });
 
+        protected override ChainSpec CreateChainSpec()
+        {
+            ChainSpec baseChainSpec = base.CreateChainSpec();
+            baseChainSpec.EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
+                new AuRaChainSpecEngineParameters
+                {
+                    WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
+                });
+            baseChainSpec.Parameters = new ChainParameters();
+            return baseChainSpec;
+        }
+
         protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
         {
+            /*
             NethermindApi.Dependencies apiDependencies = new NethermindApi.Dependencies(
                 new ConfigProvider(),
                 new EthereumJsonSerializer(),
                 LogManager,
                 new ChainSpec
                 {
-                    EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
-                        new AuRaChainSpecEngineParameters
-                        {
-                            WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
-                        }),
-                    Parameters = new()
+                    EngineChainSpecParametersProvider =
                 },
                 SpecProvider,
                 [],
@@ -159,9 +188,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 TransactionComparerProvider = TransactionComparerProvider,
                 TxPool = TxPool
             };
+            */
 
-            WithdrawalContractFactory withdrawalContractFactory = new(_api.ChainSpec!.EngineChainSpecParametersProvider
-                .GetChainSpecParameters<AuRaChainSpecEngineParameters>(), _api.AbiEncoder);
+            _api = Container.Resolve<AuRaNethermindApi>();
+
+            WithdrawalContractFactory withdrawalContractFactory = new(Container.Resolve<ChainSpec>().EngineChainSpecParametersProvider
+                .GetChainSpecParameters<AuRaChainSpecEngineParameters>(), Container.Resolve<IAbiEncoder>());
             WithdrawalProcessor = new AuraWithdrawalProcessor(
                 withdrawalContractFactory.Create(TxProcessor),
                 LogManager
