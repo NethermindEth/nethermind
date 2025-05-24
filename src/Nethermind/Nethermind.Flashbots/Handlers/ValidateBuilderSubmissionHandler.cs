@@ -64,7 +64,7 @@ public class ValidateSubmissionHandler
         _logger = logManager!.GetClassLogger();
         _specProvider = specProvider;
 
-        _processingScope = readOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
+        _processingScope = readOnlyTxProcessingEnvFactory.Create().Build();
         var worldState = _processingScope.WorldState;
         ITransactionProcessor transactionProcessor = _processingScope.TransactionProcessor;
         IBlockCachePreWarmer preWarmer = new BlockCachePreWarmer(readOnlyTxProcessingEnvFactory, worldState, _specProvider, 0, logManager);
@@ -221,7 +221,7 @@ public class ValidateSubmissionHandler
         using var scope = _processingScope;
         IWorldState worldState = _processingScope.WorldState;
         Hash256 stateRoot = parentHeader.StateRoot!;
-        worldState.StateRoot = stateRoot;
+        using var __ = worldState.BeginScope(stateRoot);
         IReleaseSpec spec = _specProvider.GetSpec(parentHeader);
 
         RecoverSenderAddress(block, spec);

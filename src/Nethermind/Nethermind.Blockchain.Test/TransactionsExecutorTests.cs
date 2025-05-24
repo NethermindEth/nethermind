@@ -297,6 +297,7 @@ namespace Nethermind.Blockchain.Test
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)
             {
+                using var __ = stateProvider.BeginScope();
                 HashSet<Address> missingAddressesSet = missingAddresses.ToHashSet();
 
                 foreach (KeyValuePair<Address, (UInt256 Balance, UInt256 Nonce)> accountState in testCase.AccountStates
@@ -313,6 +314,7 @@ namespace Nethermind.Blockchain.Test
                 stateProvider.CommitTree(0);
             }
 
+
             BlockProcessor.BlockProductionTransactionsExecutor txExecutor =
                 new(
                     transactionProcessor,
@@ -325,6 +327,7 @@ namespace Nethermind.Blockchain.Test
             BlockReceiptsTracer receiptsTracer = new();
             receiptsTracer.StartNewBlockTrace(blockToProduce);
 
+            using var _ = stateProvider.BeginScope();
             var ctx = new BlockExecutionContext(block.Header, spec);
 
             txExecutor.ProcessTransactions(blockToProduce, ctx, ProcessingOptions.ProducingBlock, receiptsTracer, spec);

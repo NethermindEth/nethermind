@@ -89,6 +89,8 @@ namespace Nethermind.Merge.Plugin.Test
             ExecutionPayload blockRequest = CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             Block? block = blockRequest.TryGetBlock().Block;
 
+            using var _ =
+                chain.WorldStateManager.GlobalWorldState.BeginScope(chain.WorldStateManager.GlobalWorldState.StateRoot);
             Snapshot before = chain.WorldStateManager.GlobalWorldState.TakeSnapshot();
             chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
@@ -118,6 +120,7 @@ namespace Nethermind.Merge.Plugin.Test
             Block? block = blockRequestV3.TryGetBlock().Block;
 
             IWorldState globalWorldState = chain.WorldStateManager.GlobalWorldState;
+            using var _ = globalWorldState.BeginScope(globalWorldState.StateRoot);
             Snapshot before = globalWorldState.TakeSnapshot();
             var blockHashStore = new BlockhashStore(chain.SpecProvider, globalWorldState);
             blockHashStore.ApplyBlockhashStateChanges(block!.Header);

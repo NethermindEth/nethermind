@@ -49,16 +49,26 @@ public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
     protected virtual ITransactionProcessor CreateTransactionProcessor() =>
         new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, LogManager);
 
-    IOverridableTxProcessingScope IOverridableTxProcessorSource.Build(Hash256 stateRoot) => Build(stateRoot);
+    IOverridableTxProcessingScope IOverridableTxProcessorSource.Build() => Build();
+    IOverridableTxProcessingScope IOverridableTxProcessorSource.BuildAndInit(Hash256 stateRoot) => BuildAndInit(stateRoot);
 
-    public OverridableTxProcessingScope Build(Hash256 stateRoot) => new(CodeInfoRepository, TransactionProcessor, StateProvider, stateRoot);
+    public OverridableTxProcessingScope Build() => new(CodeInfoRepository, TransactionProcessor, StateProvider);
+    public OverridableTxProcessingScope BuildAndInit(Hash256 stateRoot)
+    {
+        var scope = new OverridableTxProcessingScope(CodeInfoRepository, TransactionProcessor, StateProvider);
+        scope.Init(stateRoot);
+        return scope;
+    }
 
     IOverridableTxProcessingScope IOverridableTxProcessorSource.BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
     {
-        OverridableTxProcessingScope scope = Build(header.StateRoot ?? throw new ArgumentException($"Block {header.Hash} state root is null", nameof(header)));
+        OverridableTxProcessingScope scope = BuildAndInit(header.StateRoot ??
+                                                          throw new ArgumentException(
+                                                              $"Block {header.Hash} state root is null",
+                                                              nameof(header)));
         if (stateOverride is not null)
         {
-            scope.WorldState.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, SpecProvider.GetSpec(header), header.Number);
+            scope.WorldState.WithScope(ws => ws.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, SpecProvider.GetSpec(header), header.Number));
             header.StateRoot = scope.WorldState.StateRoot;
         }
         return scope;

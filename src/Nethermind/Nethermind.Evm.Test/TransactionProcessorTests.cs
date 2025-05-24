@@ -40,6 +40,7 @@ public class TransactionProcessorTests
     private IEthereumEcdsa _ethereumEcdsa;
     private TransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
+    private IDisposable _worldStateGuard;
 
     public TransactionProcessorTests(bool eip155Enabled)
     {
@@ -56,6 +57,7 @@ public class TransactionProcessorTests
         TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         PreBlockCaches preBlockCaches = new();
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance, preBlockCaches);
+        _worldStateGuard = _stateProvider.BeginScope();
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
@@ -64,6 +66,12 @@ public class TransactionProcessorTests
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _worldStateGuard.Dispose();
     }
 
     [TestCase(true, true)]

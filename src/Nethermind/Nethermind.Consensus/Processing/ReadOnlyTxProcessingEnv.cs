@@ -81,11 +81,16 @@ namespace Nethermind.Consensus.Processing
         protected virtual ITransactionProcessor CreateTransactionProcessor() =>
             new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, LogManager);
 
-        public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
+        public IReadOnlyTxProcessingScope Build()
         {
-            Hash256 originalStateRoot = StateProvider.StateRoot;
-            StateProvider.StateRoot = stateRoot;
-            return new ReadOnlyTxProcessingScope(TransactionProcessor, StateProvider, originalStateRoot);
+            return new ReadOnlyTxProcessingScope(TransactionProcessor, StateProvider);
+        }
+
+        public IReadOnlyTxProcessingScope BuildAndInit(Hash256 stateRoot)
+        {
+            var processor = Build();
+            processor.Init(stateRoot);
+            return processor;
         }
     }
 }

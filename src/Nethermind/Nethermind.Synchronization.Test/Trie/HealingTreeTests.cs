@@ -154,7 +154,7 @@ public class HealingTreeTests
         {
             IWorldState mainWorldState = server.Resolve<MainBlockProcessingContext>().WorldState;
             IBlockTree blockTree = server.Resolve<IBlockTree>();
-            mainWorldState.StateRoot = Keccak.EmptyTreeHash;
+            using var _ = mainWorldState.BeginScope();
 
             for (int i = 0; i < 100; i++)
             {
@@ -204,7 +204,7 @@ public class HealingTreeTests
         void AssertStorage(IContainer client)
         {
             IWorldState mainWorldState = client.Resolve<MainBlockProcessingContext>().WorldState;
-            mainWorldState.StateRoot = stateRoot;
+            using var _ = mainWorldState.BeginScope(stateRoot);
 
             for (int i = 0; i < 100; i++)
             {

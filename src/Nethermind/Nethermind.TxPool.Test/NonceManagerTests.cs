@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -51,6 +52,7 @@ public class NonceManagerTests
     [Test]
     public void should_increment_own_transaction_nonces_locally_when_requesting_reservations()
     {
+        using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
         {
             nonce.Should().Be(0);
@@ -96,6 +98,7 @@ public class NonceManagerTests
     [Explicit]
     public void should_increment_own_transaction_nonces_locally_when_requesting_reservations_in_parallel()
     {
+        using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
         const int reservationsCount = 1000;
 
         ConcurrentQueue<UInt256> nonces = new();
@@ -136,6 +139,7 @@ public class NonceManagerTests
     [Test]
     public void ReserveNonce_should_skip_nonce_if_TxWithNonceReceived()
     {
+        using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
         using (NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, 4))
         {
             locker.Accept();
@@ -174,6 +178,7 @@ public class NonceManagerTests
     [Test]
     public void should_reuse_nonce_if_tx_rejected()
     {
+        using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
         {
             nonce.Should().Be(0);
@@ -198,6 +203,7 @@ public class NonceManagerTests
     [Repeat(10)]
     public void should_lock_on_same_account()
     {
+        using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
         using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
         nonce.Should().Be(0);
         Task task = Task.Run(() =>
@@ -213,6 +219,7 @@ public class NonceManagerTests
     [Repeat(10)]
     public void should_not_lock_on_different_accounts()
     {
+        using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
         using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
         nonce.Should().Be(0);
         Task task = Task.Run(() =>

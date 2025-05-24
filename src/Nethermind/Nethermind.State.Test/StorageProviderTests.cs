@@ -46,6 +46,7 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        using var _ = provider.BeginScope();
         provider.Commit(Frontier.Instance);
         provider.Restore(Snapshot.Empty);
     }
@@ -63,6 +64,7 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        using var _ = provider.BeginScope();
         provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
         provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
         provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
@@ -76,6 +78,7 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        using var _ = provider.BeginScope();
         provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
         provider.Commit(Frontier.Instance);
         provider.Get(new StorageCell(ctx.Address1, 1));
@@ -96,6 +99,7 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        using var _ = provider.BeginScope();
         provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
         provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
         provider.Set(new StorageCell(ctx.Address1, 3), _values[3]);
@@ -109,6 +113,7 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        using var _ = provider.BeginScope();
         provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
         provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
         provider.Set(new StorageCell(ctx.Address1, 3), _values[3]);
@@ -140,6 +145,7 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        using var _ = provider.BeginScope();
         provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
         provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
         provider.Set(new StorageCell(ctx.Address1, 3), _values[3]);
@@ -154,6 +160,7 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        using var _ = provider.BeginScope();
         provider.Get(new StorageCell(ctx.Address1, 1));
         provider.Get(new StorageCell(ctx.Address1, 1));
         provider.Get(new StorageCell(ctx.Address1, 1));
@@ -184,6 +191,7 @@ public class StorageProviderTests
         Context ctx = new();
         // block 1
         WorldState storageProvider = BuildStorageProvider(ctx);
+        using var _ = storageProvider.BeginScope();
         storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
         storageProvider.Commit(Frontier.Instance);
         storageProvider.Commit(Frontier.Instance);
@@ -209,6 +217,7 @@ public class StorageProviderTests
         Context ctx = new();
         // block 1
         WorldState storageProvider = BuildStorageProvider(ctx);
+        using var _ = storageProvider.BeginScope();
         for (int i = 0; i < Resettable.StartCapacity; i++)
         {
             storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[i % 2]);
@@ -229,6 +238,7 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        using var _ = provider.BeginScope();
         // Should be 0 if not set
         Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero(), Is.True);
 
@@ -248,7 +258,7 @@ public class StorageProviderTests
     {
         Context ctx = new Context();
         WorldState provider = BuildStorageProvider(ctx);
-
+        using var _ = provider.BeginScope();
         provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
         Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
     }
@@ -265,6 +275,7 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        using var _ = provider.BeginScope();
         Snapshot[] snapshots = new Snapshot[4];
         snapshots[0] = provider.TakeSnapshot();
         provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[1]);
@@ -291,6 +302,7 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        using var _ = provider.BeginScope();
 
         provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
         Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
@@ -307,7 +319,7 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
-
+        using var _ = provider.BeginScope();
         provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
         Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
 
@@ -327,6 +339,7 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        using var _ = provider.BeginScope();
         Snapshot[] snapshots = new Snapshot[4];
 
         // No updates
@@ -372,6 +385,7 @@ public class StorageProviderTests
     {
         Context ctx = new();
         WorldState provider = BuildStorageProvider(ctx);
+        using var _ = provider.BeginScope();
         Snapshot[] snapshots = new Snapshot[4];
 
         // No updates
@@ -417,6 +431,7 @@ public class StorageProviderTests
         PreBlockCaches preBlockCaches = new PreBlockCaches();
         Context ctx = new(preBlockCaches);
         WorldState provider = BuildStorageProvider(ctx);
+        using var _ = provider.BeginScope();
         StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
         StorageCell nonAccessedStorageCell = new StorageCell(TestItem.AddressA, 2);
         preBlockCaches.StorageCache[accessedStorageCell] = [1, 2, 3];
@@ -436,7 +451,10 @@ public class StorageProviderTests
 
         public Context(PreBlockCaches preBlockCaches = null)
         {
-            StateProvider = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
+            StateProvider = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance),
+                Substitute.For<IDb>(), LogManager, preBlockCaches);
+            using var _ = StateProvider.BeginScope();
+
             StateProvider.CreateAccount(Address1, 0);
             StateProvider.CreateAccount(Address2, 0);
             StateProvider.Commit(Frontier.Instance);

@@ -35,6 +35,9 @@ namespace Nethermind.Store.Test
             MemDb stateDb = new();
             WorldState provider =
                 new(TestTrieStoreFactory.Build(stateDb, Logger), Substitute.For<IDb>(), Logger);
+
+            using var _ = provider.BeginScope();
+
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
@@ -77,6 +80,7 @@ namespace Nethermind.Store.Test
             MemDb stateDb = new();
             TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, Logger);
             WorldState provider = new(trieStore, new MemDb(), Logger);
+            using var _ = provider.BeginScope();
 
             void UpdateStorageValue(byte[] newValue)
             {
@@ -137,6 +141,7 @@ namespace Nethermind.Store.Test
             MemDb stateDb = new();
             TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, Logger);
             WorldState provider = new(trieStore, new MemDb(), Logger);
+            using var _ = provider.BeginScope();
 
             void CommitEverything()
             {
@@ -190,6 +195,7 @@ namespace Nethermind.Store.Test
 
             TrieStore trieStore = TestTrieStoreFactory.Build(dbProvider.StateDb, Logger);
             WorldState state = new(trieStore, dbProvider.CodeDb, Logger);
+            using var _ = state.BeginScope();
 
             /* to start with we need to create an account that we will be setting storage at */
             state.CreateAccount(storageCell.Address, UInt256.One);
@@ -219,7 +225,7 @@ namespace Nethermind.Store.Test
 
             WorldState processorStateProvider =
                 new(trieStore, new MemDb(), LimboLogs.Instance);
-            processorStateProvider.StateRoot = state.StateRoot;
+            using var __ = processorStateProvider.BeginScope(state.StateRoot);
 
             processorStateProvider.Set(storageCell, newValue);
             processorStateProvider.Commit(MuirGlacier.Instance);
@@ -240,6 +246,7 @@ namespace Nethermind.Store.Test
         {
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
             WorldState provider = new(trieStore, new MemDb(), Logger);
+            using var _ = provider.BeginScope();
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
@@ -257,6 +264,7 @@ namespace Nethermind.Store.Test
             releaseSpec.IsEip7702Enabled.Returns(true);
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
             WorldState sut = new(trieStore, new MemDb(), Logger);
+            using var __ = sut.BeginScope();
             sut.CreateAccount(TestItem.AddressA, 0);
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(new byte[1]), new byte[1], releaseSpec, false);
             sut.Commit(MuirGlacier.Instance);
@@ -275,6 +283,7 @@ namespace Nethermind.Store.Test
             releaseSpec.IsEip7702Enabled.Returns(true);
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
             WorldState sut = new(trieStore, new MemDb(), Logger);
+            using var _ = sut.BeginScope();
             sut.CreateAccount(TestItem.AddressA, 0);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
@@ -292,6 +301,7 @@ namespace Nethermind.Store.Test
             releaseSpec.IsEip7702Enabled.Returns(true);
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
             WorldState sut = new(trieStore, new MemDb(), Logger);
+            using var _ = sut.BeginScope();
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
@@ -311,6 +321,7 @@ namespace Nethermind.Store.Test
             releaseSpec.IsEip7702Enabled.Returns(true);
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
             WorldState sut = new(trieStore, new MemDb(), Logger);
+            using var _ = sut.BeginScope();
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = new byte[20];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
@@ -329,6 +340,7 @@ namespace Nethermind.Store.Test
             releaseSpec.IsEip3607Enabled.Returns(true);
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
             WorldState sut = new(trieStore, new MemDb(), Logger);
+            using var _ = sut.BeginScope();
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
@@ -347,6 +359,7 @@ namespace Nethermind.Store.Test
             releaseSpec.IsEip7702Enabled.Returns(true);
             TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), Logger);
             WorldState sut = new(trieStore, new MemDb(), Logger);
+            using var _ = sut.BeginScope();
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
             sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);

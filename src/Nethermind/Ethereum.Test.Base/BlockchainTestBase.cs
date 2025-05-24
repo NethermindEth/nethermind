@@ -139,7 +139,8 @@ public abstract class BlockchainTestBase
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
 
-        InitializeTestState(test, stateProvider, specProvider);
+        using (stateProvider.BeginScope())
+            InitializeTestState(test, stateProvider, specProvider);
 
         stopwatch?.Start();
         List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
@@ -210,9 +211,11 @@ public abstract class BlockchainTestBase
             preWarmer.ClearCaches();
         }
 
-        List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
+        List<string> differences;
+        using (stateProvider.BeginScope())
+            differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
 
-        Assert.That(differences.Count, Is.Zero, "differences");
+        Assert.That(differences, Is.Empty, "differences");
 
         return new EthereumTestResult
         (

@@ -542,6 +542,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
     private byte[] CreateNestedCallsCode(bool revertParentCall = false, bool revertCreateCall = false)
     {
+
         byte[] deployedCode = new byte[3];
 
         byte[] initCode = Prepare.EvmCode.ForInitOf(deployedCode).Done;
@@ -557,6 +558,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             .CallWithInput(TestItem.AddressC, 50000, SampleHexData1)
             .DelegateCall(TestItem.AddressC, 50000)
             .Log(0, 0);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
         return revertParentCall ? callCodePrepare.Revert(0, 0).Done : callCodePrepare.Done;
     }
 }

@@ -68,6 +68,7 @@ public class CodeInfoRepositoryTests
         IDb codeDb = new MemDb();
         TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        using var __ = stateProvider.BeginScope();
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         CodeInfoRepository sut = new();
@@ -98,6 +99,7 @@ public class CodeInfoRepositoryTests
         IDb codeDb = new MemDb();
         TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        using var __ = stateProvider.BeginScope();
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         CodeInfoRepository sut = new();
@@ -112,6 +114,7 @@ public class CodeInfoRepositoryTests
         IDb codeDb = new MemDb();
         TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        using var _ = stateProvider.BeginScope();
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         CodeInfoRepository sut = new();
@@ -129,6 +132,7 @@ public class CodeInfoRepositoryTests
         IDb codeDb = new MemDb();
         TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        using var _ = stateProvider.BeginScope();
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         Address delegationAddress = new Address(code.Slice(3, Address.Size));
@@ -148,6 +152,7 @@ public class CodeInfoRepositoryTests
         IDb codeDb = new MemDb();
         TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        using var _ = stateProvider.BeginScope();
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
 
@@ -163,6 +168,7 @@ public class CodeInfoRepositoryTests
         IDb codeDb = new MemDb();
         TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        using var _ = stateProvider.BeginScope();
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         Address delegationAddress = new Address(code.Slice(3, Address.Size));
@@ -182,6 +188,7 @@ public class CodeInfoRepositoryTests
         IDb codeDb = new MemDb();
         TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        using var _ = stateProvider.BeginScope();
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
 

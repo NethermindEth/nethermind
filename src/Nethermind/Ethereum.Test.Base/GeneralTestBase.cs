@@ -87,6 +87,9 @@ namespace Ethereum.Test.Base
             IWorldState stateProvider = mainBlockProcessingContext.WorldState;
             ITransactionProcessor transactionProcessor = mainBlockProcessingContext.TransactionProcessor;
 
+            // start a global worldState scope for all the activities
+            using var __ = stateProvider.BeginScope();
+
             InitializeTestState(test.Pre, stateProvider, specProvider);
 
             BlockHeader header = new(

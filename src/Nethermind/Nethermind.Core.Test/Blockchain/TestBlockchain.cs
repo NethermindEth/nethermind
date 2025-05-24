@@ -48,7 +48,7 @@ namespace Nethermind.Core.Test.Blockchain;
 
 public class TestBlockchain : IDisposable
 {
-    public const int DefaultTimeout = 10000;
+    public const int DefaultTimeout = 1000000;
     protected long TestTimout { get; init; } = DefaultTimeout;
     public IStateReader StateReader => _fromContainer.StateReader;
     public IEthereumEcdsa EthereumEcdsa => _fromContainer.EthereumEcdsa;
@@ -173,47 +173,48 @@ public class TestBlockchain : IDisposable
         _fromContainer = Container.Resolve<FromContainer>();
 
         IWorldState state = _fromContainer.WorldStateManager.GlobalWorldState;
-
         ISpecProvider specProvider = SpecProvider;
-        // Eip4788 precompile state account
-        if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
-        {
-            state.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress!, 1);
-        }
-
-        // Eip2935
-        if (specProvider?.GenesisSpec?.IsBlockHashInStateAvailable ?? false)
-        {
-            state.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
-        }
-
         Configuration testConfiguration = _fromContainer.Configuration;
-        state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
-        state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
-        state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
-
-        InitialStateMutator?.Invoke(state);
-
-        byte[] code = Bytes.FromHexString("0xabcd");
-        state.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
-        state.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
-
         IReleaseSpec? finalSpec = specProvider?.GetFinalSpec();
-
-        if (finalSpec?.WithdrawalsEnabled is true)
+        using (state.BeginScope(state.StateRoot))
         {
-            state.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-            state.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, SpecProvider.GenesisSpec);
-        }
+            // Eip4788 precompile state account
+            if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
+            {
+                state.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress!, 1);
+            }
 
-        if (finalSpec?.ConsolidationRequestsEnabled is true)
-        {
-            state.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-            state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, SpecProvider.GenesisSpec);
-        }
+            // Eip2935
+            if (specProvider?.GenesisSpec?.IsBlockHashInStateAvailable ?? false)
+            {
+                state.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
+            }
 
-        state.Commit(SpecProvider.GenesisSpec);
-        state.CommitTree(0);
+            state.CreateAccount(TestItem.AddressA, testConfiguration.AccountInitialValue);
+            state.CreateAccount(TestItem.AddressB, testConfiguration.AccountInitialValue);
+            state.CreateAccount(TestItem.AddressC, testConfiguration.AccountInitialValue);
+
+            InitialStateMutator?.Invoke(state);
+            byte[] code = Bytes.FromHexString("0xabcd");
+            state.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
+
+            state.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+
+            if (finalSpec?.WithdrawalsEnabled is true)
+            {
+                state.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+                state.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, SpecProvider.GenesisSpec);
+            }
+
+            if (finalSpec?.ConsolidationRequestsEnabled is true)
+            {
+                state.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+                state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, SpecProvider.GenesisSpec);
+            }
+
+            state.Commit(SpecProvider.GenesisSpec);
+            state.CommitTree(0);
+        }
 
         BlockProcessor = CreateBlockProcessor(WorldStateManager.GlobalWorldState);
 

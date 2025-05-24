@@ -207,7 +207,8 @@ namespace Nethermind.Facade
                 : new(header.GasBeneficiary);
 
             CallOutputTracer callOutputTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(_processingEnv.Build(header.StateRoot!), header, tx, false,
+            using IOverridableTxProcessingScope txScope = _processingEnv.BuildAndInit(header.StateRoot!);
+            TransactionResult tryCallResult = TryCallAndRestore(txScope, header, tx, false,
                 new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
 
             return new CallOutput

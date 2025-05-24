@@ -78,7 +78,9 @@ public class ContractBasedValidatorTests
         _stateProvider.IsContract(_contractAddress).Returns(true);
 
         _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        _readOnlyTxProcessorSource.Build(Arg.Any<Hash256>()).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider, Keccak.EmptyTreeHash));
+        IReadOnlyTxProcessingScope toReturn = new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider);
+        _readOnlyTxProcessorSource.BuildAndInit(Arg.Any<Hash256>()).Returns(toReturn);
+
         _blockTree.Head.Returns(_block);
 
         _abiEncoder

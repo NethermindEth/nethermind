@@ -109,7 +109,7 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
                         IReadOnlyTxProcessorSource env = state.envPool.Get();
                         try
                         {
-                            using IReadOnlyTxProcessingScope scope = env.Build(state.stateRoot);
+                            using IReadOnlyTxProcessingScope scope = env.BuildAndInit(state.stateRoot);
                             scope.WorldState.WarmUp(state.block.Withdrawals[i].Address);
                         }
                         catch (MissingTrieNodeException)
@@ -261,7 +261,7 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
                     var env = envPool.Get();
                     try
                     {
-                        using IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
+                        using IReadOnlyTxProcessingScope scope = env.BuildAndInit(StateRoot);
 
                         foreach (AccessList list in SystemTxAccessLists.AsSpan())
                         {
@@ -334,7 +334,7 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
         public AddressWarmingState InitThreadState()
         {
             IReadOnlyTxProcessorSource env = EnvPool.Get();
-            return new(EnvPool, Block, StateRoot, env, scope: env.Build(StateRoot));
+            return new(EnvPool, Block, StateRoot, env, scope: env.BuildAndInit(StateRoot));
         }
 
         public void Dispose()
@@ -367,7 +367,7 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
         public BlockState InitThreadState()
         {
             IReadOnlyTxProcessorSource env = PreWarmer._envPool.Get();
-            IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
+            IReadOnlyTxProcessingScope scope = env.BuildAndInit(StateRoot);
             return new(PreWarmer, Block, StateRoot, Spec, env, scope);
         }
 

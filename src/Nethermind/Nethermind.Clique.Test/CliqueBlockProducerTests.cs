@@ -57,6 +57,7 @@ public class CliqueBlockProducerTests
         private readonly Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new();
         private readonly Dictionary<PrivateKey, CliqueBlockProducerRunner> _producers = new();
         private readonly Dictionary<PrivateKey, TxPool.TxPool> _pools = new();
+        private readonly Dictionary<PrivateKey, IWorldState> _stateProviders = new();
 
         private On()
             : this(15)
@@ -92,25 +93,26 @@ public class CliqueBlockProducerTests
             var trieStore = TestTrieStoreFactory.Build(stateDb, nodeLogManager);
             StateReader stateReader = new(trieStore, codeDb, nodeLogManager);
             WorldState stateProvider = new(trieStore, codeDb, nodeLogManager);
-            stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
+
             SepoliaSpecProvider testnetSpecProvider = SepoliaSpecProvider.Instance;
-
             IReleaseSpec finalSpec = testnetSpecProvider.GetFinalSpec();
-
-            if (finalSpec.WithdrawalsEnabled)
+            using (stateProvider.BeginScope(Keccak.EmptyTreeHash))
             {
-                stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-                stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec);
-            }
+                if (finalSpec.WithdrawalsEnabled)
+                {
+                    stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+                    stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec);
+                }
 
-            if (finalSpec.ConsolidationRequestsEnabled)
-            {
-                stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-                stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
-            }
+                if (finalSpec.ConsolidationRequestsEnabled)
+                {
+                    stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+                    stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
+                }
 
-            stateProvider.Commit(testnetSpecProvider.GenesisSpec);
-            stateProvider.CommitTree(0);
+                stateProvider.Commit(testnetSpecProvider.GenesisSpec);
+                stateProvider.CommitTree(0);
+            }
 
             BlockTree blockTree = Build.A.BlockTree()
                 .WithSpecProvider(testnetSpecProvider)
@@ -131,6 +133,7 @@ public class CliqueBlockProducerTests
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer());
             _pools[privateKey] = txPool;
+            _stateProviders[privateKey] = stateProvider;
 
             BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
             _blockTrees.Add(privateKey, blockTree);
@@ -492,7 +495,10 @@ public class CliqueBlockProducerTests
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
             transaction.Hash = transaction.CalculateHash();
             _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);
-            _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
+            using (_stateProviders[nodeKey].BeginScope(_stateProviders[nodeKey].StateRoot))
+            {
+                _pools[nodeKey].SubmitTx(transaction, TxHandlingOptions.None);
+            }
 
             return this;
         }

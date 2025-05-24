@@ -26,8 +26,10 @@ public class BlockhashProviderTests
     {
         var trieStore = TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
         var worldState = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        using var _ = worldState.BeginScope();
         worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
         worldState.Commit(Frontier.Instance);
+        worldState.CommitTree(0);
         return worldState;
     }
 
@@ -256,6 +258,7 @@ public class BlockhashProviderTests
         tree.SuggestHeader(current.Header);
 
         IWorldState worldState = CreateWorldState();
+        using var _ = worldState.BeginScope();
         var specProvider = new CustomSpecProvider(
             (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
             (new ForkActivation(0, current.Timestamp), Prague.Instance));
@@ -301,6 +304,7 @@ public class BlockhashProviderTests
         tree.SuggestHeader(current.Header);
 
         IWorldState worldState = CreateWorldState();
+        using var _ = worldState.BeginScope();
         var specProvider = new CustomSpecProvider(
             (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
             (new ForkActivation(0, current.Timestamp), Prague.Instance));

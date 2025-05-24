@@ -5,6 +5,7 @@ using System;
 using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -50,6 +51,7 @@ namespace Nethermind.Evm.Test.Tracing
                 Array.Empty<byte>()); // this would not happen but we want to ensure that precompiles are ignored
             testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
 
+            using var _ = testEnvironment._stateProvider.BeginScope(testEnvironment._stateProvider.StateRoot);
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(0);
             Assert.That(err, Is.Null);
         }
@@ -80,6 +82,7 @@ namespace Nethermind.Evm.Test.Tracing
                 ExecutionType.TRANSACTION, false);
             testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
 
+            using var _ = testEnvironment._stateProvider.BeginScope(testEnvironment._stateProvider.StateRoot);
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(0);
             Assert.That(err, Is.Null);
         }
@@ -107,7 +110,7 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(200, Array.Empty<byte>());
                 testEnvironment.tracer.ReportActionEnd(300, Array.Empty<byte>()); // should not happen
             }
-
+            using var _ = testEnvironment._stateProvider.BeginScope(testEnvironment._stateProvider.StateRoot);
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(14L);
             Assert.That(err, Is.Null);
         }
@@ -138,6 +141,7 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
+            using var _ = testEnvironment._stateProvider.BeginScope(testEnvironment._stateProvider.StateRoot);
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(24L);
             Assert.That(err, Is.Null);
         }
@@ -163,6 +167,8 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
             testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
             testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
+
+            using var _ = testEnvironment._stateProvider.BeginScope(testEnvironment._stateProvider.StateRoot);
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(35146L);
             Assert.That(err, Is.Null);
         }
@@ -181,6 +187,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportActionEnd(63, Array.Empty<byte>()); // second level
             testEnvironment.tracer.ReportActionEnd(65, Array.Empty<byte>());
 
+            using var _ = testEnvironment._stateProvider.BeginScope(testEnvironment._stateProvider.StateRoot);
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? _).Should().Be(1);
         }
 
@@ -229,6 +236,7 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
+            using var _ = testEnvironment._stateProvider.BeginScope(testEnvironment._stateProvider.StateRoot);
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(18);
             Assert.That(err, Is.Null);
         }
@@ -259,6 +267,7 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
+            using var _ = testEnvironment._stateProvider.BeginScope(testEnvironment._stateProvider.StateRoot);
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(17);
             Assert.That(err, Is.Null);
         }
@@ -390,6 +399,7 @@ namespace Nethermind.Evm.Test.Tracing
                 MemDb stateDb = new();
                 TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
                 _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+                using var _ = _stateProvider.BeginScope(Keccak.EmptyTreeHash);
                 _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);

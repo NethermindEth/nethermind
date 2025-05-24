@@ -72,6 +72,7 @@ public class ExecutionProcessorTests
         TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
 
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        using var _ = _stateProvider.BeginScope();
         _stateProvider.CreateAccount(eip7002Account, AccountBalance);
         _stateProvider.CreateAccount(eip7251Account, AccountBalance);
 
@@ -162,6 +163,7 @@ public class ExecutionProcessorTests
                 CreateLogEntry(TestItem.ExecutionRequestC.RequestDataParts)
             ).TestObject
         ];
+        using var _ = _stateProvider.BeginScope();
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
 
         Assert.That(block.Header.RequestsHash, Is.EqualTo(
