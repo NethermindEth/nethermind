@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
@@ -499,7 +500,7 @@ internal static partial class EvmInstructions
         // Use the random value if post-merge; otherwise, use block difficulty.
         if (header.IsPostMerge)
         {
-            stack.PushBytes(header.Random.Bytes);
+            stack.Push32Bytes(in Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in header.Random.ValueHash256)));
         }
         else
         {
