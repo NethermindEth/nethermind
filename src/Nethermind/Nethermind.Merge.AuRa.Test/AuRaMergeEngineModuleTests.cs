@@ -234,7 +234,9 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 targetAdjustedGasLimitCalculator);
 
             AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
-                _api!,
+                _api!.ChainSpec,
+                _api.AbiEncoder,
+                _api.CreateStartBlockProducer,
                 WorldStateManager,
                 BlockTree,
                 SpecProvider,
