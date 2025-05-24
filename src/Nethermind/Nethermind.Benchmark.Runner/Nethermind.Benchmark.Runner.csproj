@@ -3,6 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TieredPGO>true</TieredPGO>
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
   </PropertyGroup>
 
   <ItemGroup>

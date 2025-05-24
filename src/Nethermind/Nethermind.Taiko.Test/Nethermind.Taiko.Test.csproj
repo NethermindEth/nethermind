@@ -1,15 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <EnableNUnitRunner>true</EnableNUnitRunner>
+    <IsPackable>false</IsPackable>
     <Nullable>enable</Nullable>
     <NoWarn>$(NoWarn);NUnit1032</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="NUnit" />
     <PackageReference Include="NUnit.Analyzers">
@@ -17,7 +16,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="NUnit3TestAdapter" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />

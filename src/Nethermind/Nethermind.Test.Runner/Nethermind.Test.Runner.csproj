@@ -9,6 +9,7 @@
     <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
     <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
     <ServerGarbageCollection>true</ServerGarbageCollection>
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
   </PropertyGroup>
 
   <ItemGroup>
