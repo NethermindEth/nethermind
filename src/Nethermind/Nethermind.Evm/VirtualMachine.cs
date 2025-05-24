@@ -10,6 +10,7 @@ using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
@@ -1074,7 +1075,7 @@ public sealed unsafe partial class VirtualMachine(
         vmState.InitializeStacks();
 
         // Create an EVM stack using the current stack head, tracer, and data stack slice.
-        EvmStack stack = new(vmState.DataStackHead, _txTracer, vmState.DataStack.AsSpan());
+        EvmStack stack = new(vmState.DataStackHead, _txTracer, vmState.DataStack.AsAlignedSpan(alignment: 32, size: StackPool.StackLength));
 
         // Cache the available gas from the state for local use.
         long gasAvailable = vmState.GasAvailable;
@@ -1359,7 +1360,7 @@ public sealed unsafe partial class VirtualMachine(
 
         if (_txTracer.IsTracingStack)
         {
-            Memory<byte> stackMemory = vmState.DataStack.AsMemory().Slice(0, stackValue.Head * EvmStack.WordSize);
+            Memory<byte> stackMemory = vmState.DataStack.AsAlignedMemory(alignment: 32, size: StackPool.StackLength).Slice(0, stackValue.Head * EvmStack.WordSize);
             _txTracer.SetOperationStack(new TraceStack(stackMemory));
         }
     }

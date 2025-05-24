@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
+using System.Runtime.Intrinsics;
 
 using static Nethermind.Evm.EvmState;
 
@@ -33,6 +35,8 @@ internal sealed class StackPool
         }
     }
 
+    public const int StackLength = (EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32;
+
     public (byte[], ReturnState[]) RentStacks()
     {
         if (_stackPool.TryDequeue(out StackItem result))
@@ -42,7 +46,8 @@ internal sealed class StackPool
 
         return
         (
-            new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32],
+            // Include extra Vector256<byte>.Count and pin so we can align to 32 bytes
+            GC.AllocateUninitializedArray<byte>(StackLength + Vector256<byte>.Count, pinned: true),
             new ReturnState[EvmStack.ReturnStackSize]
         );
     }
