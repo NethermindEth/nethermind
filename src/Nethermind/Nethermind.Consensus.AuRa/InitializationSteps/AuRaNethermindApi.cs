@@ -39,22 +39,19 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             this.WorldStateManager!,
             this.BlockTree!,
             this.ReceiptFinder!,
-            this.TransactionPermissionContractVersions,
+            this.AuraStatefulComponents,
             this.TxFilterCache,
             this.LogManager
         );
 
         private PermissionBasedTxFilter.Cache? _txFilterCache = null;
-        public PermissionBasedTxFilter.Cache TxFilterCache => _txFilterCache ??= new PermissionBasedTxFilter.Cache();
+        private PermissionBasedTxFilter.Cache TxFilterCache => _txFilterCache ??= new PermissionBasedTxFilter.Cache();
 
         private IValidatorStore? _validatorStore = null;
         public IValidatorStore ValidatorStore => _validatorStore ??= new ValidatorStore(DbProvider!.BlockInfosDb);
 
-        public LruCache<ValueHash256, UInt256> TransactionPermissionContractVersions { get; }
-            = new(
-                PermissionBasedTxFilter.Cache.MaxCacheSize,
-                nameof(TransactionPermissionContract));
-
+        private AuraStatefulComponents? _auraStatefulComponents = null;
+        private AuraStatefulComponents AuraStatefulComponents => _auraStatefulComponents ??= new AuraStatefulComponents();
 
         private AuRaContractGasLimitOverride.Cache? _gasLimitCalculatorCache = null;
         public AuRaContractGasLimitOverride.Cache GasLimitCalculatorCache => _gasLimitCalculatorCache ??= new AuRaContractGasLimitOverride.Cache();
@@ -125,5 +122,13 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 this.BlockProducerEnvFactory,
                 this.LogManager);
         }
+    }
+
+    public class AuraStatefulComponents
+    {
+        public LruCache<ValueHash256, UInt256> TransactionPermissionContractVersions { get; }
+            = new(
+                PermissionBasedTxFilter.Cache.MaxCacheSize,
+                nameof(TransactionPermissionContract));
     }
 }

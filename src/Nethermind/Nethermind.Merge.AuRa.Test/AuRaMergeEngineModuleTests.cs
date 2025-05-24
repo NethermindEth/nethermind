@@ -166,30 +166,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
         protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
         {
-            /*
-            NethermindApi.Dependencies apiDependencies = new NethermindApi.Dependencies(
-                new ConfigProvider(),
-                new EthereumJsonSerializer(),
-                LogManager,
-                new ChainSpec
-                {
-                    EngineChainSpecParametersProvider =
-                },
-                SpecProvider,
-                [],
-                Substitute.For<IProcessExitSource>(),
-                Substitute.For<IContainer>()
-            );
-
-            _api = new(apiDependencies)
-            {
-                BlockTree = BlockTree,
-                DbProvider = DbProvider,
-                TransactionComparerProvider = TransactionComparerProvider,
-                TxPool = TxPool
-            };
-            */
-
             _api = Container.Resolve<AuRaNethermindApi>();
 
             WithdrawalContractFactory withdrawalContractFactory = new(Container.Resolve<ChainSpec>().EngineChainSpecParametersProvider

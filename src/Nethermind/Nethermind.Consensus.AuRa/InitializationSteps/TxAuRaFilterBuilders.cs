@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Abi;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -13,10 +12,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -32,7 +28,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         IWorldStateManager worldStateManager,
         IBlockTree blockTree,
         IReceiptFinder receiptFinder,
-        LruCache<ValueHash256, UInt256> transactionPermissionContractVersions,
+        AuraStatefulComponents statefulComponents,
         PermissionBasedTxFilter.Cache txFilterCache,
         ILogManager logManager
     )
@@ -100,7 +96,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                         chainSpec.Parameters.TransactionPermissionContract,
                         chainSpec.Parameters.TransactionPermissionContractTransition ?? 0,
                         CreateReadOnlyTransactionProcessorSource(),
-                        transactionPermissionContractVersions,
+                        statefulComponents.TransactionPermissionContractVersions,
                         logManager,
                         specProvider),
                     txFilterCache,
