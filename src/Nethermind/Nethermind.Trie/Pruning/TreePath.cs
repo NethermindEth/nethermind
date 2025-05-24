@@ -95,6 +95,16 @@ public struct TreePath : IEquatable<TreePath>
         return copy;
     }
 
+    public readonly TreePath Append(NibblePath.Key nibbles)
+    {
+        if (nibbles.Length == 0) return this;
+        if (nibbles.Length == 1) return Append(nibbles[0]);
+
+        TreePath copy = this;
+        copy.AppendMut(nibbles);
+        return copy;
+    }
+
     public readonly TreePath Append(int nib)
     {
         TreePath copy = this;
@@ -110,6 +120,39 @@ public struct TreePath : IEquatable<TreePath>
     }
 
     internal void AppendMut(ReadOnlySpan<byte> nibbles)
+    {
+        if (nibbles.Length == 0) return;
+        if (nibbles.Length == 1)
+        {
+            AppendMut(nibbles[0]);
+            return;
+        }
+
+        Span<byte> pathSpan = Span;
+
+        if (Length % 2 == 1)
+        {
+            this[Length] = nibbles[0];
+            Length++;
+            nibbles = nibbles[1..];
+        }
+
+        int byteLength = nibbles.Length / 2;
+        int pathSpanStart = Length / 2;
+        for (int i = 0; i < byteLength; i++)
+        {
+            pathSpan[i + pathSpanStart] = Nibbles.ToByte(nibbles[i * 2], nibbles[i * 2 + 1]);
+            Length += 2;
+        }
+
+        if (nibbles.Length % 2 == 1)
+        {
+            this[Length] = nibbles[^1];
+            Length++;
+        }
+    }
+
+    public void AppendMut(NibblePath.Key nibbles)
     {
         if (nibbles.Length == 0) return;
         if (nibbles.Length == 1)
@@ -230,14 +273,6 @@ public struct TreePath : IEquatable<TreePath>
     {
         this[Length - 1] = 0;
         Length--;
-    }
-
-    public readonly byte[] ToNibble()
-    {
-        bool odd = Length % 2 == 1;
-        Span<byte> theNibbles = stackalloc byte[odd ? Length + 1 : Length];
-        Nibbles.BytesToNibbleBytes(Span[..((Length + 1) / 2)], theNibbles);
-        return (odd ? theNibbles[..Length] : theNibbles).ToArray();
     }
 
     public readonly string ToHexString()
@@ -411,11 +446,20 @@ public struct TreePath : IEquatable<TreePath>
     {
         return Truncate(otherPath.Length) == otherPath;
     }
+
+    public NibblePath.Key ToNibblePath(int from) => (NibblePath.Key)NibblePath.FromKey(Path.Bytes).SliceFrom(from);
 }
 
 public static class TreePathExtensions
 {
     public static TreePath.AppendScope ScopedAppend(this ref TreePath path, Span<byte> nibbles)
+    {
+        int previousLength = path.Length;
+        path.AppendMut(nibbles);
+        return new TreePath.AppendScope(previousLength, ref path);
+    }
+
+    public static TreePath.AppendScope ScopedAppend(this ref TreePath path, NibblePath.Key nibbles)
     {
         int previousLength = path.Length;
         path.AppendMut(nibbles);

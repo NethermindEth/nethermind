@@ -92,7 +92,7 @@ public class SnapServer : ISnapServer
                 case 1:
                     try
                     {
-                        byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), rootHash);
+                        byte[]? rlp = tree.GetNodeByPath(requestedPath[0], rootHash);
                         response.Add(rlp);
                     }
                     catch (MissingTrieNodeException)
@@ -115,7 +115,7 @@ public class SnapServer : ISnapServer
 
                             for (int reqStorage = 1; reqStorage < requestedPath.Length; reqStorage++)
                             {
-                                byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
+                                byte[]? sRlp = sTree.GetNodeByPath(requestedPath[reqStorage]);
                                 response.Add(sRlp);
                             }
                         }
