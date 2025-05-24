@@ -149,18 +149,15 @@ public class CliqueBlockProducerTests
                 new VirtualMachine(blockhashProvider, specProvider, nodeLogManager),
                 codeInfoRepository,
                 nodeLogManager);
-            IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider);
-            IBeaconBlockRootHandler beaconBlockRootHandler = new BeaconBlockRootHandler(transactionProcessor, stateProvider);
-            IBlockhashStore blockHashStore = new BlockhashStore(testnetSpecProvider, stateProvider);
             BlockProcessor blockProcessor = new BlockProcessor(
                 testnetSpecProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                blockTransactionsExecutor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                beaconBlockRootHandler,
-                blockHashStore,
+                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+                new BlockhashStore(testnetSpecProvider, stateProvider),
                 nodeLogManager,
                 (IWithdrawalProcessor)null ?? new WithdrawalProcessor(stateProvider, nodeLogManager),
                 (IExecutionRequestsProcessor)null ?? new ExecutionRequestsProcessor(transactionProcessor),
@@ -191,18 +188,15 @@ public class CliqueBlockProducerTests
             VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
             TransactionProcessor minerTransactionProcessor = new(testnetSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
 
-            IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor1 = new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, testnetSpecProvider, _logManager);
-            IBeaconBlockRootHandler beaconBlockRootHandler1 = new BeaconBlockRootHandler(minerTransactionProcessor, minerStateProvider);
-            IBlockhashStore blockHashStore1 = new BlockhashStore(testnetSpecProvider, minerStateProvider);
             BlockProcessor minerBlockProcessor = new BlockProcessor(
                 testnetSpecProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                blockTransactionsExecutor1,
+                new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, testnetSpecProvider, _logManager),
                 minerStateProvider,
                 NullReceiptStorage.Instance,
-                beaconBlockRootHandler1,
-                blockHashStore1,
+                new BeaconBlockRootHandler(minerTransactionProcessor, minerStateProvider),
+                new BlockhashStore(testnetSpecProvider, minerStateProvider),
                 nodeLogManager,
                 (IWithdrawalProcessor)null ?? new WithdrawalProcessor(minerStateProvider, nodeLogManager),
                 (IExecutionRequestsProcessor)null ?? new ExecutionRequestsProcessor(minerTransactionProcessor),
