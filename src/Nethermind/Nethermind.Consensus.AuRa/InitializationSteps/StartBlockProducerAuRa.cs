@@ -179,7 +179,8 @@ public class StartBlockProducerAuRa(
             new ExecutionRequestsProcessor(changeableTxProcessingEnv.TransactionProcessor),
             _validator,
             auRaTxFilter,
-            CreateGasLimitCalculator() as AuRaContractGasLimitOverride, contractRewriter);
+            CreateGasLimitCalculator() as AuRaContractGasLimitOverride,
+            contractRewriter);
     }
 
     internal TxPoolTxSource CreateTxPoolTxSource()
