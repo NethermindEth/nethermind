@@ -160,7 +160,6 @@ namespace Nethermind.Core.Extensions
             // calculate alignment, not using data so not creating memory hole.
             nuint address = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
 
-            // mask = alignment - 1
             uint mask = alignment - 1;
             // address & mask is misalignment, so (–address) & mask is exactly the adjustment
             uint adjustment = (uint)((-(nint)address) & mask);
