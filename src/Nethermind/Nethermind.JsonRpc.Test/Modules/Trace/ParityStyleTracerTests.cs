@@ -72,8 +72,7 @@ public class ParityStyleTracerTests
         TransactionProcessor transactionProcessor = new(specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
         _poSSwitcher = Substitute.For<IPoSSwitcher>();
-        BlockProcessor blockProcessor = new(
-            specProvider,
+        BlockProcessor blockProcessor = BlockProcessor.CreateForTestDontUseThisISwear(specProvider,
             Always.Valid,
             new MergeRpcRewardCalculator(NoBlockRewards.Instance, _poSSwitcher),
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),

@@ -43,8 +43,7 @@ public class BlockProcessorTests
         TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockProcessor processor = new(
-            HoleskySpecProvider.Instance,
+        BlockProcessor processor = BlockProcessor.CreateForTestDontUseThisISwear(HoleskySpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
@@ -74,8 +73,7 @@ public class BlockProcessorTests
         TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockProcessor processor = new(
-            HoleskySpecProvider.Instance,
+        BlockProcessor processor = BlockProcessor.CreateForTestDontUseThisISwear(HoleskySpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             new RewardCalculator(MainnetSpecProvider.Instance),
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),

@@ -59,8 +59,7 @@ namespace Nethermind.Consensus.Processing
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor
         )
         {
-            return new BlockProcessor(
-                specProvider,
+            return Processing.BlockProcessor.CreateForTestDontUseThisISwear(specProvider,
                 blockValidator,
                 rewardCalculator,
                 transactionsExecutor,

@@ -113,7 +113,7 @@ public class TestBlockchain : IDisposable
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
-    public IExecutionRequestsProcessor? ExecutionRequestsProcessor { get; protected set; } = null!;
+    public IExecutionRequestsProcessor MainExecutionRequestsProcessor => ((MainBlockProcessingContext)_fromContainer.MainProcessingContext).LifetimeScope.Resolve<IExecutionRequestsProcessor>();
     public IChainLevelInfoRepository ChainLevelInfoRepository => _fromContainer.ChainLevelInfoRepository;
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
@@ -366,8 +366,7 @@ public class TestBlockchain : IDisposable
     }
 
     protected virtual IBlockProcessor CreateBlockProcessor(IWorldState state) =>
-        new BlockProcessor(
-            SpecProvider,
+        Consensus.Processing.BlockProcessor.CreateForTestDontUseThisISwear(SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, state),
@@ -378,7 +377,7 @@ public class TestBlockchain : IDisposable
             new BlockhashStore(SpecProvider, state),
             LogManager,
             preWarmer: CreateBlockCachePreWarmer(),
-            executionRequestsProcessor: ExecutionRequestsProcessor);
+            executionRequestsProcessor: MainExecutionRequestsProcessor);
 
 
     protected IBlockCachePreWarmer CreateBlockCachePreWarmer() =>

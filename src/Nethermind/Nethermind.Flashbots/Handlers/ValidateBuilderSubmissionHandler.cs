@@ -68,8 +68,7 @@ public class ValidateSubmissionHandler
         var worldState = _processingScope.WorldState;
         ITransactionProcessor transactionProcessor = _processingScope.TransactionProcessor;
         IBlockCachePreWarmer preWarmer = new BlockCachePreWarmer(readOnlyTxProcessingEnvFactory, worldState, _specProvider, 0, logManager);
-        _blockProcessor = new BlockProcessor(
-            _specProvider,
+        _blockProcessor = BlockProcessor.CreateForTestDontUseThisISwear(_specProvider,
             _blockValidator,
             new Consensus.Rewards.RewardCalculator(_specProvider),
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
@@ -80,8 +79,7 @@ public class ValidateSubmissionHandler
             new BlockhashStore(_specProvider, worldState),
             logManager: logManager,
             withdrawalProcessor: new WithdrawalProcessor(worldState, logManager!),
-            preWarmer: preWarmer
-        );
+            preWarmer: preWarmer);
     }
 
     public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)

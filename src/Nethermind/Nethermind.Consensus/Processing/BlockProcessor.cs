@@ -44,7 +44,7 @@ public partial class BlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlockCachePreWarmer preWarmer = null)
+    IBlockCachePreWarmer? preWarmer = null)
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
@@ -55,8 +55,7 @@ public partial class BlockProcessor(
     private const int MaxUncommittedBlocks = 64;
     private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
-    // Dont use this
-    public BlockProcessor(
+    public static BlockProcessor CreateForTestDontUseThisISwear(
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculator rewardCalculator,
@@ -69,8 +68,10 @@ public partial class BlockProcessor(
         ILogManager logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
         IBlockCachePreWarmer? preWarmer = null,
-        IExecutionRequestsProcessor? executionRequestsProcessor = null)
-        : this(
+        IExecutionRequestsProcessor? executionRequestsProcessor = null
+    )
+    {
+        return new BlockProcessor(
             specProvider,
             blockValidator,
             rewardCalculator,
@@ -82,8 +83,7 @@ public partial class BlockProcessor(
             logManager,
             withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager),
             executionRequestsProcessor ?? new ExecutionRequestsProcessor(transactionProcessor),
-            preWarmer)
-    {
+            preWarmer);
     }
 
     /// <summary>

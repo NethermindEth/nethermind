@@ -91,8 +91,7 @@ public class ReorgTests
             codeInfoRepository,
             LimboLogs.Instance);
 
-        BlockProcessor blockProcessor = new(
-            MainnetSpecProvider.Instance,
+        BlockProcessor blockProcessor = BlockProcessor.CreateForTestDontUseThisISwear(MainnetSpecProvider.Instance,
             Always.Valid,
             new RewardCalculator(specProvider),
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),

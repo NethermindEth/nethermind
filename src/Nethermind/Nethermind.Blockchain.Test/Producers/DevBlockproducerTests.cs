@@ -67,8 +67,7 @@ public class DevBlockProducerTests
             virtualMachine,
             codeInfoRepository,
             LimboLogs.Instance);
-        BlockProcessor blockProcessor = new(
-            specProvider,
+        BlockProcessor blockProcessor = BlockProcessor.CreateForTestDontUseThisISwear(specProvider,
             Always.Valid,
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),

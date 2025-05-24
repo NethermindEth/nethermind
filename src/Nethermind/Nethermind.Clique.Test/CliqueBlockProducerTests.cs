@@ -147,8 +147,7 @@ public class CliqueBlockProducerTests
                 new VirtualMachine(blockhashProvider, specProvider, nodeLogManager),
                 codeInfoRepository,
                 nodeLogManager);
-            BlockProcessor blockProcessor = new(
-                testnetSpecProvider,
+            BlockProcessor blockProcessor = BlockProcessor.CreateForTestDontUseThisISwear(testnetSpecProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
@@ -184,8 +183,7 @@ public class CliqueBlockProducerTests
             VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, nodeLogManager);
             TransactionProcessor minerTransactionProcessor = new(testnetSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
 
-            BlockProcessor minerBlockProcessor = new(
-                testnetSpecProvider,
+            BlockProcessor minerBlockProcessor = BlockProcessor.CreateForTestDontUseThisISwear(testnetSpecProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, testnetSpecProvider, _logManager),

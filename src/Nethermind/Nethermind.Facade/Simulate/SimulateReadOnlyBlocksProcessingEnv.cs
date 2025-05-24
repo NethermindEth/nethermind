@@ -106,7 +106,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
     }
 
     public IBlockProcessor GetProcessor(bool validate, UInt256? blobBaseFeeOverride) =>
-        new BlockProcessor(SpecProvider,
+        CreateForTestDontUseThisISwear(SpecProvider,
             _blockValidator,
             NoBlockRewards.Instance,
             new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, StateProvider, validate, blobBaseFeeOverride),

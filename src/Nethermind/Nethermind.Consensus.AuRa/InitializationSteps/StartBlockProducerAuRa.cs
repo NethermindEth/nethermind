@@ -16,6 +16,7 @@ using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -175,11 +176,10 @@ public class StartBlockProducerAuRa(
             logManager,
             blockTree,
             NullWithdrawalProcessor.Instance,
-            changeableTxProcessingEnv.TransactionProcessor,
+            new ExecutionRequestsProcessor(changeableTxProcessingEnv.TransactionProcessor),
             _validator,
             auRaTxFilter,
-            CreateGasLimitCalculator() as AuRaContractGasLimitOverride,
-            contractRewriter);
+            CreateGasLimitCalculator() as AuRaContractGasLimitOverride, contractRewriter);
     }
 
     internal TxPoolTxSource CreateTxPoolTxSource()
