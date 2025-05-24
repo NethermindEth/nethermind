@@ -31,5 +31,5 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
       - name: Build ${{ matrix.project }}
-        working-directory: src/tools
+        working-directory: tools
         run: dotnet build ./${{ matrix.project }} -c ${{ matrix.config }}

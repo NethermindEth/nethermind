@@ -10,7 +10,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Nethermind\Nethermind.Runner\Nethermind.Runner.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Runner\Nethermind.Runner.csproj" />
   </ItemGroup>
 
 </Project>
