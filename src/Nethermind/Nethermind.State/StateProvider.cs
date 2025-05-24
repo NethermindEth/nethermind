@@ -26,6 +26,8 @@ namespace Nethermind.State
 {
     internal class StateProvider
     {
+        private static readonly UInt256 _zero = UInt256.Zero;
+
         private readonly Dictionary<AddressAsKey, Stack<int>> _intraTxCache = new();
         private readonly HashSet<AddressAsKey> _committedThisRound = new();
         private readonly HashSet<AddressAsKey> _nullAccountReads = new();
@@ -135,10 +137,10 @@ namespace Nethermind.State
             return account is null ? throw new InvalidOperationException($"Account {address} is null when accessing storage root") : account.StorageRoot;
         }
 
-        public UInt256 GetBalance(Address address)
+        public ref readonly UInt256 GetBalance(Address address)
         {
             Account? account = GetThroughCache(address);
-            return account?.Balance ?? UInt256.Zero;
+            return ref account is not null ? ref account.Balance : ref _zero;
         }
 
         public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
@@ -288,16 +290,13 @@ namespace Nethermind.State
             PushUpdate(address, changedAccount);
         }
 
-        public Hash256 GetCodeHash(Address address)
+        public ref readonly ValueHash256 GetCodeHash(Address address)
         {
             Account? account = GetThroughCache(address);
-            return account?.CodeHash ?? Keccak.OfAnEmptyString;
+            return ref account is not null ? ref account.CodeHash.ValueHash256 : ref Keccak.OfAnEmptyString.ValueHash256;
         }
 
-        public byte[] GetCode(Hash256 codeHash)
-            => GetCodeCore(in codeHash.ValueHash256);
-
-        public byte[] GetCode(ValueHash256 codeHash)
+        public byte[] GetCode(in ValueHash256 codeHash)
             => GetCodeCore(in codeHash);
 
         private byte[] GetCodeCore(in ValueHash256 codeHash)
@@ -320,7 +319,7 @@ namespace Nethermind.State
                 return [];
             }
 
-            return GetCode(account.CodeHash);
+            return GetCode(in account.CodeHash.ValueHash256);
         }
 
         public void DeleteAccount(Address address)

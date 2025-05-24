@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,6 +29,7 @@ using Nethermind.Evm.Tracing.Debugger;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.Evm;
 
+using Word = Vector256<byte>;
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
@@ -63,7 +66,7 @@ public sealed unsafe partial class VirtualMachine(
     internal static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
     internal static readonly OutOfGasException PrecompileOutOfGasException = new();
 
-    private readonly byte[] _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
+    private readonly Word _chainId = Vector256.Create(((UInt256)specProvider.ChainId).ToBigEndian());
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -88,7 +91,7 @@ public sealed unsafe partial class VirtualMachine(
     public IReleaseSpec Spec => _spec;
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _worldState;
-    public ReadOnlySpan<byte> ChainId => _chainId;
+    public ref readonly Word ChainId => ref _chainId;
     public ReadOnlyMemory<byte> ReturnDataBuffer { get; set; } = Array.Empty<byte>();
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
@@ -1072,7 +1075,7 @@ public sealed unsafe partial class VirtualMachine(
         vmState.InitializeStacks();
 
         // Create an EVM stack using the current stack head, tracer, and data stack slice.
-        EvmStack stack = new(vmState.DataStackHead, _txTracer, vmState.DataStack.AsSpan());
+        EvmStack stack = new(vmState.DataStackHead, _txTracer, AsAlignedSpan(vmState.DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength));
 
         // Cache the available gas from the state for local use.
         long gasAvailable = vmState.GasAvailable;
@@ -1184,6 +1187,7 @@ public sealed unsafe partial class VirtualMachine(
         // Or have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
         fixed (OpCode* opcodeMethods = &_opcodeMethods[0])
         {
+            ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
             // Iterate over the instructions using a while loop because opcodes may modify the program counter.
             while ((uint)programCounter < (uint)codeSection.Length)
             {
@@ -1192,7 +1196,7 @@ public sealed unsafe partial class VirtualMachine(
                 debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
                 // Fetch the current instruction from the code section.
-                Instruction instruction = codeSection[programCounter];
+                Instruction instruction = Unsafe.Add(ref code, programCounter);
 
                 // If cancellation is enabled and cancellation has been requested, throw an exception.
                 if (TCancelable.IsActive && _txTracer.IsCancelled)
@@ -1357,9 +1361,37 @@ public sealed unsafe partial class VirtualMachine(
 
         if (_txTracer.IsTracingStack)
         {
-            Memory<byte> stackMemory = vmState.DataStack.AsMemory().Slice(0, stackValue.Head * EvmStack.WordSize);
+            Memory<byte> stackMemory = AsAlignedMemory(vmState.DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength).Slice(0, stackValue.Head * EvmStack.WordSize);
             _txTracer.SetOperationStack(new TraceStack(stackMemory));
         }
+    }
+
+    private unsafe static int GetAlignmentOffset(byte[] array, uint alignment)
+    {
+        ArgumentNullException.ThrowIfNull(array);
+        ArgumentOutOfRangeException.ThrowIfNotEqual(BitOperations.IsPow2(alignment), true, nameof(alignment));
+
+        // The input array should be pinned and we are just using the Pointer to
+        // calculate alignment, not using data so not creating memory hole.
+        nuint address = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
+
+        uint mask = alignment - 1;
+        // address & mask is misalignment, so (–address) & mask is exactly the adjustment
+        uint adjustment = (uint)((-(nint)address) & mask);
+
+        return (int)adjustment;
+    }
+
+    private unsafe static Span<byte> AsAlignedSpan(byte[] array, uint alignment, int size)
+    {
+        int offset = GetAlignmentOffset(array, alignment);
+        return array.AsSpan(offset, size);
+    }
+
+    private unsafe static Memory<byte> AsAlignedMemory(byte[] array, uint alignment, int size)
+    {
+        int offset = GetAlignmentOffset(array, alignment);
+        return array.AsMemory(offset, size);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

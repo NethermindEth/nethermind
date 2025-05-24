@@ -10,8 +10,8 @@ namespace Nethermind.Evm;
 
 public readonly struct BlockExecutionContext
 {
+    public readonly UInt256 BlobBaseFee;
     public BlockHeader Header { get; }
-    public UInt256? BlobBaseFee { get; }
 
     public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec)
     {

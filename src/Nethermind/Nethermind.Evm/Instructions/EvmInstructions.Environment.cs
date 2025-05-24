@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
@@ -22,18 +23,17 @@ internal static partial class EvmInstructions
     /// Defines an environment introspection operation that returns a byte span.
     /// Implementations should provide a static gas cost and a static Operation method.
     /// </summary>
-    public interface IOpEnvBytes
+    public interface IOpEnvAddress
     {
         /// <summary>
         /// The gas cost for the operation.
         /// </summary>
         virtual static long GasCost => GasCostOf.Base;
         /// <summary>
-        /// Executes the operation and returns the result as a byte span.
+        /// Executes the operation and returns the result as address.
         /// </summary>
         /// <param name="vmState">The current virtual machine state.</param>
-        /// <param name="result">The resulting bytes.</param>
-        abstract static void Operation(EvmState vmState, out Span<byte> result);
+        abstract static Address Operation(EvmState vmState);
     }
 
     /// <summary>
@@ -47,7 +47,7 @@ internal static partial class EvmInstructions
         /// </summary>
         /// <param name="vmState">The current virtual machine state.</param>
         /// <param name="result">The resulting 256-bit unsigned integer.</param>
-        abstract static void Operation(EvmState vmState, out UInt256 result);
+        abstract static ref readonly UInt256 Operation(EvmState vmState);
     }
 
     /// <summary>
@@ -77,7 +77,7 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Executes an environment introspection opcode that returns a byte span.
+    /// Executes an environment introspection opcode that returns an Address.
     /// Generic parameter TOpEnv defines the concrete operation.
     /// </summary>
     /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
@@ -87,17 +87,17 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An EVM exception type if an error occurs.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvBytes<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TOpEnv : struct, IOpEnvBytes
+    public static EvmExceptionType InstructionEnvAddress<TOpEnv>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TOpEnv : struct, IOpEnvAddress
     {
         // Deduct the gas cost as defined by the operation implementation.
         gasAvailable -= TOpEnv.GasCost;
 
         // Execute the operation and retrieve the result.
-        TOpEnv.Operation(vm.EvmState, out Span<byte> result);
+        Address result = TOpEnv.Operation(vm.EvmState);
 
         // Push the resulting bytes onto the EVM stack.
-        stack.PushBytes(result);
+        stack.PushAddress(result);
 
         return EvmExceptionType.None;
     }
@@ -117,7 +117,7 @@ internal static partial class EvmInstructions
     {
         gasAvailable -= TOpEnv.GasCost;
 
-        TOpEnv.Operation(vm.EvmState, out UInt256 result);
+        ref readonly UInt256 result = ref TOpEnv.Operation(vm.EvmState);
 
         stack.PushUInt256(in result);
 
@@ -227,8 +227,8 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBaseFee : IOpEnvUInt256
     {
-        public static void Operation(EvmState vmState, out UInt256 result)
-            => result = vmState.Env.TxExecutionContext.BlockExecutionContext.Header.BaseFeePerGas;
+        public static ref readonly UInt256 Operation(EvmState vmState)
+            => ref vmState.Env.TxExecutionContext.BlockExecutionContext.Header.BaseFeePerGas;
     }
 
     /// <summary>
@@ -237,13 +237,13 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBlobBaseFee : IOpEnvUInt256
     {
-        public static void Operation(EvmState vmState, out UInt256 result)
+        public static ref readonly UInt256 Operation(EvmState vmState)
         {
-            // If the blob base fee is missing, this opcode is invalid.
-            UInt256? blobBaseFee = vmState.Env.TxExecutionContext.BlockExecutionContext.BlobBaseFee;
-            if (!blobBaseFee.HasValue) ThrowBadInstruction();
+            ref readonly BlockExecutionContext context = ref vmState.Env.TxExecutionContext.BlockExecutionContext;
+            // If the blob base fee is missing (no ExcessBlobGas set), this opcode is invalid.
+            if (!context.Header.ExcessBlobGas.HasValue) ThrowBadInstruction();
 
-            result = blobBaseFee.Value;
+            return ref context.BlobBaseFee;
 
             [DoesNotReturn]
             [StackTraceHidden]
@@ -256,8 +256,8 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpGasPrice : IOpEnvUInt256
     {
-        public static void Operation(EvmState vmState, out UInt256 result)
-            => result = vmState.Env.TxExecutionContext.GasPrice;
+        public static ref readonly UInt256 Operation(EvmState vmState)
+            => ref vmState.Env.TxExecutionContext.GasPrice;
     }
 
     /// <summary>
@@ -265,44 +265,44 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCallValue : IOpEnvUInt256
     {
-        public static void Operation(EvmState vmState, out UInt256 result)
-            => result = vmState.Env.Value;
+        public static ref readonly UInt256 Operation(EvmState vmState)
+            => ref vmState.Env.Value;
     }
 
     /// <summary>
     /// Returns the address of the currently executing account.
     /// </summary>
-    public struct OpAddress : IOpEnvBytes
+    public struct OpAddress : IOpEnvAddress
     {
-        public static void Operation(EvmState vmState, out Span<byte> result)
-            => result = vmState.Env.ExecutingAccount.Bytes;
+        public static Address Operation(EvmState vmState)
+            => vmState.Env.ExecutingAccount;
     }
 
     /// <summary>
     /// Returns the address of the caller of the current execution context.
     /// </summary>
-    public struct OpCaller : IOpEnvBytes
+    public struct OpCaller : IOpEnvAddress
     {
-        public static void Operation(EvmState vmState, out Span<byte> result)
-            => result = vmState.Env.Caller.Bytes;
+        public static Address Operation(EvmState vmState)
+            => vmState.Env.Caller;
     }
 
     /// <summary>
     /// Returns the origin address of the transaction.
     /// </summary>
-    public struct OpOrigin : IOpEnvBytes
+    public struct OpOrigin : IOpEnvAddress
     {
-        public static void Operation(EvmState vmState, out Span<byte> result)
-            => result = vmState.Env.TxExecutionContext.Origin.Bytes;
+        public static Address Operation(EvmState vmState)
+            => vmState.Env.TxExecutionContext.Origin;
     }
 
     /// <summary>
     /// Returns the coinbase (beneficiary) address for the current block.
     /// </summary>
-    public struct OpCoinbase : IOpEnvBytes
+    public struct OpCoinbase : IOpEnvAddress
     {
-        public static void Operation(EvmState vmState, out Span<byte> result)
-            => result = vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasBeneficiary.Bytes;
+        public static Address Operation(EvmState vmState)
+            => vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasBeneficiary;
     }
 
     /// <summary>
@@ -320,7 +320,7 @@ internal static partial class EvmInstructions
     {
         gasAvailable -= GasCostOf.Base;
         // The chain ID is stored as a byte array in the VM
-        stack.PushBytes(vm.ChainId);
+        stack.Push32Bytes(in vm.ChainId);
 
         return EvmExceptionType.None;
     }
@@ -351,7 +351,7 @@ internal static partial class EvmInstructions
         // Charge gas for account access. If insufficient gas remains, abort.
         if (!ChargeAccountAccessGas(ref gasAvailable, vm, address)) goto OutOfGas;
 
-        UInt256 result = vm.WorldState.GetBalance(address);
+        ref readonly UInt256 result = ref vm.WorldState.GetBalance(address);
         stack.PushUInt256(in result);
 
         return EvmExceptionType.None;
@@ -378,7 +378,7 @@ internal static partial class EvmInstructions
         gasAvailable -= GasCostOf.SelfBalance;
 
         // Get balance for currently executing account.
-        UInt256 result = vm.WorldState.GetBalance(vm.EvmState.Env.ExecutingAccount);
+        ref readonly UInt256 result = ref vm.WorldState.GetBalance(vm.EvmState.Env.ExecutingAccount);
         stack.PushUInt256(in result);
 
         return EvmExceptionType.None;
@@ -417,7 +417,8 @@ internal static partial class EvmInstructions
         else
         {
             // Otherwise, push the account's code hash.
-            stack.PushBytes(state.GetCodeHash(address).Bytes);
+            ref readonly ValueHash256 hash = ref state.GetCodeHash(address);
+            stack.Push32Bytes(in hash);
         }
 
         return EvmExceptionType.None;
@@ -500,12 +501,11 @@ internal static partial class EvmInstructions
         // Use the random value if post-merge; otherwise, use block difficulty.
         if (header.IsPostMerge)
         {
-            stack.PushBytes(header.Random.Bytes);
+            stack.Push32Bytes(in header.Random.ValueHash256);
         }
         else
         {
-            UInt256 result = header.Difficulty;
-            stack.PushUInt256(in result);
+            stack.PushUInt256(in header.Difficulty);
         }
 
         return EvmExceptionType.None;

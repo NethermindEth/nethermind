@@ -13,9 +13,7 @@ namespace Nethermind.State
 
         byte[]? GetCode(Address address);
 
-        byte[]? GetCode(Hash256 codeHash);
-
-        byte[]? GetCode(ValueHash256 codeHash);
+        byte[]? GetCode(in ValueHash256 codeHash);
 
         public bool IsContract(Address address);
 
