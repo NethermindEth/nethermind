@@ -80,7 +80,6 @@ public class ValidateSubmissionHandler
             new BlockhashStore(_specProvider, worldState),
             logManager: logManager,
             withdrawalProcessor: new WithdrawalProcessor(worldState, logManager!),
-            receiptsRootCalculator: new ReceiptsRootCalculator(),
             preWarmer: preWarmer
         );
     }

@@ -43,13 +43,13 @@ public partial class BlockProcessor(
     IBlockhashStore blockHashStore,
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
-    IReceiptsRootCalculator receiptsRootCalculator,
     IExecutionRequestsProcessor executionRequestsProcessor,
     IBlockCachePreWarmer preWarmer = null)
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
     protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider);
+    private readonly IReceiptsRootCalculator _receiptsRootCalculator = ReceiptsRootCalculator.Instance;
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
@@ -68,7 +68,6 @@ public partial class BlockProcessor(
         IBlockhashStore blockHashStore,
         ILogManager logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
-        IReceiptsRootCalculator? receiptsRootCalculator = null,
         IBlockCachePreWarmer? preWarmer = null,
         IExecutionRequestsProcessor? executionRequestsProcessor = null)
         : this(
@@ -82,7 +81,6 @@ public partial class BlockProcessor(
             blockHashStore,
             logManager,
             withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager),
-            receiptsRootCalculator ?? ReceiptsRootCalculator.Instance,
             executionRequestsProcessor ?? new ExecutionRequestsProcessor(transactionProcessor),
             preWarmer)
     {
@@ -361,7 +359,7 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        header.ReceiptsRoot = receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 

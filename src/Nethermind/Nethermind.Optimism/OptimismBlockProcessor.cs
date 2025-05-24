@@ -50,7 +50,6 @@ public class OptimismBlockProcessor : BlockProcessor
             blockhashStore,
             logManager,
             withdrawalProcessor,
-            ReceiptsRootCalculator.Instance,
             preWarmer)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
