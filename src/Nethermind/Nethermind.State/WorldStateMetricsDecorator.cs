@@ -136,4 +136,8 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
     public ref readonly UInt256 GetBalance(Address account) => ref innerState.GetBalance(account);
 
     UInt256 IAccountStateProvider.GetBalance(Address address) => innerState.GetBalance(address);
+
+    public ref readonly ValueHash256 GetCodeHash(Address address) => ref innerState.GetCodeHash(address);
+
+    ValueHash256 IAccountStateProvider.GetCodeHash(Address address) => innerState.GetCodeHash(address);
 }

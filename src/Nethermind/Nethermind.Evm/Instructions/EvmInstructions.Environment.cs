@@ -417,7 +417,7 @@ internal static partial class EvmInstructions
         else
         {
             // Otherwise, push the account's code hash.
-            ValueHash256 hash = state.GetCodeHash(address);
+            ref readonly ValueHash256 hash = ref state.GetCodeHash(address);
             stack.Push32Bytes(in hash);
         }
 
@@ -505,8 +505,7 @@ internal static partial class EvmInstructions
         }
         else
         {
-            UInt256 result = header.Difficulty;
-            stack.PushUInt256(in result);
+            stack.PushUInt256(in header.Difficulty);
         }
 
         return EvmExceptionType.None;

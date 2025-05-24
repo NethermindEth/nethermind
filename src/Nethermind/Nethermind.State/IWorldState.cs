@@ -18,6 +18,7 @@ namespace Nethermind.State;
 public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 {
     new ref readonly UInt256 GetBalance(Address address);
+    new ref readonly ValueHash256 GetCodeHash(Address address);
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell

@@ -290,16 +290,13 @@ namespace Nethermind.State
             PushUpdate(address, changedAccount);
         }
 
-        public Hash256 GetCodeHash(Address address)
+        public ref readonly ValueHash256 GetCodeHash(Address address)
         {
             Account? account = GetThroughCache(address);
-            return account?.CodeHash ?? Keccak.OfAnEmptyString;
+            return ref account is not null ? ref account.CodeHash.ValueHash256 : ref Keccak.OfAnEmptyString.ValueHash256;
         }
 
-        public byte[] GetCode(Hash256 codeHash)
-            => GetCodeCore(in codeHash.ValueHash256);
-
-        public byte[] GetCode(ValueHash256 codeHash)
+        public byte[] GetCode(in ValueHash256 codeHash)
             => GetCodeCore(in codeHash);
 
         private byte[] GetCodeCore(in ValueHash256 codeHash)
@@ -322,7 +319,7 @@ namespace Nethermind.State
                 return [];
             }
 
-            return GetCode(account.CodeHash);
+            return GetCode(in account.CodeHash.ValueHash256);
         }
 
         public void DeleteAccount(Address address)

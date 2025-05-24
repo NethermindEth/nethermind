@@ -192,16 +192,13 @@ namespace Nethermind.State
 
         public byte[] GetCode(Address address) => _stateProvider.GetCode(address);
 
-        public byte[] GetCode(Hash256 codeHash) => _stateProvider.GetCode(codeHash);
+        public byte[] GetCode(Hash256 codeHash) => _stateProvider.GetCode(in codeHash.ValueHash256);
 
         public byte[] GetCode(ValueHash256 codeHash) => _stateProvider.GetCode(codeHash);
 
-        public Hash256 GetCodeHash(Address address) => _stateProvider.GetCodeHash(address);
+        public ref readonly ValueHash256 GetCodeHash(Address address) => ref _stateProvider.GetCodeHash(address);
 
-        ValueHash256 IAccountStateProvider.GetCodeHash(Address address)
-        {
-            return _stateProvider.GetCodeHash(address);
-        }
+        ValueHash256 IAccountStateProvider.GetCodeHash(Address address) => _stateProvider.GetCodeHash(address);
 
         public void Accept<TContext>(ITreeVisitor<TContext> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TContext : struct, INodeContext<TContext>
         {
