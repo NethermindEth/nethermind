@@ -367,7 +367,8 @@ public class TestBlockchain : IDisposable
     }
 
     protected virtual IBlockProcessor CreateBlockProcessor(IWorldState state) =>
-        new BlockProcessor(SpecProvider,
+        new BlockProcessor(
+            SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, state),
