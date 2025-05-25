@@ -28,6 +28,15 @@ public class InvalidBlockInterceptorTest
     public void Setup()
     {
         _baseValidator = Substitute.For<IBlockValidator>();
+        _baseValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out _)
+            .Returns(f =>
+            {
+                var blockHeader = f.Arg<BlockHeader>();
+                var blockBody = f.Arg<BlockBody>();
+                return BlockValidator.ValidateTxRootMatchesTxs(blockHeader, blockBody, out _) &&
+                       BlockValidator.ValidateUnclesHashMatches(blockHeader, blockBody, out _) &&
+                       BlockValidator.ValidateWithdrawalsHashMatches(blockHeader, blockBody, out _);
+            });
         _tracker = Substitute.For<IInvalidChainTracker>();
         _invalidBlockInterceptor = new(
             _baseValidator,

@@ -70,10 +70,10 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.KECCAK256] = &InstructionKeccak256;
 
         // Environment opcodes.
-        lookup[(int)Instruction.ADDRESS] = &InstructionEnvBytes<OpAddress>;
+        lookup[(int)Instruction.ADDRESS] = &InstructionEnvAddress<OpAddress>;
         lookup[(int)Instruction.BALANCE] = &InstructionBalance;
-        lookup[(int)Instruction.ORIGIN] = &InstructionEnvBytes<OpOrigin>;
-        lookup[(int)Instruction.CALLER] = &InstructionEnvBytes<OpCaller>;
+        lookup[(int)Instruction.ORIGIN] = &InstructionEnvAddress<OpOrigin>;
+        lookup[(int)Instruction.CALLER] = &InstructionEnvAddress<OpCaller>;
         lookup[(int)Instruction.CALLVALUE] = &InstructionEnvUInt256<OpCallValue>;
         lookup[(int)Instruction.CALLDATALOAD] = &InstructionCallDataLoad;
         lookup[(int)Instruction.CALLDATASIZE] = &InstructionEnvUInt32<OpCallDataSize>;
@@ -101,7 +101,7 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.BLOCKHASH] = &InstructionBlockHash;
 
         // More environment opcodes.
-        lookup[(int)Instruction.COINBASE] = &InstructionEnvBytes<OpCoinbase>;
+        lookup[(int)Instruction.COINBASE] = &InstructionEnvAddress<OpCoinbase>;
         lookup[(int)Instruction.TIMESTAMP] = &InstructionEnvUInt64<OpTimestamp>;
         lookup[(int)Instruction.NUMBER] = &InstructionEnvUInt64<OpNumber>;
         lookup[(int)Instruction.PREVRANDAO] = &InstructionPrevRandao;

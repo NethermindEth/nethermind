@@ -9,11 +9,14 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncAllocationStrategyFactory(IPoSSwitcher poSSwitcher) : StaticPeerAllocationStrategyFactory<SnapSyncBatch>(
-        new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(
-            new TransitioningPeerAllocationStrategy(poSSwitcher,
-                new BySpeedStrategy(TransferSpeedType.SnapRanges, true)
-            ), "snap"
-        )
-    );
+    public class SnapSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<SnapSyncBatch>
+    {
+
+        private static readonly IPeerAllocationStrategy DefaultStrategy =
+            new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(new BySpeedStrategy(TransferSpeedType.SnapRanges, true), "snap");
+
+        public SnapSyncAllocationStrategyFactory() : base(DefaultStrategy)
+        {
+        }
+    }
 }

@@ -18,6 +18,13 @@ namespace Nethermind.Synchronization.StateSync
         )
     )
     {
+        private static readonly IPeerAllocationStrategy DefaultStrategy =
+            new AllocationStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true));
+
+        public StateSyncAllocationStrategyFactory() : base(DefaultStrategy)
+        {
+        }
+
         internal class AllocationStrategy : FilterPeerAllocationStrategy
         {
             public AllocationStrategy(IPeerAllocationStrategy strategy) : base(strategy) { }
