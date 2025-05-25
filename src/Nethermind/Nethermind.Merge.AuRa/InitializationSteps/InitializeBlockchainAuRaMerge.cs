@@ -54,7 +54,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 CreateAuRaValidator(worldState, transactionProcessor),
                 txFilter,
                 GetGasLimitCalculator(),
-                contractRewriter, 
+                contractRewriter,
                 preWarmer: preWarmer);
         }
 

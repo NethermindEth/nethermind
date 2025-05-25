@@ -117,7 +117,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             CreateAuRaValidator(worldState, transactionProcessor),
             txFilter,
             GetGasLimitCalculator(),
-            contractRewriter, 
+            contractRewriter,
             preWarmer: preWarmer);
     }
 
