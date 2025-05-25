@@ -39,7 +39,7 @@ internal static partial class EvmInstructions
         // Compute the Keccak-256 hash.
         KeccakCache.ComputeTo(bytes, out ValueHash256 keccak);
         // Push the 256-bit hash result onto the stack.
-        stack.Push32Bytes(in Unsafe.As<ValueHash256, Vector256<byte>>(ref keccak));
+        stack.Push32Bytes(in keccak);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

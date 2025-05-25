@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -186,6 +187,10 @@ public ref struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void PushAddress(Address address)
+        => Push20Bytes(ref MemoryMarshal.GetArrayDataReference(address.Bytes));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Push32Bytes(in Word value)
     {
         _tracer?.TraceWord(in value);
@@ -193,6 +198,10 @@ public ref struct EvmStack
         ref byte bytes = ref PushBytesRef();
         Unsafe.As<byte, Word>(ref bytes) = value;
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Push32Bytes(in ValueHash256 hash)
+        => Push32Bytes(in Unsafe.As<ValueHash256, Word>(ref Unsafe.AsRef(in hash)));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushLeftPaddedBytes(ReadOnlySpan<byte> value, int paddingLength)
@@ -410,7 +419,7 @@ public ref struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ref byte PeekBytesByRef()
+    public readonly ref byte PeekBytesByRef()
     {
         int head = Head;
         if (head-- == 0)
