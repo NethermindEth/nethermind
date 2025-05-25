@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             byte[] e = Bytes.FromHexString("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
-            TrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
+            TestRawTrieStore trieStore = new TestRawTrieStore(memDb);
             StateTree tree = new(trieStore, LimboLogs.Instance);
             StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
@@ -64,7 +64,7 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             byte[] e = Bytes.FromHexString("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
-            TrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
+            TestRawTrieStore trieStore = new TestRawTrieStore(memDb);
             StateTree tree = new(trieStore, LimboLogs.Instance);
             StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));

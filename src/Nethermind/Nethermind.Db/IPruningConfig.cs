@@ -23,8 +23,8 @@ public interface IPruningConfig : IConfig
     long DirtyCacheMb { get; set; }
 
     [ConfigItem(
-        Description = "The block persistence frequency. If set to `N`, it caches after each `Nth` block even if not required by cache memory usage.",
-        DefaultValue = "8192")]
+        Description = "The block persistence frequency. Only applied with archive node.",
+        DefaultValue = "1")]
     long PersistenceInterval { get; set; }
 
     [ConfigItem(
@@ -91,4 +91,10 @@ public interface IPruningConfig : IConfig
 
     [ConfigItem(Description = "Minimum persisted cache prune target", DefaultValue = "50000000")]
     long PrunePersistedNodeMinimumTarget { get; set; }
+
+    [ConfigItem(Description = "Maximimum number of block worth of unpersisted state in memory. Default is 297, which is number of mainnet block per hour.", DefaultValue = "297")]
+    long MaxUnpersistedBlockCount { get; set; }
+
+    [ConfigItem(Description = "Minimum number of block worth of unpersisted state in memory. Prevent memory pruning too often due to insufficient dirty cache memory.", DefaultValue = "8")]
+    long MinUnpersistedBlockCount { get; set; }
 }
