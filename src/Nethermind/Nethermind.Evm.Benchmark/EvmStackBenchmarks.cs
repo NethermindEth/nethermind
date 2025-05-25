@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
