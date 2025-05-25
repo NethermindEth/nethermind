@@ -121,7 +121,7 @@ public ref struct EvmStack
         // ushort size
         if (TTracingInst.IsActive)
             _tracer.TraceBytes(in value, sizeof(ushort));
-        
+
         ref Word head = ref PushedHead();
         // Load 2-byte source into the top 16 bits of the last 64-bit lane:
         // lane3 covers bytes [24..31], so shifting by 48 bits
