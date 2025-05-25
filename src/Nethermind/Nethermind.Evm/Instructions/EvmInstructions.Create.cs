@@ -59,20 +59,20 @@ internal static partial class EvmInstructions
     /// and delegates execution to a new call frame for the contract's initialization code.
     /// </summary>
     /// <typeparam name="TOpCreate">The type of create operation (either <see cref="OpCreate"/> or <see cref="OpCreate2"/>).</typeparam>
-    /// <typeparam name="TTracingInstructions">Tracing instructions type used for instrumentation if active.</typeparam>
+    /// <typeparam name="TTracingInst">Tracing instructions type used for instrumentation if active.</typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">Reference to the EVM stack.</param>
     /// <param name="gasAvailable">Reference to the gas counter available for execution.</param>
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or the type of exception encountered.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCreate<TOpCreate, TTracingInstructions>(
+    public static EvmExceptionType InstructionCreate<TOpCreate, TTracingInst>(
         VirtualMachine vm,
         ref EvmStack stack,
         ref long gasAvailable,
         ref int programCounter)
         where TOpCreate : struct, IOpCreate
-        where TTracingInstructions : struct, IFlag
+        where TTracingInst : struct, IFlag
     {
         // Increment metrics counter for contract creation operations.
         Metrics.IncrementCreates();
@@ -136,7 +136,7 @@ internal static partial class EvmInstructions
         if (env.CallDepth >= MaxCallDepth)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
             goto None;
         }
 
@@ -148,7 +148,7 @@ internal static partial class EvmInstructions
         if (value > balance)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
             goto None;
         }
 
@@ -158,12 +158,12 @@ internal static partial class EvmInstructions
         if (accountNonce >= maxNonce)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
             goto None;
         }
 
         // End tracing if enabled, prior to switching to the new call frame.
-        if (TTracingInstructions.IsActive)
+        if (TTracingInst.IsActive)
             vm.EndInstructionTrace(gasAvailable);
 
         // Calculate gas available for the contract creation call.
@@ -190,7 +190,7 @@ internal static partial class EvmInstructions
         if (spec.IsEofEnabled && initCode.Span.StartsWith(EofValidator.MAGIC))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
             UpdateGasUp(callGas, ref gasAvailable);
             goto None;
         }
@@ -210,7 +210,7 @@ internal static partial class EvmInstructions
         if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
             goto None;
         }
 
