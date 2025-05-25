@@ -57,6 +57,10 @@ public ref struct EvmStack
     private ref Word PushedHead()
         => ref Unsafe.As<byte, Word>(ref PushBytesRef());
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Word CreateWordFromUInt64(ulong value)
+        => Vector256.Create(0UL, 0UL, 0UL, value).AsByte();
+
     public void PushBytes(scoped ReadOnlySpan<byte> value)
     {
         _tracer?.ReportStackPush(value);
@@ -101,7 +105,7 @@ public ref struct EvmStack
         // - when viewed as bytes: all zeros except byte[31] == value
 
         // Single 32-byte store: last byte as value
-        PushedHead() = Vector256.Create(0UL, 0UL, 0UL, (ulong)value << 56).AsByte();
+        PushedHead() = CreateWordFromUInt64((ulong)value << 56);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -115,7 +119,7 @@ public ref struct EvmStack
         ulong lane3 = (ulong)Unsafe.As<byte, ushort>(ref value) << 48;
 
         // Single 32-byte store
-        PushedHead() = Vector256.Create(0UL, 0UL, 0UL, lane3).AsByte();
+        PushedHead() = CreateWordFromUInt64(lane3);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -129,7 +133,7 @@ public ref struct EvmStack
         ulong lane3 = ((ulong)Unsafe.As<byte, uint>(ref value)) << 32;
 
         // Single 32-byte store
-        PushedHead() = Vector256.Create(0UL, 0UL, 0UL, lane3).AsByte();
+        PushedHead() = CreateWordFromUInt64(lane3);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -142,7 +146,7 @@ public ref struct EvmStack
         ulong lane3 = Unsafe.As<byte, ulong>(ref value);
 
         // Single 32-byte store
-        PushedHead() = Vector256.Create(0UL, 0UL, 0UL, lane3).AsByte();
+        PushedHead() = CreateWordFromUInt64(lane3);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -218,7 +222,7 @@ public ref struct EvmStack
         // - when viewed as bytes: all zeros except byte[31] == 1
 
         // Single 32-byte store
-        PushedHead() = Vector256.Create(0UL, 0UL, 0UL, 1UL << 56).AsByte();
+        PushedHead() = CreateWordFromUInt64(1UL << 56);
     }
 
     public void PushZero()
@@ -252,7 +256,7 @@ public ref struct EvmStack
         _tracer?.TraceBytes(in Unsafe.As<ulong, byte>(ref value), sizeof(ulong));
 
         // Single 32-byte store
-        PushedHead() = Vector256.Create(0UL, 0UL, 0UL, value).AsByte();
+        PushedHead() = CreateWordFromUInt64(value);
     }
 
     /// <summary>
