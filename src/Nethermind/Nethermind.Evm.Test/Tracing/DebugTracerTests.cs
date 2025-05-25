@@ -8,6 +8,7 @@ using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.Debugger;
+using Nethermind.Core;
 
 namespace Nethermind.Evm.Test;
 
