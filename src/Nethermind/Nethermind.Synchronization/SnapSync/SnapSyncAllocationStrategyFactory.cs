@@ -12,7 +12,7 @@ namespace Nethermind.Synchronization.SnapSync
     {
 
         private static readonly IPeerAllocationStrategy DefaultStrategy =
-            new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.SnapRanges, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse), "snap");
+            new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(new BySpeedStrategy(TransferSpeedType.SnapRanges, true), "snap");
 
         public SnapSyncAllocationStrategyFactory() : base(DefaultStrategy)
         {

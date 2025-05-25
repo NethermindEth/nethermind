@@ -84,18 +84,18 @@ public class JsonRpcSocketsClientTests
                     byte[] buffer = new byte[10];
                     while (true)
                     {
-                        ReceiveResult? result = await stream.ReceiveAsync(buffer);
+                        ReceiveResult result = await stream.ReceiveAsync(buffer);
 
                         // Imitate random delays
                         if (Stopwatch.GetTimestamp() % 101 == 0)
                             await Task.Delay(1);
 
-                        if (result is not null && IsEndOfIpcMessage(result))
+                        if (!result.IsNull && IsEndOfIpcMessage(result))
                         {
                             messages++;
                         }
 
-                        if (result is null || result.Closed)
+                        if (result.IsNull || result.Closed)
                         {
                             break;
                         }
@@ -242,8 +242,8 @@ public class JsonRpcSocketsClientTests
                     byte[] buffer = new byte[bufferSize];
                     while (true)
                     {
-                        ReceiveResult? result = await stream.ReceiveAsync(buffer);
-                        if (result is not null)
+                        ReceiveResult result = await stream.ReceiveAsync(buffer);
+                        if (!result.IsNull)
                         {
                             msg.AddRange(buffer.Take(result.Read));
 
@@ -255,7 +255,7 @@ public class JsonRpcSocketsClientTests
                             }
                         }
 
-                        if (result is null || result.Closed)
+                        if (result.IsNull || result.Closed)
                         {
                             break;
                         }

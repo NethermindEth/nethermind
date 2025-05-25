@@ -3,6 +3,7 @@
 
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
@@ -27,17 +28,30 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             set => base.FinalizationManager = value;
         }
 
+        private TxAuRaFilterBuilders? _txAuRaFilterBuilders = null;
+
+        public TxAuRaFilterBuilders TxAuRaFilterBuilders => _txAuRaFilterBuilders ??= new TxAuRaFilterBuilders(
+            this.ChainSpec,
+            this.SpecProvider,
+            this.Config<IBlocksConfig>(),
+            this.Config<IAuraConfig>(),
+            this.AbiEncoder,
+            this.WorldStateManager!,
+            this.BlockTree!,
+            this.ReceiptFinder!,
+            this.AuraStatefulComponents,
+            this.TxFilterCache,
+            this.LogManager
+        );
+
         private PermissionBasedTxFilter.Cache? _txFilterCache = null;
-        public PermissionBasedTxFilter.Cache TxFilterCache => _txFilterCache ??= new PermissionBasedTxFilter.Cache();
+        private PermissionBasedTxFilter.Cache TxFilterCache => _txFilterCache ??= new PermissionBasedTxFilter.Cache();
 
         private IValidatorStore? _validatorStore = null;
         public IValidatorStore ValidatorStore => _validatorStore ??= new ValidatorStore(DbProvider!.BlockInfosDb);
 
-        public LruCache<ValueHash256, UInt256> TransactionPermissionContractVersions { get; }
-            = new(
-                PermissionBasedTxFilter.Cache.MaxCacheSize,
-                nameof(TransactionPermissionContract));
-
+        private AuraStatefulComponents? _auraStatefulComponents = null;
+        private AuraStatefulComponents AuraStatefulComponents => _auraStatefulComponents ??= new AuraStatefulComponents();
 
         private AuRaContractGasLimitOverride.Cache? _gasLimitCalculatorCache = null;
         public AuRaContractGasLimitOverride.Cache GasLimitCalculatorCache => _gasLimitCalculatorCache ??= new AuRaContractGasLimitOverride.Cache();
@@ -73,5 +87,48 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         public ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
             new ReadOnlyTxProcessingEnv(WorldStateManager!, BlockTree!.AsReadOnly(), SpecProvider!, LogManager!);
 
+        public StartBlockProducerAuRa CreateStartBlockProducer()
+        {
+            return new StartBlockProducerAuRa(
+                this.SpecProvider,
+                this.ChainSpec,
+                this.ConfigProvider.GetConfig<IBlocksConfig>(),
+                this.Config<IAuraConfig>(),
+                this.BlockProcessingQueue!,
+                this.BlockTree!,
+                this.Sealer!,
+                this.Timestamper,
+                this.ReportingValidator!,
+                this.ReceiptStorage!,
+                this.ValidatorStore,
+                this.FinalizationManager!,
+                this.EngineSigner!,
+                this.GasPriceOracle!,
+                this.ReportingContractValidatorCache,
+                this.DisposeStack,
+                this.GasLimitCalculatorCache!,
+                this.AbiEncoder,
+                this.WorldStateManager!,
+                this.TxAuRaFilterBuilders!,
+                this.TxPriorityContractLocalDataSource!,
+                this.TxPool!,
+                this.StateReader,
+                this.TransactionComparerProvider,
+                this.BlockPreprocessor,
+                this.NodeKey,
+                this.CryptoRandom,
+                this.BlockValidator,
+                this.RewardCalculatorSource,
+                this.BlockProducerEnvFactory,
+                this.LogManager);
+        }
+    }
+
+    public class AuraStatefulComponents
+    {
+        public LruCache<ValueHash256, UInt256> TransactionPermissionContractVersions { get; }
+            = new(
+                PermissionBasedTxFilter.Cache.MaxCacheSize,
+                nameof(TransactionPermissionContract));
     }
 }

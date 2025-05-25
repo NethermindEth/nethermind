@@ -39,6 +39,18 @@ namespace Nethermind.Core
         void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
     }
 
+    public interface IReadOnlyNativeKeyValueStore
+    {
+        /// <summary>
+        /// Return span. Must call `DangerousReleaseSlice` or there can be some leak.
+        /// </summary>
+        /// <param name="key"></param>
+        /// <returns>Can return null or empty Span on missing key</returns>
+        ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out IntPtr handle, ReadFlags flags = ReadFlags.None);
+
+        void DangerousReleaseHandle(IntPtr handle);
+    }
+
     public interface IWriteOnlyKeyValueStore
     {
         byte[]? this[ReadOnlySpan<byte> key]

@@ -10,6 +10,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
@@ -18,6 +19,15 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class BlockValidatorTests
 {
+    private static readonly BlockValidator BlockValidator =
+        new BlockValidator(
+            Substitute.For<ITxValidator>(),
+            Substitute.For<IHeaderValidator>(),
+            Substitute.For<IUnclesValidator>(),
+            Substitute.For<ISpecProvider>(),
+            LimboLogs.Instance);
+
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_more_uncles_than_allowed_returns_false()
     {
@@ -41,6 +51,7 @@ public class BlockValidatorTests
             .WithTransactions(1, Substitute.For<IReleaseSpec>())
             .WithWithdrawals(1)
             .TestObject;
+
 
         Assert.That(
             BlockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),

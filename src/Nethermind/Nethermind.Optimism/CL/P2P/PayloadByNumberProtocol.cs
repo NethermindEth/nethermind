@@ -14,17 +14,29 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Optimism.CL.P2P;
 
-public class PayloadByNumberProtocol(ulong chainId, IPayloadDecoder payloadDecoder, ILogger logger)
-    : ISessionProtocol<ulong, ExecutionPayloadV3?>
+public class PayloadByNumberProtocol : ISessionProtocol<ulong, ExecutionPayloadV3?>
 {
-    public string Id => $"/opstack/req/payload_by_number/{chainId}/0";
+    private const int MaxResponseSizeBytes = 10000000;
+    private readonly ulong _chainId;
+    private readonly IPayloadDecoder _payloadDecoder;
+    private readonly ILogger _logger;
+
+    public string Id => $"/opstack/req/payload_by_number/{_chainId}/0";
+
+    public PayloadByNumberProtocol(
+        ulong chainId,
+        IPayloadDecoder payloadDecoder,
+        ILogManager logManager)
+    {
+        _chainId = chainId;
+        _payloadDecoder = payloadDecoder;
+        _logger = logManager.GetClassLogger();
+    }
 
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
         await downChannel.WriteAsync(new ReadOnlySequence<byte>([Result.Unavailable]));
     }
-
-    private const int MaxResponseSizeBytes = 10000000;
 
     private static class Result
     {
@@ -50,20 +62,20 @@ public class PayloadByNumberProtocol(ulong chainId, IPayloadDecoder payloadDecod
             case Result.Success:
                 break;
             case Result.Unavailable:
-                if (logger.IsTrace) logger.Trace($"{nameof(PayloadByNumberProtocol)}: Requested payload is unavailable. Payload number: {request}");
+                if (_logger.IsTrace) _logger.Trace($"{nameof(PayloadByNumberProtocol)}: Requested payload is unavailable. Payload number: {request}");
                 return null;
             case Result.Invalid:
-                if (logger.IsWarn) logger.Warn($"{nameof(PayloadByNumberProtocol)}: Got invalid request. Payload number: {request}");
+                if (_logger.IsWarn) _logger.Warn($"{nameof(PayloadByNumberProtocol)}: Got invalid request. Payload number: {request}");
                 return null;
             default:
-                if (logger.IsWarn) logger.Warn($"{nameof(PayloadByNumberProtocol)}: Got unknown error code({res}). Payload number: {request}");
+                if (_logger.IsWarn) _logger.Warn($"{nameof(PayloadByNumberProtocol)}: Got unknown error code({res}). Payload number: {request}");
                 return null;
         }
         var version = BinaryPrimitives.ReadUInt32LittleEndian((await downChannel.ReadAsync(4)).Data.ToArray());
 
         if (version != Version.Ecotone)
         {
-            if (logger.IsWarn) logger.Warn($"{nameof(PayloadByNumberProtocol)}: Unsupported version. Payload number: {request}");
+            if (_logger.IsWarn) _logger.Warn($"{nameof(PayloadByNumberProtocol)}: Unsupported version. Payload number: {request}");
             return null;
         }
 
@@ -90,11 +102,11 @@ public class PayloadByNumberProtocol(ulong chainId, IPayloadDecoder payloadDecod
                 totalRead += bytesRead;
             }
 
-            return payloadDecoder.DecodePayload(buffer[..totalRead]);
+            return _payloadDecoder.DecodePayload(buffer.AsSpan(0, totalRead));
         }
         catch (Exception e)
         {
-            if (logger.IsWarn) logger.Warn($"{nameof(PayloadByNumberProtocol)}: Exception during payload decoding {e}");
+            if (_logger.IsWarn) _logger.Warn($"{nameof(PayloadByNumberProtocol)}: Exception during payload decoding {e}");
             return null;
         }
         finally

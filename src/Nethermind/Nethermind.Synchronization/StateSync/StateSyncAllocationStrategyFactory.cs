@@ -12,9 +12,7 @@ namespace Nethermind.Synchronization.StateSync
     public class StateSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<StateSyncBatch>
     {
         private static readonly IPeerAllocationStrategy DefaultStrategy =
-            new AllocationStrategy(
-                new TotalDiffStrategy(
-                    new BySpeedStrategy(TransferSpeedType.NodeData, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse));
+            new AllocationStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true));
 
         public StateSyncAllocationStrategyFactory() : base(DefaultStrategy)
         {

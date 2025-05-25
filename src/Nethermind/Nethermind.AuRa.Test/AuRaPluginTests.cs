@@ -9,7 +9,12 @@ using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -27,6 +32,7 @@ namespace Nethermind.AuRa.Test
             ChainSpec chainSpec = new();
             AuRaPlugin auRaPlugin = new(chainSpec);
             chainSpec.EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new AuRaChainSpecEngineParameters());
+            using IContainer testNethermindContainer = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
             NethermindApi.Dependencies apiDependencies = new NethermindApi.Dependencies(
                 new ConfigProvider(),
                 new EthereumJsonSerializer(),
@@ -35,8 +41,10 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<ISpecProvider>(),
                 [],
                 Substitute.For<IProcessExitSource>(),
-                Substitute.For<IContainer>());
-            Action init = () => auRaPlugin.Init(new AuRaNethermindApi(apiDependencies));
+                testNethermindContainer);
+            AuRaNethermindApi api = new AuRaNethermindApi(apiDependencies);
+            api.DbProvider = TestMemDbProvider.Init();
+            Action init = () => auRaPlugin.Init(api);
             init.Should().NotThrow();
         }
 

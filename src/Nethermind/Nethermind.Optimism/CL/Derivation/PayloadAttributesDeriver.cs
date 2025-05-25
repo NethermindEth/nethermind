@@ -4,28 +4,21 @@
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Data;
-using Nethermind.Logging;
 using Nethermind.Optimism.CL.Decoding;
-using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL.Derivation;
 
-public class PayloadAttributesDeriver : IPayloadAttributesDeriver
+public class PayloadAttributesDeriver(
+    ISystemConfigDeriver systemConfigDeriver,
+    DepositTransactionBuilder depositTransactionBuilder
+) : IPayloadAttributesDeriver
 {
     public readonly Address SequencerFeeVault = new("0x4200000000000000000000000000000000000011");
 
-    private readonly DepositTransactionBuilder _depositTransactionBuilder;
-    private readonly ISystemConfigDeriver _systemConfigDeriver;
-    private readonly ILogger _logger;
-
-    public PayloadAttributesDeriver(ISystemConfigDeriver systemConfigDeriver, DepositTransactionBuilder depositTransactionBuilder, ILogger logger)
-    {
-        _depositTransactionBuilder = depositTransactionBuilder;
-        _systemConfigDeriver = systemConfigDeriver;
-        _logger = logger;
-    }
+    private readonly DepositTransactionBuilder _depositTransactionBuilder = depositTransactionBuilder;
+    private readonly ISystemConfigDeriver _systemConfigDeriver = systemConfigDeriver;
 
     public PayloadAttributesRef? TryDerivePayloadAttributes(
         SingularBatch batch,

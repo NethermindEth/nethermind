@@ -2,22 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    internal class BlocksSyncPeerAllocationStrategyFactory : IPeerAllocationStrategyFactory<BlocksRequest?>
+    internal class BlocksSyncPeerAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<BlocksRequest?>
     {
-        public IPeerAllocationStrategy Create(BlocksRequest? request)
+        public static IPeerAllocationStrategy AllocationStrategy = new BySpeedStrategy(TransferSpeedType.Bodies, true);
+
+        public BlocksSyncPeerAllocationStrategyFactory() : base(AllocationStrategy)
         {
-            // because of the way the generics cannot handle T / T?
-            ArgumentNullException.ThrowIfNull(request);
-
-            IPeerAllocationStrategy baseStrategy = new BlocksSyncPeerAllocationStrategy(request.NumberOfLatestBlocksToBeIgnored);
-
-            TotalDiffStrategy totalDiffStrategy = new(baseStrategy);
-            return totalDiffStrategy;
         }
     }
 }

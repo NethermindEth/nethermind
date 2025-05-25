@@ -4,13 +4,13 @@
 using SendBlobs;
 using System.CommandLine;
 
-CliRootCommand rootCommand = [];
+RootCommand rootCommand = [];
 
 SetupCli.SetupExecute(rootCommand);
 SetupCli.SetupDistributeCommand(rootCommand);
 SetupCli.SetupReclaimCommand(rootCommand);
 SetupCli.SetupSendFileCommand(rootCommand);
 
-CliConfiguration cli = new(rootCommand);
+CommandLineConfiguration cli = new(rootCommand);
 
 return await cli.InvokeAsync(args);

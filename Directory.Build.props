@@ -1,0 +1,20 @@
+<Project>
+
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <LangVersion>13.0</LangVersion>
+    <NuGetAuditMode>direct</NuGetAuditMode>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <TargetFramework>net9.0</TargetFramework>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+  </PropertyGroup>
+
+  <PropertyGroup Label="ProductInfo">
+    <Copyright>Demerzel Solutions Limited</Copyright>
+    <Product>Nethermind</Product>
+  </PropertyGroup>
+
+</Project>

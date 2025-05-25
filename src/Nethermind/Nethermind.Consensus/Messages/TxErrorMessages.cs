@@ -83,6 +83,9 @@ public static class TxErrorMessages
     public const string InvalidBlobData
         = "InvalidTxBlobData: Number of blobs, hashes, commitments and proofs must match.";
 
+    public static string TxGasLimitCapExceeded(long gasLimit, long gasLimitCap)
+        => $"TxGasLimitCapExceeded: Gas limit {gasLimit} exceeed cap of {gasLimitCap}.";
+
     public const string InvalidCreateTxData
         = "InvalidCreateTxData: Legacy createTx cannot create Eof code";
 

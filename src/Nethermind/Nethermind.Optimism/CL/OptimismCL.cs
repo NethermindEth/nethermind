@@ -6,50 +6,53 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Decoding;
-using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Optimism.CL.P2P;
-using Nethermind.Optimism.Rpc;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Optimism.CL;
 
-public class OptimismCL : IDisposable
+public sealed class OptimismCL : IDisposable
 {
-    private readonly DecodingPipeline _decodingPipeline;
+    private readonly IDecodingPipeline _decodingPipeline;
     private readonly IL1Bridge _l1Bridge;
-    private readonly L1ConfigValidator _l1ConfigValidator;
-    private readonly IExecutionEngineManager _executionEngineManager;
-    private readonly Driver _driver;
+    private readonly IL1ConfigValidator _l1ConfigValidator;
     private readonly IL2Api _l2Api;
-    private readonly OptimismCLP2P _p2p;
+    private readonly IExecutionEngineManager _executionEngineManager;
     private readonly ITimestamper _timestamper;
-    private readonly ILogger _logger;
+
     private readonly CLChainSpecEngineParameters _engineParameters;
+    private readonly ulong _l2BlockTime;
+    private readonly ulong _l2GenesisTimestamp;
+
+    private readonly Driver _driver;
+    private readonly OptimismCLP2P _p2p;
+
+    private readonly ILogger _logger;
     private readonly CancellationTokenSource _cancellationTokenSource = new();
 
     public OptimismCL(
-        ISpecProvider specProvider,
-        CLChainSpecEngineParameters engineParameters,
-        IOptimismConfig config,
-        IJsonSerializer jsonSerializer,
-        IEthereumEcdsa ecdsa,
+        IDecodingPipeline decodingPipeline,
+        IL1Bridge l1Bridge,
+        IL1ConfigValidator l1ConfigValidator,
+        IL2Api l2Api,
+        IExecutionEngineManager executionEngineManager,
         ITimestamper timestamper,
-        ulong l2GenesisTimestamp,
-        ILogManager logManager,
-        IOptimismEthRpcModule l2EthRpc,
+        // Configs
+        IOptimismConfig config,
+        CLChainSpecEngineParameters engineParameters,
         IPAddress externalIp,
-        IOptimismEngineRpcModule engineRpcModule)
+        ulong chainId,
+        ulong l2GenesisTimestamp,
+        ILogManager logManager
+    )
     {
+        ArgumentNullException.ThrowIfNull(config.L1BeaconApiEndpoint);
+        ArgumentNullException.ThrowIfNull(config.L1EthApiEndpoint);
         ArgumentNullException.ThrowIfNull(engineParameters.UnsafeBlockSigner);
         ArgumentNullException.ThrowIfNull(engineParameters.Nodes);
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
-        ArgumentNullException.ThrowIfNull(config.L1BeaconApiEndpoint);
-        ArgumentNullException.ThrowIfNull(config.L1EthApiEndpoint);
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
 
         _logger = logManager.GetClassLogger();
@@ -58,35 +61,30 @@ public class OptimismCL : IDisposable
         _l2GenesisTimestamp = l2GenesisTimestamp;
         _timestamper = timestamper;
 
-        IEthApi ethApi = new EthereumEthApi(config.L1EthApiEndpoint, jsonSerializer, logManager);
-        IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), jsonSerializer, ecdsa, _logger);
+        _decodingPipeline = decodingPipeline;
+        _l1Bridge = l1Bridge;
+        _l1ConfigValidator = l1ConfigValidator;
+        _l2Api = l2Api;
+        _executionEngineManager = executionEngineManager;
 
-        _decodingPipeline = new DecodingPipeline(_logger);
-        _l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, engineParameters, _decodingPipeline, _logger);
-
-        _l1ConfigValidator = new L1ConfigValidator(ethApi, logManager);
-
-        ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(engineParameters.SystemConfigProxy);
-        _l2Api = new L2Api(l2EthRpc, engineRpcModule, systemConfigDeriver, _logger);
-        _executionEngineManager = new ExecutionEngineManager(_l2Api, _logger);
         _driver = new Driver(
             _l1Bridge,
             _decodingPipeline,
             engineParameters,
             _executionEngineManager,
             _l2Api,
-            specProvider.ChainId,
+            chainId,
             l2GenesisTimestamp,
-            _logger);
+            logManager);
         _p2p = new OptimismCLP2P(
-            specProvider.ChainId,
+            _executionEngineManager,
+            chainId,
             engineParameters.Nodes,
             config,
             engineParameters.UnsafeBlockSigner,
             timestamper,
             externalIp,
-            logManager,
-            _executionEngineManager);
+            logManager);
     }
 
     public async Task Start()
@@ -119,23 +117,18 @@ public class OptimismCL : IDisposable
                 await Task.WhenAll(
                     p2pTask,
                     _decodingPipeline.Run(_cancellationTokenSource.Token),
-                    _l1Bridge.Run(_cancellationTokenSource.Token),
                     _driver.Run(_cancellationTokenSource.Token)
                 );
             }
             else
             {
-                _l1Bridge.Reset(finalized.L1BlockInfo);
-                Task decodingPipelineTask = _decodingPipeline.Run(_cancellationTokenSource.Token);
+                _l1Bridge.Reset(BlockId.FromL1BlockInfo(finalized.L1BlockInfo));
                 _driver.Reset(finalized.Number);
-                Task driverTask = _driver.Run(_cancellationTokenSource.Token);
-                await _l1Bridge.ProcessUntilHead(_cancellationTokenSource.Token);
                 _p2p.Reset((await _l2Api.GetHeadBlock()).Number);
                 await Task.WhenAll(
                     _p2p.Run(_cancellationTokenSource.Token),
-                    decodingPipelineTask,
-                    _l1Bridge.Run(_cancellationTokenSource.Token),
-                    driverTask
+                    _decodingPipeline.Run(_cancellationTokenSource.Token),
+                    _driver.Run(_cancellationTokenSource.Token)
                 );
             }
         }
@@ -148,9 +141,6 @@ public class OptimismCL : IDisposable
             throw;
         }
     }
-
-    private readonly ulong _l2BlockTime;
-    private readonly ulong _l2GenesisTimestamp;
 
     /// <summary>
     /// Checks if current head is too old to derive due to blob expiry
