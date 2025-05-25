@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Transport.Channels;
 using Lantern.Discv5.Enr;
 using Lantern.Discv5.Enr.Entries;
@@ -38,7 +39,13 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly IServiceProvider _serviceProvider;
     private readonly SessionOptions _sessionOptions;
 
-    public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IIPResolver? ipResolver, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IDb discoveryDb, ILogManager logManager)
+    public DiscoveryV5App(
+        [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
+        IIPResolver? ipResolver,
+        INetworkConfig networkConfig,
+        IDiscoveryConfig discoveryConfig,
+        [KeyFilter(DbNames.DiscoveryNodes)] IDb discoveryDb,
+        ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(ipResolver);
 
@@ -47,11 +54,12 @@ public class DiscoveryV5App : IDiscoveryApp
 
         IdentityVerifierV4 identityVerifier = new();
 
+        PrivateKey privateKey = nodeKey.Unprotect();
         _sessionOptions = new()
         {
-            Signer = new IdentitySignerV4(privateKeyProvider.Generate().KeyBytes),
+            Signer = new IdentitySignerV4(privateKey.KeyBytes),
             Verifier = identityVerifier,
-            SessionKeys = new SessionKeys(privateKeyProvider.Generate().KeyBytes),
+            SessionKeys = new SessionKeys(privateKey.KeyBytes),
         };
 
         string[] bootstrapNodes = [.. (discoveryConfig.Bootnodes ?? "").Split(",", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Distinct()];
@@ -190,8 +198,6 @@ public class DiscoveryV5App : IDiscoveryApp
         .Build();
 
     public event EventHandler<NodeEventArgs>? NodeRemoved;
-
-    public void Initialize(PublicKey masterPublicKey) { }
 
     public void InitializeChannel(IChannel channel)
     {

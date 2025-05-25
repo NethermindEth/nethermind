@@ -26,9 +26,9 @@ public static class T8nCommand
         EthereumJsonSerializer.AddConverter(new AccountStateJsonConverter());
     }
 
-    public static void Configure(ref CliRootCommand rootCmd)
+    public static void Configure(ref RootCommand rootCmd)
     {
-        CliCommand cmd = T8nCommandOptions.CreateCommand();
+        Command cmd = T8nCommandOptions.CreateCommand();
 
         cmd.SetAction(parseResult =>
         {

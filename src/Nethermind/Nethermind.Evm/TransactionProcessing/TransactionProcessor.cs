@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -145,7 +145,7 @@ namespace Nethermind.Evm.TransactionProcessing
             bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
 
             TransactionResult result;
-            IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec);
+            IntrinsicGas intrinsicGas = CalculateIntrinsicGas(tx, spec);
             if (!(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas))) return result;
 
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
@@ -435,6 +435,9 @@ namespace Nethermind.Evm.TransactionProcessing
             return deleteCallerAccount;
         }
 
+        protected virtual IntrinsicGas CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
+            => IntrinsicGasCalculator.Calculate(tx, spec);
+
 
         protected virtual TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
@@ -592,7 +595,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual bool ShouldValidate(ExecutionOptions opts) => !opts.HasFlag(ExecutionOptions.SkipValidation);
 
-        protected virtual void ExecuteEvmCall<TTracingInstructions>(
+        protected virtual void ExecuteEvmCall<TTracingInst>(
             Transaction tx,
             BlockHeader header,
             IReleaseSpec spec,
@@ -606,7 +609,7 @@ namespace Nethermind.Evm.TransactionProcessing
             out TransactionSubstate? substate,
             out GasConsumed gasConsumed,
             out byte statusCode)
-            where TTracingInstructions : struct, IFlag
+            where TTracingInst : struct, IFlag
         {
             _ = ShouldValidate(opts);
 
@@ -646,7 +649,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             using (EvmState state = EvmState.RentTopLevel(unspentGas, executionType, snapshot, env, accessedItems))
             {
-                substate = VirtualMachine.ExecuteTransaction<TTracingInstructions>(state, WorldState, tracer);
+                substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
 
                 unspentGas = state.GasAvailable;
 

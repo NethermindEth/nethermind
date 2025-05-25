@@ -1,15 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <OutputType>Exe</OutputType>
-        <PublishSingleFile>true</PublishSingleFile>
-        <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
-        <AllowedReferenceRelatedFileExtensions>*.pdb</AllowedReferenceRelatedFileExtensions>
+      <OutputType>Exe</OutputType>
+      <PublishSingleFile>true</PublishSingleFile>
+      <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+      <AllowedReferenceRelatedFileExtensions>*.pdb</AllowedReferenceRelatedFileExtensions>
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.24528.1" />
-      <PackageReference Include="BouncyCastle.Cryptography" Version="2.5.1" Aliases="BouncyCastle"/>
+      <PackageReference Include="System.CommandLine" />
+      <PackageReference Include="BouncyCastle.Cryptography" Aliases="BouncyCastle" />
     </ItemGroup>
 
     <ItemGroup>
