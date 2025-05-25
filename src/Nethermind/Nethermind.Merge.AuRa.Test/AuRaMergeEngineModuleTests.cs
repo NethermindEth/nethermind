@@ -26,6 +26,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
+using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
