@@ -12,7 +12,7 @@ namespace Nethermind.Evm
 {
     public interface IVirtualMachine
     {
-        TransactionSubstate ExecuteTransaction<TTracingInstructions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
-            where TTracingInstructions : struct, IFlag;
+        TransactionSubstate ExecuteTransaction<TTracingInst>(EvmState state, IWorldState worldState, ITxTracer txTracer)
+            where TTracingInst : struct, IFlag;
     }
 }

@@ -32,11 +32,11 @@ public ref struct EvmStack
     public EvmStack(scoped in int head, ITxTracer txTracer, scoped in Span<byte> bytes)
     {
         Head = head;
-        _tracer = txTracer.IsTracingInstructions ? txTracer : null;
+        _tracer = txTracer;
         _bytes = bytes;
     }
 
-    private readonly ITxTracer? _tracer;
+    private readonly ITxTracer _tracer;
     private readonly Span<byte> _bytes;
     public int Head;
 
@@ -61,9 +61,11 @@ public ref struct EvmStack
     private static Word CreateWordFromUInt64(ulong value)
         => Vector256.Create(0UL, 0UL, 0UL, value).AsByte();
 
-    public void PushBytes(scoped ReadOnlySpan<byte> value)
+    public void PushBytes<TTracingInst>(scoped ReadOnlySpan<byte> value)
+        where TTracingInst : struct, IFlag
     {
-        _tracer?.ReportStackPush(value);
+        if (TTracingInst.IsActive)
+            _tracer.ReportStackPush(value);
 
         if (value.Length != WordSize)
         {
@@ -78,9 +80,11 @@ public ref struct EvmStack
         }
     }
 
-    public void PushBytes(scoped in ZeroPaddedSpan value)
+    public void PushBytes<TTracingInst>(scoped in ZeroPaddedSpan value)
+        where TTracingInst : struct, IFlag
     {
-        _tracer?.ReportStackPush(value);
+        if (TTracingInst.IsActive)
+            _tracer.ReportStackPush(value);
 
         ReadOnlySpan<byte> valueSpan = value.Span;
         if (valueSpan.Length != WordSize)
@@ -97,76 +101,93 @@ public ref struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushByte(byte value)
+    public void PushByte<TTracingInst>(byte value)
+        where TTracingInst : struct, IFlag
     {
-        _tracer?.ReportStackPush(value);
+        if (TTracingInst.IsActive)
+            _tracer.ReportStackPush(value);
 
         // Build a 256-bit vector: [ 0, 0, 0, (value << 56) ]
         // - when viewed as bytes: all zeros except byte[31] == value
-
+        ref Word head = ref PushedHead();
         // Single 32-byte store: last byte as value
-        PushedHead() = CreateWordFromUInt64((ulong)value << 56);
+        head = CreateWordFromUInt64((ulong)value << 56);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public unsafe void Push2Bytes(ref byte value)
+    public unsafe void Push2Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
     {
         // ushort size
-        _tracer?.TraceBytes(in value, sizeof(ushort));
-
+        if (TTracingInst.IsActive)
+            _tracer.TraceBytes(in value, sizeof(ushort));
+        
+        ref Word head = ref PushedHead();
         // Load 2-byte source into the top 16 bits of the last 64-bit lane:
         // lane3 covers bytes [24..31], so shifting by 48 bits
         ulong lane3 = (ulong)Unsafe.As<byte, ushort>(ref value) << 48;
 
         // Single 32-byte store
-        PushedHead() = CreateWordFromUInt64(lane3);
+        head = CreateWordFromUInt64(lane3);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public unsafe void Push4Bytes(ref byte value)
+    public unsafe void Push4Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
     {
         // uint size
-        _tracer?.TraceBytes(in value, sizeof(uint));
+        if (TTracingInst.IsActive)
+            _tracer.TraceBytes(in value, sizeof(uint));
 
+        ref Word head = ref PushedHead();
         // Load 4-byte source into the top 32 bits of the last 64-bit lane:
         // lane3 covers bytes [24..31], so shifting by 32 bits
         ulong lane3 = ((ulong)Unsafe.As<byte, uint>(ref value)) << 32;
 
         // Single 32-byte store
-        PushedHead() = CreateWordFromUInt64(lane3);
+        head = CreateWordFromUInt64(lane3);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public unsafe void Push8Bytes(ref byte value)
+    public unsafe void Push8Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
     {
         // ulong size
-        _tracer?.TraceBytes(in value, sizeof(ulong));
+        if (TTracingInst.IsActive)
+            _tracer.TraceBytes(in value, sizeof(ulong));
 
+        ref Word head = ref PushedHead();
         // Load 8-byte source into last 64-bit lane
         ulong lane3 = Unsafe.As<byte, ulong>(ref value);
 
         // Single 32-byte store
-        PushedHead() = CreateWordFromUInt64(lane3);
+        head = CreateWordFromUInt64(lane3);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public unsafe void Push16Bytes(ref byte value)
+    public unsafe void Push16Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
     {
         // UInt128 size
-        _tracer?.TraceBytes(in value, sizeof(HalfWord));
+        if (TTracingInst.IsActive)
+            _tracer.TraceBytes(in value, sizeof(HalfWord));
 
+        ref Word head = ref PushedHead();
         // Load 16-byte source into 16-byte source as a Vector128<byte>
         HalfWord src = Unsafe.As<byte, HalfWord>(ref value);
         // Single 32-byte store
-        PushedHead() = Vector256.Create(default, src);
+        head = Vector256.Create(default, src);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Push20Bytes(ref byte value)
+    public void Push20Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
     {
         // Address size
-        _tracer?.TraceBytes(in value, 20);
+        if (TTracingInst.IsActive)
+            _tracer.TraceBytes(in value, 20);
 
+        ref Word head = ref PushedHead();
         // build the 4×8-byte lanes:
         // - lane0 = 0UL
         // - lane1 = first 4 bytes of 'value', shifted up into the high half
@@ -176,30 +197,36 @@ public ref struct EvmStack
         ulong lane2 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 4));
         ulong lane3 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 12));
 
-        PushedHead() = Vector256.Create(default, lane1, lane2, lane3).AsByte();
+        head = Vector256.Create(default, lane1, lane2, lane3).AsByte();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushAddress(Address address)
-        => Push20Bytes(ref MemoryMarshal.GetArrayDataReference(address.Bytes));
+    public void PushAddress<TTracingInst>(Address address)
+        where TTracingInst : struct, IFlag
+        => Push20Bytes<TTracingInst>(ref MemoryMarshal.GetArrayDataReference(address.Bytes));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Push32Bytes(in Word value)
+    public void Push32Bytes<TTracingInst>(in Word value)
+        where TTracingInst : struct, IFlag
     {
-        _tracer?.TraceWord(in value);
+        if (TTracingInst.IsActive)
+            _tracer.TraceWord(in value);
 
         // Single 32-byte store
         PushedHead() = value;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Push32Bytes(in ValueHash256 hash)
-        => Push32Bytes(in Unsafe.As<ValueHash256, Word>(ref Unsafe.AsRef(in hash)));
+    public void Push32Bytes<TTracingInst>(in ValueHash256 hash)
+        where TTracingInst : struct, IFlag
+        => Push32Bytes<TTracingInst>(in Unsafe.As<ValueHash256, Word>(ref Unsafe.AsRef(in hash)));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void PushLeftPaddedBytes(ReadOnlySpan<byte> value, int paddingLength)
+    public void PushLeftPaddedBytes<TTracingInst>(ReadOnlySpan<byte> value, int paddingLength)
+        where TTracingInst : struct, IFlag
     {
-        _tracer?.ReportStackPush(value);
+        if (TTracingInst.IsActive)
+            _tracer.ReportStackPush(value);
 
         if (value.Length != WordSize)
         {
@@ -214,9 +241,12 @@ public ref struct EvmStack
         }
     }
 
-    public void PushOne()
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void PushOne<TTracingInst>()
+        where TTracingInst : struct, IFlag
     {
-        _tracer?.ReportStackPush(Bytes.OneByteSpan);
+        if (TTracingInst.IsActive)
+            _tracer.ReportStackPush(Bytes.OneByteSpan);
 
         // Build a 256-bit vector: [ 0, 0, 0, (1UL << 56) ]
         // - when viewed as bytes: all zeros except byte[31] == 1
@@ -225,35 +255,42 @@ public ref struct EvmStack
         PushedHead() = CreateWordFromUInt64(1UL << 56);
     }
 
-    public void PushZero()
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void PushZero<TTracingInst>()
+        where TTracingInst : struct, IFlag
     {
-        _tracer?.ReportStackPush(Bytes.ZeroByteSpan);
+        if (TTracingInst.IsActive)
+            _tracer.ReportStackPush(Bytes.ZeroByteSpan);
 
         // Single 32-byte store: Zero 
         PushedHead() = default;
     }
 
-    public unsafe void PushUInt32(uint value)
+    public unsafe void PushUInt32<TTracingInst>(uint value)
+        where TTracingInst : struct, IFlag
     {
         if (BitConverter.IsLittleEndian)
         {
             value = BinaryPrimitives.ReverseEndianness(value);
         }
         // uint size
-        _tracer?.TraceBytes(in Unsafe.As<uint, byte>(ref value), sizeof(uint));
+        if (TTracingInst.IsActive)
+            _tracer.TraceBytes(in Unsafe.As<uint, byte>(ref value), sizeof(uint));
 
         // Single 32-byte store
         PushedHead() = Vector256.Create(0U, 0U, 0U, 0U, 0U, 0U, 0U, value).AsByte();
     }
 
-    public unsafe void PushUInt64(ulong value)
+    public unsafe void PushUInt64<TTracingInst>(ulong value)
+        where TTracingInst : struct, IFlag
     {
         if (BitConverter.IsLittleEndian)
         {
             value = BinaryPrimitives.ReverseEndianness(value);
         }
         // ulong size
-        _tracer?.TraceBytes(in Unsafe.As<ulong, byte>(ref value), sizeof(ulong));
+        if (TTracingInst.IsActive)
+            _tracer.TraceBytes(in Unsafe.As<ulong, byte>(ref value), sizeof(ulong));
 
         // Single 32-byte store
         PushedHead() = CreateWordFromUInt64(value);
@@ -265,9 +302,11 @@ public ref struct EvmStack
     /// <remarks>
     /// This method is a counterpart to <see cref="PopUInt256"/> and uses the same, raw data approach to write data back.
     /// </remarks>
-    public void PushUInt256(in UInt256 value)
+
+    public void PushUInt256<TTracingInst>(in UInt256 value)
+        where TTracingInst : struct, IFlag
     {
-        ref byte bytes = ref PushBytesRef();
+        ref Word head = ref PushedHead();
         if (Avx2.IsSupported)
         {
             Word shuffle = Vector256.Create(
@@ -278,13 +317,13 @@ public ref struct EvmStack
             if (Avx512Vbmi.VL.IsSupported)
             {
                 Word data = Unsafe.As<UInt256, Word>(ref Unsafe.AsRef(in value));
-                Unsafe.WriteUnaligned(ref bytes, Avx512Vbmi.VL.PermuteVar32x8(data, shuffle));
+                head = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
             }
             else if (Avx2.IsSupported)
             {
                 Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(in value));
                 Vector256<ulong> convert = Avx2.Permute4x64(permute, 0b_01_00_11_10);
-                Unsafe.WriteUnaligned(ref bytes, Avx2.Shuffle(Unsafe.As<Vector256<ulong>, Word>(ref convert), shuffle));
+                head = Avx2.Shuffle(Unsafe.As<Vector256<ulong>, Word>(ref convert), shuffle);
             }
         }
         else
@@ -305,16 +344,18 @@ public ref struct EvmStack
                 u0 = value.u0;
             }
 
-            Unsafe.WriteUnaligned(ref bytes, Vector256.Create(u3, u2, u1, u0));
+            head = Vector256.Create(u3, u2, u1, u0).AsByte();
         }
 
-        _tracer?.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref bytes, WordSize));
+        if (TTracingInst.IsActive)
+            _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<Word, byte>(ref head), WordSize));
     }
 
-    public void PushSignedInt256(in Int256.Int256 value)
+    public void PushSignedInt256<TTracingInst>(in Int256.Int256 value)
+        where TTracingInst : struct, IFlag
     {
         // tail call into UInt256
-        PushUInt256(in Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
+        PushUInt256<TTracingInst>(in Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -477,7 +518,8 @@ public ref struct EvmStack
         return Unsafe.Add(ref bytes, WordSize - sizeof(byte));
     }
 
-    public bool Dup(in int depth)
+    public bool Dup<TTracingInst>(in int depth)
+        where TTracingInst : struct, IFlag
     {
         if (!EnsureDepth(depth)) return false;
 
@@ -488,7 +530,7 @@ public ref struct EvmStack
 
         Unsafe.WriteUnaligned(ref to, Unsafe.ReadUnaligned<Word>(ref from));
 
-        if (_tracer is not null) Trace(depth);
+        if (TTracingInst.IsActive) Trace(depth);
 
         if (++Head >= MaxStackSize)
         {
@@ -501,7 +543,8 @@ public ref struct EvmStack
     public readonly bool EnsureDepth(int depth)
         => Head >= depth;
 
-    public readonly bool Swap(int depth)
+    public readonly bool Swap<TTracingInst>(int depth)
+        where TTracingInst : struct, IFlag
     {
         if (!EnsureDepth(depth)) return false;
 
@@ -514,12 +557,13 @@ public ref struct EvmStack
         Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));
         Unsafe.WriteUnaligned(ref top, buffer);
 
-        if (_tracer is not null) Trace(depth);
+        if (TTracingInst.IsActive) Trace(depth);
 
         return true;
     }
 
-    public readonly bool Exchange(int n, int m)
+    public readonly bool Exchange<TTracingInst>(int n, int m)
+        where TTracingInst : struct, IFlag
     {
         int maxDepth = Math.Max(n, m);
         if (!EnsureDepth(maxDepth)) return false;
@@ -533,7 +577,7 @@ public ref struct EvmStack
         Unsafe.WriteUnaligned(ref first, Unsafe.ReadUnaligned<Word>(ref second));
         Unsafe.WriteUnaligned(ref second, buffer);
 
-        if (_tracer is not null) Trace(maxDepth);
+        if (TTracingInst.IsActive) Trace(maxDepth);
 
         return true;
     }

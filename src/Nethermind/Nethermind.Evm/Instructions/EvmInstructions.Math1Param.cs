@@ -95,7 +95,8 @@ internal static partial class EvmInstructions
     /// Extracts a byte from a 256-bit word at the position specified by the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionByte(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionByte<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -107,19 +108,19 @@ internal static partial class EvmInstructions
         // If the position is out-of-range, push zero.
         if (a >= BigInt32)
         {
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
         }
         else
         {
             int adjustedPosition = bytes.Length - 32 + (int)a;
             if (adjustedPosition < 0)
             {
-                stack.PushZero();
+                stack.PushZero<TTracingInst>();
             }
             else
             {
                 // Push the extracted byte.
-                stack.PushByte(bytes[adjustedPosition]);
+                stack.PushByte<TTracingInst>(bytes[adjustedPosition]);
             }
         }
 
@@ -134,7 +135,7 @@ internal static partial class EvmInstructions
     /// Performs sign extension on a 256-bit integer in-place based on a specified byte index.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSignExtend(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSignExtend<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Low;
 

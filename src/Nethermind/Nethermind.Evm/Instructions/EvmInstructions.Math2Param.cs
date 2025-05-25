@@ -46,8 +46,9 @@ internal static partial class EvmInstructions
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath2Param<TOpMath>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMath2Param<TOpMath, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpMath : struct, IOpMath2Param
+        where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost for the specific math operation.
         gasAvailable -= TOpMath.GasCost;
@@ -59,7 +60,7 @@ internal static partial class EvmInstructions
         TOpMath.Operation(in a, in b, out UInt256 result);
 
         // Push the computed result onto the stack.
-        stack.PushUInt256(in result);
+        stack.PushUInt256<TTracingInst>(in result);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -256,7 +257,8 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success; or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExp(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExp<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         // Charge the fixed gas cost for exponentiation.
         gasAvailable -= GasCostOf.Exp;
@@ -273,7 +275,7 @@ internal static partial class EvmInstructions
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.
-            stack.PushOne();
+            stack.PushOne<TTracingInst>();
         }
         else
         {
@@ -283,17 +285,17 @@ internal static partial class EvmInstructions
 
             if (a.IsZero)
             {
-                stack.PushZero();
+                stack.PushZero<TTracingInst>();
             }
             else if (a.IsOne)
             {
-                stack.PushOne();
+                stack.PushOne<TTracingInst>();
             }
             else
             {
                 // Perform exponentiation and push the 256-bit result onto the stack.
                 UInt256.Exp(a, new UInt256(bytes, true), out UInt256 result);
-                stack.PushUInt256(in result);
+                stack.PushUInt256<TTracingInst>(in result);
             }
         }
 
