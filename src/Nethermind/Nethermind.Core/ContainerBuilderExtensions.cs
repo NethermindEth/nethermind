@@ -216,6 +216,11 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder AddScoped<T>(this ContainerBuilder builder, Func<IComponentContext, T> factoryMethod) where T : class
+    {
+        return builder.AddScoped<T, IComponentContext>(factoryMethod);
+    }
+
     public static ContainerBuilder Add<T>(this ContainerBuilder builder) where T : class
     {
         builder.RegisterType<T>()

@@ -37,7 +37,7 @@ namespace Nethermind.Api
         IBlockProducerRunner? BlockProducerRunner { get; set; }
 
         [SkipServiceCollection]
-        IBlockValidator? BlockValidator { get; }
+        IBlockValidator BlockValidator { get; }
 
         IEnode? Enode { get; set; }
         IFilterStore? FilterStore { get; set; }

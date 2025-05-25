@@ -6,9 +6,11 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -106,14 +108,17 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
     }
 
     public IBlockProcessor GetProcessor(bool validate, UInt256? blobBaseFeeOverride) =>
-        new BlockProcessor(SpecProvider,
+        new BlockProcessor(
+            SpecProvider,
             _blockValidator,
             NoBlockRewards.Instance,
             new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, StateProvider, validate, blobBaseFeeOverride),
             StateProvider,
             NullReceiptStorage.Instance,
-            _transactionProcessor,
             new BeaconBlockRootHandler(_transactionProcessor, StateProvider),
             new BlockhashStore(SpecProvider, StateProvider),
-            _logManager);
+            _logManager,
+            new WithdrawalProcessor(StateProvider, _logManager),
+            new ExecutionRequestsProcessor(_transactionProcessor)
+        );
 }

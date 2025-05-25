@@ -12,6 +12,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -107,7 +108,7 @@ public class AuRaContractGasLimitOverrideTests
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                TxProcessor,
+                new ExecutionRequestsProcessor(TxProcessor),
                 auRaValidator: null,
                 gasLimitOverride: GasLimitCalculator as AuRaContractGasLimitOverride,
                 preWarmer: CreateBlockCachePreWarmer());

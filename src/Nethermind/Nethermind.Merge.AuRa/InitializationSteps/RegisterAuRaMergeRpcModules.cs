@@ -33,15 +33,13 @@ public class RegisterAuRaMergeRpcModules(AuRaNethermindApi api, IPoSSwitcher poS
         public AuRaBlockProcessor Create(ISpecProvider specProvider, IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator, IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor, IWorldState stateProvider,
             IReceiptStorage receiptStorage, IBeaconBlockRootHandler beaconBlockRootHandler, ILogManager logManager,
-            IBlockFinder blockTree, IWithdrawalProcessor withdrawalProcessor, ITransactionProcessor transactionProcessor,
+            IBlockFinder blockTree, IWithdrawalProcessor withdrawalProcessor, IExecutionRequestsProcessor executionRequestsProcessor,
             IAuRaValidator? auRaValidator, ITxFilter? txFilter = null, AuRaContractGasLimitOverride? gasLimitOverride = null,
-            ContractRewriter? contractRewriter = null, IBlockCachePreWarmer? preWarmer = null,
-            IExecutionRequestsProcessor? executionRequestsProcessor = null)
+            ContractRewriter? contractRewriter = null, IBlockCachePreWarmer? preWarmer = null)
         {
             return new AuRaMergeBlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
                 stateProvider, receiptStorage, beaconBlockRootHandler, logManager, blockTree, withdrawalProcessor,
-                transactionProcessor, auRaValidator, txFilter, gasLimitOverride, contractRewriter, preWarmer,
-                executionRequestsProcessor);
+                executionRequestsProcessor, auRaValidator, txFilter, gasLimitOverride, contractRewriter, preWarmer);
         }
     }
 }
