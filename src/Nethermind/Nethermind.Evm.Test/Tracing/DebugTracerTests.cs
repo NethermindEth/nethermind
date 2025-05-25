@@ -279,7 +279,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
                 // we pop the condition and overwrite it with a false to force breaking out of the loop
                 EvmStack stack = new(tracer.CurrentState.DataStackHead, tracer, tracer.CurrentState.DataStack);
                 if (!stack.PopLimbo()) throw new EvmStackUnderflowException();
-                stack.PushByte(0x00);
+                stack.PushByte<OffFlag>(0x00);
 
                 tracer.MoveNext();
             }

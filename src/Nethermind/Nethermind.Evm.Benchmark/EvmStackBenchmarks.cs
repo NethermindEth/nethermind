@@ -32,16 +32,16 @@ namespace Nethermind.Evm.Benchmark
         {
             EvmStack stack = new(0, NullTxTracer.Instance, _stack.AsSpan());
 
-            stack.PushUInt256(in v);
+            stack.PushUInt256<OffFlag>(in v);
             stack.PopUInt256(out UInt256 value);
 
-            stack.PushUInt256(in value);
+            stack.PushUInt256<OffFlag>(in value);
             stack.PopUInt256(out value);
 
-            stack.PushUInt256(in value);
+            stack.PushUInt256<OffFlag>(in value);
             stack.PopUInt256(out value);
 
-            stack.PushUInt256(in value);
+            stack.PushUInt256<OffFlag>(in value);
             stack.PopUInt256(out value);
 
             return value;
@@ -54,16 +54,16 @@ namespace Nethermind.Evm.Benchmark
 
             byte b = 1;
 
-            stack.PushByte(b);
+            stack.PushByte<OffFlag>(b);
             b = stack.PopByte();
 
-            stack.PushByte(b);
+            stack.PushByte<OffFlag>(b);
             b = stack.PopByte();
 
-            stack.PushByte(b);
+            stack.PushByte<OffFlag>(b);
             b = stack.PopByte();
 
-            stack.PushByte(b);
+            stack.PushByte<OffFlag>(b);
             b = stack.PopByte();
 
             return b;
@@ -74,10 +74,10 @@ namespace Nethermind.Evm.Benchmark
         {
             EvmStack stack = new(0, NullTxTracer.Instance, _stack.AsSpan());
 
-            stack.PushZero();
-            stack.PushZero();
-            stack.PushZero();
-            stack.PushZero();
+            stack.PushZero<OffFlag>();
+            stack.PushZero<OffFlag>();
+            stack.PushZero<OffFlag>();
+            stack.PushZero<OffFlag>();
         }
 
         [Benchmark(OperationsPerInvoke = 4)]
@@ -85,10 +85,10 @@ namespace Nethermind.Evm.Benchmark
         {
             EvmStack stack = new(0, NullTxTracer.Instance, _stack.AsSpan());
 
-            stack.PushOne();
-            stack.PushOne();
-            stack.PushOne();
-            stack.PushOne();
+            stack.PushOne<OffFlag>();
+            stack.PushOne<OffFlag>();
+            stack.PushOne<OffFlag>();
+            stack.PushOne<OffFlag>();
         }
 
         [Benchmark(OperationsPerInvoke = 4)]
@@ -96,10 +96,10 @@ namespace Nethermind.Evm.Benchmark
         {
             EvmStack stack = new(0, NullTxTracer.Instance, _stack.AsSpan());
 
-            stack.Swap(2);
-            stack.Swap(2);
-            stack.Swap(2);
-            stack.Swap(2);
+            stack.Swap<OffFlag>(2);
+            stack.Swap<OffFlag>(2);
+            stack.Swap<OffFlag>(2);
+            stack.Swap<OffFlag>(2);
         }
 
         [Benchmark(OperationsPerInvoke = 4)]
@@ -107,10 +107,10 @@ namespace Nethermind.Evm.Benchmark
         {
             EvmStack stack = new(1, NullTxTracer.Instance, _stack.AsSpan());
 
-            stack.Dup(1);
-            stack.Dup(1);
-            stack.Dup(1);
-            stack.Dup(1);
+            stack.Dup<OffFlag>(1);
+            stack.Dup<OffFlag>(1);
+            stack.Dup<OffFlag>(1);
+            stack.Dup<OffFlag>(1);
         }
     }
 }
