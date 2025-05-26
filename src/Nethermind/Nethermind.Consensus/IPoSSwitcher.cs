@@ -14,7 +14,17 @@ namespace Nethermind.Consensus
 
         bool HasEverReachedTerminalBlock();
 
+        /// <summary>
+        /// Fires once when the terminal block is received.
+        /// Doesn't repeat in case of reorgs.
+        /// </summary>
         event EventHandler TerminalBlockReached;
+
+        /// <summary>
+        /// Fires once when the terminal block is finalized.
+        /// Doesn't repeat in case of reorgs.
+        /// </summary>
+        event EventHandler Transitioned;
 
         UInt256? TerminalTotalDifficulty { get; }
 
@@ -28,8 +38,6 @@ namespace Nethermind.Consensus
         /// This value will be known after the merge transition, and we can configure it in the first release after the merge.
         /// </remarks>
         UInt256? FinalTotalDifficulty { get; }
-
-        event EventHandler Transitioned;
 
         bool TransitionFinished { get; }
         public Hash256? ConfiguredTerminalBlockHash { get; }
