@@ -56,7 +56,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
 
-public partial class BaseEngineModuleTests
+public abstract partial class BaseEngineModuleTests
 {
     [SetUp]
     public Task Setup()

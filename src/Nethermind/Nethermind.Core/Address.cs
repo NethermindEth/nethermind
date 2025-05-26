@@ -258,19 +258,18 @@ namespace Nethermind.Core
         public ValueHash256 ToHash()
         {
             ref byte value = ref MemoryMarshal.GetArrayDataReference(Bytes);
+            // build the 4×8-byte lanes:
+            // - lane0 = 0UL
+            // - lane1 = first 4 bytes of 'value', shifted up into the high half
+            // - lane2 = bytes [4..11] of 'value'
+            // - lane3 = bytes [12..19] of 'value'
+            ulong lane1 = ((ulong)Unsafe.As<byte, uint>(ref value)) << 32;
+            ulong lane2 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 4));
+            ulong lane3 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 12));
 
             Unsafe.SkipInit(out ValueHash256 result);
-            ref byte bytes = ref Unsafe.As<ValueHash256, byte>(ref result);
-
-            // First 4+8 bytes are zero, zero 16 bytes to maximize write combining
-            Unsafe.As<byte, Vector128<byte>>(ref bytes) = default;
-
-            // 20 bytes which is uint+Vector128
-            Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes, sizeof(uint) + sizeof(ulong)))
-                = Unsafe.As<byte, uint>(ref value);
-
-            Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref bytes, sizeof(ulong) + sizeof(ulong)))
-                = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref value, sizeof(uint)));
+            Unsafe.As<ValueHash256, Vector256<byte>>(ref result)
+                = Vector256.Create(default, lane1, lane2, lane3).AsByte();
 
             return result;
         }

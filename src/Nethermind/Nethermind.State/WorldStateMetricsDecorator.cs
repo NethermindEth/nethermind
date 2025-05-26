@@ -116,9 +116,7 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public byte[]? GetCode(Address address) => innerState.GetCode(address);
 
-    public byte[]? GetCode(Hash256 codeHash) => innerState.GetCode(codeHash);
-
-    public byte[]? GetCode(ValueHash256 codeHash) => innerState.GetCode(codeHash);
+    public byte[]? GetCode(in ValueHash256 codeHash) => innerState.GetCode(in codeHash);
 
     public bool IsContract(Address address) => innerState.IsContract(address);
 
@@ -133,5 +131,11 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public bool HasStateForRoot(Hash256 stateRoot) => innerState.HasStateForRoot(stateRoot);
 
-    public UInt256 GetBalance(Address account) => innerState.GetBalance(account);
+    public ref readonly UInt256 GetBalance(Address account) => ref innerState.GetBalance(account);
+
+    UInt256 IAccountStateProvider.GetBalance(Address address) => innerState.GetBalance(address);
+
+    public ref readonly ValueHash256 GetCodeHash(Address address) => ref innerState.GetCodeHash(address);
+
+    ValueHash256 IAccountStateProvider.GetCodeHash(Address address) => innerState.GetCodeHash(address);
 }
