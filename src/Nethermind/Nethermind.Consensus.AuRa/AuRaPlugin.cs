@@ -108,6 +108,7 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<IValidatorStore, ValidatorStore>()
                 .AddSingleton<AuRaContractGasLimitOverride.Cache, AuRaContractGasLimitOverride.Cache>()
                 .AddSingleton<ReportingContractBasedValidator.Cache>()
+
                 .AddSingleton<IReportingValidator, IMainProcessingContext>((mainProcessingContext) =>
                     ((AuRaBlockProcessor)mainProcessingContext.BlockProcessor).AuRaValidator.GetReportingValidator())
                 .AddSource(new FallbackToFieldFromApi<AuRaNethermindApi>())
