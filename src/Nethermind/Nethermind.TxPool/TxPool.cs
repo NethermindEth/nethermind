@@ -786,8 +786,6 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-
-
                     UpdateGasBottleneck(transactions, currentNonce, balance, lastElement, updateTx);
                 }
             }
