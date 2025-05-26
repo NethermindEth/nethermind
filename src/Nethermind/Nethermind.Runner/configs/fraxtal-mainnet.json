@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
   "Init": {
-    "ChainSpecPath": "chainspec/worldchain-sepolia.json.zst",
-    "GenesisHash": "0xf1deb67ee953f94d8545d2647918687fa8ba1f30fa6103771f11b7c483984070",
-    "BaseDbPath": "nethermind_db/worldchain-sepolia",
-    "LogFileName": "worldchain-sepolia.log"
+    "ChainSpecPath": "chainspec/fraxtal-mainnet.json.zst",
+    "GenesisHash": "0x521982bd54239dc71269eefb58601762cc15cfb2978e0becb46af7962ed6bfaa",
+    "BaseDbPath": "nethermind_db/fraxtal-mainnet",
+    "LogFileName": "fraxtal-mainnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -12,9 +12,7 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "FastSyncCatchUpHeightDelta": "10000000000",
-    "PivotNumber": 13780000,
-    "PivotHash": "0xb84d1b8a4ba6bb0fccd5d00c926f4cb01162159733d7e43eaff24f30426de1e5"
+    "FastSyncCatchUpHeightDelta": "10000000000"
   },
   "Discovery": {
     "DiscoveryVersion": "V5"
@@ -34,6 +32,6 @@
     "Enabled": true
   },
   "Optimism": {
-    "SequencerUrl": "https://worldchain-sepolia-sequencer.g.alchemy.com"
+    "SequencerUrl": "https://rpc.frax.com"
   }
 }
