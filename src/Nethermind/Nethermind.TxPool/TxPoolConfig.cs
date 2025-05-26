@@ -22,6 +22,7 @@ namespace Nethermind.TxPool
         public long? GasLimit { get; set; } = null;
         public long? MaxTxSize { get; set; } = 128.KiB();
         public long? MaxBlobTxSize { get; set; } = 1.MiB();
+        public bool ProofsTranslationEnabled { get; set; } = false;
         public int? ReportMinutes { get; set; } = null;
     }
 }
