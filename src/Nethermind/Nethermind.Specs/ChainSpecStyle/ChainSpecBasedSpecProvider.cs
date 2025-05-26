@@ -238,6 +238,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7623Enabled = (chainSpec.Parameters.Eip7623TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7883Enabled = (chainSpec.Parameters.Eip7883TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
+            releaseSpec.IsEip7594Enabled = (chainSpec.Parameters.Eip7594TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7825Enabled = (chainSpec.Parameters.Eip7825TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock;
@@ -276,6 +277,11 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
             (IReleaseSpec?, IReleaseSpec?) GetCurrentAndPreviousFork()
             {
+                if ((chainSpec.OsakaTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
+                {
+                    return (Osaka.Instance, Prague.Instance);
+                }
+
                 if ((chainSpec.PragueTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp)
                 {
                     return (Prague.Instance, Cancun.Instance);
