@@ -9,6 +9,11 @@
     <VersionSuffix>unstable</VersionSuffix>
   </PropertyGroup>
 
+  <PropertyGroup Label="DotnetTest">
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+  </PropertyGroup>
+
   <ItemGroup Label="AssemblyCustomMetadata">
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>BuildTimestamp</_Parameter1>
