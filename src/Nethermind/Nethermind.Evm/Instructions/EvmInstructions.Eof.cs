@@ -64,13 +64,14 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the current program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnDataSize(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionReturnDataSize<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         // Deduct base gas cost for this instruction.
         gasAvailable -= GasCostOf.Base;
 
         // Push the length of the return data buffer (as a 32-bit unsigned integer) onto the stack.
-        stack.PushUInt32((uint)vm.ReturnDataBuffer.Length);
+        stack.PushUInt32<TTracingInst>((uint)vm.ReturnDataBuffer.Length);
 
         return EvmExceptionType.None;
     }
@@ -80,7 +81,7 @@ internal static partial class EvmInstructions
     /// Parameters are popped from the stack (destination offset, source offset, and size).
     /// Performs gas and memory expansion cost updates before copying.
     /// </summary>
-    /// <typeparam name="TTracingInstructions">
+    /// <typeparam name="TTracingInst">
     /// A tracing flag type to conditionally report memory changes.
     /// </typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
@@ -89,8 +90,8 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the current program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> representing success or the type of failure.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnDataCopy<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInstructions : struct, IFlag
+    public static EvmExceptionType InstructionReturnDataCopy<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         // Pop the required parameters: destination memory offset, source offset in return data, and number of bytes to copy.
         if (!stack.PopUInt256(out UInt256 destOffset) ||
@@ -124,7 +125,7 @@ internal static partial class EvmInstructions
             vm.EvmState.Memory.Save(in destOffset, in slice);
 
             // Report the memory change if tracing is active.
-            if (TTracingInstructions.IsActive)
+            if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(destOffset, in slice);
             }
@@ -150,7 +151,8 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> representing success or an error.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDataLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDataLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         // Ensure the instruction is only valid for non-legacy (EOF) code.
@@ -165,7 +167,7 @@ internal static partial class EvmInstructions
         stack.PopUInt256(out UInt256 offset);
         // Load 32 bytes from the data section at the given offset (with zero padding if necessary).
         ZeroPaddedSpan bytes = codeInfo.DataSection.SliceWithZeroPadding(offset, 32);
-        stack.PushBytes(bytes);
+        stack.PushBytes<TTracingInst>(bytes);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -180,7 +182,8 @@ internal static partial class EvmInstructions
     /// Advances the program counter accordingly.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDataLoadN(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDataLoadN<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -193,7 +196,7 @@ internal static partial class EvmInstructions
         ushort offset = codeInfo.CodeSection.Span.Slice(programCounter, EofValidator.TWO_BYTE_LENGTH).ReadEthUInt16();
         // Load the 32-byte word from the data section at the immediate offset.
         ZeroPaddedSpan bytes = codeInfo.DataSection.SliceWithZeroPadding(offset, 32);
-        stack.PushBytes(bytes);
+        stack.PushBytes<TTracingInst>(bytes);
 
         // Advance the program counter past the immediate operand.
         programCounter += EofValidator.TWO_BYTE_LENGTH;
@@ -210,7 +213,8 @@ internal static partial class EvmInstructions
     /// Pushes the size of the code's data section onto the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDataSize(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDataSize<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -219,7 +223,7 @@ internal static partial class EvmInstructions
         if (!UpdateGas(GasCostOf.DataSize, ref gasAvailable))
             goto OutOfGas;
 
-        stack.PushUInt32((uint)codeInfo.DataSection.Length);
+        stack.PushUInt32<TTracingInst>((uint)codeInfo.DataSection.Length);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -234,8 +238,8 @@ internal static partial class EvmInstructions
     /// The source offset, destination memory offset, and number of bytes are specified on the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDataCopy<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInstructions : struct, IFlag
+    public static EvmExceptionType InstructionDataCopy<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -265,7 +269,7 @@ internal static partial class EvmInstructions
             ZeroPaddedSpan dataSectionSlice = codeInfo.DataSection.SliceWithZeroPadding(offset, (int)size);
             vm.EvmState.Memory.Save(in memOffset, dataSectionSlice);
 
-            if (TTracingInstructions.IsActive)
+            if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(memOffset, dataSectionSlice);
             }
@@ -506,7 +510,8 @@ internal static partial class EvmInstructions
     /// The immediate value (n) specifies that the (n+1)th element from the top is duplicated.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDupN(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionDupN<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -518,7 +523,7 @@ internal static partial class EvmInstructions
         // Read the immediate operand.
         int imm = codeInfo.CodeSection.Span[programCounter];
         // Duplicate the (imm+1)th stack element.
-        stack.Dup(imm + 1);
+        stack.Dup<TTracingInst>(imm + 1);
 
         programCounter += 1;
 
@@ -535,7 +540,8 @@ internal static partial class EvmInstructions
     /// Swaps the top-of-stack with the (n+1)th element.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSwapN(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSwapN<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -546,7 +552,7 @@ internal static partial class EvmInstructions
 
         // Immediate operand determines the swap index.
         int n = 1 + (int)codeInfo.CodeSection.Span[programCounter];
-        if (!stack.Swap(n + 1))
+        if (!stack.Swap<TTracingInst>(n + 1))
             goto StackUnderflow;
 
         programCounter += 1;
@@ -566,7 +572,8 @@ internal static partial class EvmInstructions
     /// The high nibble and low nibble of the operand specify the two swap distances.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExchange(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExchange<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
         if (codeInfo.Version == 0)
@@ -581,7 +588,7 @@ internal static partial class EvmInstructions
         int m = 1 + (int)(codeSection[programCounter] & 0x0f);
 
         // Exchange the elements at the calculated positions.
-        stack.Exchange(n + 1, m + n + 1);
+        stack.Exchange<TTracingInst>(n + 1, m + n + 1);
 
         programCounter += 1;
 
@@ -598,12 +605,12 @@ internal static partial class EvmInstructions
     /// This method performs multiple steps including gas deductions, memory expansion,
     /// reading immediate operands, balance checks, and preparing the execution environment for the new contract.
     /// </summary>
-    /// <typeparam name="TTracingInstructions">
+    /// <typeparam name="TTracingInst">
     /// A tracing flag type to conditionally report events.
     /// </typeparam>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEofCreate<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInstructions : struct, IFlag
+    public static EvmExceptionType InstructionEofCreate<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         Metrics.IncrementCreates();
         vm.ReturnData = null;
@@ -663,7 +670,7 @@ internal static partial class EvmInstructions
         {
             // In case of failure, do not consume additional gas.
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
             return EvmExceptionType.None;
         }
 
@@ -681,7 +688,7 @@ internal static partial class EvmInstructions
         if (accountNonce >= maxNonce)
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
             return EvmExceptionType.None;
         }
         state.IncrementNonce(env.ExecutingAccount);
@@ -694,7 +701,7 @@ internal static partial class EvmInstructions
             vm.EvmState.AccessTracker.WarmUp(contractAddress);
         }
 
-        if (TTracingInstructions.IsActive)
+        if (TTracingInst.IsActive)
             vm.EndInstructionTrace(gasAvailable);
 
         // Take a snapshot before modifying state for the new contract.
@@ -706,7 +713,7 @@ internal static partial class EvmInstructions
         if (accountExists && contractAddress.IsNonZeroAccount(spec, vm.CodeInfoRepository, state))
         {
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
             return EvmExceptionType.None;
         }
 
@@ -812,7 +819,8 @@ internal static partial class EvmInstructions
     /// This instruction is only valid when EOF is enabled.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnDataLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionReturnDataLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         ICodeInfo codeInfo = vm.EvmState.Env.CodeInfo;
@@ -825,7 +833,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         ZeroPaddedSpan slice = vm.ReturnDataBuffer.Span.SliceWithZeroPadding(offset, 32);
-        stack.PushBytes(slice);
+        stack.PushBytes<TTracingInst>(slice);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -843,13 +851,13 @@ internal static partial class EvmInstructions
     /// <typeparam name="TOpEofCall">
     /// The call type (standard, delegate, or static) that determines behavior and execution type.
     /// </typeparam>
-    /// <typeparam name="TTracingInstructions">
+    /// <typeparam name="TTracingInst">
     /// A tracing flag type used to report VM state changes during the call.
     /// </typeparam>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEofCall<TOpEofCall, TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionEofCall<TOpEofCall, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpEofCall : struct, IOpEofCall
-        where TTracingInstructions : struct, IFlag
+        where TTracingInst : struct, IFlag
     {
         Metrics.IncrementCalls();
 
@@ -938,11 +946,11 @@ internal static partial class EvmInstructions
         {
             vm.ReturnData = null;
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushOne();
+            stack.PushOne<TTracingInst>();
 
             // If tracing is active, record additional details regarding the failure.
             ITxTracer txTracer = vm.TxTracer;
-            if (TTracingInstructions.IsActive)
+            if (TTracingInst.IsActive)
             {
                 ReadOnlyMemory<byte> memoryTrace = vm.EvmState.Memory.Inspect(in dataOffset, 32);
                 txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
@@ -963,7 +971,7 @@ internal static partial class EvmInstructions
         {
             vm.ReturnData = null;
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushOne();
+            stack.PushOne<TTracingInst>();
             return EvmExceptionType.None;
         }
 

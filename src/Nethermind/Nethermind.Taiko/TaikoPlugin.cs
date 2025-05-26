@@ -146,6 +146,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+            new GetPayloadV5Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
@@ -179,6 +180,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new ExchangeTransitionConfigurationV1Handler(poSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
+            new GetBlobsHandlerV2(_api.TxPool),
             _api.EngineRequestsTracker,
             _api.SpecProvider,
             new GCKeeper(

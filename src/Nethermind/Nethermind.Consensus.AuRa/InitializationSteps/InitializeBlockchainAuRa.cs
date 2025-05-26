@@ -89,8 +89,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
         if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
-        ITxFilter auRaTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilter(
-            _api,
+        ITxFilter auRaTxFilter = _api.TxAuRaFilterBuilders.CreateAuRaTxFilter(
             new ServiceTxFilter(_api.SpecProvider));
 
         return NewAuraBlockProcessor(auRaTxFilter, preWarmer, transactionProcessor, worldState);
@@ -243,23 +242,23 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         return CreateTxPoolTxComparer();
     }
 
-    protected override TxPool.TxPool CreateTxPool(CodeInfoRepository codeInfoRepository)
+    protected override TxPool.TxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
     {
         // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
-        TxPriorityContract txPriorityContract = TxAuRaFilterBuilders.CreateTxPrioritySources(_api);
+        TxPriorityContract txPriorityContract = _api.TxAuRaFilterBuilders.CreateTxPrioritySources();
         TxPriorityContract.LocalDataSource? localDataSource = _api.TxPriorityContractLocalDataSource;
 
         ReportTxPriorityRules(txPriorityContract, localDataSource);
 
         DictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore
-            = TxAuRaFilterBuilders.CreateMinGasPricesDataStore(_api, txPriorityContract, localDataSource);
+            = _api.TxAuRaFilterBuilders.CreateMinGasPricesDataStore(txPriorityContract, localDataSource);
 
-        ITxFilter txPoolFilter = TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(_api, minGasPricesContractDataStore);
+        ITxFilter txPoolFilter = _api.TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(minGasPricesContractDataStore);
 
         return new TxPool.TxPool(
             _api.EthereumEcdsa!,
             _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
-            new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!, codeInfoRepository),
+            chainHeadInfoProvider,
             NethermindApi.Config<ITxPoolConfig>(),
             _api.TxValidator!,
             _api.LogManager,
