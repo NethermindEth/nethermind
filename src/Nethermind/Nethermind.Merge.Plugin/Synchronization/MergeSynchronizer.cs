@@ -80,7 +80,6 @@ public class MergeSynchronizerModule : Module
         builder
             .AddSingleton<ISynchronizer, MergeSynchronizer>()
             .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
-            .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, MergeBlocksSyncPeerAllocationStrategyFactory>()
             .AddSingleton<BlockDownloader, MergeBlockDownloader>()
             .AddSingleton<IForwardHeaderProvider, PosForwardHeaderProvider>()
 

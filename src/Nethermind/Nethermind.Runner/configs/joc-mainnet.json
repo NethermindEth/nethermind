@@ -12,9 +12,9 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 17450000,
-    "PivotHash": "0x4c97bea0445e276c1f0476c520d8165604a02560efeb23fc4e9d3635ef1fe8e2",
-    "PivotTotalDifficulty": "32634519"
+    "PivotNumber": 17690000,
+    "PivotHash": "0x5660c246166ffcfae57be81dd96c6bcce5a664e3637992683163b0f386d18423",
+    "PivotTotalDifficulty": "32991206"
   },
   "Metrics": {
     "NodeName": "JOC-Mainnet"
