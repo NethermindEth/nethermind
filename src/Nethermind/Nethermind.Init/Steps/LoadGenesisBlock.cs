@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -63,12 +64,13 @@ namespace Nethermind.Init.Steps
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-            Block genesis = new GenesisLoader(
+            IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
+            IGenesisLoader genesisLoader = consensusPlugin?.GenesisLoader ?? new GenesisLoader(
                 _api.ChainSpec,
                 _api.SpecProvider,
                 mainProcessingContext.WorldState,
-                mainProcessingContext.TransactionProcessor)
-                .Load();
+                mainProcessingContext.TransactionProcessor);
+            Block genesis = genesisLoader.Load();
 
             ManualResetEventSlim genesisProcessedEvent = new(false);
 
