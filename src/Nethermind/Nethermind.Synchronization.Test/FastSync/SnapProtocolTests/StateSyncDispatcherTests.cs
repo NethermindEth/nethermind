@@ -55,7 +55,7 @@ public class StateSyncDispatcherTests
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.TransitionFinished.Returns(false);
         _dispatcher =
-            new StateSyncDispatcherTester(feed, new StateSyncDownloader(_logManager), _pool, new StateSyncAllocationStrategyFactory(poSSwitcher), _logManager);
+            new StateSyncDispatcherTester(feed, new StateSyncDownloader(_logManager), _pool, new StateSyncAllocationStrategyFactory(), _logManager);
     }
 
     [TearDown]

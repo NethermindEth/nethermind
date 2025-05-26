@@ -52,7 +52,8 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
                     throw new ArgumentOutOfRangeException();
             }
 
-            return _strategy.Allocate(currentPeer, peers.Where(p => p.TotalDifficulty >= currentDiff), nodeStatsManager, blockTree);
+            peers = peers.Where(p => p.TotalDifficulty is not null && p.TotalDifficulty >= currentDiff);
+            return _strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
         }
     }
 }
