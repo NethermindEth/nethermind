@@ -246,7 +246,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     {
         // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
         TxPriorityContract txPriorityContract = _api.TxAuRaFilterBuilders.CreateTxPrioritySources();
-        TxPriorityContract.LocalDataSource? localDataSource = _api.TxPriorityContractLocalDataSource;
+        TxPriorityContract.LocalDataSource? localDataSource = _api.AuraStatefulComponents.TxPriorityContractLocalDataSource;
 
         ReportTxPriorityRules(txPriorityContract, localDataSource);
 

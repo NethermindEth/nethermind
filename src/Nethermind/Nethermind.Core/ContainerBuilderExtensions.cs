@@ -219,6 +219,7 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder Add<T>(this ContainerBuilder builder) where T : class
     {
         builder.RegisterType<T>()
+            .WithAttributeFiltering()
             .As<T>();
 
         return builder;
@@ -235,6 +236,7 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder Add<T, TImpl>(this ContainerBuilder builder) where T : class where TImpl : notnull
     {
         builder.RegisterType<TImpl>()
+            .WithAttributeFiltering()
             .As<T>();
 
         return builder;
