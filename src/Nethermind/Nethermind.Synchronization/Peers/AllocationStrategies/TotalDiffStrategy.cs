@@ -14,12 +14,19 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
     public class TotalDiffStrategy : IPeerAllocationStrategy
     {
-        private readonly IPeerAllocationStrategy _strategy;
-        private readonly StrategySelectionType _selectionType;
-
-        public TotalDiffStrategy(IPeerAllocationStrategy strategy, StrategySelectionType selectionType = StrategySelectionType.Better)
+        public enum TotalDiffSelectionType
         {
-            if (!FastEnum.IsDefined(selectionType)) throw new InvalidEnumArgumentException(nameof(selectionType), (int)selectionType, typeof(StrategySelectionType));
+            Better = 1,
+            AtLeastTheSame = 0,
+            CanBeSlightlyWorse = -1
+        }
+
+        private readonly IPeerAllocationStrategy _strategy;
+        private readonly TotalDiffSelectionType _selectionType;
+
+        public TotalDiffStrategy(IPeerAllocationStrategy strategy, TotalDiffSelectionType selectionType = TotalDiffSelectionType.Better)
+        {
+            if (!FastEnum.IsDefined(selectionType)) throw new InvalidEnumArgumentException(nameof(selectionType), (int)selectionType, typeof(TotalDiffSelectionType));
             _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
             _selectionType = selectionType;
         }
@@ -35,12 +42,12 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             UInt256 currentDiff = currentDiffOrNull.Value;
             switch (_selectionType)
             {
-                case StrategySelectionType.Better:
+                case TotalDiffSelectionType.Better:
                     currentDiff += UInt256.One;
                     break;
-                case StrategySelectionType.AtLeastTheSame:
+                case TotalDiffSelectionType.AtLeastTheSame:
                     break;
-                case StrategySelectionType.CanBeSlightlyWorse:
+                case TotalDiffSelectionType.CanBeSlightlyWorse:
                     UInt256 lastBlockDiff = blockTree.BestSuggestedHeader?.Difficulty ?? 0;
                     if (currentDiff >= lastBlockDiff)
                     {
@@ -52,8 +59,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
                     throw new ArgumentOutOfRangeException();
             }
 
-            peers = peers.Where(p => p.TotalDifficulty is not null && p.TotalDifficulty >= currentDiff);
-            return _strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
+            return _strategy.Allocate(currentPeer, peers.Where(p => p.TotalDifficulty >= currentDiff), nodeStatsManager, blockTree);
         }
     }
 }
