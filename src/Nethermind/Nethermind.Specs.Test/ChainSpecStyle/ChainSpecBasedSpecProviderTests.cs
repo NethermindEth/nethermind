@@ -46,11 +46,11 @@ public class ChainSpecBasedSpecProviderTests
     [TestCase(4, 4673ul, true)]
     [TestCase(5, 4680ul, true)]
     [NonParallelizable]
-    public void Timstamp_activation_equal_to_genesis_timestamp_loads_correctly(long blockNumber, ulong? timestamp, bool isEip3855Enabled)
+    public void Timestamp_activation_equal_to_genesis_timestamp_loads_correctly(long blockNumber, ulong? timestamp, bool isEip3855Enabled)
     {
         var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
-            $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
+            $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Timestamp_activation_equal_to_genesis_timestamp_test.json");
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
         ILogger logger = new(Substitute.ForPartsOf<LimboTraceLogger>());
@@ -892,7 +892,7 @@ public class ChainSpecBasedSpecProviderTests
 
             yield return MakeTestCase("BPOs match named forks", 1, 2, [(1, 10), (2, 3)], [NoneAllowed, 10, 3]);
 
-            yield return MakeTestCase("BPO timstamp matches genesis but not other fork", 0, 2, [(0, 10), (1, 11)], [10, 11, 11]);
+            yield return MakeTestCase("BPO timestamp matches genesis, but not any other fork", 0, 2, [(0, 10), (1, 11)], [10, 11, 11]);
         }
     }
 
