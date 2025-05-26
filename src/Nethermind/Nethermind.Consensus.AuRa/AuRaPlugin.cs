@@ -13,6 +13,8 @@ using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -39,6 +41,8 @@ namespace Nethermind.Consensus.AuRa
 
         private StartBlockProducerAuRa? _blockProducerStarter;
 
+        private StartBlockProducerAuRa BlockProducerStarter => _blockProducerStarter ??= _nethermindApi!.CreateStartBlockProducer();
+
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
         public ValueTask DisposeAsync()
         {
@@ -48,10 +52,6 @@ namespace Nethermind.Consensus.AuRa
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi as AuRaNethermindApi;
-            if (_nethermindApi is not null)
-            {
-                _blockProducerStarter = _nethermindApi.CreateStartBlockProducer();
-            }
             return Task.CompletedTask;
         }
 
@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.AuRa
         {
             if (_nethermindApi is not null)
             {
-                return _blockProducerStarter!.BuildProducer(additionalTxSource);
+                return BlockProducerStarter!.BuildProducer(additionalTxSource);
             }
 
             return null;
@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.AuRa
         public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
         {
             return new StandardBlockProducerRunner(
-                _blockProducerStarter.CreateTrigger(),
+                BlockProducerStarter.CreateTrigger(),
                 _nethermindApi.BlockTree,
                 blockProducer);
         }
@@ -98,6 +98,15 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
+                .Add<StartBlockProducerAuRa>() // Note: Stateful. Probably just some strange unintentional side effect though.
+                .AddSingleton<AuraStatefulComponents>()
+                .AddSingleton<TxAuRaFilterBuilders>()
+                .AddSingleton<PermissionBasedTxFilter.Cache>()
+                .AddSingleton<IValidatorStore, ValidatorStore>()
+                .AddSingleton<AuRaContractGasLimitOverride.Cache, AuRaContractGasLimitOverride.Cache>()
+                .AddSingleton<ReportingContractBasedValidator.Cache>()
+                .Map<IReportingValidator, AuRaNethermindApi>(api => api.ReportingValidator)
+                .Map<IAuRaBlockFinalizationManager, AuRaNethermindApi>(api => api.FinalizationManager)
                 ;
 
             if (specParam.BlockGasLimitContractTransitions?.Any() == true)
