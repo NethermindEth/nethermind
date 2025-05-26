@@ -21,12 +21,12 @@ public class EthereumBeaconApi : IBeaconApi
 
     private const int BeaconApiRetryDelayMilliseconds = 1000;
 
-    public EthereumBeaconApi(Uri beaconApiUri, IJsonSerializer jsonSerializer, IEthereumEcdsa ecdsa, ILogger logger)
+    public EthereumBeaconApi(Uri beaconApiUri, IJsonSerializer jsonSerializer, IEthereumEcdsa ecdsa, ILogManager logManager)
     {
         _client = new HttpClient { BaseAddress = beaconApiUri };
         _jsonSerializer = jsonSerializer;
         _ecdsa = ecdsa;
-        _logger = logger;
+        _logger = logManager.GetClassLogger();
     }
 
     public async Task<BlobSidecar[]> GetBlobSidecars(ulong slot, int indexFrom, int indexTo, CancellationToken cancellationToken)

@@ -13,6 +13,7 @@ public interface IOptimismSpecHelper
     bool IsRegolith(BlockHeader header);
     bool IsCanyon(BlockHeader header);
     bool IsEcotone(BlockHeader header);
+    bool IsDelta(BlockHeader header);
     bool IsFjord(BlockHeader header);
     bool IsGranite(BlockHeader header);
     bool IsHolocene(BlockHeader header);

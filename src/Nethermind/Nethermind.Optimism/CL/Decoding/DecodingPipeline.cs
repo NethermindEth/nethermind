@@ -10,11 +10,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.Optimism.CL.Decoding;
 
-public class DecodingPipeline(ILogger logger) : IDecodingPipeline
+public class DecodingPipeline(ILogManager logManager) : IDecodingPipeline
 {
     private readonly Channel<DaDataSource> _inputChannel = Channel.CreateUnbounded<DaDataSource>();
     private readonly Channel<(BatchV1, ulong)> _outputChannel = Channel.CreateUnbounded<(BatchV1, ulong)>();
-    private readonly IFrameQueue _frameQueue = new FrameQueue(logger);
+    private readonly IFrameQueue _frameQueue = new FrameQueue(logManager);
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public ChannelWriter<DaDataSource> DaDataWriter => _inputChannel.Writer;
     public ChannelReader<(BatchV1, ulong)> DecodedBatchesReader => _outputChannel.Reader;
@@ -70,13 +71,13 @@ public class DecodingPipeline(ILogger logger) : IDecodingPipeline
                 }
                 catch (Exception e)
                 {
-                    if (logger.IsWarn) logger.Warn($"Unhandled exception in decoding pipeline: {e}");
+                    if (_logger.IsWarn) _logger.Warn($"Unhandled exception in decoding pipeline: {e}");
                 }
             }
         }
         finally
         {
-            if (logger.IsInfo) logger.Info($"Decoding pipeline is shutting down.");
+            if (_logger.IsInfo) _logger.Info($"Decoding pipeline is shutting down.");
         }
     }
 
@@ -100,7 +101,8 @@ public class DecodingPipeline(ILogger logger) : IDecodingPipeline
 
     public async Task Reset(CancellationToken token)
     {
-        if (logger.IsInfo) logger.Info("Resetting decoding pipeline");
+        if (_logger.IsInfo) _logger.Info("Resetting decoding pipeline");
+
         _resetRequested.SetResult();
         await _resetCompleted.Task;
         _resetCompleted = new();

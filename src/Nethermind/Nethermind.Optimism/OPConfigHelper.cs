@@ -10,6 +10,7 @@ public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : 
     private readonly long? _bedrockBlockNumber = parameters.BedrockBlockNumber;
     private readonly ulong? _regolithTimestamp = parameters.RegolithTimestamp;
     private readonly ulong? _canyonTimestamp = parameters.CanyonTimestamp;
+    private readonly ulong? _deltaTimestamp = parameters.DeltaTimestamp;
     private readonly ulong? _ecotoneTimestamp = parameters.EcotoneTimestamp;
     private readonly ulong? _fjordTimestamp = parameters.FjordTimestamp;
     private readonly ulong? _graniteTimestamp = parameters.GraniteTimestamp;
@@ -31,6 +32,11 @@ public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : 
     public bool IsCanyon(BlockHeader header)
     {
         return header.Timestamp >= _canyonTimestamp;
+    }
+
+    public bool IsDelta(BlockHeader header)
+    {
+        return header.Timestamp >= _deltaTimestamp;
     }
 
     public bool IsEcotone(BlockHeader header)
