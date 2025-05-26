@@ -64,7 +64,7 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
             new BeaconBlockRootHandler(transactionProcessor, worldState),
             new BlockhashStore(_api.SpecProvider, worldState),
             _api.LogManager,
-            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()), // Dude, why is this block **production** withdrawal processor.
+            new WithdrawalProcessor(worldState, _api.LogManager),
             new ExecutionRequestsProcessor(transactionProcessor),
             preWarmer: preWarmer);
     }
