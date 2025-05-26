@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -135,12 +136,28 @@ namespace Nethermind.Facade
             return (null, null, 0);
         }
 
-        public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true) =>
-            TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? _)
-                ? (txReceipt, tx, block.BaseFeePerGas)
-                : checkTxnPool && _txPool.TryGetPendingTransaction(txHash, out Transaction? transaction)
-                    ? (null, transaction, null)
-                    : (null, null, null);
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true)
+        {
+            try
+            {
+                return TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt,
+                    out Block? block,
+                    out TxReceipt[]? _)
+                    ? (txReceipt, tx, block.BaseFeePerGas)
+                    : checkTxnPool && _txPool.TryGetPendingTransaction(txHash, out Transaction? transaction)
+                        ? (null, transaction, null)
+                        : (null, null, null);
+            }
+            catch (NullReferenceException ex)
+            {
+                throw new NullReferenceException("NullReferenceException Inside blockchain bridge!", ex);
+            }
+            catch (Exception ex)
+            {
+                throw new NullReferenceException("Exception Inside blockchain bridge!", ex);
+            }
+        }
 
         public TxReceipt? GetReceipt(Hash256 txHash)
         {

@@ -394,11 +394,29 @@ public partial class EthRpcModule(
         try
         {
             stage = Stage.BeforeGetTransaction;
-            x = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
-            if (x.transaction is null)
+
+            try
             {
-                stage = Stage.TransactionIsNull;
-                return ResultWrapper<TransactionForRpc?>.Success(null);
+                x = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Exception thrown *inside* GetTransaction: {ex}");
+                throw;
+            }
+
+            try
+            {
+                if (x.transaction is null)
+                {
+                    stage = Stage.TransactionIsNull;
+                    return ResultWrapper<TransactionForRpc?>.Success(null);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Exception when checking x.transaction is null: {ex}");
+                throw;
             }
 
             stage = Stage.GetTransaction;
@@ -416,7 +434,7 @@ public partial class EthRpcModule(
         }
         catch (NullReferenceException)
         {
-            _logger.Error($"NullReferenceException: stage: {stage}, transaction: {x.transaction is null}, receipt: {x.receipt is null}, baseFee: {x.baseFee is null}, blockchainBridge: {_blockchainBridge is null}");
+            _logger.Error($"NullReferenceException: stage: {stage}, transaction: {x.transaction is null}, receipt: {x.receipt is null}, baseFee: {x.baseFee is null}, blockchainBridge: {_blockchainBridge is null}, transactionHash: {transactionHash is null}");
             throw;
         }
     }
