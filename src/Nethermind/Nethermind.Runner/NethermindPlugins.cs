@@ -3,12 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Consensus.AuRa;
-using Nethermind.Consensus.Clique;
-using Nethermind.Consensus.Ethash;
-using Nethermind.EthStats;
-using Nethermind.Hive;
-using Nethermind.UPnP.Plugin;
 
 namespace Nethermind.Runner;
 
@@ -16,21 +10,21 @@ public static class NethermindPlugins
 {
     public static IReadOnlyList<Type> EmbeddedPlugins =
     [
-        typeof(AuRaPlugin),
-        typeof(CliquePlugin),
-        typeof(EthashPlugin),
-        typeof(NethDevPlugin),
-        typeof(HivePlugin),
-        typeof(EthStatsPlugin),
-        typeof(Merge.Plugin.MergePlugin),
-        typeof(Optimism.OptimismPlugin),
-        typeof(Taiko.TaikoPlugin),
+        typeof(Nethermind.Analytics.AnalyticsPlugin),
+        typeof(Nethermind.Consensus.AuRa.AuRaPlugin),
+        typeof(Nethermind.Consensus.Clique.CliquePlugin),
+        typeof(Nethermind.Consensus.Ethash.EthashPlugin),
+        typeof(Nethermind.Consensus.Ethash.NethDevPlugin),
+        typeof(Nethermind.EthStats.EthStatsPlugin),
         typeof(Nethermind.Flashbots.Flashbots),
-        typeof(Merge.AuRa.AuRaMergePlugin),
+        typeof(Nethermind.HealthChecks.HealthChecksPlugin),
+        typeof(Nethermind.Hive.HivePlugin),
         typeof(Nethermind.Init.Snapshot.SnapshotPlugin),
-        typeof(Shutter.ShutterPlugin),
-        typeof(HealthChecks.HealthChecksPlugin),
-        typeof(Analytics.AnalyticsPlugin),
-        typeof(UPnPPlugin),
+        typeof(Nethermind.Merge.AuRa.AuRaMergePlugin),
+        typeof(Nethermind.Merge.Plugin.MergePlugin),
+        typeof(Nethermind.Optimism.OptimismPlugin),
+        typeof(Nethermind.Shutter.ShutterPlugin),
+        typeof(Nethermind.Taiko.TaikoPlugin),
+        typeof(Nethermind.UPnP.Plugin.UPnPPlugin),
     ];
 }
