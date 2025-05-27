@@ -18,7 +18,8 @@ while (true)
     {
         Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(input), RlpBehaviors.SkipTypedWrapping);
         TxValidator txValidator = new TxValidator(BlockchainIds.Mainnet);
-        if (txValidator.IsWellFormed(tx, GrayGlacier.Instance))
+        ValidationResult wellFormed = txValidator.IsWellFormed(tx, Prague.Instance);
+        if (wellFormed)
         {
             EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
             Address? sender = ecdsa.RecoverAddress(tx);
@@ -30,7 +31,7 @@ while (true)
         }
         else
         {
-            throw new InvalidDataException("Transaction is not well formed");
+            throw new InvalidDataException($"Transaction is not well formed: {wellFormed}");
         }
     }
     catch (Exception e)
