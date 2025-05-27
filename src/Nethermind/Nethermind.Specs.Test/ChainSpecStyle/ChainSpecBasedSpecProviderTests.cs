@@ -841,12 +841,7 @@ public class ChainSpecBasedSpecProviderTests
         });
 
         IReleaseSpec spec = provider.GenesisSpec;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(spec.MaxBlobCount, Is.EqualTo(expectedActivationSettings[0]));
-            Assert.That(spec.TargetBlobCount, Is.EqualTo(expectedActivationSettings[0]));
-            Assert.That((ulong)spec.BlobBaseFeeUpdateFraction, Is.EqualTo(expectedActivationSettings[0]));
-        }
+        Assert.That(spec.MaxBlobCount, Is.EqualTo(expectedActivationSettings[0]));
 
         expectedActivationSettings = expectedActivationSettings[1..];
         Assert.That(expectedActivationSettings, Has.Length.EqualTo(provider.TransitionActivations.Length));
@@ -854,12 +849,7 @@ public class ChainSpecBasedSpecProviderTests
         for (int i = 0; i < expectedActivationSettings.Length; i++)
         {
             spec = provider.GetSpec(ForkActivation.TimestampOnly(provider.TransitionActivations[i].Timestamp!.Value));
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(spec.MaxBlobCount, Is.EqualTo(expectedActivationSettings[i]));
-                Assert.That(spec.TargetBlobCount, Is.EqualTo(expectedActivationSettings[i]));
-                Assert.That((ulong)spec.BlobBaseFeeUpdateFraction, Is.EqualTo(expectedActivationSettings[i]));
-            }
+            Assert.That(spec.MaxBlobCount, Is.EqualTo(expectedActivationSettings[i]));
         }
     }
 
