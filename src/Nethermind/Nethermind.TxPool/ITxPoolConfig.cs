@@ -54,4 +54,8 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "null",
         Description = "The current transaction pool state reporting interval, in minutes.")]
     int? ReportMinutes { get; set; }
+
+    [ConfigItem(DefaultValue = "[]",
+        Description = "The current transaction pool state reporting interval, in minutes.")]
+    string[] BlackListedAddresses { get; set; }
 }

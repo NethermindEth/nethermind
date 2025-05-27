@@ -130,7 +130,7 @@ namespace Nethermind.TxPool
 
             _headInfo.HeadChanged += OnHeadChange;
 
-            _preHashFilters =
+            List<IIncomingTxFilter> preHashFilters =
             [
                 new NotSupportedTxFilter(txPoolConfig, _logger),
                 new SizeTxFilter(txPoolConfig, _logger),
@@ -139,6 +139,18 @@ namespace Nethermind.TxPool
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
                 new MalformedTxFilter(_specProvider, validator, _logger)
             ];
+
+            if (txPoolConfig.BlackListedAddresses.Length != 0)
+            {
+                HashSet<AddressAsKey> blacklist = new(txPoolConfig.BlackListedAddresses.Length);
+                foreach (string address in txPoolConfig.BlackListedAddresses)
+                {
+                    blacklist.Add(new AddressAsKey(new Address(address)));
+                }
+                preHashFilters.Add(new AddressFilter(blacklist, _logger));
+            }
+
+            _preHashFilters = preHashFilters.ToArray();
 
             List<IIncomingTxFilter> postHashFilters =
             [
