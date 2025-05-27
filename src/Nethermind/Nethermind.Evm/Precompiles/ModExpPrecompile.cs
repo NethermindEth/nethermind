@@ -83,7 +83,7 @@ namespace Nethermind.Evm.Precompiles
                 UInt256 iterationCount = CalculateIterationCount(expLength, exp, releaseSpec.IsEip7883Enabled);
                 bool overflow = UInt256.MultiplyOverflow(complexity, iterationCount, out UInt256 result);
                 result /= 3;
-                return result > long.MaxValue || overflow ? long.MaxValue : Math.Max(releaseSpec.IsEip7883Enabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExp, (long)result);
+                return result > long.MaxValue || overflow ? long.MaxValue : Math.Max(releaseSpec.IsEip7883Enabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExpEip2565, (long)result);
             }
             catch (OverflowException)
             {
@@ -205,7 +205,7 @@ namespace Nethermind.Evm.Precompiles
             return maxLength > 32 && isEip7883Enabled ? 2 * words * words : words * words;
         }
 
-        static readonly UInt256 IterationCountMultiplier = 8;
+        static readonly UInt256 IterationCountMultiplierEip2565 = 8;
 
         static readonly UInt256 IterationCountMultiplierEip7883 = 16;
 
@@ -239,7 +239,7 @@ namespace Nethermind.Evm.Precompiles
                     }
 
                     bool overflow = UInt256.MultiplyOverflow(exponentLength - 32,
-                        isEip7883Enabled ? IterationCountMultiplierEip7883 : IterationCountMultiplier,
+                        isEip7883Enabled ? IterationCountMultiplierEip7883 : IterationCountMultiplierEip2565,
                         out UInt256 multiplicationResult);
                     overflow |= UInt256.AddOverflow(multiplicationResult, (UInt256)bitLength, out iterationCount);
                     if (overflow)
