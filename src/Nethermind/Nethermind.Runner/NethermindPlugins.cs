@@ -8,7 +8,7 @@ namespace Nethermind.Runner;
 
 public static class NethermindPlugins
 {
-    public static IReadOnlyList<Type> EmbeddedPlugins =
+    public static readonly IReadOnlyList<Type> EmbeddedPlugins =
     [
         typeof(Nethermind.Analytics.AnalyticsPlugin),
         typeof(Nethermind.Consensus.AuRa.AuRaPlugin),
