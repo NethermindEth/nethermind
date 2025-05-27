@@ -23,7 +23,9 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -191,6 +193,23 @@ namespace Nethermind.Init.Steps
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
+            var txPoolConfig = _api.Config<ITxPoolConfig>();
+
+            if (txPoolConfig.BlackListedSenderAddresses.Length != 0)
+            {
+                HashSet<AddressAsKey> blacklist = new(txPoolConfig.BlackListedSenderAddresses.Length);
+                foreach (string address in txPoolConfig.BlackListedSenderAddresses)
+                {
+                    blacklist.Add(new AddressAsKey(new Address(address)));
+                }
+
+                return new TransactionProcessorWithBlocklist(_api.SpecProvider,
+                    _api.WorldStateManager!.GlobalWorldState,
+                    virtualMachine,
+                    codeInfoRepository,
+                    _api.LogManager, blacklist);
+            }
+
             return new TransactionProcessor(
                 _api.SpecProvider,
                 _api.WorldStateManager!.GlobalWorldState,
@@ -224,15 +243,36 @@ namespace Nethermind.Init.Steps
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
             new BlockProductionPolicy(_api.Config<IMiningConfig>());
 
-        protected virtual ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
-            new TxPool.TxPool(_api.EthereumEcdsa!,
+        protected virtual ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository)
+        {
+            DebugModuleFactory debugModuleFactory = new(
+                _api.WorldStateManager!,
+                _api.DbProvider!,
+                _api.BlockTree!,
+                _api.ConfigProvider.GetConfig<JsonRpcConfig>(),
+                _api.BlockValidator!,
+                _api.BlockPreprocessor,
+                _api.RewardCalculatorSource!,
+                _api.ReceiptStorage!,
+                new ReceiptMigration(_api),
+                _api.ConfigProvider,
+                _api.SpecProvider!,
+                _api.SyncModeSelector,
+                _api.BadBlocksStore!,
+                _api.FileSystem,
+                _api.LogManager);
+
+            var callFilter = new CallFilter(_api.Config<ITxPoolConfig>().BlacklistedFunctionCalls, debugModuleFactory.CreateDebugBridge());
+            return new TxPool.TxPool(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!, codeInfoRepository),
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _api.TxGossipPolicy);
+                _api.TxGossipPolicy,
+                preHashFilter: callFilter);
+        }
 
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 

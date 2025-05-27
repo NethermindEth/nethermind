@@ -76,6 +76,13 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 
     public override IDebugRpcModule Create()
     {
+        DebugBridge debugBridge = CreateDebugBridge();
+
+        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider);
+    }
+
+    public DebugBridge CreateDebugBridge()
+    {
         IOverridableWorldScope worldStateManager = _worldStateManager.CreateOverridableWorldScope();
         OverridableTxProcessingEnv txEnv = new(worldStateManager, _blockTree, _specProvider, _logManager);
 
@@ -106,8 +113,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _specProvider,
             _syncModeSelector,
             _badBlockStore);
-
-        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider);
+        return debugBridge;
     }
 
     protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,

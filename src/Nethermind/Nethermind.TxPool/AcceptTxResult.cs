@@ -96,7 +96,7 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult MaxTxSizeExceeded = new(16, nameof(MaxTxSizeExceeded));
 
         /// <summary>
-        /// Only one tx with current state matching nonce is allowed per delegated account or pending delegation. 
+        /// Only one tx with current state matching nonce is allowed per delegated account or pending delegation.
         /// </summary>
         public static readonly AcceptTxResult NotCurrentNonceForDelegation = new(17, nameof(NotCurrentNonceForDelegation));
 
@@ -109,6 +109,11 @@ namespace Nethermind.TxPool
         /// The node is syncing and cannot accept transactions at this time.
         /// </summary>
         public static readonly AcceptTxResult Syncing = new(503, nameof(Syncing));
+
+        /// <summary>
+        /// The address is part of the blacklist.
+        /// </summary>
+        public static readonly AcceptTxResult BlacklistedAddress = new(403, nameof(BlacklistedAddress));
 
         private int Id { get; }
         private string Code { get; }

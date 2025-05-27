@@ -366,7 +366,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     {
         Metrics.JsonRpcRequests++;
         long startTime = Stopwatch.GetTimestamp();
-
+       if(request.Method.StartsWith("eth")) _logger.Info($"JSON RPC Request Received: {request}");
         JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(request, context);
         JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
         bool isSuccess = localErrorResponse is null;

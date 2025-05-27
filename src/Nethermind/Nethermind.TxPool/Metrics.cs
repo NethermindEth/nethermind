@@ -87,6 +87,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsKnown { get; set; }
 
         [CounterMetric]
+        [Description("Number of blacklisted transactions.")]
+        public static long BlacklistedTransactions { get; set; }
+
+        [CounterMetric]
         [Description("Number of malformed transactions.")]
         public static long PendingTransactionsMalformed { get; set; }
 
