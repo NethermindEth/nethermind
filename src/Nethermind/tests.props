@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <!-- Must be removed when https://youtrack.jetbrains.com/issue/RSRP-498837 is fixed -->
-  <ItemGroup Condition="$(ContinuousIntegrationBuild) != 'true'">
+  <ItemGroup Condition="$(ContinuousIntegrationBuild) != 'true' AND $(BuildingInsideVisualStudio) != 'true'">
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
   </ItemGroup>
   
