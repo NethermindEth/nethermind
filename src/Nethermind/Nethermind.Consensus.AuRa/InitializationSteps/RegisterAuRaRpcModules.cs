@@ -177,7 +177,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
                                 _api.AbiEncoder,
                                 blockGasLimitContractTransition.Value,
                                 blockGasLimitContractTransition.Key,
-                                _api.CreateReadOnlyTransactionProcessorSource()))
+                                _api.ReadOnlyTxProcessingEnvFactory.Create()))
                         .ToArray<IBlockGasLimitContract>(),
                     _api.GasLimitCalculatorCache,
                     _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,

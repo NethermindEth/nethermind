@@ -85,8 +85,6 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             }
         }
 
-        public IReadOnlyTxProcessorSource CreateReadOnlyTransactionProcessorSource() => ReadOnlyTxProcessingEnvFactory.Create();
-
         public StartBlockProducerAuRa CreateStartBlockProducer()
         {
             return new StartBlockProducerAuRa(
