@@ -6,6 +6,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Crypto;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
 while (true)
@@ -16,23 +18,17 @@ while (true)
 
     try
     {
-        Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(input), RlpBehaviors.SkipTypedWrapping);
-        TxValidator txValidator = new TxValidator(BlockchainIds.Mainnet);
-        ValidationResult wellFormed = txValidator.IsWellFormed(tx, Fork.GetLatest());
-        if (wellFormed)
+        IReleaseSpec spec = Fork.GetLatest();
+        byte[] bytes = Bytes.FromHexString(input);
+        Transaction tx = Rlp.Decode<Transaction>(bytes, RlpBehaviors.SkipTypedWrapping);
+        EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
+        Address? sender = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+        if (sender is null)
         {
-            EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
-            Address? sender = ecdsa.RecoverAddress(tx);
-            if (sender is null)
-            {
-                throw new InvalidDataException("Could not recover sender address");
-            }
-            Console.WriteLine(string.Concat(sender, " ", tx.Type));
+            throw new InvalidDataException("Could not recover sender address");
         }
-        else
-        {
-            throw new InvalidDataException($"Transaction is not well formed: {wellFormed}");
-        }
+
+        Console.WriteLine($"{sender} {tx.Type}");
     }
     catch (Exception e)
     {
