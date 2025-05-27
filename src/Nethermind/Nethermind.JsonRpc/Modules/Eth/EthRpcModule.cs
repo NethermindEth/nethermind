@@ -224,7 +224,7 @@ public partial class EthRpcModule(
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
         return searchResult.IsError
-            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
+            ? ResultWrapper<UInt256?>.Success(null)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Transactions.Length);
     }
 
@@ -232,7 +232,7 @@ public partial class EthRpcModule(
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         return searchResult.IsError
-            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
+            ? ResultWrapper<UInt256?>.Success(null)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Transactions.Length);
     }
 
@@ -240,7 +240,7 @@ public partial class EthRpcModule(
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
         return searchResult.IsError
-            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
+            ? ResultWrapper<UInt256?>.Success(null)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Uncles.Length);
     }
 
@@ -248,7 +248,7 @@ public partial class EthRpcModule(
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         return searchResult.IsError
-            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
+            ? ResultWrapper<UInt256?>.Success(null)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Uncles.Length);
     }
 
