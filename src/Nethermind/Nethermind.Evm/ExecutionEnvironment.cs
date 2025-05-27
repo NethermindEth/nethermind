@@ -44,6 +44,9 @@ namespace Nethermind.Evm
         /// </summary>
         public readonly ReadOnlyMemory<byte> InputData = inputData;
 
+        /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
+        public readonly int CallDepth = callDepth;
+
         /// <summary>
         /// ETH value transferred in this call.
         /// </summary>
@@ -55,9 +58,6 @@ namespace Nethermind.Evm
         /// as no transfer happens.
         /// </summary>
         public readonly UInt256 Value = value;
-
-        /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
-        public readonly int CallDepth = callDepth;
 
         /// <summary>
         /// Transaction context
