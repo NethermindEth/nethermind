@@ -137,6 +137,9 @@ public class ChainParameters
     public ulong? OpIsthmusTransitionTimestamp { get; set; }
 
     public ulong? Eip7623TransitionTimestamp { get; set; }
+    public ulong? Eip7594TransitionTimestamp { get; set; }
+
+    public ulong? Eip7825TransitionTimestamp { get; set; }
 
     public Dictionary<string, ChainSpecBlobCountJson> BlobSchedule { get; set; } = [];
 

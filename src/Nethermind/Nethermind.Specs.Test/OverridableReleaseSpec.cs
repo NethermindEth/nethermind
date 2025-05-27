@@ -20,6 +20,7 @@ namespace Nethermind.Specs.Test
         {
             _spec = spec;
             IsEip3607Enabled = _spec.IsEip3607Enabled;
+            IsEip7825Enabled = _spec.IsEip7825Enabled;
             BlockReward = _spec.BlockReward;
         }
 
@@ -180,6 +181,7 @@ namespace Nethermind.Specs.Test
         public Address Eip2935ContractAddress => _spec.Eip2935ContractAddress;
         public bool IsEip7702Enabled => _spec.IsEip7702Enabled;
         public bool IsEip7823Enabled => _spec.IsEip7823Enabled;
+        public bool IsEip7825Enabled { get; set; }
         public UInt256 ForkBaseFee => _spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier => _spec.ElasticityMultiplier;
@@ -187,6 +189,7 @@ namespace Nethermind.Specs.Test
         public bool IsEofEnabled => _spec.IsEofEnabled;
         public bool IsEip6110Enabled => _spec.IsEip6110Enabled;
         public Address DepositContractAddress => _spec.DepositContractAddress;
+        public bool IsEip7594Enabled => _spec.IsEip7594Enabled;
 
         Array? IReleaseSpec.EvmInstructionsNoTrace { get => _spec.EvmInstructionsNoTrace; set => _spec.EvmInstructionsNoTrace = value; }
         Array? IReleaseSpec.EvmInstructionsTraced { get => _spec.EvmInstructionsTraced; set => _spec.EvmInstructionsTraced = value; }

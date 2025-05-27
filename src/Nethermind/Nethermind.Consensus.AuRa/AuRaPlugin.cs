@@ -39,6 +39,8 @@ namespace Nethermind.Consensus.AuRa
 
         private StartBlockProducerAuRa? _blockProducerStarter;
 
+        private StartBlockProducerAuRa BlockProducerStarter => _blockProducerStarter ??= _nethermindApi!.CreateStartBlockProducer();
+
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
         public ValueTask DisposeAsync()
         {
@@ -48,10 +50,6 @@ namespace Nethermind.Consensus.AuRa
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi as AuRaNethermindApi;
-            if (_nethermindApi is not null)
-            {
-                _blockProducerStarter = new(_nethermindApi);
-            }
             return Task.CompletedTask;
         }
 
@@ -59,7 +57,7 @@ namespace Nethermind.Consensus.AuRa
         {
             if (_nethermindApi is not null)
             {
-                return _blockProducerStarter!.BuildProducer(additionalTxSource);
+                return BlockProducerStarter!.BuildProducer(additionalTxSource);
             }
 
             return null;
@@ -68,7 +66,7 @@ namespace Nethermind.Consensus.AuRa
         public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
         {
             return new StandardBlockProducerRunner(
-                _blockProducerStarter.CreateTrigger(),
+                BlockProducerStarter.CreateTrigger(),
                 _nethermindApi.BlockTree,
                 blockProducer);
         }

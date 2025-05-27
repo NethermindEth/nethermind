@@ -89,13 +89,13 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsOpHoloceneEnabled => spec.IsOpHoloceneEnabled;
     public virtual bool IsOpIsthmusEnabled => spec.IsOpIsthmusEnabled;
     public virtual bool IsEip7623Enabled => spec.IsEip7623Enabled;
+    public virtual bool IsEip7825Enabled => spec.IsEip7825Enabled;
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
-
     public virtual bool IsEofEnabled => spec.IsEofEnabled;
-
     public virtual bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
     public bool IsEip4844FeeCollectorEnabled => spec.IsEip4844FeeCollectorEnabled;
+    public bool IsEip7594Enabled => spec.IsEip7594Enabled;
 
     public virtual long MaxInitCodeSize => spec.MaxInitCodeSize;
     public virtual bool ValidateChainId => spec.ValidateChainId;
