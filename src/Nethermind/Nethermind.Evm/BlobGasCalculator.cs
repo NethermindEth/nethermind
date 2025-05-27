@@ -10,7 +10,7 @@ namespace Nethermind.Evm;
 public static class BlobGasCalculator
 {
     // EIP-7918 floor for blob execution gas
-    public const int BlobBaseCost = 2 << 14;
+    public const int BlobBaseCost = 1 << 14;
 
     public static ulong CalculateBlobGas(int blobCount) =>
         (ulong)blobCount * Eip4844Constants.GasPerBlob;
@@ -125,8 +125,9 @@ public static class BlobGasCalculator
 
             if (floorCost > targetCost)
             {
-                var maxBlobGasPerBlock = releaseSpec.GetMaxBlobGasPerBlock();
-                var d = blobGasUsed * (maxBlobGasPerBlock - targetBlobGasPerBlock) / maxBlobGasPerBlock;
+                var target = releaseSpec.TargetBlobCount;
+                var max = releaseSpec.MaxBlobCount;
+                var d = blobGasUsed * (max - target) / max;
                 return excessBlobGas + d;
             }
         }
