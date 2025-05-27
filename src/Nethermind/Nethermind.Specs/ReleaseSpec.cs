@@ -88,6 +88,7 @@ namespace Nethermind.Specs
         public bool IsOpHoloceneEnabled { get; set; }
         public bool IsOpIsthmusEnabled { get; set; }
         public bool IsEip7623Enabled { get; set; }
+        public bool IsEip7883Enabled { get; set; }
         public bool IsEip5656Enabled { get; set; }
         public bool IsEip6780Enabled { get; set; }
         public bool IsEip4788Enabled { get; set; }
@@ -97,6 +98,7 @@ namespace Nethermind.Specs
         public bool IsEip7002Enabled { get; set; }
         public bool IsEip7251Enabled { get; set; }
         public bool IsEip7825Enabled { get; set; }
+
         public ulong TargetBlobCount { get; set; }
         public ulong MaxBlobCount { get; set; }
         public UInt256 BlobBaseFeeUpdateFraction { get; set; }

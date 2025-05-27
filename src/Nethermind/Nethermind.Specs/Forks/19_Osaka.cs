@@ -13,8 +13,9 @@ public class Osaka : Prague
     public Osaka()
     {
         Name = "Osaka";
-        IsEofEnabled = true;
         IsEip7594Enabled = true;
+        IsEip7823Enabled = true;
+        IsEip7883Enabled = true;
         // IsEip7825Enabled = true;
 
         Released = false;

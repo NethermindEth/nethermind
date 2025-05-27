@@ -12,7 +12,7 @@ using Nethermind.Int256;
 [assembly: InternalsVisibleTo("Nethermind.TxPool.Test")]
 namespace Nethermind.Specs.ChainSpecStyle.Json;
 
-internal class ChainSpecParamsJson
+public class ChainSpecParamsJson
 {
     public ulong? ChainId { get; set; }
     public ulong? NetworkId { get; set; }
@@ -159,6 +159,7 @@ internal class ChainSpecParamsJson
     public ulong? Rip7212TransitionTimestamp { get; set; }
     public ulong? Eip7692TransitionTimestamp { get; set; }
     public ulong? Eip7702TransitionTimestamp { get; set; }
+    public ulong? Eip7883TransitionTimestamp { get; set; }
     public ulong? Eip7823TransitionTimestamp { get; set; }
     public ulong? Eip7825TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
