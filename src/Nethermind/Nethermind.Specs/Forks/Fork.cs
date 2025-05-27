@@ -11,7 +11,11 @@ namespace Nethermind.Specs.Forks;
 
 public static class Fork
 {
-    public static IReleaseSpec GetLatest()
+    private static IReleaseSpec? _latest;
+
+    public static IReleaseSpec GetLatest() => _latest ??= GetLatestCore();
+
+    private static IReleaseSpec GetLatestCore()
     {
         Type releaseSpec = typeof(INamedReleaseSpec);
         Type type = releaseSpec.Assembly.GetTypes()
