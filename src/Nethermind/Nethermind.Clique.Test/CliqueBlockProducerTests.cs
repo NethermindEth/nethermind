@@ -197,8 +197,8 @@ public class CliqueBlockProducerTests
                 new BeaconBlockRootHandler(minerTransactionProcessor, minerStateProvider),
                 new BlockhashStore(testnetSpecProvider, minerStateProvider),
                 nodeLogManager,
-                new WithdrawalProcessor(stateProvider, nodeLogManager),
-                new ExecutionRequestsProcessor(transactionProcessor));
+                new WithdrawalProcessor(minerStateProvider, nodeLogManager),
+                new ExecutionRequestsProcessor(minerTransactionProcessor));
 
             BlockchainProcessor minerProcessor = new(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
 
