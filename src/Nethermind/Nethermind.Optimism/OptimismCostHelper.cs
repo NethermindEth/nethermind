@@ -15,7 +15,7 @@ namespace Nethermind.Optimism;
 
 public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAddr) : ICostHelper
 {
-    public OptimismCostHelper(IOptimismSpecHelper opSpecHelper, OptimismChainSpecEngineParameters chainSpecEngineParameters):this(opSpecHelper, chainSpecEngineParameters.L1BlockAddress!)
+    public OptimismCostHelper(IOptimismSpecHelper opSpecHelper, OptimismChainSpecEngineParameters chainSpecEngineParameters) : this(opSpecHelper, chainSpecEngineParameters.L1BlockAddress!)
     {
     }
 

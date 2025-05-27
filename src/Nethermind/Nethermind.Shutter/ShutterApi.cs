@@ -42,7 +42,7 @@ public class ShutterApi : IShutterApi
     protected readonly TimeSpan _blockUpToDateCutoff;
     protected readonly IReadOnlyBlockTree _readOnlyBlockTree;
     protected readonly IBlockTree _blockTree;
-    private readonly ReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
+    private readonly IReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ILogManager _logManager;
     private readonly IFileSystem _fileSystem;
@@ -59,7 +59,7 @@ public class ShutterApi : IShutterApi
         ILogManager logManager,
         ISpecProvider specProvider,
         ITimestamper timestamper,
-        IWorldStateManager worldStateManager,
+        IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
         IFileSystem fileSystem,
         IKeyStoreConfig keyStoreConfig,
         IShutterConfig cfg,
@@ -79,7 +79,7 @@ public class ShutterApi : IShutterApi
         _blockUpToDateCutoff = TimeSpan.FromMilliseconds(cfg.BlockUpToDateCutoff);
         _blockWaitCutoff = _slotLength / 3;
 
-        _txProcessingEnvFactory = new(worldStateManager, blockTree, specProvider, logManager);
+        _txProcessingEnvFactory = txProcessingEnvFactory;
 
         Time = InitTime(specProvider, timestamper);
         TxLoader = new(logFinder, _cfg, Time, specProvider, ecdsa, abiEncoder, logManager);

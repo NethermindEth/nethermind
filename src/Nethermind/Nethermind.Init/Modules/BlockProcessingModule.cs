@@ -10,7 +10,7 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Init.Modules;
 
-public class BlockProcessingModule: Module
+public class BlockProcessingModule : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
