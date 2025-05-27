@@ -94,14 +94,6 @@ public sealed class TxValidator : ITxValidator
         _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
             ? validator.IsWellFormed(transaction, releaseSpec)
             : TxErrorMessages.InvalidTxType(releaseSpec.Name);
-
-    /// <remarks>
-    /// Only intented to be used from TxParser tool
-    /// </remarks>
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, params ITxValidator[] validatorsToIgnore) =>
-        _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
-            ? ((CompositeTxValidator)validator).IsWellFormed(transaction, releaseSpec, validatorsToIgnore)
-            : TxErrorMessages.InvalidTxType(releaseSpec.Name);
 }
 
 public sealed class CompositeTxValidator(List<ITxValidator> validators) : ITxValidator
@@ -114,23 +106,6 @@ public sealed class CompositeTxValidator(List<ITxValidator> validators) : ITxVal
             if (!isWellFormed)
             {
                 return isWellFormed;
-            }
-        }
-
-        return ValidationResult.Success;
-    }
-
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, params ITxValidator[] validatorsToIgnore)
-    {
-        foreach (ITxValidator validator in validators)
-        {
-            if (!validatorsToIgnore.Contains(validator))
-            {
-                ValidationResult isWellFormed = validator.IsWellFormed(transaction, releaseSpec);
-                if (!isWellFormed)
-                {
-                    return isWellFormed;
-                }
             }
         }
 
