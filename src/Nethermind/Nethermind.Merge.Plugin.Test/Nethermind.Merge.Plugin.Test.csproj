@@ -1,9 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <Import Project="../tests.props" />
+
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <EnableNUnitRunner>true</EnableNUnitRunner>
-    <IsPackable>false</IsPackable>
     <Nullable>enable</Nullable>
     <NoWarn>$(NoWarn);NUnit1032</NoWarn>
   </PropertyGroup>

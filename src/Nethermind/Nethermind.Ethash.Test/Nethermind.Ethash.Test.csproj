@@ -1,10 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <EnableNUnitRunner>true</EnableNUnitRunner>
-    <IsPackable>false</IsPackable>
-  </PropertyGroup>
+  <Import Project="../tests.props" />
 
   <ItemGroup>
     <PackageReference Include="NSubstitute" />

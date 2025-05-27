@@ -1,9 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <EnableNUnitRunner>true</EnableNUnitRunner>
-    <IsPackable>false</IsPackable>
-  </PropertyGroup>
+
+  <Import Project="../tests.props" />
+  
   <ItemGroup>
     <EmbeddedResource Include="..\..\tests\GenesisTests\basic_genesis_tests.json">
       <Link>basic_genesis_tests.json</Link>
