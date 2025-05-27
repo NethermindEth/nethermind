@@ -8,6 +8,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
@@ -76,14 +77,14 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             api.RewardCalculatorSource.Get(transactionProcessor),
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
             worldState,
-            api.ReceiptStorage,
-            transactionProcessor,
+            api.ReceiptStorage!,
             new BlockhashStore(api.SpecProvider, worldState),
             new BeaconBlockRootHandler(transactionProcessor, worldState),
             api.LogManager,
             api.SpecHelper,
             contractRewriter,
             new OptimismWithdrawalProcessor(api.WorldStateManager!.GlobalWorldState, api.LogManager, api.SpecHelper),
+            new ExecutionRequestsProcessor(transactionProcessor),
             preWarmer: preWarmer);
     }
 
@@ -92,6 +93,6 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 
     protected override IBlockProductionPolicy CreateBlockProductionPolicy() => AlwaysStartBlockProductionPolicy.Instance;
 
-    protected override ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
-        api.Config<IOptimismConfig>().SequencerUrl is not null ? NullTxPool.Instance : base.CreateTxPool(codeInfoRepository);
+    protected override ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider) =>
+        api.Config<IOptimismConfig>().SequencerUrl is not null ? NullTxPool.Instance : base.CreateTxPool(chainHeadInfoProvider);
 }

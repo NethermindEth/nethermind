@@ -19,6 +19,7 @@ using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
@@ -112,13 +113,12 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.LogManager,
             _api.BlockTree!,
             NullWithdrawalProcessor.Instance,
-            transactionProcessor,
+            new ExecutionRequestsProcessor(transactionProcessor),
             CreateAuRaValidator(worldState, transactionProcessor),
             txFilter,
             GetGasLimitCalculator(),
             contractRewriter,
-            preWarmer: preWarmer
-        );
+            preWarmer: preWarmer);
     }
 
     protected override IHealthHintService CreateHealthHintService() =>
@@ -242,7 +242,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         return CreateTxPoolTxComparer();
     }
 
-    protected override TxPool.TxPool CreateTxPool(CodeInfoRepository codeInfoRepository)
+    protected override TxPool.TxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
     {
         // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
         TxPriorityContract txPriorityContract = _api.TxAuRaFilterBuilders.CreateTxPrioritySources();
@@ -258,7 +258,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         return new TxPool.TxPool(
             _api.EthereumEcdsa!,
             _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
-            new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!, codeInfoRepository),
+            chainHeadInfoProvider,
             NethermindApi.Config<ITxPoolConfig>(),
             _api.TxValidator!,
             _api.LogManager,

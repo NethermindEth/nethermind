@@ -35,6 +35,7 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Api.Steps;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -146,6 +147,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+            new GetPayloadV5Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
@@ -179,6 +181,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new ExchangeTransitionConfigurationV1Handler(poSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
+            new GetBlobsHandlerV2(_api.TxPool),
             _api.EngineRequestsTracker,
             _api.SpecProvider,
             new GCKeeper(
@@ -207,18 +210,18 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
-        BlockProcessor blockProcessor =
-            new(api.SpecProvider,
-                api.BlockValidator,
-                NoBlockRewards.Instance,
-                new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
-                scope.WorldState,
-                api.ReceiptStorage,
-                scope.TransactionProcessor,
-                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
-                new BlockhashStore(api.SpecProvider, scope.WorldState),
-                api.LogManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, api.LogManager)));
+        BlockProcessor blockProcessor = new BlockProcessor(
+            api.SpecProvider,
+            api.BlockValidator,
+            NoBlockRewards.Instance,
+            new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
+            scope.WorldState,
+            api.ReceiptStorage!,
+            new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
+            new BlockhashStore(api.SpecProvider, scope.WorldState),
+            api.LogManager,
+            new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, api.LogManager)),
+            new ExecutionRequestsProcessor(scope.TransactionProcessor));
 
         IBlockchainProcessor blockchainProcessor =
             new BlockchainProcessor(
