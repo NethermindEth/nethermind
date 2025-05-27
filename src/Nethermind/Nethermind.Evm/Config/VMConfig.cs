@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.Core.Extensions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,4 +22,6 @@ public class VMConfig : IVMConfig
     public int IlEvmContractsPerDllCount { get; set; } = 8;
 
     public float IlEvmAnalysisCoreUsage { get; set; } = 0.0f;
+    public int? IlEvmBytecodeMaxLength { get; set; } = null;
+    public int IlEvmBytecodeMinLength { get; set; } = 16;
 }

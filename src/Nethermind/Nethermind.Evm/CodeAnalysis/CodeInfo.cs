@@ -26,10 +26,11 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public void NoticeExecution(IVMConfig vmConfig, ILogger logger, IReleaseSpec spec)
         {
-            if (MachineCode.Length <= 4 || MachineCode.Length > spec.MaxCodeSize) return;
-
             if (vmConfig.IlEvmEnabledMode == ILMode.NO_ILVM || !IlInfo.IsNotProcessed)
                 return;
+
+            if (MachineCode.Length < vmConfig.IlEvmBytecodeMinLength
+                || MachineCode.Length > (vmConfig.IlEvmBytecodeMaxLength ?? spec.MaxCodeSize)) return;
 
             if(Interlocked.Increment(ref _callCount) != vmConfig.IlEvmAnalysisThreshold)
                 return;

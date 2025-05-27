@@ -61,6 +61,16 @@ public interface IVMConfig : IConfig
         DefaultValue = "0")]
     public float IlEvmAnalysisCoreUsage { get; set; }
 
+    [ConfigItem(
+            Description = "Sets Allowed max length of bytecode, if not provided spec.MaxCode is used",
+            DefaultValue = "null")]
+    public int? IlEvmBytecodeMaxLength { get; set; }
+
+    [ConfigItem(
+            Description = "Sets Allowed min length of bytecode",
+            DefaultValue = "32")]
+    public int IlEvmBytecodeMinLength { get; set; }
+
 
     public bool IsVmOptimizationEnabled => IlEvmEnabledMode != ILMode.NO_ILVM;
 }
