@@ -35,9 +35,9 @@ namespace Nethermind.Consensus.Producers
         protected readonly ITransactionComparerProvider _transactionComparerProvider;
         protected readonly IBlocksConfig _blocksConfig;
         protected readonly ILogManager _logManager;
-        private readonly IExecutionRequestsProcessor? _executionRequestsProcessor;
 
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
+        public IExecutionRequestsProcessor? ExecutionRequestsProcessorOverride { get; set; }
 
         public BlockProducerEnvFactory(
             IWorldStateManager worldStateManager,
@@ -50,8 +50,7 @@ namespace Nethermind.Consensus.Producers
             ITxPool txPool,
             ITransactionComparerProvider transactionComparerProvider,
             IBlocksConfig blocksConfig,
-            ILogManager logManager,
-            IExecutionRequestsProcessor? executionRequestsProcessor = null)
+            ILogManager logManager)
         {
             _worldStateManager = worldStateManager;
             _blockTree = blockTree;
@@ -64,7 +63,6 @@ namespace Nethermind.Consensus.Producers
             _transactionComparerProvider = transactionComparerProvider;
             _blocksConfig = blocksConfig;
             _logManager = logManager;
-            _executionRequestsProcessor = executionRequestsProcessor;
 
             TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, _blocksConfig.BlockProductionMaxTxKilobytes, logManager);
         }
@@ -142,18 +140,17 @@ namespace Nethermind.Consensus.Producers
             IReceiptStorage receiptStorage,
             ILogManager logManager,
             IBlocksConfig blocksConfig) =>
-            new(specProvider,
+            new BlockProcessor(
+                specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
                 TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
                 readOnlyTxProcessingEnv.WorldState,
                 receiptStorage,
-                readOnlyTxProcessingEnv.TransactionProcessor,
                 new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor, readOnlyTxProcessingEnv.WorldState),
                 new BlockhashStore(_specProvider, readOnlyTxProcessingEnv.WorldState),
                 logManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)),
-                executionRequestsProcessor: _executionRequestsProcessor
-            );
+                executionRequestsProcessor: ExecutionRequestsProcessorOverride ?? new ExecutionRequestsProcessor(readOnlyTxProcessingEnv.TransactionProcessor));
     }
 }

@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Flashbots.Data;
 using Nethermind.Consensus;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -75,14 +76,12 @@ public class ValidateSubmissionHandler
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
             worldState,
             NullReceiptStorage.Instance,
-            transactionProcessor,
             new BeaconBlockRootHandler(transactionProcessor, worldState),
             new BlockhashStore(_specProvider, worldState),
             logManager: logManager,
             withdrawalProcessor: new WithdrawalProcessor(worldState, logManager!),
-            receiptsRootCalculator: new ReceiptsRootCalculator(),
-            preWarmer: preWarmer
-        );
+            preWarmer: preWarmer,
+            executionRequestsProcessor: new ExecutionRequestsProcessor(transactionProcessor));
     }
 
     public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)

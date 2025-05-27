@@ -126,7 +126,7 @@ namespace Nethermind.Api
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner? BlockProducerRunner { get; set; }
         public IBlockTree? BlockTree { get; set; }
-        public IBlockValidator? BlockValidator => Context.Resolve<IBlockValidator>();
+        public IBlockValidator BlockValidator => Context.Resolve<IBlockValidator>();
         public IBloomStorage? BloomStorage { get; set; }
         public IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
         public IConfigProvider ConfigProvider => _dependencies.ConfigProvider;
