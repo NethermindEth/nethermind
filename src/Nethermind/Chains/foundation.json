@@ -202,6 +202,7 @@
     "terminalTotalDifficulty": "C70D808A128D7380000",
     "blobSchedule": [
       {
+        "name": "prague",
         "timestamp": "0x681b3057",
         "target": 6,
         "max": 9,

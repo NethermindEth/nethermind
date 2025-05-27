@@ -824,8 +824,8 @@ public class ChainSpecBasedSpecProviderTests
 
     [TestCaseSource(nameof(BlobScheduleActivationsTestCaseSource))]
     public void Test_BlobSchedule_IsApplied_AlongWithForkSchedule(
-        ulong cancunTimestamp,
-        ulong pragueTimestamp,
+        ulong eip4844Timestamp,
+        ulong eip7002Timestamp,
         BlobScheduleSettings[] blobScheduleSettings,
         ulong[] expectedActivationSettings)
     {
@@ -833,23 +833,33 @@ public class ChainSpecBasedSpecProviderTests
         {
             Parameters = new ChainParameters
             {
-                Eip4844TransitionTimestamp = cancunTimestamp,
-                Eip7002TransitionTimestamp = pragueTimestamp,
+                Eip4844TransitionTimestamp = eip4844Timestamp,
+                Eip7002TransitionTimestamp = eip7002Timestamp,
                 BlobSchedule = [.. blobScheduleSettings]
             },
             EngineChainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>()
         });
 
         IReleaseSpec spec = provider.GenesisSpec;
-        Assert.That(spec.MaxBlobCount, Is.EqualTo(expectedActivationSettings[0]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.MaxBlobCount, Is.EqualTo(expectedActivationSettings[0]));
+            Assert.That(spec.TargetBlobCount, Is.EqualTo(expectedActivationSettings[0]));
+            Assert.That((ulong)spec.BlobBaseFeeUpdateFraction, Is.EqualTo(expectedActivationSettings[0]));
+        }
 
         expectedActivationSettings = expectedActivationSettings[1..];
-        Assert.That(expectedActivationSettings.Length, Is.EqualTo(provider.TransitionActivations.Length));
+        Assert.That(expectedActivationSettings, Has.Length.EqualTo(provider.TransitionActivations.Length));
 
         for (int i = 0; i < expectedActivationSettings.Length; i++)
         {
             spec = provider.GetSpec(ForkActivation.TimestampOnly(provider.TransitionActivations[i].Timestamp!.Value));
-            Assert.That(spec.MaxBlobCount, Is.EqualTo(expectedActivationSettings[i]));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(spec.MaxBlobCount, Is.EqualTo(expectedActivationSettings[i]));
+                Assert.That(spec.TargetBlobCount, Is.EqualTo(expectedActivationSettings[i]));
+                Assert.That((ulong)spec.BlobBaseFeeUpdateFraction, Is.EqualTo(expectedActivationSettings[i]));
+            }
         }
     }
 
@@ -859,11 +869,11 @@ public class ChainSpecBasedSpecProviderTests
         {
             const int NoneAllowed = 0;
             const int Default = 6;
-            static TestCaseData MakeTestCase(string testName, int cancun, int prague, (int timestamp, int max)[] settings, ulong[] expectedActivationSettings)
+            static TestCaseData MakeTestCase(string testName, int eip4844Timestamp, int eip7002Timestamp, (int timestamp, int max)[] settings, ulong[] expectedActivationSettings)
                 => new([
-                    (ulong)cancun,
-                    (ulong)prague,
-                    settings.Select(s => new BlobScheduleSettings { Timestamp = (ulong)s.timestamp, Max = (ulong)s.max }).ToArray(),
+                    (ulong)eip4844Timestamp,
+                    (ulong)eip7002Timestamp,
+                    settings.Select(s => new BlobScheduleSettings { Timestamp = (ulong)s.timestamp, Max = (ulong)s.max, Target = (ulong)s.max, BaseFeeUpdateFraction = (ulong)s.max }).ToArray(),
                     expectedActivationSettings])
                 { TestName = $"BlobScheduleActivations: {testName}" };
 

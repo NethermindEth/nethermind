@@ -107,7 +107,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
                     if (settings.Timestamp < eip4844Timestamp)
                     {
-                        throw new ArgumentException($"{nameof(_chainSpec.Parameters.BlobSchedule)} should has timestamps set to the values more than of {nameof(chainSpec.Parameters.Eip4844TransitionTimestamp)}, EIP-4844 is activated at {chainSpec.Parameters.Eip4844TransitionTimestamp}, but the settings are scheduled at {settings.Timestamp} ");
+                        throw new ArgumentException($"Blob settings are scheduled at {settings.Timestamp}, before EIP-4844, activated at {chainSpec.Parameters.Eip4844TransitionTimestamp}");
                     }
 
                     transitions.Add(settings.Timestamp);
