@@ -23,9 +23,9 @@ using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int,
 
 public unsafe partial class VirtualMachine
 {
-    public static void WarmUpEvmInstructions(ISpecProvider specProvider)
+    public static void WarmUpEvmInstructions()
     {
-        IReleaseSpec spec = specProvider.GetFinalSpec();
+        IReleaseSpec spec = Prague.Instance;
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
         VirtualMachine vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
