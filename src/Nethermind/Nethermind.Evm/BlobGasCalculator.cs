@@ -9,7 +9,7 @@ namespace Nethermind.Evm;
 
 public static class BlobGasCalculator
 {
-    // EIP-7918 floor for blob execution gas
+    // EIP-7918 floor cost in execution gas
     public const int BlobBaseCost = 1 << 14;
 
     public static ulong CalculateBlobGas(int blobCount) =>
@@ -117,21 +117,23 @@ public static class BlobGasCalculator
             return 0;
         }
 
+		var excessBlobGasChange = blobGasUsed - targetBlobGasPerBlock;
+
         if (releaseSpec.IsEip7918Enabled)
         {
             TryCalculateFeePerBlobGas(parentBlockHeader, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
             UInt256 floorCost = BlobBaseCost * parentBlockHeader.BaseFeePerGas;
             UInt256 targetCost = targetBlobGasPerBlock * feePerBlobGas;
 
+			// if below floor cost then increase excess blob gas
             if (floorCost > targetCost)
             {
                 var target = releaseSpec.TargetBlobCount;
                 var max = releaseSpec.MaxBlobCount;
-                var d = blobGasUsed * (max - target) / max;
-                return excessBlobGas + d;
+                excessBlobGasChange = blobGasUsed * (max - target) / max;
             }
         }
 
-        return excessBlobGas + blobGasUsed - targetBlobGasPerBlock;
+        return excessBlobGas + excessBlobGasChange;
     }
 }
