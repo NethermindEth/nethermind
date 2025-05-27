@@ -21,7 +21,7 @@ namespace Nethermind.Evm;
 
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 
-internal unsafe partial class VirtualMachine
+public unsafe partial class VirtualMachine
 {
     public static void WarmUpEvmInstructions()
     {
