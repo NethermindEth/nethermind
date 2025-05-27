@@ -94,6 +94,7 @@
     "depositContractAddress": "0xb97036A26259B7147018913bD58a774cf91acf25",
     "blobSchedule": [
       {
+        "name": "cancun",
         "timestamp": "0x65ba8e4c",
         "target": 1,
         "max": 2,
