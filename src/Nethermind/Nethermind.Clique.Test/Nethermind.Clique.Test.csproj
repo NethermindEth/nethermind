@@ -3,16 +3,6 @@
   <Import Project="../tests.props" />
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
-    <PackageReference Include="NUnit" />
-    <PackageReference Include="NUnit.Analyzers">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="NUnit3TestAdapter" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\Nethermind.Config.Test\Nethermind.Config.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />

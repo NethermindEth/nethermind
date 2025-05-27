@@ -4,13 +4,6 @@
   
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" />
-    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
-    <PackageReference Include="NUnit" />
-    <PackageReference Include="NUnit.Analyzers">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="NUnit3TestAdapter" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\..\tests\GeneralStateTests\st*\**\*.*">
