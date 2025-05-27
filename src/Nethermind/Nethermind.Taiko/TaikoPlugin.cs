@@ -253,14 +253,8 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         yield return typeof(RegisterTaikoRpcModules);
     }
 
-    // IConsensusPlugin
-
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _)
-    {
-        throw new NotSupportedException();
-    }
-
     public IBlockProducerFactory BlockProducerFactory => throw new NotSupportedException();
+    public IBlockProducerRunnerFactory BlockProducerRunnerFactory => throw new NotSupportedException();
 
     public string SealEngineType => Core.SealEngineType.Taiko;
 

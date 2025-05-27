@@ -46,18 +46,9 @@ namespace Nethermind.Consensus.Ethash
 
         public IBlockProducerFactory BlockProducerFactory => new NethDevBlockProducerFactory(_nethermindApi!);
 
-        public string SealEngineType => NethDev;
+        public IBlockProducerRunnerFactory BlockProducerRunnerFactory => new NethDevBlockProducerRunnerFactory(_nethermindApi);
 
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
-            IBlockProductionTrigger trigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
-                .IfPoolIsNotEmpty(_nethermindApi.TxPool)
-                .Or(_nethermindApi.ManualBlockProductionTrigger);
-            return new StandardBlockProducerRunner(
-                trigger,
-                _nethermindApi.BlockTree,
-                blockProducer);
-        }
+        public string SealEngineType => NethDev;
     }
 
     public class NethDevBlockProducerFactory(INethermindApi nethermindApi) : IBlockProducerFactory
@@ -119,6 +110,21 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.LogManager);
 
             return blockProducer;
+        }
+    }
+
+    public class NethDevBlockProducerRunnerFactory(INethermindApi nethermindApi) : IBlockProducerRunnerFactory
+    {
+
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
+        {
+            IBlockProductionTrigger trigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
+                .IfPoolIsNotEmpty(nethermindApi.TxPool)
+                .Or(nethermindApi.ManualBlockProductionTrigger);
+            return new StandardBlockProducerRunner(
+                trigger,
+                nethermindApi.BlockTree,
+                blockProducer);
         }
     }
 }

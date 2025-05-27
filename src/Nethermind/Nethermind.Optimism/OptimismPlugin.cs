@@ -77,8 +77,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     public string SealEngineType => Core.SealEngineType.Optimism;
 
-    public IBlockProductionTrigger DefaultBlockProductionTrigger => NeverProduceTrigger.Instance;
-
     public IBlockProducerFactory BlockProducerFactory => new OptimismBlockProducerFactory(_api!);
 
     #endregion
@@ -294,13 +292,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
     }
 
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-    {
-        return new StandardBlockProducerRunner(
-            DefaultBlockProductionTrigger,
-            _api!.BlockTree!,
-            blockProducer);
-    }
+    public IBlockProducerRunnerFactory BlockProducerRunnerFactory => new OptimismBlockProducerRunnerFactory(_api!.BlockTree!);
 
     public ValueTask DisposeAsync()
     {
@@ -342,6 +334,17 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
             ;
 
+    }
+}
+
+public class OptimismBlockProducerRunnerFactory(IBlockTree blockTree) : IBlockProducerRunnerFactory
+{
+    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
+    {
+        return new StandardBlockProducerRunner(
+            NeverProduceTrigger.Instance,
+            blockTree,
+            blockProducer);
     }
 }
 

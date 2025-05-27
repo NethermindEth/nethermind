@@ -47,15 +47,9 @@ namespace Nethermind.Consensus.Ethash
 
         public IBlockProducerFactory BlockProducerFactory => new EthHashBlockProducerFactory();
 
-        public string SealEngineType => Core.SealEngineType.Ethash;
+        public IBlockProducerRunnerFactory BlockProducerRunnerFactory => new EthHashBlockProducerRunnerFactory(_nethermindApi);
 
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
-            return new StandardBlockProducerRunner(
-                _nethermindApi.ManualBlockProductionTrigger,
-                _nethermindApi.BlockTree,
-                blockProducer);
-        }
+        public string SealEngineType => Core.SealEngineType.Ethash;
     }
 
     public class EthHashBlockProducerFactory : IBlockProducerFactory
@@ -63,6 +57,17 @@ namespace Nethermind.Consensus.Ethash
         public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
             return null;
+        }
+    }
+
+    public class EthHashBlockProducerRunnerFactory(INethermindApi _nethermindApi) : IBlockProducerRunnerFactory
+    {
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
+        {
+            return new StandardBlockProducerRunner(
+                _nethermindApi.ManualBlockProductionTrigger,
+                _nethermindApi.BlockTree,
+                blockProducer);
         }
     }
 }

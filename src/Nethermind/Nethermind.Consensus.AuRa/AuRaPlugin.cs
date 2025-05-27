@@ -55,13 +55,7 @@ namespace Nethermind.Consensus.AuRa
 
         public IBlockProducerFactory BlockProducerFactory => new AuRaBlockProducerFactory(BlockProducerStarter);
 
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
-            return new StandardBlockProducerRunner(
-                BlockProducerStarter.CreateTrigger(),
-                _nethermindApi.BlockTree,
-                blockProducer);
-        }
+        public IBlockProducerRunnerFactory BlockProducerRunnerFactory => new AuraBlockProducerRunnerFactory(BlockProducerStarter, _nethermindApi!);
 
         public IEnumerable<StepInfo> GetSteps()
         {
@@ -102,6 +96,17 @@ namespace Nethermind.Consensus.AuRa
         public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
             return blockProducerStarter.BuildProducer(additionalTxSource);
+        }
+    }
+
+    public class AuraBlockProducerRunnerFactory(StartBlockProducerAuRa blockProducerStarter, INethermindApi nethermindApi) : IBlockProducerRunnerFactory
+    {
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
+        {
+            return new StandardBlockProducerRunner(
+                blockProducerStarter.CreateTrigger(),
+                nethermindApi.BlockTree!,
+                blockProducer);
         }
     }
 }

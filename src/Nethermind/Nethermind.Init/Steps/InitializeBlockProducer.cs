@@ -46,7 +46,7 @@ namespace Nethermind.Init.Steps
             }
 
             IBlockProducerFactory blockProducerFactory = consensusPlugin.BlockProducerFactory;
-            IBlockProducerRunnerFactory blockProducerRunnerFactory = consensusPlugin;
+            IBlockProducerRunnerFactory blockProducerRunnerFactory = consensusPlugin.BlockProducerRunnerFactory;
 
             foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins()
                          .OrderBy(static (p) => p.Priority))

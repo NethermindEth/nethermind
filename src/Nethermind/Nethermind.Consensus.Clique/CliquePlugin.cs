@@ -3,6 +3,8 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
@@ -79,19 +81,11 @@ namespace Nethermind.Consensus.Clique
             _cliqueConfig
         );
 
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
-            _blockProducerRunner = new CliqueBlockProducerRunner(
-                _nethermindApi.BlockTree,
-                _nethermindApi.Timestamper,
-                _nethermindApi.CryptoRandom,
-                _snapshotManager,
-                (CliqueBlockProducer)blockProducer,
-                _cliqueConfig,
-                _nethermindApi.LogManager);
-            _nethermindApi.DisposeStack.Push(_blockProducerRunner);
-            return _blockProducerRunner;
-        }
+        public IBlockProducerRunnerFactory BlockProducerRunnerFactory => new CliqueBlockProducerRunnerFactory(
+            _nethermindApi,
+            _snapshotManager,
+            _cliqueConfig
+        );
 
         public Task InitRpcModules()
         {
@@ -102,7 +96,7 @@ namespace Nethermind.Consensus.Clique
 
             (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
             CliqueRpcModule cliqueRpcModule = new(
-                _blockProducerRunner,
+                (ICliqueBlockProducerRunner) _nethermindApi.BlockProducerRunner,
                 _snapshotManager!,
                 getFromApi.BlockTree!);
 
@@ -121,8 +115,27 @@ namespace Nethermind.Consensus.Clique
         private ISnapshotManager? _snapshotManager;
 
         private ICliqueConfig? _cliqueConfig;
+    }
 
-        private CliqueBlockProducerRunner _blockProducerRunner = null!;
+    public class CliqueBlockProducerRunnerFactory(
+        INethermindApi nethermindApi,
+        ISnapshotManager snapshotManager,
+        ICliqueConfig cliqueConfig
+    ) : IBlockProducerRunnerFactory
+    {
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
+        {
+            var blockProducerRunner = new CliqueBlockProducerRunner(
+                nethermindApi.BlockTree,
+                nethermindApi.Timestamper,
+                nethermindApi.CryptoRandom,
+                snapshotManager,
+                (CliqueBlockProducer)blockProducer,
+                cliqueConfig,
+                nethermindApi.LogManager);
+            nethermindApi.DisposeStack.Push(blockProducerRunner);
+            return blockProducerRunner;
+        }
     }
 
     public class CliqueBlockProducerFactory(
@@ -134,11 +147,6 @@ namespace Nethermind.Consensus.Clique
         private readonly IBlocksConfig _blocksConfig = nethermindApi.Config<IBlocksConfig>();
         public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
-            if (nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
-            {
-                return null;
-            }
-
             (IApiWithBlockchain getFromApi, IApiWithBlockchain setInApi) = nethermindApi!.ForProducer;
 
             IMiningConfig miningConfig = getFromApi.Config<IMiningConfig>();
