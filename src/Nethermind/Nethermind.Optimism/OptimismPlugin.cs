@@ -79,58 +79,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     public IBlockProductionTrigger DefaultBlockProductionTrigger => NeverProduceTrigger.Instance;
 
-    public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
-    {
-        if (additionalTxSource is not null)
-            throw new ArgumentException(
-                "Optimism does not support additional tx source");
-
-        StepDependencyException.ThrowIfNull(_api);
-        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        StepDependencyException.ThrowIfNull(_api.BlockValidator);
-        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.TxPool);
-        StepDependencyException.ThrowIfNull(_api.TransactionComparerProvider);
-        StepDependencyException.ThrowIfNull(_api.SpecHelper);
-        StepDependencyException.ThrowIfNull(_api.L1CostHelper);
-
-        _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
-            _api.WorldStateManager,
-            _api.ReadOnlyTxProcessingEnvFactory,
-            _api.BlockTree,
-            _api.SpecProvider,
-            _api.BlockValidator,
-            _api.RewardCalculatorSource,
-            _api.ReceiptStorage,
-            _api.BlockPreprocessor,
-            _api.TxPool,
-            _api.TransactionComparerProvider,
-            _api.Config<IBlocksConfig>(),
-            _api.SpecHelper,
-            _api.L1CostHelper,
-            _api.LogManager);
-
-        OptimismGasLimitCalculator gasLimitCalculator = new OptimismGasLimitCalculator();
-
-        BlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
-
-        return new OptimismPostMergeBlockProducer(
-            new OptimismPayloadTxSource(),
-            producerEnv.TxSource,
-            producerEnv.ChainProcessor,
-            producerEnv.BlockTree,
-            producerEnv.ReadOnlyStateProvider,
-            gasLimitCalculator,
-            NullSealEngine.Instance,
-            new ManualTimestamper(),
-            _api.SpecProvider,
-            _api.SpecHelper,
-            _api.LogManager,
-            _api.Config<IBlocksConfig>());
-    }
+    public IBlockProducerFactory BlockProducerFactory => new OptimismBlockProducerFactory(_api!);
 
     #endregion
 
@@ -393,5 +342,61 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
             ;
 
+    }
+}
+
+public class OptimismBlockProducerFactory(OptimismNethermindApi api): IBlockProducerFactory
+{
+    public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+    {
+        if (additionalTxSource is not null)
+            throw new ArgumentException(
+                "Optimism does not support additional tx source");
+
+        StepDependencyException.ThrowIfNull(api);
+        StepDependencyException.ThrowIfNull(api.WorldStateManager);
+        StepDependencyException.ThrowIfNull(api.BlockTree);
+        StepDependencyException.ThrowIfNull(api.SpecProvider);
+        StepDependencyException.ThrowIfNull(api.BlockValidator);
+        StepDependencyException.ThrowIfNull(api.RewardCalculatorSource);
+        StepDependencyException.ThrowIfNull(api.ReceiptStorage);
+        StepDependencyException.ThrowIfNull(api.TxPool);
+        StepDependencyException.ThrowIfNull(api.TransactionComparerProvider);
+        StepDependencyException.ThrowIfNull(api.SpecHelper);
+        StepDependencyException.ThrowIfNull(api.L1CostHelper);
+
+        api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
+            api.WorldStateManager,
+            api.ReadOnlyTxProcessingEnvFactory,
+            api.BlockTree,
+            api.SpecProvider,
+            api.BlockValidator,
+            api.RewardCalculatorSource,
+            api.ReceiptStorage,
+            api.BlockPreprocessor,
+            api.TxPool,
+            api.TransactionComparerProvider,
+            api.Config<IBlocksConfig>(),
+            api.SpecHelper,
+            api.L1CostHelper,
+            api.LogManager);
+
+        OptimismGasLimitCalculator gasLimitCalculator = new OptimismGasLimitCalculator();
+
+        BlockProducerEnv producerEnv = api.BlockProducerEnvFactory.Create();
+
+        return new OptimismPostMergeBlockProducer(
+            new OptimismPayloadTxSource(),
+            producerEnv.TxSource,
+            producerEnv.ChainProcessor,
+            producerEnv.BlockTree,
+            producerEnv.ReadOnlyStateProvider,
+            gasLimitCalculator,
+            NullSealEngine.Instance,
+            new ManualTimestamper(),
+            api.SpecProvider,
+            api.SpecHelper,
+            api.LogManager,
+            api.Config<IBlocksConfig>());
     }
 }

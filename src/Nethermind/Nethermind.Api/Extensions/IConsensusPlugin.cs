@@ -6,8 +6,10 @@ using Nethermind.Consensus;
 
 namespace Nethermind.Api.Extensions
 {
-    public interface IConsensusPlugin : INethermindPlugin, IBlockProducerFactory, IBlockProducerRunnerFactory
+    public interface IConsensusPlugin : INethermindPlugin, IBlockProducerRunnerFactory
     {
         Type ApiType => typeof(NethermindApi);
+
+        IBlockProducerFactory BlockProducerFactory { get; }
     }
 }

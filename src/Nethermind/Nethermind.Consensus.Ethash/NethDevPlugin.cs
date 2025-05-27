@@ -44,16 +44,34 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
+        public IBlockProducerFactory BlockProducerFactory => new NethDevBlockProducerFactory(_nethermindApi!);
+
+        public string SealEngineType => NethDev;
+
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
+        {
+            IBlockProductionTrigger trigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
+                .IfPoolIsNotEmpty(_nethermindApi.TxPool)
+                .Or(_nethermindApi.ManualBlockProductionTrigger);
+            return new StandardBlockProducerRunner(
+                trigger,
+                _nethermindApi.BlockTree,
+                blockProducer);
+        }
+    }
+
+    public class NethDevBlockProducerFactory(INethermindApi nethermindApi) : IBlockProducerFactory
+    {
         public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
-            var (getFromApi, _) = _nethermindApi!.ForProducer;
+            var (getFromApi, _) = nethermindApi!.ForProducer;
 
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
 
-            ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
+            ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(nethermindApi.LogManager)
                 .WithBaseFeeFilter(getFromApi.SpecProvider)
                 .WithNullTxFilter()
-                .WithMinGasPriceFilter(_nethermindApi.Config<IBlocksConfig>(), getFromApi.SpecProvider)
+                .WithMinGasPriceFilter(nethermindApi.Config<IBlocksConfig>(), getFromApi.SpecProvider)
                 .Build;
 
             TxPoolTxSource txPoolTxSource = new(
@@ -101,19 +119,6 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.LogManager);
 
             return blockProducer;
-        }
-
-        public string SealEngineType => NethDev;
-
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
-            IBlockProductionTrigger trigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
-                .IfPoolIsNotEmpty(_nethermindApi.TxPool)
-                .Or(_nethermindApi.ManualBlockProductionTrigger);
-            return new StandardBlockProducerRunner(
-                trigger,
-                _nethermindApi.BlockTree,
-                blockProducer);
         }
     }
 }

@@ -45,7 +45,7 @@ namespace Nethermind.Init.Steps
                 throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
             }
 
-            IBlockProducerFactory blockProducerFactory = consensusPlugin;
+            IBlockProducerFactory blockProducerFactory = consensusPlugin.BlockProducerFactory;
             IBlockProducerRunnerFactory blockProducerRunnerFactory = consensusPlugin;
 
             foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins()

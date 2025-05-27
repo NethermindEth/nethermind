@@ -53,15 +53,7 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
-        {
-            if (_nethermindApi is not null)
-            {
-                return BlockProducerStarter!.BuildProducer(additionalTxSource);
-            }
-
-            return null;
-        }
+        public IBlockProducerFactory BlockProducerFactory => new AuRaBlockProducerFactory(BlockProducerStarter);
 
         public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
         {
@@ -102,6 +94,14 @@ namespace Nethermind.Consensus.AuRa
             {
                 builder.AddSingleton<IHeaderValidator, AuRaHeaderValidator>();
             }
+        }
+    }
+
+    public class AuRaBlockProducerFactory(StartBlockProducerAuRa blockProducerStarter) : IBlockProducerFactory
+    {
+        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+        {
+            return blockProducerStarter.BuildProducer(additionalTxSource);
         }
     }
 }

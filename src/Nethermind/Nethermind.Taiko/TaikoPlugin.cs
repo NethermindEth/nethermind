@@ -260,10 +260,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         throw new NotSupportedException();
     }
 
-    public IBlockProducer InitBlockProducer(ITxSource? _ = null)
-    {
-        throw new NotSupportedException();
-    }
+    public IBlockProducerFactory BlockProducerFactory => throw new NotSupportedException();
 
     public string SealEngineType => Core.SealEngineType.Taiko;
 

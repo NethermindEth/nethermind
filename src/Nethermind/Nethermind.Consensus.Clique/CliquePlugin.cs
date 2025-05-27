@@ -73,88 +73,11 @@ namespace Nethermind.Consensus.Clique
             return Task.CompletedTask;
         }
 
-        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
-        {
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
-            {
-                return null;
-            }
-
-            (IApiWithBlockchain getFromApi, IApiWithBlockchain setInApi) = _nethermindApi!.ForProducer;
-
-            _blocksConfig = getFromApi.Config<IBlocksConfig>();
-            IMiningConfig miningConfig = getFromApi.Config<IMiningConfig>();
-
-            if (!miningConfig.Enabled)
-            {
-                throw new InvalidOperationException("Request to start block producer while mining disabled.");
-            }
-
-            setInApi.Sealer = new CliqueSealer(
-                getFromApi.EngineSigner!,
-                _cliqueConfig!,
-                _snapshotManager!,
-                getFromApi.LogManager);
-
-            ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree!.AsReadOnly();
-            ITransactionComparerProvider transactionComparerProvider = getFromApi.TransactionComparerProvider;
-            IReadOnlyTxProcessingScope scope = getFromApi.ReadOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
-
-            BlockProcessor producerProcessor = new BlockProcessor(
-                getFromApi!.SpecProvider,
-                getFromApi!.BlockValidator,
-                NoBlockRewards.Instance,
-                getFromApi.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(scope),
-                scope.WorldState,
-                NullReceiptStorage.Instance,
-                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
-                new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
-                getFromApi.LogManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, getFromApi.LogManager)),
-                new ExecutionRequestsProcessor(scope.TransactionProcessor));
-
-            IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
-                readOnlyBlockTree,
-                producerProcessor,
-                getFromApi.BlockPreprocessor,
-                getFromApi.StateReader,
-                getFromApi.LogManager,
-                BlockchainProcessor.Options.NoReceipts);
-
-            OneTimeChainProcessor chainProcessor = new(
-                scope.WorldState,
-                producerChainProcessor);
-
-            ITxFilterPipeline txFilterPipeline =
-                TxFilterPipelineBuilder.CreateStandardFilteringPipeline(
-                    _nethermindApi.LogManager,
-                    getFromApi.SpecProvider,
-                    _blocksConfig);
-
-            TxPoolTxSource txPoolTxSource = new(
-                getFromApi.TxPool,
-                getFromApi.SpecProvider,
-                transactionComparerProvider,
-                getFromApi.LogManager,
-                txFilterPipeline);
-
-            IGasLimitCalculator gasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
-
-            CliqueBlockProducer blockProducer = new(
-                additionalTxSource.Then(txPoolTxSource),
-                chainProcessor,
-                scope.WorldState,
-                getFromApi.Timestamper,
-                getFromApi.CryptoRandom,
-                _snapshotManager!,
-                getFromApi.Sealer!,
-                gasLimitCalculator,
-                getFromApi.SpecProvider,
-                _cliqueConfig!,
-                getFromApi.LogManager);
-
-            return blockProducer;
-        }
+        public IBlockProducerFactory BlockProducerFactory => new CliqueBlockProducerFactory(
+            _nethermindApi,
+            _snapshotManager,
+            _cliqueConfig
+        );
 
         public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
         {
@@ -199,7 +122,96 @@ namespace Nethermind.Consensus.Clique
 
         private ICliqueConfig? _cliqueConfig;
 
-        private IBlocksConfig? _blocksConfig;
         private CliqueBlockProducerRunner _blockProducerRunner = null!;
+    }
+
+    public class CliqueBlockProducerFactory(
+        INethermindApi nethermindApi,
+        ISnapshotManager snapshotManager,
+        ICliqueConfig cliqueConfig
+    ) : IBlockProducerFactory
+    {
+        private readonly IBlocksConfig _blocksConfig = nethermindApi.Config<IBlocksConfig>();
+        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+        {
+            if (nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
+            {
+                return null;
+            }
+
+            (IApiWithBlockchain getFromApi, IApiWithBlockchain setInApi) = nethermindApi!.ForProducer;
+
+            IMiningConfig miningConfig = getFromApi.Config<IMiningConfig>();
+
+            if (!miningConfig.Enabled)
+            {
+                throw new InvalidOperationException("Request to start block producer while mining disabled.");
+            }
+
+            setInApi.Sealer = new CliqueSealer(
+                getFromApi.EngineSigner!,
+                cliqueConfig!,
+                snapshotManager!,
+                getFromApi.LogManager);
+
+            ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree!.AsReadOnly();
+            ITransactionComparerProvider transactionComparerProvider = getFromApi.TransactionComparerProvider;
+            IReadOnlyTxProcessingScope scope = getFromApi.ReadOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
+
+            BlockProcessor producerProcessor = new BlockProcessor(
+                getFromApi!.SpecProvider,
+                getFromApi!.BlockValidator,
+                NoBlockRewards.Instance,
+                getFromApi.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(scope),
+                scope.WorldState,
+                NullReceiptStorage.Instance,
+                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
+                new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
+                getFromApi.LogManager,
+                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, getFromApi.LogManager)),
+                new ExecutionRequestsProcessor(scope.TransactionProcessor));
+
+            IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
+                readOnlyBlockTree,
+                producerProcessor,
+                getFromApi.BlockPreprocessor,
+                getFromApi.StateReader,
+                getFromApi.LogManager,
+                BlockchainProcessor.Options.NoReceipts);
+
+            OneTimeChainProcessor chainProcessor = new(
+                scope.WorldState,
+                producerChainProcessor);
+
+            ITxFilterPipeline txFilterPipeline =
+                TxFilterPipelineBuilder.CreateStandardFilteringPipeline(
+                    nethermindApi.LogManager,
+                    getFromApi.SpecProvider,
+                    _blocksConfig);
+
+            TxPoolTxSource txPoolTxSource = new(
+                getFromApi.TxPool,
+                getFromApi.SpecProvider,
+                transactionComparerProvider,
+                getFromApi.LogManager,
+                txFilterPipeline);
+
+            IGasLimitCalculator gasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
+
+            CliqueBlockProducer blockProducer = new(
+                additionalTxSource.Then(txPoolTxSource),
+                chainProcessor,
+                scope.WorldState,
+                getFromApi.Timestamper,
+                getFromApi.CryptoRandom,
+                snapshotManager!,
+                getFromApi.Sealer!,
+                gasLimitCalculator,
+                getFromApi.SpecProvider,
+                cliqueConfig!,
+                getFromApi.LogManager);
+
+            return blockProducer;
+        }
     }
 }
