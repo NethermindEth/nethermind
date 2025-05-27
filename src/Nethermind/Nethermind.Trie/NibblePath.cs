@@ -247,6 +247,9 @@ public readonly ref struct NibblePath
         if (other.Length != Length)
             return false;
 
+        if (Length == 0)
+            return true;
+
         // Same length
         ref var left = ref _span;
         ref var right = ref other.Span;
