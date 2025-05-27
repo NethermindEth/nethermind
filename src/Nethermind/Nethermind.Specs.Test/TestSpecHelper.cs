@@ -6,17 +6,14 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using System.Collections.Generic;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
-
-[assembly: InternalsVisibleTo("Nethermind.TxPool.Test")]
 
 namespace Nethermind.Specs.Test;
 
 public class TestSpecHelper
 {
-    internal static (ChainSpecBasedSpecProvider, ChainSpec) LoadChainSpec(ChainSpecJson spec)
+    public static (ChainSpecBasedSpecProvider, ChainSpec) LoadChainSpec(ChainSpecJson spec)
     {
         EthereumJsonSerializer serializer = new();
 

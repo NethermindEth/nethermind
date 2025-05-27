@@ -12,7 +12,7 @@ using Nethermind.Int256;
 [assembly: InternalsVisibleTo("Nethermind.TxPool.Test")]
 namespace Nethermind.Specs.ChainSpecStyle.Json;
 
-internal class ChainSpecParamsJson
+public class ChainSpecParamsJson
 {
     public ulong? ChainId { get; set; }
     public ulong? NetworkId { get; set; }
