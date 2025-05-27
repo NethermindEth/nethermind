@@ -205,7 +205,7 @@ internal static partial class EvmInstructions
     public struct OpNumber : IOpEnvUInt64
     {
         public static ulong Operation(EvmState vmState)
-            => (ulong)vmState.Env.TxExecutionContext.BlockExecutionContext.Header.Number;
+            => vmState.Env.TxExecutionContext.BlockExecutionContext.Number;
     }
 
     /// <summary>
@@ -214,7 +214,7 @@ internal static partial class EvmInstructions
     public struct OpGasLimit : IOpEnvUInt64
     {
         public static ulong Operation(EvmState vmState)
-            => (ulong)vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasLimit;
+            => vmState.Env.TxExecutionContext.BlockExecutionContext.GasLimit;
     }
 
     /// <summary>
@@ -306,7 +306,7 @@ internal static partial class EvmInstructions
     public struct OpCoinbase : IOpEnvAddress
     {
         public static Address Operation(EvmState vmState)
-            => vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasBeneficiary;
+            => vmState.Env.TxExecutionContext.BlockExecutionContext.Coinbase;
     }
 
     /// <summary>
@@ -506,18 +506,7 @@ internal static partial class EvmInstructions
     {
         // Charge the base gas cost for this opcode.
         gasAvailable -= GasCostOf.Base;
-        BlockHeader header = vm.EvmState.Env.TxExecutionContext.BlockExecutionContext.Header;
-
-        // Use the random value if post-merge; otherwise, use block difficulty.
-        if (header.IsPostMerge)
-        {
-            stack.Push32Bytes<TTracingInst>(in header.Random.ValueHash256);
-        }
-        else
-        {
-            stack.PushUInt256<TTracingInst>(in header.Difficulty);
-        }
-
+        stack.PushUInt256<TTracingInst>(in vm.EvmState.Env.TxExecutionContext.BlockExecutionContext.PrevRandao);
         return EvmExceptionType.None;
     }
 

@@ -3,32 +3,35 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public readonly struct BlockExecutionContext
+public readonly struct BlockExecutionContext(BlockHeader blockHeader, in UInt256 blobBaseFee)
 {
-    public readonly UInt256 BlobBaseFee;
-    public BlockHeader Header { get; }
+    public readonly UInt256 BlobBaseFee = blobBaseFee;
+    public readonly BlockHeader Header = blockHeader;
+    public readonly ulong Number = (ulong)blockHeader.Number;
+    public readonly ulong GasLimit = (ulong)blockHeader.GasLimit;
+    public readonly Address Coinbase = blockHeader.Beneficiary ?? Address.Zero;
 
-    public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec)
+    // Use the random value if post-merge; otherwise, use block difficulty.
+    public readonly UInt256 PrevRandao = blockHeader.IsPostMerge
+        ? (blockHeader.Random ?? Hash256.Zero).ValueHash256.ToUInt256()
+        : blockHeader.Difficulty;
+
+    public bool IsGenesis { get; } = blockHeader.IsGenesis;
+
+    public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec) : this(blockHeader, GetBlobBaseFee(blockHeader, spec))
     {
-        Header = blockHeader;
-        if (blockHeader?.ExcessBlobGas is not null)
-        {
-            if (!BlobGasCalculator.TryCalculateFeePerBlobGas(blockHeader.ExcessBlobGas.Value, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
-            {
-                throw new OverflowException("Blob gas price calculation led to overflow.");
-            }
-            BlobBaseFee = feePerBlobGas;
-        }
     }
 
-    public BlockExecutionContext(BlockHeader blockHeader, in UInt256 forceBlobBaseFee)
-    {
-        Header = blockHeader;
-        BlobBaseFee = forceBlobBaseFee;
-    }
+    private static UInt256 GetBlobBaseFee(BlockHeader? blockHeader, IReleaseSpec spec) =>
+        blockHeader?.ExcessBlobGas is not null
+            ? !BlobGasCalculator.TryCalculateFeePerBlobGas(blockHeader.ExcessBlobGas.Value, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas)
+                ? throw new OverflowException("Blob gas price calculation led to overflow.")
+                : feePerBlobGas
+            : UInt256.Zero;
 }
