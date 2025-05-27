@@ -22,7 +22,7 @@ public readonly struct BlockExecutionContext(BlockHeader blockHeader, in UInt256
         ? (blockHeader.Random ?? Hash256.Zero).ValueHash256.ToUInt256()
         : blockHeader.Difficulty;
 
-    public bool IsGenesis { get; } = blockHeader.IsGenesis;
+    public readonly bool IsGenesis = blockHeader.IsGenesis;
 
     public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec) : this(blockHeader, GetBlobBaseFee(blockHeader, spec))
     {
