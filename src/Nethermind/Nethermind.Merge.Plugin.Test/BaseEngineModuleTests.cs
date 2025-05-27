@@ -55,7 +55,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
 
-public partial class BaseEngineModuleTests
+public abstract partial class BaseEngineModuleTests
 {
     [SetUp]
     public Task Setup()
@@ -134,6 +134,10 @@ public partial class BaseEngineModuleTests
                 chain.PayloadPreparationService!,
                 chain.SpecProvider!,
                 chain.LogManager),
+            new GetPayloadV5Handler(
+                chain.PayloadPreparationService!,
+                chain.SpecProvider!,
+                chain.LogManager),
             new NewPayloadHandler(
                 chain.BlockValidator,
                 chain.BlockTree,
@@ -167,6 +171,7 @@ public partial class BaseEngineModuleTests
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
             new GetBlobsHandler(chain.TxPool),
+            new GetBlobsHandlerV2(chain.TxPool),
             Substitute.For<IEngineRequestsTracker>(),
             chain.SpecProvider,
             new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
