@@ -18,7 +18,7 @@ while (true)
     {
         Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(input), RlpBehaviors.SkipTypedWrapping);
         TxValidator txValidator = new TxValidator(BlockchainIds.Mainnet);
-        ValidationResult wellFormed = txValidator.IsWellFormed(tx, Prague.Instance);
+        ValidationResult wellFormed = txValidator.IsWellFormed(tx, Fork.GetLatest());
         if (wellFormed)
         {
             EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
