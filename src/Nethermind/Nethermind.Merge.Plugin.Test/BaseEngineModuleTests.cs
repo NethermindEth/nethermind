@@ -342,6 +342,7 @@ public abstract partial class BaseEngineModuleTests
 
             BlockProducerEnvFactory blockProducerEnvFactory = new(
                 WorldStateManager!,
+                ReadOnlyTxProcessingEnvFactory,
                 BlockTree,
                 SpecProvider,
                 BlockValidator,
@@ -400,8 +401,6 @@ public abstract partial class BaseEngineModuleTests
                 StoringBlockImprovementContextFactory = value as StoringBlockImprovementContextFactory ?? new StoringBlockImprovementContextFactory(value);
             }
         }
-
-        public ReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => Container.Resolve<ReadOnlyTxProcessingEnvFactory>();
 
         public async Task<MergeTestBlockchain> Build(ISpecProvider specProvider) =>
             (MergeTestBlockchain)await Build(configurer: (builder) => builder.AddSingleton<ISpecProvider>(specProvider));

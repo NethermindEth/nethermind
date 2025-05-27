@@ -35,6 +35,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ChainSpec chainSpec,
         IAbiEncoder abiEncoder,
         Func<StartBlockProducerAuRa> startBlockProducerFactory,
+        IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
         IWorldStateManager worldStateManager,
         IBlockTree blockTree,
         ISpecProvider specProvider,
@@ -47,6 +48,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         IBlocksConfig blocksConfig,
         ILogManager logManager) : base(
             worldStateManager,
+            txProcessingEnvFactory,
             blockTree,
             specProvider,
             blockValidator,
