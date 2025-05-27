@@ -41,6 +41,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Serialization.Json;
 using Nethermind.Crypto;
 using System.Net;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.CL.P2P;
@@ -98,6 +99,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
             _api.WorldStateManager,
+            _api.ReadOnlyTxProcessingEnvFactory,
             _api.BlockTree,
             _api.SpecProvider,
             _api.BlockValidator,
@@ -385,6 +387,9 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddSingleton<IBlockValidator, OptimismBlockValidator>()
             .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
+
+            // Block processing
+            .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
             ;
 
     }

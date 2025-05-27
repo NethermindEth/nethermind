@@ -79,6 +79,7 @@ namespace Nethermind.Api
 
         IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
         IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
+        IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory { get; }
 
         IGasPriceOracle? GasPriceOracle { get; set; }
 

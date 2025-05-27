@@ -28,6 +28,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
 
     public OptimismBlockProducerEnvFactory(
         IWorldStateManager worldStateManager,
+        IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
         IBlockTree blockTree,
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
@@ -41,6 +42,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         OptimismCostHelper l1CostHelper,
         ILogManager logManager) : base(
             worldStateManager,
+            txProcessingEnvFactory,
             blockTree,
             specProvider,
             blockValidator,
@@ -57,12 +59,8 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, blocksConfig.BlockProductionMaxTxKilobytes, logManager);
     }
 
-    protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager,
-        ReadOnlyBlockTree readOnlyBlockTree) =>
-        new OptimismReadOnlyTxProcessingEnv(worldStateManager, readOnlyBlockTree, _specProvider, _logManager, _l1CostHelper, _specHelper);
-
     protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource,
-        ReadOnlyTxProcessingEnv processingEnv,
+        IReadOnlyTxProcessorSource processingEnv,
         ITxPool txPool, IBlocksConfig blocksConfig, ITransactionComparerProvider transactionComparerProvider,
         ILogManager logManager)
     {

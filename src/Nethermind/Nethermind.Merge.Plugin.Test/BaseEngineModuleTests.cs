@@ -396,6 +396,8 @@ public abstract partial class BaseEngineModuleTests
             }
         }
 
+        public ReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => Container.Resolve<ReadOnlyTxProcessingEnvFactory>();
+
         public async Task<MergeTestBlockchain> Build(ISpecProvider specProvider) =>
             (MergeTestBlockchain)await Build(configurer: (builder) => builder.AddSingleton<ISpecProvider>(specProvider));
 

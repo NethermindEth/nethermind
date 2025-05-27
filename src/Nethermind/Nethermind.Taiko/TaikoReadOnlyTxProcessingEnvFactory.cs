@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -12,7 +14,8 @@ public class TaikoReadOnlyTxProcessingEnvFactory(
     IWorldStateManager worldStateManager,
     IReadOnlyBlockTree readOnlyBlockTree,
     ISpecProvider specProvider,
-    ILogManager logManager)
+    ILogManager logManager): IReadOnlyTxProcessingEnvFactory
 {
-    public TaikoReadOnlyTxProcessingEnv Create() => new(worldStateManager, readOnlyBlockTree, specProvider, logManager);
+    public IReadOnlyTxProcessorSource Create() => new TaikoReadOnlyTxProcessingEnv (worldStateManager, readOnlyBlockTree, specProvider, logManager);
+    public IReadOnlyTxProcessorSource CreateForWarmingUp(IWorldState worldStateForWarmUp) => new TaikoReadOnlyTxProcessingEnv(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateForWarmUp);
 }

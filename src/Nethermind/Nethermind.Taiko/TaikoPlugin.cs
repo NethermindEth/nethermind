@@ -133,8 +133,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         TaikoPayloadPreparationService payloadPreparationService = CreatePayloadPreparationService(_api, readonlyBlockTree, txDecoder);
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
-        ReadOnlyTxProcessingEnvFactory readonlyTxProcessingEnvFactory = new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
-
         var poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
         var invalidChainTracker = _api.Context.Resolve<IInvalidChainTracker>();
         var peerRefresher = _api.Context.Resolve<IPeerRefresher>();
@@ -190,7 +188,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _api.LogManager,
             _api.TxPool,
             readonlyBlockTree,
-            readonlyTxProcessingEnvFactory,
+            _api.ReadOnlyTxProcessingEnvFactory,
             txDecoder
         );
 
@@ -303,6 +301,7 @@ public class TaikoModule : Module
             .AddSingleton<IHeaderValidator, TaikoHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
 
+            .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
             ;
     }
 }

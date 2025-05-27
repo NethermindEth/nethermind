@@ -11,6 +11,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps
@@ -84,8 +85,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             }
         }
 
-        public ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
-            new ReadOnlyTxProcessingEnv(WorldStateManager!, BlockTree!.AsReadOnly(), SpecProvider!, LogManager!);
+        public IReadOnlyTxProcessorSource CreateReadOnlyTransactionProcessorSource() => ReadOnlyTxProcessingEnvFactory.Create();
 
         public StartBlockProducerAuRa CreateStartBlockProducer()
         {
