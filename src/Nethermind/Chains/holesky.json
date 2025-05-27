@@ -63,6 +63,7 @@
     "MergeForkIdTransition": "0x0",
     "blobSchedule": [
       {
+        "name": "prague",
         "timestamp": "0x67BCEAC0",
         "target": 6,
         "max": 9,

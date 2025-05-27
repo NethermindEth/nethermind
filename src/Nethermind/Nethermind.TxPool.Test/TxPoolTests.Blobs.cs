@@ -15,7 +15,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
@@ -26,9 +25,6 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
-using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace Nethermind.TxPool.Test
@@ -936,7 +932,7 @@ namespace Nethermind.TxPool.Test
         [TestCaseSource(nameof(BlobScheduleActivationsTestCaseSource))]
         public async Task<int> should_evict_based_on_proof_version_and_fork(BlobsSupportMode poolMode, TestAction[] testActions)
         {
-            ChainSpecBasedSpecProvider provider = LoadChainSpec(new ChainSpecJson
+            (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(new ChainSpecJson
             {
                 Params = new ChainSpecParamsJson
                 {
@@ -1003,21 +999,6 @@ namespace Nethermind.TxPool.Test
                     yield return MakeTestCase("Ignore V1 before Osaka, no gaps", 0, mode, TestAction.AddV1);
                 }
             }
-        }
-
-        private static ChainSpecBasedSpecProvider LoadChainSpec(ChainSpecJson spec)
-        {
-            EthereumJsonSerializer serializer = new();
-
-            spec.Engine ??= new ChainSpecJson.EngineJson
-            {
-                CustomEngineData = new Dictionary<string, JsonElement> { { "NethDev", serializer.Deserialize<JsonElement>("{}") } }
-            };
-
-            ChainSpecLoader loader = new(serializer);
-            MemoryStream data = new(Encoding.UTF8.GetBytes(serializer.Serialize(spec)));
-
-            return new(loader.Load(data));
         }
 
         private Task AddBlock()

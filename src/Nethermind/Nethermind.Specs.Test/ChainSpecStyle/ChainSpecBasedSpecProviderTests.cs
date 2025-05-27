@@ -829,15 +829,14 @@ public class ChainSpecBasedSpecProviderTests
         BlobScheduleSettings[] blobScheduleSettings,
         ulong[] expectedActivationSettings)
     {
-        ChainSpecBasedSpecProvider provider = new(new ChainSpec
+        (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(new ChainSpecJson
         {
-            Parameters = new ChainParameters
+            Params = new ChainSpecParamsJson
             {
                 Eip4844TransitionTimestamp = eip4844Timestamp,
                 Eip7002TransitionTimestamp = eip7002Timestamp,
                 BlobSchedule = [.. blobScheduleSettings]
             },
-            EngineChainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>()
         });
 
         IReleaseSpec spec = provider.GenesisSpec;
@@ -863,7 +862,7 @@ public class ChainSpecBasedSpecProviderTests
                 => new([
                     (ulong)eip4844Timestamp,
                     (ulong)eip7002Timestamp,
-                    settings.Select(s => new BlobScheduleSettings { Timestamp = (ulong)s.timestamp, Max = (ulong)s.max, Target = (ulong)s.max, BaseFeeUpdateFraction = (ulong)s.max }).ToArray(),
+                    settings.Select(s => new BlobScheduleSettings { Timestamp = (ulong)s.timestamp, Max = (ulong)s.max }).ToArray(),
                     expectedActivationSettings])
                 { TestName = $"BlobScheduleActivations: {testName}" };
 
@@ -893,6 +892,10 @@ public class ChainSpecBasedSpecProviderTests
             yield return MakeTestCase("BPOs match named forks", 1, 2, [(1, 10), (2, 3)], [NoneAllowed, 10, 3]);
 
             yield return MakeTestCase("BPO timestamp matches genesis, but not any other fork", 0, 2, [(0, 10), (1, 11)], [10, 11, 11]);
+
+            yield return MakeTestCase("Unordered", 0, 2, [(4, 10), (3, 11)], [Default, Default, 11, 10]);
+
+            yield return MakeTestCase("Unordered between named forks", 0, 2, [(4, 10), (1, 11)], [Default, 11, 11, 10]);
         }
     }
 

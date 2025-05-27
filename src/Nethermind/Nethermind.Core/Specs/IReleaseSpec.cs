@@ -359,6 +359,11 @@ namespace Nethermind.Core.Specs
         bool IsEip7825Enabled { get; }
 
         /// <summary>
+        ///  Increase ModExp Gas Cost
+        /// </summary>
+        bool IsEip7883Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
