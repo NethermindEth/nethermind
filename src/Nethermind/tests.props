@@ -1,4 +1,5 @@
 <Project>
+  
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <EnableNUnitRunner>true</EnableNUnitRunner>
@@ -19,4 +20,10 @@
     </PackageReference>
     <PackageReference Include="NUnit3TestAdapter" />
   </ItemGroup>
+
+  <!-- Must be removed when https://youtrack.jetbrains.com/issue/RSRP-498837 is fixed -->
+  <ItemGroup Condition="$(ContinuousIntegrationBuild) != 'true'">
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+  </ItemGroup>
+  
 </Project>
