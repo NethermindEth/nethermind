@@ -14,7 +14,7 @@ public readonly struct BlockExecutionContext(BlockHeader blockHeader, in UInt256
     public readonly BlockHeader Header = blockHeader;
     public readonly ulong Number = (ulong)blockHeader.Number;
     public readonly ulong GasLimit = (ulong)blockHeader.GasLimit;
-    public readonly Address Coinbase = blockHeader.Beneficiary ?? Address.Zero;
+    public readonly Address Coinbase = blockHeader.GasBeneficiary ?? Address.Zero;
     public readonly UInt256 BlobBaseFee = blobBaseFee;
 
     // Use the random value if post-merge; otherwise, use block difficulty.
