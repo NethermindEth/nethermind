@@ -677,8 +677,8 @@ namespace Nethermind.TxPool
             UInt256? previousTxBottleneck = null;
             int i = 0;
             UInt256 cumulativeCost = 0;
-            ProofVersion headSpec = _specProvider.GetCurrentHeadSpec().BlobProofVersion;
-            bool drop = false;
+            IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
+            bool dropBlobs = false;
 
             foreach (Transaction tx in transactions)
             {
@@ -691,9 +691,9 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    drop |= tx.SupportsBlobs && tx.GetProofVersion() != headSpec;
+                    dropBlobs |= tx.SupportsBlobs && (tx.GetProofVersion() != headSpec.BlobProofVersion || (ulong)tx.BlobVersionedHashes!.Length > headSpec.MaxBlobCount);
 
-                    if (drop)
+                    if (dropBlobs)
                     {
                         _hashCache.DeleteFromLongTerm(tx.Hash!);
                         updateTx(transactions, tx, changedGasBottleneck: null, lastElement);

@@ -19,6 +19,7 @@ using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
@@ -112,13 +113,12 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.LogManager,
             _api.BlockTree!,
             NullWithdrawalProcessor.Instance,
-            transactionProcessor,
+            new ExecutionRequestsProcessor(transactionProcessor),
             CreateAuRaValidator(worldState, transactionProcessor),
             txFilter,
             GetGasLimitCalculator(),
             contractRewriter,
-            preWarmer: preWarmer
-        );
+            preWarmer: preWarmer);
     }
 
     protected override IHealthHintService CreateHealthHintService() =>

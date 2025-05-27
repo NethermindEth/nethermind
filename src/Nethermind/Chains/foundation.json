@@ -200,18 +200,15 @@
     "eip7623TransitionTimestamp": "0x681b3057",
     "depositContractAddress": "0x00000000219ab540356cbb839cbe05303d7705fa",
     "terminalTotalDifficulty": "C70D808A128D7380000",
-    "blobSchedule": {
-      "cancun": {
-        "target": 3,
-        "max": 6,
-        "baseFeeUpdateFraction": "0x32f0ed"
-      },
-      "prague": {
+    "blobSchedule": [
+      {
+        "name": "prague",
+        "timestamp": "0x681b3057",
         "target": 6,
         "max": 9,
-        "baseFeeUpdateFraction":  "0x4c6964"
+        "baseFeeUpdateFraction": "0x4c6964"
       }
-    }
+    ]
   },
   "genesis": {
     "seal": {
