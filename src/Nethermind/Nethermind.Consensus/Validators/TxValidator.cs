@@ -3,8 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using CkzgLib;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
