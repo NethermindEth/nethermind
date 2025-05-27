@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm;
@@ -17,6 +18,7 @@ public class BlockProcessingModule: Module
             .AddScoped<ITransactionProcessor, TransactionProcessor>()
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
             .AddScoped<IVirtualMachine, VirtualMachine>()
+            .AddScoped<IBlockhashProvider, BlockhashProvider>()
             .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
             ;
     }

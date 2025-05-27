@@ -71,7 +71,6 @@ public class TestBlockProcessingModule : Module
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddScoped<BlockchainProcessor>()
-            .AddScoped<IBlockhashProvider, BlockhashProvider>()
 
             // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
             // in a `MainBlockProcessingContext`.
