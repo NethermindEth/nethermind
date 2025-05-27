@@ -20,14 +20,15 @@ namespace Nethermind.Core
         {
             StringBuilder builder = new();
             builder.AppendLine(NethermindLogo);
-            builder.AppendLine("======================== Nethermind initialization completed ========================");
+            builder.AppendLine("-----------------------------  Initialization Completed  -----------------------------");
+            builder.AppendLine();
 
             foreach ((string key, string value) in _nodeInfoItems.OrderByDescending(static ni => ni.Key))
             {
                 builder.AppendLine($"{key} {value}");
             }
 
-            builder.Append("=====================================================================================");
+            builder.Append("--------------------------------------------------------------------------------------");
             return builder.ToString();
         }
 
