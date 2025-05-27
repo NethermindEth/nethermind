@@ -28,7 +28,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class BlockProcessingModule : Module
+public class TestBlockProcessingModule : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -66,10 +66,8 @@ public class BlockProcessingModule : Module
             .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
             .AddScoped<IBlockProcessor, BlockProcessor>()
             .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardCalculatorSource, txProcessor) => rewardCalculatorSource.Get(txProcessor))
-            .AddScoped<ITransactionProcessor, TransactionProcessor>()
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
             .AddScoped<IBlockhashStore, BlockhashStore>()
-            .AddScoped<IVirtualMachine, VirtualMachine>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddScoped<BlockchainProcessor>()
