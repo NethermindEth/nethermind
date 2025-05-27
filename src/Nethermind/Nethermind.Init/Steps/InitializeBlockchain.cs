@@ -76,7 +76,7 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-
+            VirtualMachine.WarmUpEvmInstructions();
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
