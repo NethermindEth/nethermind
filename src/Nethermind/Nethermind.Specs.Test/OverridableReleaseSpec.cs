@@ -190,6 +190,7 @@ namespace Nethermind.Specs.Test
         public bool IsEofEnabled => _spec.IsEofEnabled;
         public bool IsEip6110Enabled => _spec.IsEip6110Enabled;
         public Address DepositContractAddress => _spec.DepositContractAddress;
+        public bool IsEip7594Enabled => _spec.IsEip7594Enabled;
 
         Array? IReleaseSpec.EvmInstructionsNoTrace { get => _spec.EvmInstructionsNoTrace; set => _spec.EvmInstructionsNoTrace = value; }
         Array? IReleaseSpec.EvmInstructionsTraced { get => _spec.EvmInstructionsTraced; set => _spec.EvmInstructionsTraced = value; }

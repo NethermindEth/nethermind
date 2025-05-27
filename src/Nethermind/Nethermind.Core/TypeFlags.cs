@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Evm;
+namespace Nethermind.Core;
 
 /// <summary>
 /// Represents a flag interface that declares a static boolean property.

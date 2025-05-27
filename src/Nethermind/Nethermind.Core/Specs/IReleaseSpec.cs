@@ -453,15 +453,17 @@ namespace Nethermind.Core.Specs
 
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
 
+        public bool IsEip7594Enabled { get; }
+
         /// <summary>
         /// This property holds an array that, at runtime, is actually an array of function pointers
         /// with the signature:
         /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
-        /// The array is lazily populated with JIT-optimized instructions for an EVM without tracing, 
+        /// The array is lazily populated with JIT-optimized instructions for an EVM without tracing,
         /// but it cannot be explicitly typed as such due to cross-project layering constraints.
         /// </summary>
         /// <remarks>
-        /// Because of these layering issues, the property is declared as <see cref="System.Array"/> 
+        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
         /// even though it internally represents a typed array of function pointers.
         /// </remarks>
         public Array? EvmInstructionsNoTrace { get; set; }
@@ -470,14 +472,16 @@ namespace Nethermind.Core.Specs
         /// This property holds an array that, at runtime, is actually an array of function pointers
         /// with the signature:
         /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
-        /// The array is lazily populated with JIT-optimized instructions for an EVM, 
+        /// The array is lazily populated with JIT-optimized instructions for an EVM,
         /// capturing additional tracing data. It cannot be explicitly typed as such due to cross-project
         /// layering constraints.
         /// </summary>
         /// <remarks>
-        /// Because of these layering issues, the property is declared as <see cref="System.Array"/> 
+        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
         /// even though it internally represents a typed array of function pointers.
         /// </remarks>
         public Array? EvmInstructionsTraced { get; set; }
+
+        public ProofVersion BlobProofVersion => IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
     }
 }

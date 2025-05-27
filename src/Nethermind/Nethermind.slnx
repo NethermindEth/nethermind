@@ -34,8 +34,9 @@
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="Directory.Build.props" />
-    <File Path="Directory.Packages.props" />
-    <File Path="nuget.config" />
+    <File Path="../../Directory.Packages.props" />
+    <File Path="../../nuget.config" />
+    <File Path="testenvironments.json" />
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="Nethermind.Abi.Test/Nethermind.Abi.Test.csproj" />
