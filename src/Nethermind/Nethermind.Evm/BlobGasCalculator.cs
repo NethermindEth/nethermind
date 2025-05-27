@@ -9,7 +9,8 @@ namespace Nethermind.Evm;
 
 public static class BlobGasCalculator
 {
-    public const int FloorExecutionGasEip7918 = Transaction.BaseTxGasCost;
+    // EIP-7918 floor for blob execution gas
+    public const int BlobBaseCost = 2 << 14;
 
     public static ulong CalculateBlobGas(int blobCount) =>
         (ulong)blobCount * Eip4844Constants.GasPerBlob;
@@ -108,10 +109,10 @@ public static class BlobGasCalculator
         }
 
         ulong excessBlobGas = parentBlockHeader.ExcessBlobGas ?? 0;
-        excessBlobGas += parentBlockHeader.BlobGasUsed ?? 0;
+        ulong blobGasUsed = parentBlockHeader.BlobGasUsed ?? 0;
         var targetBlobGasPerBlock = releaseSpec.GetTargetBlobGasPerBlock();
 
-        if (excessBlobGas < targetBlobGasPerBlock)
+        if (excessBlobGas + blobGasUsed < targetBlobGasPerBlock)
         {
             return 0;
         }
@@ -119,15 +120,17 @@ public static class BlobGasCalculator
         if (releaseSpec.IsEip7918Enabled)
         {
             TryCalculateFeePerBlobGas(parentBlockHeader, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
-            UInt256 floorCost = FloorExecutionGasEip7918 * parentBlockHeader.BaseFeePerGas;
-            UInt256 targetCost = releaseSpec.GetTargetBlobGasPerBlock() * feePerBlobGas;
+            UInt256 floorCost = BlobBaseCost * parentBlockHeader.BaseFeePerGas;
+            UInt256 targetCost = targetBlobGasPerBlock * feePerBlobGas;
 
             if (floorCost > targetCost)
             {
-                return excessBlobGas / 3;
+                var maxBlobGasPerBlock = releaseSpec.GetMaxBlobGasPerBlock();
+                var d = blobGasUsed * (maxBlobGasPerBlock - targetBlobGasPerBlock) / maxBlobGasPerBlock;
+                return excessBlobGas + d;
             }
         }
 
-        return excessBlobGas - targetBlobGasPerBlock;
+        return excessBlobGas + blobGasUsed - targetBlobGasPerBlock;
     }
 }
