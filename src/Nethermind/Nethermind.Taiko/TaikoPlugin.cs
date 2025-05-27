@@ -131,7 +131,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
         IRlpStreamDecoder<Transaction> txDecoder = Rlp.GetStreamDecoder<Transaction>() ?? throw new ArgumentNullException(nameof(IRlpStreamDecoder<Transaction>));
-        TaikoPayloadPreparationService payloadPreparationService = CreatePayloadPreparationService(_api, readonlyBlockTree, txDecoder);
+        TaikoPayloadPreparationService payloadPreparationService = CreatePayloadPreparationService(_api, txDecoder);
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
         var poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
@@ -198,14 +198,12 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         if (_logger.IsInfo) _logger.Info("Taiko Engine Module has been enabled");
     }
 
-    private static TaikoPayloadPreparationService CreatePayloadPreparationService(TaikoNethermindApi api, IReadOnlyBlockTree readonlyBlockTree, IRlpStreamDecoder<Transaction> txDecoder)
+    private static TaikoPayloadPreparationService CreatePayloadPreparationService(TaikoNethermindApi api, IRlpStreamDecoder<Transaction> txDecoder)
     {
         ArgumentNullException.ThrowIfNull(api.L1OriginStore);
         ArgumentNullException.ThrowIfNull(api.SpecProvider);
 
-        TaikoReadOnlyTxProcessingEnv txProcessingEnv =
-            new(api.WorldStateManager!, readonlyBlockTree, api.SpecProvider, api.LogManager);
-
+        IReadOnlyTxProcessorSource txProcessingEnv = api.ReadOnlyTxProcessingEnvFactory.Create();
         IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
         BlockProcessor blockProcessor = new BlockProcessor(
@@ -226,7 +224,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 api.BlockTree,
                 blockProcessor,
                 api.BlockPreprocessor,
-                txProcessingEnv.StateReader,
+                api.StateReader!,
                 api.LogManager,
                 BlockchainProcessor.Options.NoReceipts);
 

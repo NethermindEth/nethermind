@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -37,13 +38,18 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
         return childScope.Resolve<AutoReadOnlyTxProcessingEnv>();
     }
 
-    private class AutoReadOnlyTxProcessingEnv(ITransactionProcessor transactionProcessor, IWorldState worldState) : IReadOnlyTxProcessorSource
+    private class AutoReadOnlyTxProcessingEnv(ITransactionProcessor transactionProcessor, IWorldState worldState, ILifetimeScope lifetimeScope) : IReadOnlyTxProcessorSource, IDisposable
     {
         public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
         {
             Hash256 originalStateRoot = worldState.StateRoot;
             worldState.StateRoot = stateRoot;
             return new ReadOnlyTxProcessingScope(transactionProcessor, worldState, originalStateRoot);
+        }
+
+        public void Dispose()
+        {
+            lifetimeScope.Dispose();
         }
     }
 }
