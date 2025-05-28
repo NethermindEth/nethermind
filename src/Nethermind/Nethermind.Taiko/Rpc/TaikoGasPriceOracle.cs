@@ -5,12 +5,15 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.L2.Common.L1Rpc;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using System;
 using System.Linq;
+using System.Threading.Tasks;
+using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -20,6 +23,7 @@ public class TaikoGasPriceOracle : IGasPriceOracle
     private readonly ISpecProvider _specProvider;
     private readonly IFeeHistoryOracle _feeHistoryOracle;
     private readonly ILogger _logger;
+    private readonly IEthApi _l1Client;
     internal PriceCache _gasPriceEstimation;
     private readonly UInt256 _minGasPrice;
 
@@ -37,13 +41,15 @@ public class TaikoGasPriceOracle : IGasPriceOracle
         ISpecProvider specProvider,
         IFeeHistoryOracle feeHistoryOracle,
         ILogManager logManager,
-        UInt256 minGasPrice)
+        UInt256 minGasPrice,
+        IEthApi l1Client)
     {
         _blockFinder = blockFinder;
         _specProvider = specProvider;
         _feeHistoryOracle = feeHistoryOracle;
         _logger = logManager.GetClassLogger();
         _minGasPrice = minGasPrice;
+        _l1Client = l1Client;
     }
 
     private UInt256 FallbackGasPrice() => _gasPriceEstimation.LastPrice ?? _minGasPrice;
@@ -64,9 +70,9 @@ public class TaikoGasPriceOracle : IGasPriceOracle
             return price!.Value;
         }
 
-        UInt256 l1BaseFee = headBlock.BaseFeePerGas;
-        UInt256 l1BlobBaseFee = GetL1BlobBaseFee();
-        UInt256 l1AverageBaseFee = GetL1AverageBaseFee();
+        UInt256 l1BaseFee = GetL1BaseFee().GetAwaiter().GetResult();
+        UInt256 l1BlobBaseFee = GetL1BlobBaseFee().GetAwaiter().GetResult();
+        UInt256 l1AverageBaseFee = GetL1AverageBaseFee().GetAwaiter().GetResult();
 
         // Gas cost to post a batch on L1
         UInt256 costWithCallData = BatchPostingGasWithCallData * l1BaseFee;
@@ -84,42 +90,55 @@ public class TaikoGasPriceOracle : IGasPriceOracle
         return gasPriceEstimate;
     }
 
-    private UInt256 GetL1BlobBaseFee()
+    private async Task<UInt256> GetL1BaseFee()
     {
-        if (_blockFinder.Head?.Header?.ExcessBlobGas is null)
+        try
         {
-            if (_logger.IsTrace) _logger.Trace("[TaikoGasPriceOracle] No excess blob gas available, returning zero blob base fee");
+            var block = await _l1Client.GetHead(false);
+            return block?.BaseFeePerGas ?? UInt256.Zero;
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsTrace) _logger.Trace($"[TaikoGasPriceOracle] Failed to get L1 base fee: {ex.Message}");
             return UInt256.Zero;
         }
-
-        IReleaseSpec spec = _specProvider.GetSpec(_blockFinder.Head?.Header!);
-        if (!BlobGasCalculator.TryCalculateFeePerBlobGas(
-                _blockFinder.Head?.Header?.ExcessBlobGas ?? 0,
-                spec.BlobBaseFeeUpdateFraction,
-                out UInt256 feePerBlobGas))
-        {
-            if (_logger.IsTrace) _logger.Trace("[TaikoGasPriceOracle] Failed to calculate fee per blob gas");
-            return UInt256.Zero;
-        }
-
-        return feePerBlobGas;
     }
 
-    private UInt256 GetL1AverageBaseFee()
+    private async Task<UInt256> GetL1BlobBaseFee()
     {
-        // TODO: More efficient way to get the average base fee?
-        var result = _feeHistoryOracle.GetFeeHistory(FeeHistoryBlockCount, BlockParameter.Latest, null);
-        if (result.Result.ResultType != ResultType.Success || result.Data?.BaseFeePerGas is null)
+        try
         {
-            if (_logger.IsTrace) _logger.Trace("[TaikoGasPriceOracle] Failed to get fee history for average base fee calculation");
+            return await _l1Client.GetBlobBaseFee();
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsTrace) _logger.Trace($"[TaikoGasPriceOracle] Failed to get L1 blob base fee: {ex.Message}");
             return UInt256.Zero;
         }
+    }
 
-        UInt256 average = (UInt256)result.Data.BaseFeePerGas.Average(fee => (decimal)fee);
+    private async Task<UInt256> GetL1AverageBaseFee()
+    {
+        try
+        {
+            L1FeeHistoryResults? l1FeeHistory = await _l1Client.GetFeeHistory(FeeHistoryBlockCount, BlockParameter.Latest, null);
+            if (l1FeeHistory?.BaseFeePerGas == null || l1FeeHistory.BaseFeePerGas.Length == 0)
+            {
+                if (_logger.IsTrace) _logger.Trace("[TaikoGasPriceOracle] Failed to get fee history for average base fee calculation");
+                return UInt256.Zero;
+            }
 
-        if (_logger.IsTrace) _logger.Trace($"[TaikoGasPriceOracle] Calculated L1 average base fee: {average}, " +
-            $"Based on {result.Data.BaseFeePerGas.Count} blocks");
-        return average;
+            var average = (UInt256)l1FeeHistory.BaseFeePerGas.Average(fee => (decimal)fee);
+
+            if (_logger.IsTrace) _logger.Trace($"[TaikoGasPriceOracle] Calculated L1 average base fee: {average}, " +
+                $"Based on {l1FeeHistory.BaseFeePerGas.Length} blocks");
+            return average;
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsTrace) _logger.Trace($"[TaikoGasPriceOracle] Failed to calculate average base fee: {ex.Message}");
+            return UInt256.Zero;
+        }
     }
 
     public UInt256 GetMaxPriorityGasFeeEstimate()
