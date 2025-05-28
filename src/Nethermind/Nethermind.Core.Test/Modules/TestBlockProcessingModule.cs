@@ -7,6 +7,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -16,12 +17,12 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -38,6 +39,7 @@ public class TestBlockProcessingModule : Module
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
             // NOTE: The ordering of block preprocessor is not guarenteed
             .AddComposite<IBlockPreprocessorStep, CompositeBlockPreprocessorStep>()
+            .AddSingleton<CompositeBlockPreprocessorStep>()
             .AddSingleton<IBlockPreprocessorStep, RecoverSignatures>()
 
             // Yea, for some reason, the ICodeInfoRepository need to be the main one for ChainHeadInfoProvider to work.
@@ -99,6 +101,15 @@ public class TestBlockProcessingModule : Module
             .AddSingleton<IManualBlockProductionTrigger, BuildBlocksWhenRequested>()
             .AddSingleton<ProducedBlockSuggester>()
             .ResolveOnServiceActivation<ProducedBlockSuggester, IBlockProducerRunner>()
+
+            .AddSingleton<ISigner>(NullSigner.Instance)
+            .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>
+                new GasPriceOracle(
+                    blockTree,
+                    specProvider,
+                    logManager,
+                    blocksConfig.MinGasPrice
+                ))
 
             ;
     }

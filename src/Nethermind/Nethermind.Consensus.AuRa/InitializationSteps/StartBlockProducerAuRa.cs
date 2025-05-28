@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -59,12 +60,12 @@ public class StartBlockProducerAuRa(
     IAbiEncoder abiEncoder,
     IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
     TxAuRaFilterBuilders apiTxAuRaFilterBuilders,
-    TxPriorityContract.LocalDataSource txPriorityContractLocalDataSource,
+    AuraStatefulComponents auraStatefulComponents,
     ITxPool txPool,
     IStateReader apiStateReader,
     ITransactionComparerProvider transactionComparerProvider,
     CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
-    IProtectedPrivateKey protectedPrivateKey,
+    [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey protectedPrivateKey,
     ICryptoRandom cryptoRandom,
     IBlockValidator blockValidator,
     IRewardCalculatorSource rewardCalculatorSource,
@@ -186,7 +187,7 @@ public class StartBlockProducerAuRa(
     internal TxPoolTxSource CreateTxPoolTxSource()
     {
         _txPriorityContract = apiTxAuRaFilterBuilders.CreateTxPrioritySources();
-        _localDataSource = txPriorityContractLocalDataSource;
+        _localDataSource = auraStatefulComponents.TxPriorityContractLocalDataSource;
 
         if (_txPriorityContract is not null || _localDataSource is not null)
         {
