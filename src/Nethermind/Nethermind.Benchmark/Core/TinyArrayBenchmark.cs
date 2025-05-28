@@ -9,9 +9,8 @@ using Nethermind.Core;
 
 namespace Nethermind.Benchmarks.Core;
 
-[ShortRunJob]
 [MemoryDiagnoser]
-[DisassemblyDiagnoser]
+[DisassemblyDiagnoser(maxDepth: 2)]
 public class TinyArrayBenchmark
 {
     private const int MaxLength = 32;
@@ -37,8 +36,8 @@ public class TinyArrayBenchmark
                array.SequenceEqual(span);
     }
 
-    [Benchmark(OperationsPerInvoke = 4)]
-    [ArgumentsSource(nameof(Arrays))]
+    // [Benchmark(OperationsPerInvoke = 4)]
+    // [ArgumentsSource(nameof(Arrays))]
     public int CommonPrefixLength(ITinyArray array)
     {
         Span<byte> span = array.Span;

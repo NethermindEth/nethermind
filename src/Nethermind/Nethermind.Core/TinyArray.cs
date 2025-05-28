@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using Unsafe = System.Runtime.CompilerServices.Unsafe;
+using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Core;
 
@@ -87,14 +87,51 @@ public static class TinyArray
 
         public byte Length => _data;
 
-        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _data, ValueOffset), _data);
+        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Add(ref _data, ValueOffset), _data);
 
         public bool SequenceEqual(ReadOnlySpan<byte> other)
         {
-            if (Length != other.Length)
-                return false;
+            bool result;
 
-            return Span.SequenceEqual(other);
+            var length = Length;
+            if (length != other.Length)
+            {
+                result = false;
+                goto Return;
+            }
+
+            ref byte first = ref Add(ref _data, ValueOffset);
+            ref byte second = ref MemoryMarshal.GetReference(other);
+
+            if (length < sizeof(uint))
+            {
+                uint differentBits = 0;
+                int offset = length & 2;
+                if (offset != 0)
+                {
+                    differentBits = ReadUnaligned<ushort>(ref first);
+                    differentBits -= ReadUnaligned<ushort>(ref second);
+                }
+                if ((length & 1) != 0)
+                {
+                    differentBits |= (uint)AddByteOffset(ref first, offset) - (uint)AddByteOffset(ref second, offset);
+                }
+
+                result = differentBits == 0;
+            }
+            else
+            {
+                int offset = length - sizeof(uint);
+
+                uint differentBits = ReadUnaligned<uint>(ref first) - ReadUnaligned<uint>(ref second);
+                differentBits |= ReadUnaligned<uint>(ref Add(ref first, offset)) -
+                                 ReadUnaligned<uint>(ref Add(ref second, offset));
+
+                result = differentBits == 0;
+            }
+
+            Return:
+            return result;
         }
     }
 
@@ -114,14 +151,26 @@ public static class TinyArray
 
         public byte Length => _data;
 
-        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _data, ValueOffset), _data);
+        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Add(ref _data, ValueOffset), _data);
 
         public bool SequenceEqual(ReadOnlySpan<byte> other)
         {
-            if (Length != other.Length)
+            var length = Length;
+            if (length != other.Length)
+            {
                 return false;
+            }
 
-            return Span.SequenceEqual(other);
+            ref byte first = ref Add(ref _data, ValueOffset);
+            ref byte second = ref MemoryMarshal.GetReference(other);
+
+            int offset = length - sizeof(long);
+
+            ulong differentBits = ReadUnaligned<ulong>(ref first) - ReadUnaligned<ulong>(ref second);
+            differentBits |= ReadUnaligned<ulong>(ref Add(ref first, offset)) -
+                             ReadUnaligned<ulong>(ref Add(ref second, offset));
+
+            return differentBits == 0;
         }
     }
 
@@ -141,14 +190,26 @@ public static class TinyArray
 
         public byte Length => _data;
 
-        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _data, ValueOffset), _data);
+        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Add(ref _data, ValueOffset), _data);
 
         public bool SequenceEqual(ReadOnlySpan<byte> other)
         {
-            if (Length != other.Length)
+            var length = Length;
+            if (length != other.Length)
+            {
                 return false;
+            }
 
-            return Span.SequenceEqual(other);
+            ref byte first = ref Add(ref _data, ValueOffset);
+            ref byte second = ref MemoryMarshal.GetReference(other);
+
+            int offset = length - Vector128<byte>.Count;
+
+            return
+                ((Vector128.LoadUnsafe(ref first) ^ Vector128.LoadUnsafe(ref second)) |
+                 (Vector128.LoadUnsafe(ref Add(ref first, offset)) ^
+                  Vector128.LoadUnsafe(ref Add(ref second, offset)))) ==
+                Vector128<byte>.Zero;
         }
     }
 
@@ -168,14 +229,26 @@ public static class TinyArray
 
         public byte Length => _data;
 
-        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _data, ValueOffset), _data);
+        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Add(ref _data, ValueOffset), _data);
 
         public bool SequenceEqual(ReadOnlySpan<byte> other)
         {
-            if (Length != other.Length)
+            var length = Length;
+            if (length != other.Length)
+            {
                 return false;
+            }
 
-            return Span.SequenceEqual(other);
+            ref byte first = ref Add(ref _data, ValueOffset);
+            ref byte second = ref MemoryMarshal.GetReference(other);
+
+            int offset = length - Vector128<byte>.Count;
+
+            return
+                ((Vector128.LoadUnsafe(ref first) ^ Vector128.LoadUnsafe(ref second)) |
+                 (Vector128.LoadUnsafe(ref Add(ref first, offset)) ^
+                  Vector128.LoadUnsafe(ref Add(ref second, offset)))) ==
+                Vector128<byte>.Zero;
         }
     }
 
@@ -189,8 +262,8 @@ public static class TinyArray
 
         public void Load(ReadOnlySpan<byte> src)
         {
-            Unsafe.As<byte, Vector256<byte>>(ref _data) =
-                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(src));
+            As<byte, Vector256<byte>>(ref _data) =
+                As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(src));
         }
 
         public byte Length => Size;
@@ -200,8 +273,8 @@ public static class TinyArray
         public bool SequenceEqual(ReadOnlySpan<byte> other)
         {
             return Length == other.Length &&
-                   Unsafe.As<byte, Vector256<byte>>(ref _data) ==
-                   Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(other));
+                   As<byte, Vector256<byte>>(ref _data) ==
+                   As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(other));
         }
     }
 }
