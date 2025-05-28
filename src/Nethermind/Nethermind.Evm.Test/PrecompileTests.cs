@@ -25,7 +25,7 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
             string json = File.ReadAllText(path);
             foreach (TestCase test in serializer.Deserialize<TestCase[]>(json))
             {
-                yield return new TestCaseData(test) { TestName = test.Name };
+                yield return new TestCaseData(test) { TestName = EnsureSafeName(test.Name) };
             }
         }
     }
@@ -54,4 +54,11 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
             }
         }
     }
+
+    private static string EnsureSafeName(string name) =>
+        name.Replace('(', '[')
+            .Replace(')', ']')
+            .Replace("!=", "_not_eq_")
+            .Replace("=", "_eq_")
+            .Replace(" ", string.Empty);
 }
