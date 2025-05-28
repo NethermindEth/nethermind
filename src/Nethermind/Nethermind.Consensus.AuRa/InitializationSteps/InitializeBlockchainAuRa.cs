@@ -71,7 +71,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         _api.FinalizationManager.SetMainBlockProcessor(_api.MainProcessingContext!.BlockProcessor!);
 
         // SealValidator is assigned before AuraValidator is created, so this is needed also
-        _api.ReportingValidator = ((AuRaBlockProcessor)_api.MainProcessingContext.BlockProcessor).AuRaValidator.GetReportingValidator();
         if (_sealValidator is not null)
         {
             _sealValidator.ReportingValidator = _api.ReportingValidator;
@@ -202,10 +201,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         _api.RewardCalculatorSource = new AuRaRewardCalculator.AuRaRewardCalculatorSource(_parameters, _api.AbiEncoder);
         _api.Sealer = new AuRaSealer(_api.BlockTree, _api.ValidatorStore, _auRaStepCalculator, _api.EngineSigner, validSealerStrategy, _api.LogManager);
     }
-
-    // private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() =>
-    //     _readOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(
-    //         _api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
     private IComparer<Transaction> CreateTxPoolTxComparer(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
     {

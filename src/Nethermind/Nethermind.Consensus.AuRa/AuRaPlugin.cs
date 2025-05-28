@@ -18,6 +18,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 
@@ -105,8 +106,9 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<IValidatorStore, ValidatorStore>()
                 .AddSingleton<AuRaContractGasLimitOverride.Cache, AuRaContractGasLimitOverride.Cache>()
                 .AddSingleton<ReportingContractBasedValidator.Cache>()
-                .Map<IReportingValidator, AuRaNethermindApi>(api => api.ReportingValidator)
-                .Map<IAuRaBlockFinalizationManager, AuRaNethermindApi>(api => api.FinalizationManager)
+                .AddSingleton<IReportingValidator, IMainProcessingContext>((mainProcessingContext) =>
+                    ((AuRaBlockProcessor)mainProcessingContext.BlockProcessor).AuRaValidator.GetReportingValidator())
+                .AddSource(new FallbackToFieldFromApi<AuRaNethermindApi>())
                 ;
 
             if (specParam.BlockGasLimitContractTransitions?.Any() == true)

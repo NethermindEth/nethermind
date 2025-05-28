@@ -4,15 +4,12 @@
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -36,7 +33,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         public IValidatorStore ValidatorStore => Context.Resolve<IValidatorStore>();
         public AuRaContractGasLimitOverride.Cache GasLimitCalculatorCache => Context.Resolve<AuRaContractGasLimitOverride.Cache>();
         public AuraStatefulComponents AuraStatefulComponents => Context.Resolve<AuraStatefulComponents>();
-        public IReportingValidator? ReportingValidator { get; set; }
+        public IReportingValidator ReportingValidator => Context.Resolve<IReportingValidator>();
         public ReportingContractBasedValidator.Cache ReportingContractValidatorCache => Context.Resolve<ReportingContractBasedValidator.Cache>();
         public StartBlockProducerAuRa CreateStartBlockProducer() => Context.Resolve<StartBlockProducerAuRa>();
     }
