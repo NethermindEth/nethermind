@@ -11,6 +11,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps
@@ -36,7 +37,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             this.Config<IBlocksConfig>(),
             this.Config<IAuraConfig>(),
             this.AbiEncoder,
-            this.WorldStateManager!,
+            this.ReadOnlyTxProcessingEnvFactory!,
             this.BlockTree!,
             this.ReceiptFinder!,
             this.AuraStatefulComponents,
@@ -84,9 +85,6 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             }
         }
 
-        public ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
-            new ReadOnlyTxProcessingEnv(WorldStateManager!, BlockTree!.AsReadOnly(), SpecProvider!, LogManager!);
-
         public StartBlockProducerAuRa CreateStartBlockProducer()
         {
             return new StartBlockProducerAuRa(
@@ -108,7 +106,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 this.DisposeStack,
                 this.GasLimitCalculatorCache!,
                 this.AbiEncoder,
-                this.WorldStateManager!,
+                this.ReadOnlyTxProcessingEnvFactory!,
                 this.TxAuRaFilterBuilders!,
                 this.TxPriorityContractLocalDataSource!,
                 this.TxPool!,

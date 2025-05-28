@@ -210,6 +210,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 _api!.ChainSpec,
                 _api.AbiEncoder,
                 _api.CreateStartBlockProducer,
+                _api.ReadOnlyTxProcessingEnvFactory,
                 WorldStateManager,
                 BlockTree,
                 SpecProvider,

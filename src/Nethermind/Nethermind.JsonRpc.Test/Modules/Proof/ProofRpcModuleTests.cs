@@ -20,7 +20,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using System.Threading.Tasks;
@@ -47,6 +46,7 @@ public class ProofRpcModuleTests
     private IDbProvider _dbProvider = null!;
     private TestSpecProvider _specProvider = null!;
     private WorldStateManager _worldStateManager = null!;
+    private IReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory = null!;
 
     public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
     {
@@ -72,8 +72,11 @@ public class ProofRpcModuleTests
             .OfChainLength(10)
             .TestObject;
 
+        _readOnlyTxProcessingEnvFactory = new ReadOnlyTxProcessingEnvFactory(_worldStateManager, _blockTree, _specProvider, LimboLogs.Instance);
+
         ProofModuleFactory moduleFactory = new(
             _worldStateManager,
+            _readOnlyTxProcessingEnvFactory,
             _blockTree,
             new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
             receiptStorage,
@@ -217,6 +220,7 @@ public class ProofRpcModuleTests
 
         ProofModuleFactory moduleFactory = new ProofModuleFactory(
             _worldStateManager,
+            _readOnlyTxProcessingEnvFactory,
             _blockTree,
             new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
             _receiptFinder,

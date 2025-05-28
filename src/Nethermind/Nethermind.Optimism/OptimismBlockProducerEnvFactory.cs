@@ -25,10 +25,11 @@ namespace Nethermind.Optimism;
 public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
 {
     private readonly IOptimismSpecHelper _specHelper;
-    private readonly OptimismCostHelper _l1CostHelper;
+    private readonly ICostHelper _l1CostHelper;
 
     public OptimismBlockProducerEnvFactory(
         IWorldStateManager worldStateManager,
+        IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
         IBlockTree blockTree,
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
@@ -39,9 +40,10 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
         IOptimismSpecHelper specHelper,
-        OptimismCostHelper l1CostHelper,
+        ICostHelper l1CostHelper,
         ILogManager logManager) : base(
             worldStateManager,
+            txProcessingEnvFactory,
             blockTree,
             specProvider,
             blockValidator,
@@ -58,12 +60,8 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, blocksConfig.BlockProductionMaxTxKilobytes, logManager);
     }
 
-    protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager,
-        ReadOnlyBlockTree readOnlyBlockTree) =>
-        new OptimismReadOnlyTxProcessingEnv(worldStateManager, readOnlyBlockTree, _specProvider, _logManager, _l1CostHelper, _specHelper);
-
     protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource,
-        ReadOnlyTxProcessingEnv processingEnv,
+        IReadOnlyTxProcessorSource processingEnv,
         ITxPool txPool, IBlocksConfig blocksConfig, ITransactionComparerProvider transactionComparerProvider,
         ILogManager logManager)
     {
