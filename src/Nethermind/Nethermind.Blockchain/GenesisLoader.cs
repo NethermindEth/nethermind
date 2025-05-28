@@ -17,16 +17,11 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain;
 
-public interface IGenesisLoader
-{
-    Block Load();
-}
-
 public class GenesisLoader(
     ChainSpec chainSpec,
     ISpecProvider specProvider,
     IWorldState stateProvider,
-    ITransactionProcessor transactionProcessor) : IGenesisLoader
+    ITransactionProcessor transactionProcessor)
 {
     private readonly ChainSpec _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));

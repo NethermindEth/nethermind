@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
@@ -20,10 +21,10 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             _api = api;
         }
 
-        protected override void Load(IMainProcessingContext mainProcessingContext)
+        protected override async Task Load(IMainProcessingContext mainProcessingContext)
         {
             CreateSystemAccounts(mainProcessingContext.WorldState);
-            base.Load(mainProcessingContext);
+            await base.Load(mainProcessingContext);
         }
 
         private void CreateSystemAccounts(IWorldState worldState)

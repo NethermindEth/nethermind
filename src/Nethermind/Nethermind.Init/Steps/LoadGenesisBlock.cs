@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -46,7 +45,7 @@ namespace Nethermind.Init.Steps
             // if we already have a database with blocks then we do not need to load genesis from spec
             if (_api.BlockTree.Genesis is null)
             {
-                Load(mainProcessingContext);
+                await Load(mainProcessingContext);
             }
 
             ValidateGenesisHash(expectedGenesisHash, mainProcessingContext.WorldState);
@@ -58,19 +57,18 @@ namespace Nethermind.Init.Steps
             }
         }
 
-        protected virtual void Load(IMainProcessingContext mainProcessingContext)
+        protected virtual Task Load(IMainProcessingContext mainProcessingContext)
         {
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-            IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
-            IGenesisLoader genesisLoader = consensusPlugin?.GenesisLoader ?? new GenesisLoader(
+            Block genesis = new GenesisLoader(
                 _api.ChainSpec,
                 _api.SpecProvider,
                 mainProcessingContext.WorldState,
-                mainProcessingContext.TransactionProcessor);
-            Block genesis = genesisLoader.Load();
+                mainProcessingContext.TransactionProcessor)
+                .Load();
 
             ManualResetEventSlim genesisProcessedEvent = new(false);
 
@@ -89,6 +87,8 @@ namespace Nethermind.Init.Steps
             {
                 throw new TimeoutException($"Genesis block was not processed after {_genesisProcessedTimeout.TotalSeconds} seconds. If you are running custom chain with very big genesis file consider increasing {nameof(BlocksConfig)}.{nameof(IBlocksConfig.GenesisTimeoutMs)}.");
             }
+
+            return Task.CompletedTask;
         }
 
         /// <summary>

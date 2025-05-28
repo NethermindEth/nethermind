@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac.Core;
 using Nethermind.Api.Steps;
-using Nethermind.Blockchain;
 
 namespace Nethermind.Api.Extensions;
 
@@ -29,5 +28,4 @@ public interface INethermindPlugin : IAsyncDisposable
     bool MustInitialize => false;
     bool Enabled { get; }
     IModule? Module => null;
-    IGenesisLoader? GenesisLoader => null;
 }
