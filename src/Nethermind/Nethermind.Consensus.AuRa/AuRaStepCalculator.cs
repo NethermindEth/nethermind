@@ -16,11 +16,6 @@ namespace Nethermind.Consensus.AuRa
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
 
-        public AuRaStepCalculator(AuRaChainSpecEngineParameters parameters, ITimestamper timestamper, ILogManager logManager)
-            : this(parameters.StepDuration, timestamper, logManager)
-        {
-        }
-
         public AuRaStepCalculator(IDictionary<long, long> stepDurations, ITimestamper timestamper, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger<AuRaStepCalculator>() ?? throw new ArgumentNullException(nameof(logManager));

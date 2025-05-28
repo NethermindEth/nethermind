@@ -99,12 +99,14 @@ namespace Nethermind.Merge.AuRa
         public override IModule Module => new AuraMergeModule();
     }
 
-    public class AuraMergeModule : MergePluginModule
+    public class AuraMergeModule : Module
     {
         protected override void Load(ContainerBuilder builder)
         {
             base.Load(builder);
+
             // Nothing right now, just making it clear it is using `MergePluginModule`
+            builder.AddModule(new MergePluginModule());
         }
     }
 }

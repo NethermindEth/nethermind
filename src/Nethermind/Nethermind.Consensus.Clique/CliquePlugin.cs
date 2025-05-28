@@ -24,7 +24,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Specs.ChainSpecStyle;
-using ZstdSharp.Unsafe;
 
 namespace Nethermind.Consensus.Clique
 {

@@ -81,7 +81,7 @@ namespace Nethermind.Api
         IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
         IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory { get; }
 
-        IGasPriceOracle? GasPriceOracle { get; }
+        IGasPriceOracle GasPriceOracle { get; }
 
         [SkipServiceCollection]
         IEthSyncingInfo? EthSyncingInfo { get; }

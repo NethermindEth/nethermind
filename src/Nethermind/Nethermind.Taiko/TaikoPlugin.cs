@@ -297,7 +297,6 @@ public class TaikoModule : Module
             .AddSingleton<IBlockValidator, TaikoBlockValidator>()
             .AddSingleton<IHeaderValidator, TaikoHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
-            .AddSingleton<ISealValidator>(NullSealEngine.Instance)
 
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
             ;

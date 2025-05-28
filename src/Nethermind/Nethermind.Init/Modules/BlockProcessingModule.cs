@@ -42,7 +42,7 @@ public class BlockProcessingModule : Module
             .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
             .AddSingleton<ISealValidator>(NullSealEngine.Instance)
             .AddSingleton<ISealer>(NullSealEngine.Instance)
-            .AddSingleton<ISealEngine, ISealValidator, ISealer>((validator, sealer) => new SealEngine(sealer, validator))
+            .AddSingleton<ISealEngine, SealEngine>()
 
 
 
