@@ -89,6 +89,19 @@ class Application
                                 _metrics.TickResponses();
                                 continue;
                             }
+
+                            if (single.MethodName is null)
+                            {
+                                _metrics.TickFailed();
+                                continue;
+                            }
+
+                            if (_methodFilter.ShouldIgnore(single.MethodName))
+                            {
+                                _metrics.TickIgnoredRequests();
+                                continue;
+                            }
+                            
                             var requestTask = _submitter.Submit(single);
                             if (isSequentionalExecution)
                                 await AnalyzeRequest((requestTask, single));
@@ -156,18 +169,6 @@ class Application
                 }
             case JsonRpc.SingleJsonRpc single:
                 {
-                    if (single.MethodName is null)
-                    {
-                        _metrics.TickFailed();
-                        return;
-                    }
-
-                    if (_methodFilter.ShouldIgnore(single.MethodName))
-                    {
-                        _metrics.TickIgnoredRequests();
-                        return;
-                    }
-
                     HttpResponseMessage? content;
                     using (_metrics.TimeMethod(single.MethodName))
                     {
