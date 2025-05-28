@@ -108,6 +108,11 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         static void EncodeShardBlobNetworkWrapper(Transaction transaction, RlpStream rlpStream)
         {
             ShardBlobNetworkWrapper networkWrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
+            if (networkWrapper.Version > ProofVersion.V0)
+            {
+                rlpStream.Encode((byte)networkWrapper.Version);
+            }
+
             rlpStream.Encode(networkWrapper.Blobs);
             rlpStream.Encode(networkWrapper.Commitments);
             rlpStream.Encode(networkWrapper.Proofs);
@@ -138,18 +143,42 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
 
     private static void DecodeShardBlobNetworkWrapper(Transaction transaction, RlpStream rlpStream)
     {
+        ProofVersion version = ProofVersion.V0;
+        var startingRlp = rlpStream.PeekNextItem();
+        if (startingRlp.Length is 1)
+        {
+            version = (ProofVersion)rlpStream.ReadByte();
+            if (version > ProofVersion.V1)
+            {
+                throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}. Expected {0x01} and is {version}");
+            }
+        }
+
         byte[][] blobs = rlpStream.DecodeByteArrays();
         byte[][] commitments = rlpStream.DecodeByteArrays();
         byte[][] proofs = rlpStream.DecodeByteArrays();
-        transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
+
+        transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version);
     }
 
     private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
     {
+        ProofVersion version = ProofVersion.V0;
+        var startingRlp = decoderContext.PeekNextItem();
+        if (startingRlp.Length is 1)
+        {
+            version = (ProofVersion)decoderContext.ReadByte();
+            if (version != ProofVersion.V1)
+            {
+                throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}. Expected no more than {(int)ProofVersion.V1} and is {version}");
+            }
+        }
+
         byte[][] blobs = decoderContext.DecodeByteArrays();
         byte[][] commitments = decoderContext.DecodeByteArrays();
         byte[][] proofs = decoderContext.DecodeByteArrays();
-        transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
+
+        transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version);
     }
 
     private static Hash256 CalculateHashForNetworkPayloadForm(ReadOnlySpan<byte> transactionSequence)
@@ -173,6 +202,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         {
             ShardBlobNetworkWrapper networkWrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
             return Rlp.LengthOfSequence(txContentLength)
+                   + networkWrapper.Version switch { ProofVersion.V0 => 0, ProofVersion.V1 => 1, _ => throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}: {networkWrapper.Version}") }
                    + Rlp.LengthOf(networkWrapper.Blobs)
                    + Rlp.LengthOf(networkWrapper.Commitments)
                    + Rlp.LengthOf(networkWrapper.Proofs);

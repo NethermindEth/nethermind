@@ -8,13 +8,16 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -45,8 +48,7 @@ public class DevBlockProducerTests
             .WithoutSettingHead
             .TestObject;
 
-        TrieStore trieStore = new(
-            dbProvider.RegisteredDbs[DbNames.State],
+        TrieStore trieStore = TestTrieStoreFactory.Build(dbProvider.RegisteredDbs[DbNames.State],
             NoPruning.Instance,
             Archive.Instance,
             LimboLogs.Instance);
@@ -67,17 +69,18 @@ public class DevBlockProducerTests
             virtualMachine,
             codeInfoRepository,
             LimboLogs.Instance);
-        BlockProcessor blockProcessor = new(
+        BlockProcessor blockProcessor = new BlockProcessor(
             specProvider,
             Always.Valid,
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
-            txProcessor,
             new BeaconBlockRootHandler(txProcessor, stateProvider),
             new BlockhashStore(specProvider, stateProvider),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(txProcessor));
         BlockchainProcessor blockchainProcessor = new(
             blockTree,
             blockProcessor,

@@ -126,7 +126,7 @@ namespace Nethermind.Api
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner? BlockProducerRunner { get; set; }
         public IBlockTree? BlockTree { get; set; }
-        public IBlockValidator? BlockValidator => Context.Resolve<IBlockValidator>();
+        public IBlockValidator BlockValidator => Context.Resolve<IBlockValidator>();
         public IBloomStorage? BloomStorage { get; set; }
         public IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
         public IConfigProvider ConfigProvider => _dependencies.ConfigProvider;
@@ -145,6 +145,7 @@ namespace Nethermind.Api
         public IUnclesValidator? UnclesValidator => Context.Resolve<IUnclesValidator>();
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator => Context.Resolve<IHeaderValidator>();
+        public IEngineRequestsTracker? EngineRequestsTracker { get; set; }
 
         public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
             new BuildBlocksWhenRequested();
@@ -154,7 +155,7 @@ namespace Nethermind.Api
         public IKeyStore? KeyStore { get; set; }
         public ILogFinder? LogFinder { get; set; }
         public ILogManager LogManager => _dependencies.LogManager;
-        public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
+        public IMessageSerializationService MessageSerializationService => Context.Resolve<IMessageSerializationService>();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IPeerManager? PeerManager => Context.Resolve<IPeerManager>();
         public IPeerPool? PeerPool => Context.Resolve<IPeerPool>();
@@ -199,6 +200,7 @@ namespace Nethermind.Api
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
         public IMainProcessingContext? MainProcessingContext { get; set; }
+        public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }

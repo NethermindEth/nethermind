@@ -1,8 +1,6 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
@@ -11,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -19,10 +18,14 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Nethermind.Consensus.Test;
 
@@ -66,11 +69,14 @@ public class ExecutionProcessorTests
     {
         _specProvider = MainnetSpecProvider.Instance;
         MemDb stateDb = new();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
 
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(eip7002Account, AccountBalance);
         _stateProvider.CreateAccount(eip7251Account, AccountBalance);
+
+        _stateProvider.InsertCode(eip7002Account, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, Prague.Instance);
+        _stateProvider.InsertCode(eip7251Account, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, Prague.Instance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
@@ -92,15 +98,18 @@ public class ExecutionProcessorTests
             {
                 Transaction transaction = ci.Arg<Transaction>();
                 CallOutputTracer tracer = ci.Arg<CallOutputTracer>();
+
+                tracer.StatusCode = StatusCode.Success;
+
                 if (transaction.To == eip7002Account)
                 {
-                    Span<byte> buffer = new byte[_executionWithdrawalRequests.GetRequestsByteSize()];
+                    Span<byte> buffer = new byte[GetRequestsByteSize(_executionWithdrawalRequests)];
                     FlatEncodeWithoutType(_executionWithdrawalRequests, buffer);
                     tracer.ReturnValue = buffer.ToArray();
                 }
                 else if (transaction.To == eip7251Account)
                 {
-                    Span<byte> buffer = new byte[_executionConsolidationRequests.GetRequestsByteSize()];
+                    Span<byte> buffer = new byte[GetRequestsByteSize(_executionConsolidationRequests)];
                     FlatEncodeWithoutType(_executionConsolidationRequests, buffer);
                     tracer.ReturnValue = buffer.ToArray();
                 }
@@ -109,6 +118,8 @@ public class ExecutionProcessorTests
                     tracer.ReturnValue = [];
                 }
                 return new TransactionResult();
+
+                static int GetRequestsByteSize(IEnumerable<ExecutionRequest> requests) => requests.Sum(r => r.RequestData.Length);
             });
     }
 
@@ -133,7 +144,7 @@ public class ExecutionProcessorTests
                 CreateLogEntry(TestItem.ExecutionRequestA.RequestDataParts)
             ).TestObject
         ];
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, new BlockExecutionContext(block.Header, _spec), txReceipts, _spec);
 
         Assert.That(block.Header.RequestsHash, Is.Null);
     }
@@ -151,7 +162,7 @@ public class ExecutionProcessorTests
                 CreateLogEntry(TestItem.ExecutionRequestC.RequestDataParts)
             ).TestObject
         ];
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, new BlockExecutionContext(block.Header, _spec), txReceipts, _spec);
 
         Assert.That(block.Header.RequestsHash, Is.EqualTo(
            CalculateHash(_executionDepositRequests, _executionWithdrawalRequests, _executionConsolidationRequests)

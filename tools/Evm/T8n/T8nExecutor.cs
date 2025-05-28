@@ -12,6 +12,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -37,7 +38,7 @@ public static class T8nExecutor
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
 
-        TrieStore trieStore = new(stateDb, _logManager);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, _logManager);
         WorldState stateProvider = new(trieStore, codeDb, _logManager);
         CodeInfoRepository codeInfoRepository = new();
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
@@ -75,10 +76,11 @@ public static class T8nExecutor
         blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
         blockReceiptsTracer.StartNewBlockTrace(block);
 
+        var blkCtx = new BlockExecutionContext(block.Header, test.Spec);
         BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor, stateProvider);
         if (test.ParentBeaconBlockRoot is not null)
         {
-            beaconBlockRootHandler.StoreBeaconRoot(block, test.Spec, storageTxTracer);
+            beaconBlockRootHandler.StoreBeaconRoot(block, in blkCtx, test.Spec, storageTxTracer);
         }
 
         int txIndex = 0;
@@ -101,7 +103,7 @@ public static class T8nExecutor
 
             blockReceiptsTracer.StartNewTxTrace(transaction);
             TransactionResult transactionResult = transactionProcessor
-                .Execute(transaction, new BlockExecutionContext(block.Header, test.Spec), blockReceiptsTracer);
+                .Execute(transaction, in blkCtx, blockReceiptsTracer);
             blockReceiptsTracer.EndTxTrace();
 
             transactionExecutionReport.ValidTransactions.Add(transaction);

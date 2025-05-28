@@ -20,13 +20,13 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Test;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.State.Tracing;
 using NSubstitute;
@@ -46,6 +46,7 @@ public class ProofRpcModuleTests
     private IDbProvider _dbProvider = null!;
     private TestSpecProvider _specProvider = null!;
     private WorldStateManager _worldStateManager = null!;
+    private IReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory = null!;
 
     public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
     {
@@ -57,7 +58,7 @@ public class ProofRpcModuleTests
     public async Task Setup()
     {
         _dbProvider = await TestMemDbProvider.InitAsync();
-        _worldStateManager = WorldStateManager.CreateForTest(_dbProvider, LimboLogs.Instance);
+        _worldStateManager = TestWorldStateFactory.CreateForTest(_dbProvider, LimboLogs.Instance);
 
         IWorldState worldState = _worldStateManager.GlobalWorldState;
         worldState.CreateAccount(TestItem.AddressA, 100000);
@@ -71,8 +72,11 @@ public class ProofRpcModuleTests
             .OfChainLength(10)
             .TestObject;
 
+        _readOnlyTxProcessingEnvFactory = new ReadOnlyTxProcessingEnvFactory(_worldStateManager, _blockTree, _specProvider, LimboLogs.Instance);
+
         ProofModuleFactory moduleFactory = new(
             _worldStateManager,
+            _readOnlyTxProcessingEnvFactory,
             _blockTree,
             new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
             receiptStorage,
@@ -216,6 +220,7 @@ public class ProofRpcModuleTests
 
         ProofModuleFactory moduleFactory = new ProofModuleFactory(
             _worldStateManager,
+            _readOnlyTxProcessingEnvFactory,
             _blockTree,
             new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
             _receiptFinder,
@@ -874,7 +879,7 @@ public class ProofRpcModuleTests
 
     private WorldState CreateInitialState(byte[]? code)
     {
-        WorldState stateProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
+        WorldState stateProvider = new(TestTrieStoreFactory.Build(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
         AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
         AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 

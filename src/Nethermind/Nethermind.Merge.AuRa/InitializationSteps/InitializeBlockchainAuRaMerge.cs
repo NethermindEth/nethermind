@@ -7,6 +7,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -49,13 +50,12 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 _api.LogManager,
                 _api.BlockTree!,
                 new AuraWithdrawalProcessor(withdrawalContractFactory.Create(transactionProcessor), _api.LogManager),
-                transactionProcessor,
+                new ExecutionRequestsProcessor(transactionProcessor),
                 CreateAuRaValidator(worldState, transactionProcessor),
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter,
-                preWarmer: preWarmer
-            );
+                preWarmer: preWarmer);
         }
 
         protected override void InitSealEngine()

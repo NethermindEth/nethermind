@@ -28,7 +28,7 @@ public class PowForwardHeaderProvider(
     ILogManager logManager
 ) : IForwardHeaderProvider
 {
-    public const int MaxReorganizationLength = SyncBatchSize.Max * 2;
+    public const int MaxReorganizationLength = 128 * 2;
     private ILogger _logger = logManager.GetClassLogger<PowForwardHeaderProvider>();
     private readonly int[] _ancestorJumps = { 1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024 };
     private int _ancestorLookupLevel;
@@ -39,7 +39,7 @@ public class PowForwardHeaderProvider(
     private const int MinCachedHeaderBatchSize = 32;
 
     private IPeerAllocationStrategy _bestPeerAllocationStrategy =
-        new TotalDiffStrategy(new BlocksSyncPeerAllocationStrategy(null), TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
+        new TotalDiffStrategy(new ByTotalDifficultyPeerAllocationStrategy(null), TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
 
     private PeerInfo? _currentBestPeer;
     private IOwnedReadOnlyList<BlockHeader>? _lastResponseBatch = null;
@@ -165,7 +165,7 @@ public class PowForwardHeaderProvider(
                 }
 
                 // Remember, we start downloading from currentNumber+1
-                if (!CheckAncestorJump(bestPeer, headers[1], ref _currentNumber)) continue;
+                if (!CheckAncestorJump(bestPeer, headers[0], ref _currentNumber)) continue;
 
                 return headers;
             }
@@ -189,9 +189,9 @@ public class PowForwardHeaderProvider(
         _currentNumber += 1;
     }
 
-    private bool CheckAncestorJump(PeerInfo bestPeer, BlockHeader blockZero, ref long currentNumber)
+    private bool CheckAncestorJump(PeerInfo bestPeer, BlockHeader blockBeforeZero, ref long currentNumber)
     {
-        bool parentIsKnown = blockTree.IsKnownBlock(blockZero.Number - 1, blockZero.ParentHash);
+        bool parentIsKnown = blockTree.IsKnownBlock(blockBeforeZero.Number, blockBeforeZero.Hash!);
         if (!parentIsKnown)
         {
             _ancestorLookupLevel++;

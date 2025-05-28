@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -22,6 +22,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
@@ -57,6 +58,7 @@ public class TestBlockchain : IDisposable
     public IReceiptStorage ReceiptStorage => _fromContainer.ReceiptStorage;
     public ITxPool TxPool => _fromContainer.TxPool;
     public IWorldStateManager WorldStateManager => _fromContainer.WorldStateManager;
+    public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => _fromContainer.ReadOnlyTxProcessingEnvFactory;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
@@ -113,12 +115,14 @@ public class TestBlockchain : IDisposable
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
-    public IExecutionRequestsProcessor? ExecutionRequestsProcessor { get; protected set; } = null!;
+    public IExecutionRequestsProcessor MainExecutionRequestsProcessor => ((MainBlockProcessingContext)_fromContainer.MainProcessingContext).LifetimeScope.Resolve<IExecutionRequestsProcessor>();
     public IChainLevelInfoRepository ChainLevelInfoRepository => _fromContainer.ChainLevelInfoRepository;
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
     public IContainer Container { get; set; } = null!;
+    private ChainSpec? _chainSpec = null!;
+    protected ChainSpec ChainSpec => _chainSpec ??= CreateChainSpec();
 
     // Resolving all these component at once is faster.
     private FromContainer _fromContainer = null!;
@@ -143,6 +147,7 @@ public class TestBlockchain : IDisposable
         IBlockValidator BlockValidator,
         IChainLevelInfoRepository ChainLevelInfoRepository,
         IMainProcessingContext MainProcessingContext,
+        IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory,
         Configuration Configuration,
         ISealer Sealer
     );
@@ -196,8 +201,21 @@ public class TestBlockchain : IDisposable
 
         byte[] code = Bytes.FromHexString("0xabcd");
         state.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
-
         state.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+
+        IReleaseSpec? finalSpec = specProvider?.GetFinalSpec();
+
+        if (finalSpec?.WithdrawalsEnabled is true)
+        {
+            state.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+            state.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, SpecProvider.GenesisSpec);
+        }
+
+        if (finalSpec?.ConsolidationRequestsEnabled is true)
+        {
+            state.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+            state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, SpecProvider.GenesisSpec);
+        }
 
         state.Commit(SpecProvider.GenesisSpec);
         state.CommitTree(0);
@@ -247,7 +265,7 @@ public class TestBlockchain : IDisposable
 
     protected virtual ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
         builder
-            .AddModule(new PseudoNethermindModule(CreateChainSpec(), configProvider, LimboLogs.Instance))
+            .AddModule(new PseudoNethermindModule(ChainSpec, configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
             .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
             .AddDecorator<ISpecProvider>((ctx, specProvider) => WrapSpecProvider(specProvider))
@@ -278,6 +296,7 @@ public class TestBlockchain : IDisposable
     {
         BlockProducerEnvFactory blockProducerEnvFactory = new(
             WorldStateManager,
+            ReadOnlyTxProcessingEnvFactory,
             BlockTree,
             SpecProvider,
             BlockValidator,
@@ -360,21 +379,17 @@ public class TestBlockchain : IDisposable
             new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, state),
             state,
             ReceiptStorage,
-            TxProcessor,
             new BeaconBlockRootHandler(TxProcessor, state),
             new BlockhashStore(SpecProvider, state),
             LogManager,
-            preWarmer: CreateBlockCachePreWarmer(),
-            executionRequestsProcessor: ExecutionRequestsProcessor);
+            new WithdrawalProcessor(state, LogManager),
+            MainExecutionRequestsProcessor,
+            preWarmer: CreateBlockCachePreWarmer());
 
 
     protected IBlockCachePreWarmer CreateBlockCachePreWarmer() =>
         new BlockCachePreWarmer(
-            new ReadOnlyTxProcessingEnvFactory(
-                WorldStateManager,
-                BlockTree,
-                SpecProvider,
-                LogManager),
+            ReadOnlyTxProcessingEnvFactory,
             WorldStateManager.GlobalWorldState,
             SpecProvider,
             4,
@@ -485,7 +500,7 @@ public static class ContainerBuilderExtensions
         return builder
             // Need to manually create the WorldStateManager to expose the triestore which is normally hidden by PruningTrieStateFactory
             // This means it does not use pruning triestore by default though which is potential edge case.
-            .AddSingleton<TrieStore>(ctx => new TrieStore(ctx.Resolve<IDbProvider>().StateDb, LimboLogs.Instance))
+            .AddSingleton<TrieStore>(ctx => TestTrieStoreFactory.Build(ctx.Resolve<IDbProvider>().StateDb, LimboLogs.Instance))
             .Bind<IPruningTrieStore, TrieStore>()
             .AddSingleton<IWorldStateManager>(ctx =>
             {

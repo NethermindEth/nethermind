@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -33,7 +33,7 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
 
     protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
-        if (_isAura && !blCtx.Header.IsGenesis)
+        if (_isAura && !blCtx.IsGenesis)
         {
             WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
         }
@@ -61,6 +61,8 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
             base.PayValue(tx, spec, opts);
         }
     }
+
+    protected override IntrinsicGas CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) => tx is SystemCall ? default : base.CalculateIntrinsicGas(tx, spec);
 
     protected override bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
     {

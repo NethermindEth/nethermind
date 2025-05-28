@@ -48,13 +48,14 @@ namespace Nethermind.Network.Benchmarks
             session.RemoteNodeId = TestItem.PublicKeyA;
             session.RemoteHost = "127.0.0.1";
             session.RemotePort = 30303;
-            _ser = new MessageSerializationService();
-            _ser.Register(new TransactionsMessageSerializer());
-            _ser.Register(new StatusMessageSerializer());
+            _ser = new MessageSerializationService(
+                SerializerInfo.Create(new TransactionsMessageSerializer()),
+                SerializerInfo.Create(new StatusMessageSerializer())
+                );
             NodeStatsManager stats = new NodeStatsManager(TimerFactory.Default, LimboLogs.Instance);
             var ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
             var tree = Build.A.BlockTree().TestObject;
-            var stateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
+            var stateProvider = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
             var specProvider = MainnetSpecProvider.Instance;
             TxPool.TxPool txPool = new TxPool.TxPool(
                 ecdsa,

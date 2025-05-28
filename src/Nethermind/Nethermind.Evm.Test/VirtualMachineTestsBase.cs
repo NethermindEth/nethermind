@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -22,7 +23,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class VirtualMachineTestsBase
+public abstract class VirtualMachineTestsBase
 {
     protected const string SampleHexData1 = "a01234";
     protected const string SampleHexData2 = "b15678";
@@ -63,7 +64,7 @@ public class VirtualMachineTestsBase
 
         IDb codeDb = new MemDb();
         _stateDb = new MemDb();
-        ITrieStore trieStore = new TrieStore(_stateDb, logManager);
+        ITrieStore trieStore = TestTrieStoreFactory.Build(_stateDb, logManager);
         TestState = new WorldState(trieStore, codeDb, logManager);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);

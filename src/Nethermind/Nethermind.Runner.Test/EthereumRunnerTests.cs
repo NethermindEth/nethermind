@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
+using Autofac.Core.Lifetime;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -23,11 +24,11 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
-using Nethermind.Consensus.Ethash;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -36,6 +37,8 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Era1;
+using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Flashbots;
 using Nethermind.Hive;
 using Nethermind.Init.Steps;
@@ -50,10 +53,9 @@ using Nethermind.Runner.Ethereum;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Synchronization;
-using Nethermind.Taiko;
 using Nethermind.Taiko.TaikoSpec;
-using Nethermind.UPnP.Plugin;
 using NSubstitute;
 using NUnit.Framework;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
@@ -169,14 +171,7 @@ public class EthereumRunnerTests
             "plugins",
             new FileSystem(),
             NullLogger.Instance,
-            typeof(AuRaPlugin),
-            typeof(CliquePlugin),
-            typeof(OptimismPlugin),
-            typeof(TaikoPlugin),
-            typeof(EthashPlugin),
-            typeof(NethDevPlugin),
-            typeof(HivePlugin),
-            typeof(UPnPPlugin)
+            NethermindPlugins.EmbeddedPlugins
         );
         pluginLoader.Load();
 
@@ -244,6 +239,60 @@ public class EthereumRunnerTests
             api.Context.Resolve<ISynchronizer>();
             api.Context.Resolve<IAdminEraService>();
             api.Context.Resolve<IRpcModuleProvider>();
+            api.Context.Resolve<IMessageSerializationService>();
+
+            // A root registration should not have both keyed and unkeyed registration. This is confusing and may
+            // cause unexpected registration. Either have a single non-keyed registration or all keyed-registration,
+            // or put them in an unambiguous container class.
+            Dictionary<Type, object> keyedTypes = new();
+            foreach (var registrations in api.Context.ComponentRegistry.Registrations)
+            {
+                if (registrations.Lifetime != RootScopeLifetime.Instance) continue;
+                foreach (var registrationsService in registrations.Services)
+                {
+                    if (registrationsService is KeyedService keyedService)
+                    {
+                        keyedTypes.TryAdd(keyedService.ServiceType, keyedService.ServiceKey);
+                    }
+                }
+            }
+
+            // The following types should not have a global unnamed singleton registration. This is because
+            // They are ambiguous by nature. Eg: For `IProtectedPrivateKey`, is it signer key or node key?
+            // Consider wrapping them in an type that is clearly global eg: `IWorldStateManager.GlobalWorldState`
+            // or using a named registration, or create an explicit child lifetime for that particular instance.
+            HashSet<Type> bannedTypeForRootScope =
+            [
+                typeof(IWorldState),
+                typeof(ITransactionProcessor),
+                typeof(IVirtualMachine),
+                typeof(IDb),
+                typeof(IBlockProcessor),
+                typeof(IBlockchainProcessor),
+                typeof(IProtectedPrivateKey),
+                typeof(PublicKey),
+                typeof(IPrivateKeyGenerator),
+                typeof(string),
+            ];
+
+            foreach (var registrations in api.Context.ComponentRegistry.Registrations)
+            {
+                if (registrations.Lifetime != RootScopeLifetime.Instance) continue;
+                foreach (var registrationsService in registrations.Services)
+                {
+                    if (registrationsService is TypedService typedService)
+                    {
+                        if (bannedTypeForRootScope.Contains(typedService.ServiceType))
+                        {
+                            Assert.Fail($"{typedService.ServiceType} has a root registration. This is likely a bug.");
+                        }
+                        if (keyedTypes.TryGetValue(typedService.ServiceType, out var key))
+                        {
+                            Assert.Fail($"{typedService.ServiceType} has an unkeyed and keyed ({key}) root registration at the same time. This is likely a bug.");
+                        }
+                    }
+                }
+            }
         }
         finally
         {
@@ -277,14 +326,7 @@ public class EthereumRunnerTests
                 "plugins",
                 new FileSystem(),
                 NullLogger.Instance,
-                typeof(AuRaPlugin),
-                typeof(CliquePlugin),
-                typeof(OptimismPlugin),
-                typeof(TaikoPlugin),
-                typeof(EthashPlugin),
-                typeof(NethDevPlugin),
-                typeof(HivePlugin),
-                typeof(UPnPPlugin)
+                NethermindPlugins.EmbeddedPlugins
             );
             pluginLoader.Load();
 

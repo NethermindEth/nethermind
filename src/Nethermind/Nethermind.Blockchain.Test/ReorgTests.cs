@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -8,11 +8,14 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -37,11 +40,29 @@ public class ReorgTests
     [OneTimeSetUp]
     public void Setup()
     {
-        IDbProvider memDbProvider = TestMemDbProvider.Init();
-        TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
-        WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-        StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
+        IDbProvider memDbProvider = TestMemDbProvider.Init();
+        TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
+        WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
+
+        IReleaseSpec finalSpec = specProvider.GetFinalSpec();
+
+        if (finalSpec.WithdrawalsEnabled)
+        {
+            stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+            stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, specProvider.GenesisSpec);
+        }
+
+        if (finalSpec.ConsolidationRequestsEnabled)
+        {
+            stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+            stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, specProvider.GenesisSpec);
+        }
+
+        stateProvider.Commit(specProvider.GenesisSpec);
+        stateProvider.CommitTree(0);
+
+        StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
         EthereumEcdsa ecdsa = new(1);
         ITransactionComparerProvider transactionComparerProvider =
             new TransactionComparerProvider(specProvider, _blockTree);
@@ -72,17 +93,18 @@ public class ReorgTests
             codeInfoRepository,
             LimboLogs.Instance);
 
-        BlockProcessor blockProcessor = new(
+        BlockProcessor blockProcessor = new BlockProcessor(
             MainnetSpecProvider.Instance,
             Always.Valid,
             new RewardCalculator(specProvider),
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
-            transactionProcessor,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             new BlockhashStore(MainnetSpecProvider.Instance, stateProvider),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor));
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
             blockProcessor,

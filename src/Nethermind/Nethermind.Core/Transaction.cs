@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -337,6 +337,13 @@ namespace Nethermind.Core
     }
 
     /// <summary>
+    /// System call like transaction that is to be executed by the node without including in the block.
+    /// </summary>
+    public class SystemCall : Transaction
+    {
+    }
+
+    /// <summary>
     /// Used inside Transaction::GetSize to calculate encoded transaction size
     /// </summary>
     /// <remarks>Created because of cyclic dependencies between Core and Rlp modules</remarks>
@@ -348,17 +355,11 @@ namespace Nethermind.Core
     /// <summary>
     /// Holds network form fields for <see cref="TxType.Blob" /> transactions
     /// </summary>
-    public class ShardBlobNetworkWrapper
-    {
-        public ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs)
-        {
-            Blobs = blobs;
-            Commitments = commitments;
-            Proofs = proofs;
-        }
+    public record class ShardBlobNetworkWrapper(byte[][] Blobs, byte[][] Commitments, byte[][] Proofs, ProofVersion Version);
 
-        public byte[][] Commitments { get; set; }
-        public byte[][] Blobs { get; set; }
-        public byte[][] Proofs { get; set; }
+    public enum ProofVersion : byte
+    {
+        V0 = 0x00,
+        V1 = 0x01,
     }
 }
