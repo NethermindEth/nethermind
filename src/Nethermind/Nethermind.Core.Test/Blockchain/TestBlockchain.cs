@@ -58,6 +58,7 @@ public class TestBlockchain : IDisposable
     public IReceiptStorage ReceiptStorage => _fromContainer.ReceiptStorage;
     public ITxPool TxPool => _fromContainer.TxPool;
     public IWorldStateManager WorldStateManager => _fromContainer.WorldStateManager;
+    public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => _fromContainer.ReadOnlyTxProcessingEnvFactory;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
@@ -144,6 +145,7 @@ public class TestBlockchain : IDisposable
         IBlockValidator BlockValidator,
         IChainLevelInfoRepository ChainLevelInfoRepository,
         IMainProcessingContext MainProcessingContext,
+        IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory,
         Configuration Configuration,
         ISealer Sealer
     );
@@ -292,6 +294,7 @@ public class TestBlockchain : IDisposable
     {
         BlockProducerEnvFactory blockProducerEnvFactory = new(
             WorldStateManager,
+            ReadOnlyTxProcessingEnvFactory,
             BlockTree,
             SpecProvider,
             BlockValidator,
@@ -384,11 +387,7 @@ public class TestBlockchain : IDisposable
 
     protected IBlockCachePreWarmer CreateBlockCachePreWarmer() =>
         new BlockCachePreWarmer(
-            new ReadOnlyTxProcessingEnvFactory(
-                WorldStateManager,
-                BlockTree,
-                SpecProvider,
-                LogManager),
+            ReadOnlyTxProcessingEnvFactory,
             WorldStateManager.GlobalWorldState,
             SpecProvider,
             4,

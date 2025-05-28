@@ -140,7 +140,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
                 worldState,
                 transactionProcessor,
                 _api.BlockTree,
-                _api.CreateReadOnlyTransactionProcessorSource(),
+                _api.ReadOnlyTxProcessingEnvFactory.Create(),
                 _api.ReceiptStorage,
                 _api.ValidatorStore,
                 _api.FinalizationManager,
@@ -176,7 +176,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
                         _api.AbiEncoder,
                         blockGasLimitContractTransition.Value,
                         blockGasLimitContractTransition.Key,
-                        _api.CreateReadOnlyTransactionProcessorSource()))
+                        _api.ReadOnlyTxProcessingEnvFactory.Create()))
                     .ToArray<IBlockGasLimitContract>(),
                 _api.GasLimitCalculatorCache,
                 _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
