@@ -506,7 +506,7 @@ internal static partial class EvmInstructions
     {
         // Charge the base gas cost for this opcode.
         gasAvailable -= GasCostOf.Base;
-        stack.PushUInt256<TTracingInst>(in vm.EvmState.Env.TxExecutionContext.BlockExecutionContext.PrevRandao);
+        stack.Push32Bytes<TTracingInst>(in vm.EvmState.Env.TxExecutionContext.BlockExecutionContext.PrevRandao);
         return EvmExceptionType.None;
     }
 

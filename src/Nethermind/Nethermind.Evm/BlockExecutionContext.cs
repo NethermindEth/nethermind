@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -12,15 +13,15 @@ namespace Nethermind.Evm;
 public readonly struct BlockExecutionContext(BlockHeader blockHeader, in UInt256 blobBaseFee)
 {
     public readonly BlockHeader Header = blockHeader;
+    public readonly Address Coinbase = blockHeader.GasBeneficiary ?? Address.Zero;
     public readonly ulong Number = (ulong)blockHeader.Number;
     public readonly ulong GasLimit = (ulong)blockHeader.GasLimit;
-    public readonly Address Coinbase = blockHeader.GasBeneficiary ?? Address.Zero;
     public readonly UInt256 BlobBaseFee = blobBaseFee;
 
     // Use the random value if post-merge; otherwise, use block difficulty.
-    public readonly UInt256 PrevRandao = blockHeader.IsPostMerge
-        ? (blockHeader.Random ?? Hash256.Zero).ValueHash256.ToUInt256()
-        : blockHeader.Difficulty;
+    public readonly ValueHash256 PrevRandao = blockHeader.IsPostMerge
+        ? (blockHeader.Random ?? Hash256.Zero).ValueHash256
+        : blockHeader.Difficulty.ToValueHash();
 
     public readonly bool IsGenesis = blockHeader.IsGenesis;
 
