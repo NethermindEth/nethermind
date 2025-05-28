@@ -102,6 +102,7 @@
   <Project Path="Nethermind.Init/Nethermind.Init.csproj" />
   <Project Path="Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
   <Project Path="Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
+  <Project Path="Nethermind.L2.Common/Nethermind.L2.Common.csproj" />
   <Project Path="Nethermind.Merge.AuRa/Nethermind.Merge.AuRa.csproj" />
   <Project Path="Nethermind.Merkleization/Nethermind.Merkleization.csproj" />
   <Project Path="Nethermind.Monitoring/Nethermind.Monitoring.csproj" />

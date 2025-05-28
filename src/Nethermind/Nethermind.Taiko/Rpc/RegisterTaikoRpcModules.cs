@@ -11,6 +11,9 @@ using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using System;
 using Nethermind.Consensus;
 using Nethermind.Init.Steps.Migrations;
+using Nethermind.L2.Common.L1Rpc;
+using Nethermind.Taiko.TaikoSpec;
+using Nethermind.Taiko.Config;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -34,6 +37,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.TxSender);
         StepDependencyException.ThrowIfNull(_api.Wallet);
         StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
+        StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.Sealer);
@@ -47,14 +51,25 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         FeeHistoryOracle feeHistoryOracle = new(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
         _api.DisposeStack.Push(feeHistoryOracle);
 
-        // TODO: Add config to enable/disable?
-        TaikoGasPriceOracle taikoGasPriceOracle = new(
-            _api.BlockTree,
-            _api.SpecProvider,
-            feeHistoryOracle,
-            _api.LogManager,
-            _api.Config<IBlocksConfig>().MinGasPrice);
-        _api.GasPriceOracle = taikoGasPriceOracle;
+        // Initialize gas price oracle based on chainspec configuration
+        var taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GenesisSpec;
+        if (taikoSpec.UseCustomGasPriceOracle)
+        {
+            ITaikoConfig taikoConfig = _api.Config<ITaikoConfig>();
+            IEthApi l1Client = new EthereumEthApi(
+                taikoConfig.L1EthApiEndpoint ?? "http://host.docker.internal:32002",
+                _api.EthereumJsonSerializer,
+                _api.LogManager);
+
+            TaikoGasPriceOracle taikoGasPriceOracle = new(
+                _api.BlockTree,
+                _api.SpecProvider,
+                feeHistoryOracle,
+                _api.LogManager,
+                _api.Config<IBlocksConfig>().MinGasPrice,
+                l1Client);
+            _api.GasPriceOracle = taikoGasPriceOracle;
+        }
 
         ModuleFactoryBase<ITaikoRpcModule> ethModuleFactory = new TaikoEthModuleFactory(
             JsonRpcConfig,
