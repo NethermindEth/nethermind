@@ -10,6 +10,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 
+IReleaseSpec spec = Fork.GetLatest();
+const ulong chainId = BlockchainIds.Mainnet;
+LegacySignatureTxValidator legacySignatureTxValidator = new(chainId);
+SignatureTxValidator signatureTxValidator = SignatureTxValidator.Instance;
+EthereumEcdsa ecdsa = new(chainId);
+
 while (true)
 {
     string? input = Console.ReadLine();
@@ -18,26 +24,24 @@ while (true)
 
     try
     {
-        IReleaseSpec spec = Fork.GetLatest();
         byte[] bytes = Bytes.FromHexString(input);
         Transaction tx = Rlp.Decode<Transaction>(bytes, RlpBehaviors.SkipTypedWrapping);
-        const ulong chainId = BlockchainIds.Mainnet;
-
         ITxValidator signatureValidator = tx.Type == TxType.Legacy
-            ? new LegacySignatureTxValidator(chainId)
-            : SignatureTxValidator.Instance;
+            ? legacySignatureTxValidator
+            : signatureTxValidator;
 
         ValidationResult signatureValidation = signatureValidator.IsWellFormed(tx, spec);
         if (!signatureValidation)
         {
-            throw new InvalidDataException($"{signatureValidation.Error}");
+            Console.WriteLine($"err: {signatureValidation.Error}");
+            continue;
         }
 
-        EthereumEcdsa ecdsa = new(chainId);
         Address? sender = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
         if (sender is null)
         {
-            throw new InvalidDataException("Could not recover sender address");
+            Console.WriteLine($"err: Could not recover sender address");
+            continue;
         }
 
         Console.WriteLine($"{sender} {tx.Type}");
