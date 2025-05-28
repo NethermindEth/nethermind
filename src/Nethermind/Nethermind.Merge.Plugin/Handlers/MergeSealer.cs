@@ -11,14 +11,14 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public class MergeSealer : ISealer
     {
-        private readonly ISealEngine _preMergeSealValidator;
+        private readonly ISealer _preMergeSealer;
         private readonly IPoSSwitcher _poSSwitcher;
 
         public MergeSealer(
-            ISealEngine preMergeSealEngine,
+            ISealer preMergeSealer,
             IPoSSwitcher poSSwitcher)
         {
-            _preMergeSealValidator = preMergeSealEngine;
+            _preMergeSealer = preMergeSealer;
             _poSSwitcher = poSSwitcher;
         }
 
@@ -29,7 +29,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 return Task.FromResult(block);
             }
 
-            return _preMergeSealValidator.SealBlock(block, cancellationToken);
+            return _preMergeSealer.SealBlock(block, cancellationToken);
         }
 
         public bool CanSeal(long blockNumber, Hash256 parentHash)
@@ -39,9 +39,9 @@ namespace Nethermind.Merge.Plugin.Handlers
                 return true;
             }
 
-            return _preMergeSealValidator.CanSeal(blockNumber, parentHash);
+            return _preMergeSealer.CanSeal(blockNumber, parentHash);
         }
 
-        public Address Address => _poSSwitcher.HasEverReachedTerminalBlock() ? Address.Zero : _preMergeSealValidator.Address;
+        public Address Address => _poSSwitcher.HasEverReachedTerminalBlock() ? Address.Zero : _preMergeSealer.Address;
     }
 }

@@ -128,7 +128,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
             api.BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
             api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();
-            api.GasPriceOracle = Substitute.For<IGasPriceOracle>();
             api.HealthHintService = Substitute.For<IHealthHintService>();
             api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
             api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();
