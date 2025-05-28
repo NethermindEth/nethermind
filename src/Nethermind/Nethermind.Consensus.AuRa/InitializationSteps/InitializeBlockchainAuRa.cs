@@ -43,7 +43,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     private readonly AuRaChainSpecEngineParameters _parameters;
     private INethermindApi NethermindApi => _api;
 
-    private IAuRaStepCalculator? _auRaStepCalculator;
     private readonly IAuraConfig _auraConfig;
 
     public InitializeBlockchainAuRa(AuRaNethermindApi api) : base(api)
@@ -57,7 +56,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     protected override async Task InitBlockchain()
     {
         var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-        _auRaStepCalculator = new AuRaStepCalculator(chainSpecAuRa.StepDuration, _api.Timestamper, _api.LogManager);
         _api.FinalizationManager = new AuRaBlockFinalizationManager(
             _api.BlockTree!,
             _api.ChainLevelInfoRepository!,
@@ -119,7 +117,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     }
 
     protected override IHealthHintService CreateHealthHintService() =>
-        new AuraHealthHintService(_auRaStepCalculator, _api.ValidatorStore);
+        new AuraHealthHintService(_api.Context.Resolve<IAuRaStepCalculator>(), _api.ValidatorStore);
 
 
     protected IAuRaValidator CreateAuRaValidator(IWorldState worldState, ITransactionProcessor transactionProcessor)

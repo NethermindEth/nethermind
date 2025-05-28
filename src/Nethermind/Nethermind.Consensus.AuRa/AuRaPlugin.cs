@@ -113,7 +113,8 @@ namespace Nethermind.Consensus.AuRa
                 .AddSource(new FallbackToFieldFromApi<AuRaNethermindApi>())
 
                 .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
-                .AddSingleton<ValidSealerStrategy>()
+                .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()
+                .AddSingleton<IAuRaStepCalculator, AuRaStepCalculator>()
                 .AddSingleton<AuRaSealValidator>()
                 .Bind<ISealValidator, AuRaSealValidator>()
                 .AddSingleton<ISealer, AuRaSealer>()
