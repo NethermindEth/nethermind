@@ -103,13 +103,13 @@ public sealed class OptimismCL : IDisposable
         {
             10, // op-mainnet
             [
-                "/ip4/15.235.226.147/tcp/9222/16Uiu2HAmC7Stf2EqVG8Cz2KMHbwJ437EfbnYK5DL56jS4gL6hBZf",
-                "/ip4/162.55.243.13/tcp/9222/16Uiu2HAmFwWf7F81BRUBHQPitn31D7jP2Y2k2yGJxWiarYTwEfy4",
-                "/ip4/15.235.218.129/tcp/9333/16Uiu2HAm34B3KrxabGK1vNQQNAqygz78eWdmddo2tqUY9trKQEps",
-                "/ip4/204.16.247.89/tcp/9222/16Uiu2HAm1nmLdozFd2obdJQ7BgeBGrwYLFUN5693r1Vu4ypUM5Wn",
-                "/ip4/147.28.180.35/tcp/9222/16Uiu2HAkzw2WYdbP9iM4BoNRTHK1su1k3z6b8JPJAWxL5G8fMqVM",
-                "/ip4/141.98.219.58/tcp/9222/16Uiu2HAkyY6HfnGyZo41Bg6mMbZCsD3zQZCp5D4g6T1g7TH5hFP4",
-                "/ip4/34.91.135.174/tcp/9003/16Uiu2HAmETR3xDPHe5DvqGTL5ZCGDFUFvb4ysGbx4VaUhFGeaUW3"
+                "/ip4/15.235.226.147/tcp/9222/p2p/16Uiu2HAmC7Stf2EqVG8Cz2KMHbwJ437EfbnYK5DL56jS4gL6hBZf",
+                "/ip4/162.55.243.13/tcp/9222/p2p/16Uiu2HAmFwWf7F81BRUBHQPitn31D7jP2Y2k2yGJxWiarYTwEfy4",
+                "/ip4/15.235.218.129/tcp/9333/p2p/16Uiu2HAm34B3KrxabGK1vNQQNAqygz78eWdmddo2tqUY9trKQEps",
+                "/ip4/204.16.247.89/tcp/9222/p2p/16Uiu2HAm1nmLdozFd2obdJQ7BgeBGrwYLFUN5693r1Vu4ypUM5Wn",
+                "/ip4/147.28.180.35/tcp/9222/p2p/16Uiu2HAkzw2WYdbP9iM4BoNRTHK1su1k3z6b8JPJAWxL5G8fMqVM",
+                "/ip4/141.98.219.58/tcp/9222/p2p/16Uiu2HAkyY6HfnGyZo41Bg6mMbZCsD3zQZCp5D4g6T1g7TH5hFP4",
+                "/ip4/34.91.135.174/tcp/9003/p2p/16Uiu2HAmETR3xDPHe5DvqGTL5ZCGDFUFvb4ysGbx4VaUhFGeaUW3"
             ]
         }
     };
