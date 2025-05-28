@@ -126,14 +126,10 @@ public static class BlobGasCalculator
             {
                 ulong target = releaseSpec.TargetBlobCount;
                 ulong max = releaseSpec.MaxBlobCount;
-                return max > target
-                    ? excessBlobGas + (blobGasUsed * (max - target) / max)
-                    : excessBlobGas;
+                return excessBlobGas + (blobGasUsed * (max - target) / max);
             }
         }
 
-        return parentBlobGas < targetBlobGasPerBlock
-            ? 0
-            : parentBlobGas - targetBlobGasPerBlock;
+        return parentBlobGas - targetBlobGasPerBlock;
     }
 }
