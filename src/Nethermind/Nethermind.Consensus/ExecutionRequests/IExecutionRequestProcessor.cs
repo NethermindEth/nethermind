@@ -3,11 +3,12 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
 public interface IExecutionRequestsProcessor
 {
-    public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec);
+    public void ProcessExecutionRequests(Block block, IWorldState state, in BlockExecutionContext blkCtx, TxReceipt[] receipts, IReleaseSpec spec);
 }
