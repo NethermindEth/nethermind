@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../tests.props" />
 
   <PropertyGroup>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -6,17 +7,17 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
-  <ItemGroup>
+  <!-- <ItemGroup>
     <PackageReference Include="coverlet.collector" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="NUnit" />
     <PackageReference Include="NUnit.Analyzers" />
     <PackageReference Include="NUnit3TestAdapter" />
-  </ItemGroup>
+  </ItemGroup> -->
 
-  <ItemGroup>
+  <!-- <ItemGroup>
     <Using Include="NUnit.Framework" />
-  </ItemGroup>
+  </ItemGroup> -->
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.ContractSearch.Plugin\Nethermind.ContractSearch.Plugin.csproj" />
