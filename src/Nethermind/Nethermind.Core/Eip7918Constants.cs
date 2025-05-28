@@ -5,6 +5,6 @@ namespace Nethermind.Core;
 
 public static class Eip7918Constants
 {
-    // floor cost in execution gas
+    // floor cost in execution gas 16_384
     public const int BlobBaseCost = 1 << 14;
 }
