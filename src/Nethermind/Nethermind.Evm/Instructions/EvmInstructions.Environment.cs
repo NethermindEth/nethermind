@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
@@ -252,7 +249,7 @@ internal static partial class EvmInstructions
         ref readonly BlockExecutionContext context = ref vm.EvmState.Env.TxExecutionContext.BlockExecutionContext;
         // If the blob base fee is missing (no ExcessBlobGas set), this opcode is invalid.
         if (!context.Header.ExcessBlobGas.HasValue) goto BadInstruction;
-        
+
         // Charge the base gas cost for this opcode.
         gasAvailable -= GasCostOf.Base;
         stack.Push32Bytes<TTracingInst>(in context.BlobBaseFee);
