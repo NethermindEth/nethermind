@@ -325,6 +325,11 @@ namespace Nethermind.Core.Specs
         bool IsEip7823Enabled { get; }
 
         /// <summary>
+        /// Blob base fee bounded by execution cost
+        /// </summary>
+        bool IsEip7918Enabled { get; }
+
+        /// <summary>
         /// Blob base fee collection for Gnosis
         /// </summary>
         bool IsEip4844FeeCollectorEnabled { get; }
