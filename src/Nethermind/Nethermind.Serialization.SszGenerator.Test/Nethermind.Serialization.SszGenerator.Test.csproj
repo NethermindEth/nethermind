@@ -1,22 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <Import Project="../tests.props" />
+
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <EnableNUnitRunner>true</EnableNUnitRunner>
-    <IsPackable>false</IsPackable>
     <Nullable>enable</Nullable>
     <CodeAnalysisGenerateSuccessFile>false</CodeAnalysisGenerateSuccessFile>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="FluentAssertions" />
-    <PackageReference Include="NUnit" />
-    <PackageReference Include="NUnit.Analyzers">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="NUnit3TestAdapter" />
-    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <PackageReference Include="Shouldly" />
   </ItemGroup>
 
