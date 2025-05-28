@@ -4,7 +4,6 @@
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
