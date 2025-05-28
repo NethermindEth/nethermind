@@ -62,16 +62,14 @@ namespace Nethermind.Consensus.Ethash
 
             builder
                 .AddSingleton<IRewardCalculatorSource, RewardCalculator>()
+                .AddSingleton<IDifficultyCalculator, EthashDifficultyCalculator>()
                 .AddSingleton<IEthash, Ethash>()
                 .AddSingleton<ISealValidator, EthashSealValidator>()
-                .AddSingleton<IDifficultyCalculator, EthashDifficultyCalculator>();
+                ;
 
             if (miningConfig.Enabled)
             {
-                builder
-                    .AddSingleton<IEthash, Ethash>()
-                    .AddSingleton<ISealer, EthashSealer>()
-                    ;
+                builder.AddSingleton<ISealer, EthashSealer>();
             }
         }
     }

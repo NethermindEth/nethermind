@@ -408,14 +408,14 @@ public class BaseMergePluginModule : Module
             .AddSingleton<StartingSyncPivotUpdater>()
             .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
 
-            // Validators
+            .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
             .AddDecorator<ISealValidator, MergeSealValidator>()
+            .AddDecorator<ISealer, MergeSealer>()
+
+            // Invalid chain tracker wrapper should be after other validator.
             .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
             .AddDecorator<IBlockValidator, InvalidBlockInterceptor>()
             .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
-
-            .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
-            .AddDecorator<ISealEngine, MergeSealEngine>()
             ;
     }
 }

@@ -1,32 +1,25 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class MergeSealEngine : ISealEngine
+    public class MergeSealer : ISealer
     {
         private readonly ISealEngine _preMergeSealValidator;
         private readonly IPoSSwitcher _poSSwitcher;
-        private readonly ISealValidator _mergeSealValidator;
 
-        public MergeSealEngine(
+        public MergeSealer(
             ISealEngine preMergeSealEngine,
-            IPoSSwitcher? poSSwitcher,
-            ISealValidator mergeSealValidator,
-            ILogManager? logManager)
+            IPoSSwitcher poSSwitcher)
         {
-            _preMergeSealValidator =
-                preMergeSealEngine ?? throw new ArgumentNullException(nameof(preMergeSealEngine));
-            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-            _mergeSealValidator = mergeSealValidator;
+            _preMergeSealValidator = preMergeSealEngine;
+            _poSSwitcher = poSSwitcher;
         }
 
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
@@ -50,10 +43,5 @@ namespace Nethermind.Merge.Plugin.Handlers
         }
 
         public Address Address => _poSSwitcher.HasEverReachedTerminalBlock() ? Address.Zero : _preMergeSealValidator.Address;
-
-        public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle) =>
-            _preMergeSealValidator.ValidateParams(parent, header, isUncle);
-
-        public bool ValidateSeal(BlockHeader header, bool force) => _mergeSealValidator.ValidateSeal(header, force);
     }
 }
