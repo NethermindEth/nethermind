@@ -9,6 +9,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
 
 while (true)
 {
@@ -21,7 +22,19 @@ while (true)
         IReleaseSpec spec = Fork.GetLatest();
         byte[] bytes = Bytes.FromHexString(input);
         Transaction tx = Rlp.Decode<Transaction>(bytes, RlpBehaviors.SkipTypedWrapping);
-        EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
+        const ulong chainId = BlockchainIds.Mainnet;
+
+        ITxValidator signatureValidator = tx.Type == TxType.Legacy
+            ? new LegacySignatureTxValidator(chainId)
+            : SignatureTxValidator.Instance;
+
+        ValidationResult signatureValidation = signatureValidator.IsWellFormed(tx, spec);
+        if (!signatureValidation)
+        {
+            throw new InvalidDataException($"{signatureValidation.Error}");
+        }
+
+        EthereumEcdsa ecdsa = new(chainId);
         Address? sender = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
         if (sender is null)
         {
@@ -32,6 +45,6 @@ while (true)
     }
     catch (Exception e)
     {
-        Console.WriteLine($"err: {e.Message}");
+        Console.WriteLine($"err: {e.Message.Replace(Environment.NewLine, ". ").Replace("\n", ". ")}");
     }
 }
