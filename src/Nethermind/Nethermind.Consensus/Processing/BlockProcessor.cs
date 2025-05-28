@@ -310,13 +310,13 @@ public partial class BlockProcessor(
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        StoreBeaconRoot(block, spec);
+        var blkCtx = new BlockExecutionContext(block.Header, spec);
+
+        StoreBeaconRoot(block, in blkCtx, spec);
         blockHashStore.ApplyBlockhashStateChanges(header);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        var blkCtx = new BlockExecutionContext(block.Header, spec);
-
-        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, blkCtx, options, ReceiptsTracer, spec, token);
+        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, in blkCtx, options, ReceiptsTracer, spec, token);
 
         _stateProvider.Commit(spec, commitRoots: false);
 
@@ -336,7 +336,7 @@ public partial class BlockProcessor(
         // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
         _stateProvider.Commit(spec, commitRoots: false);
 
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, in blkCtx, receipts, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
@@ -379,11 +379,11 @@ public partial class BlockProcessor(
             });
     }
 
-    private void StoreBeaconRoot(Block block, IReleaseSpec spec)
+    private void StoreBeaconRoot(Block block, in BlockExecutionContext blkCtx, IReleaseSpec spec)
     {
         try
         {
-            beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
+            beaconBlockRootHandler.StoreBeaconRoot(block, in blkCtx, spec, NullTxTracer.Instance);
         }
         catch (Exception e)
         {

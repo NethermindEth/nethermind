@@ -28,8 +28,7 @@ public partial class FlashbotsModuleTests
     public virtual async Task TestValidateBuilderSubmissionV3()
     {
         using EngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
-        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = CreateReadOnlyTxProcessingEnvFactory(chain);
-        IFlashbotsRpcModule rpc = CreateFlashbotsModule(chain, readOnlyTxProcessingEnvFactory);
+        IFlashbotsRpcModule rpc = CreateFlashbotsModule(chain);
 
         Block block = CreateBlock(chain);
 

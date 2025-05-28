@@ -126,7 +126,7 @@ internal static unsafe partial class EvmInstructions
         }
         if (spec.BlobBaseFeeEnabled)
         {
-            lookup[(int)Instruction.BLOBBASEFEE] = &InstructionEnvUInt256<OpBlobBaseFee, TTracingInst>;
+            lookup[(int)Instruction.BLOBBASEFEE] = &InstructionBlobBaseFee<TTracingInst>;
         }
 
         // Gap: opcodes 0x4b to 0x4f are unassigned.

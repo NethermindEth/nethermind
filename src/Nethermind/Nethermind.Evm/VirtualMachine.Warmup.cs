@@ -25,7 +25,7 @@ public unsafe partial class VirtualMachine
 {
     public static void WarmUpEvmInstructions()
     {
-        IReleaseSpec spec = Prague.Instance;
+        IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
         VirtualMachine vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);

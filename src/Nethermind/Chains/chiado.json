@@ -92,18 +92,15 @@
     "eip7702TransitionTimestamp": "0x67C96E4C",
     "eip4844FeeCollectorTransitionTimestamp": "0x67C96E4C",
     "depositContractAddress": "0xb97036A26259B7147018913bD58a774cf91acf25",
-    "blobSchedule": {
-      "cancun": {
-        "target": 1,
-        "max": 2,
-        "baseFeeUpdateFraction": "0x10fafa"
-      },
-      "prague": {
+    "blobSchedule": [
+      {
+        "name": "cancun",
+        "timestamp": "0x65ba8e4c",
         "target": 1,
         "max": 2,
         "baseFeeUpdateFraction": "0x10fafa"
       }
-    }
+    ]
   },
   "genesis": {
     "seal": {

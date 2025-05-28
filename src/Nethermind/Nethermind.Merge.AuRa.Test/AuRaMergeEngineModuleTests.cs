@@ -26,7 +26,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
-using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -34,7 +33,6 @@ using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Test;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
@@ -109,6 +107,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     {
         private AuRaNethermindApi? _api;
         protected ITxSource? _additionalTxSource;
+        private AuRaMergeBlockProducerEnvFactory _blockProducerEnvFactory = null!;
 
         public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ITxSource? additionalTxSource = null, ILogManager? logManager = null)
             : base(mergeConfig, mockedPayloadPreparationService, logManager)
@@ -133,11 +132,13 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                     })
 
                     // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
-                    // as normally, test blockchain don't use INethermindApi at all
-                    .AddSingleton<IAbiEncoder>(Nethermind.Abi.AbiEncoder.Instance)
-                    .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
+                    // as normally, test blockchain don't use INethermindApi at all. Note: This test does not
+                    // seems to use aura block processor which means a lot of aura things is not available here.
+                    .AddModule(new AuraModule(ChainSpec))
                     .AddSingleton<NethermindApi.Dependencies>()
-                    .AddSingleton<AuRaNethermindApi>()
+                    .AddSingleton<IReportingValidator>(NullReportingValidator.Instance)
+
+                    .AddSingleton<IBlockProducerEnvFactory>((ctx) => _blockProducerEnvFactory)
                     .AddDecorator<AuRaNethermindApi>((ctx, api) =>
                     {
                         // Yes getting from `TestBlockchain` itself, since steps are not run
@@ -145,6 +146,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                         api.DbProvider = DbProvider;
                         api.TxPool = TxPool;
                         api.TransactionComparerProvider = TransactionComparerProvider;
+                        api.FinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
                         return api;
                     });
                 configurer?.Invoke(builder);
@@ -210,6 +212,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 _api!.ChainSpec,
                 _api.AbiEncoder,
                 _api.CreateStartBlockProducer,
+                _api.ReadOnlyTxProcessingEnvFactory,
                 WorldStateManager,
                 BlockTree,
                 SpecProvider,
@@ -222,6 +225,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 blocksConfig,
                 LogManager);
             blockProducerEnvFactory.ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
+            this._blockProducerEnvFactory = blockProducerEnvFactory;
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(_additionalTxSource);
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);

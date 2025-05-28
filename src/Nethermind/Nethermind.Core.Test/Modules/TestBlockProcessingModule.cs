@@ -7,6 +7,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -16,19 +17,19 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class BlockProcessingModule : Module
+public class TestBlockProcessingModule : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -38,6 +39,7 @@ public class BlockProcessingModule : Module
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
             // NOTE: The ordering of block preprocessor is not guarenteed
             .AddComposite<IBlockPreprocessorStep, CompositeBlockPreprocessorStep>()
+            .AddSingleton<CompositeBlockPreprocessorStep>()
             .AddSingleton<IBlockPreprocessorStep, RecoverSignatures>()
 
             // Yea, for some reason, the ICodeInfoRepository need to be the main one for ChainHeadInfoProvider to work.
@@ -66,14 +68,11 @@ public class BlockProcessingModule : Module
             .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
             .AddScoped<IBlockProcessor, BlockProcessor>()
             .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardCalculatorSource, txProcessor) => rewardCalculatorSource.Get(txProcessor))
-            .AddScoped<ITransactionProcessor, TransactionProcessor>()
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
             .AddScoped<IBlockhashStore, BlockhashStore>()
-            .AddScoped<IVirtualMachine, VirtualMachine>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddScoped<BlockchainProcessor>()
-            .AddScoped<IBlockhashProvider, BlockhashProvider>()
 
             // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
             // in a `MainBlockProcessingContext`.
@@ -102,6 +101,15 @@ public class BlockProcessingModule : Module
             .AddSingleton<IManualBlockProductionTrigger, BuildBlocksWhenRequested>()
             .AddSingleton<ProducedBlockSuggester>()
             .ResolveOnServiceActivation<ProducedBlockSuggester, IBlockProducerRunner>()
+
+            .AddSingleton<ISigner>(NullSigner.Instance)
+            .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>
+                new GasPriceOracle(
+                    blockTree,
+                    specProvider,
+                    logManager,
+                    blocksConfig.MinGasPrice
+                ))
 
             ;
     }
