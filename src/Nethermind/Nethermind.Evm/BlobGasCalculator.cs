@@ -107,14 +107,13 @@ public static class BlobGasCalculator
 
         ulong excessBlobGas = parentBlockHeader.ExcessBlobGas ?? 0;
         ulong blobGasUsed = parentBlockHeader.BlobGasUsed ?? 0;
-        var targetBlobGasPerBlock = releaseSpec.GetTargetBlobGasPerBlock();
+        ulong totalBlobGas = excessBlobGas + blobGasUsed;
+        ulong targetBlobGasPerBlock = releaseSpec.GetTargetBlobGasPerBlock();
 
-        if (excessBlobGas + blobGasUsed < targetBlobGasPerBlock)
+        if (totalBlobGas < targetBlobGasPerBlock)
         {
             return 0;
         }
-
-        var excessBlobGasChange = blobGasUsed - targetBlobGasPerBlock;
 
         if (releaseSpec.IsEip7918Enabled)
         {
@@ -125,12 +124,16 @@ public static class BlobGasCalculator
             // if below floor cost then increase excess blob gas
             if (floorCost > targetCost)
             {
-                var target = releaseSpec.TargetBlobCount;
-                var max = releaseSpec.MaxBlobCount;
-                excessBlobGasChange = blobGasUsed * (max - target) / max;
+                ulong target = releaseSpec.TargetBlobCount;
+                ulong max = releaseSpec.MaxBlobCount;
+                return max > target
+                    ? excessBlobGas + (blobGasUsed * (max - target) / max)
+                    : excessBlobGas;
             }
         }
 
-        return excessBlobGas + excessBlobGasChange;
+        return totalBlobGas < targetBlobGasPerBlock
+            ? 0
+            : totalBlobGas - targetBlobGasPerBlock;
     }
 }
