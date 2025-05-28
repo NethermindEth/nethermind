@@ -110,6 +110,11 @@ namespace Nethermind.Specs.ChainSpecStyle
                         throw new ArgumentException($"Blob settings are scheduled at {settings.Timestamp}, before EIP-4844, activated at {chainSpec.Parameters.Eip4844TransitionTimestamp}");
                     }
 
+                    if (settings.Target > settings.Max)
+                    {
+                        throw new ArgumentException($"Blob schedule target ({settings.Target}) should not exceed max ({settings.Max}).");
+                    }
+
                     transitions.Add(settings.Timestamp);
                 }
             }
