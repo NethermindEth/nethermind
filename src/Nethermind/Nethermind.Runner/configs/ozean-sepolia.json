@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/ozean-sepolia.json.zst",
+    "GenesisHash": "0xb32768b76d1a3e84947da1caf37443f46003bff8f24ceee43db387452cba5da1",
+    "BaseDbPath": "nethermind_db/ozean-sepolia",
+    "LogFileName": "ozean-sepolia.log"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "FastSyncCatchUpHeightDelta": "10000000000"
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Port": 8545,
+    "EnginePort": 8551
+  },
+  "Pruning": {
+    "PruningBoundary": 192
+  },
+  "Blocks": {
+    "SecondsPerSlot": 2
+  },
+  "Merge": {
+    "Enabled": true
+  },
+  "Optimism": {
+    "SequencerUrl": "https://ozean-testnet.rpc.caldera.xyz/http"
+  }
+}

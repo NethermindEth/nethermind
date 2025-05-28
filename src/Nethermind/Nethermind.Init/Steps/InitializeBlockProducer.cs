@@ -74,6 +74,7 @@ namespace Nethermind.Init.Steps
         protected virtual IBlockProducerEnvFactory InitBlockProducerEnvFactory() =>
             new BlockProducerEnvFactory(
                 _api.WorldStateManager!,
+                _api.ReadOnlyTxProcessingEnvFactory,
                 _api.BlockTree!,
                 _api.SpecProvider!,
                 _api.BlockValidator!,

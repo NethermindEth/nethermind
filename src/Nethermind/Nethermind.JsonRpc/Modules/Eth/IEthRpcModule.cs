@@ -233,10 +233,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true,
             Description = "Retrieves an uncle block header by block hash and uncle index",
             IsSharable = true)]
-        ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Hash256 blockHashData, UInt256 positionIndex);
+        ResultWrapper<BlockForRpc?> eth_getUncleByBlockHashAndIndex(Hash256 blockHashData, UInt256 positionIndex);
 
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves an uncle block header by block number and uncle index", IsSharable = true)]
-        ResultWrapper<BlockForRpc> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex);
+        ResultWrapper<BlockForRpc?> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Creates an update filter",

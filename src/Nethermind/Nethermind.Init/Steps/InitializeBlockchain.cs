@@ -17,10 +17,12 @@ using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Evm;
@@ -68,7 +70,12 @@ namespace Nethermind.Init.Steps
             IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
             PreBlockCaches? preBlockCaches = (mainWorldState as IPreBlockCaches)?.Caches;
             CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
-            ITxPool txPool = _api.TxPool = CreateTxPool(codeInfoRepository);
+            IChainHeadInfoProvider chainHeadInfoProvider =
+                new ChainHeadInfoProvider(getApi.SpecProvider!, getApi.BlockTree!, stateReader, codeInfoRepository);
+
+            _api.TxGossipPolicy.Policies.Add(new SpecDrivenTxGossipPolicy(chainHeadInfoProvider));
+
+            ITxPool txPool = _api.TxPool = CreateTxPool(chainHeadInfoProvider);
 
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.ReceiptStorage, _api.LogManager);
             getApi.DisposeStack.Push(receiptCanonicalityMonitor);
@@ -77,15 +84,12 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-
+            VirtualMachine.WarmUpEvmInstructions();
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
             InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
-
-            IChainHeadInfoProvider chainHeadInfoProvider =
-                new ChainHeadInfoProvider(getApi.SpecProvider!, getApi.BlockTree!, stateReader, codeInfoRepository);
 
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider!.ChainId);
@@ -98,11 +102,8 @@ namespace Nethermind.Init.Steps
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.ReadOnlyStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new ReadOnlyTxProcessingEnvFactory(
-                        _api.WorldStateManager!,
-                        _api.BlockTree!.AsReadOnly(),
-                        _api.SpecProvider!,
-                        _api.LogManager),
+                ? new(
+                    _api.ReadOnlyTxProcessingEnvFactory,
                     mainWorldState,
                     _api.SpecProvider!,
                     blocksConfig,
@@ -205,11 +206,11 @@ namespace Nethermind.Init.Steps
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
             new BlockProductionPolicy(_api.Config<IMiningConfig>());
 
-        protected virtual ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository)
+        protected virtual ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
         {
             TxPool.TxPool txPool = new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
-                new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!, codeInfoRepository),
+                chainHeadInfoProvider,
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
                 _api.LogManager,
@@ -223,7 +224,10 @@ namespace Nethermind.Init.Steps
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 
         // TODO: remove from here - move to consensus?
-        protected virtual BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
+        protected virtual BlockProcessor CreateBlockProcessor(
+            BlockCachePreWarmer? preWarmer,
+            ITransactionProcessor transactionProcessor,
+            IWorldState worldState)
         {
             if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
@@ -231,19 +235,18 @@ namespace Nethermind.Init.Steps
             if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-            return new BlockProcessor(
-                _api.SpecProvider,
+            return new BlockProcessor(_api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(transactionProcessor),
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
                 worldState,
-                _api.ReceiptStorage,
-                transactionProcessor,
+                _api.ReceiptStorage!,
                 new BeaconBlockRootHandler(transactionProcessor, worldState),
                 new BlockhashStore(_api.SpecProvider!, worldState),
                 _api.LogManager,
-                preWarmer: preWarmer
-            );
+                new WithdrawalProcessor(worldState, _api.LogManager),
+                new ExecutionRequestsProcessor(transactionProcessor),
+                preWarmer: preWarmer);
         }
 
         // TODO: remove from here - move to consensus?

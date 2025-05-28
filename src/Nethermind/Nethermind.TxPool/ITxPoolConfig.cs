@@ -51,6 +51,11 @@ public interface ITxPoolConfig : IConfig
         Description = "The max blob transaction size allowed, excluding blobs, in bytes.")]
     long? MaxBlobTxSize { get; set; }
 
+    [ConfigItem(DefaultValue = "false",
+        Description = "Enable transformation of blob txs with network wrapper in version 0x0 (blob proof) to version 0x1 (cell proofs)",
+        HiddenFromDocs = true)]
+    bool ProofsTranslationEnabled { get; set; }
+
     [ConfigItem(DefaultValue = "null",
         Description = "The current transaction pool state reporting interval, in minutes.")]
     int? ReportMinutes { get; set; }
