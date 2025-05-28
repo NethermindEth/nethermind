@@ -95,7 +95,9 @@ internal static unsafe partial class EvmInstructions
         // Extended code hash opcode handling.
         if (spec.ExtCodeHashOpcodeEnabled)
         {
-            lookup[(int)Instruction.EXTCODEHASH] = spec.IsEofEnabled ? &InstructionExtCodeHashEof<TTracingInst> : &InstructionExtCodeHash<TTracingInst>;
+            lookup[(int)Instruction.EXTCODEHASH] = spec.IsEofEnabled ?
+                &InstructionExtCodeHashEof<TTracingInst> :
+                &InstructionExtCodeHash<TTracingInst>;
         }
 
         lookup[(int)Instruction.BLOCKHASH] = &InstructionBlockHash<TTracingInst>;

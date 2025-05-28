@@ -254,9 +254,9 @@ public sealed class MempoolBlobTxValidator : ITxValidator
             IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
 
             return !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
-                   !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
-                   !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
-                   ValidationResult.Success;
+                !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
+                !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
+                ValidationResult.Success;
         }
     }
 }

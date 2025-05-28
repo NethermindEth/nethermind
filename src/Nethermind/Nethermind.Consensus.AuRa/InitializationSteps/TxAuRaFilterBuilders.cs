@@ -15,7 +15,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
@@ -25,7 +24,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         IBlocksConfig blocksConfig,
         IAuraConfig auraConfig,
         IAbiEncoder abiEncoder,
-        IWorldStateManager worldStateManager,
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
         IBlockTree blockTree,
         IReceiptFinder receiptFinder,
         AuraStatefulComponents statefulComponents,
@@ -49,9 +48,6 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         /// </remarks>
         public static FilterDecorator CreateFilter { get; set; } = static (x, _) => x;
 
-        public ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
-            new ReadOnlyTxProcessingEnv(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager);
-
         private ITxFilter CreateBaseAuRaTxFilter(
             IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore)
         {
@@ -65,8 +61,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             Address? registrar = chainSpec?.Parameters.Registrar;
             if (registrar is not null)
             {
-                RegisterContract registerContract = new(abiEncoder, registrar, CreateReadOnlyTransactionProcessorSource());
-                CertifierContract certifierContract = new(abiEncoder, registerContract, CreateReadOnlyTransactionProcessorSource());
+                RegisterContract registerContract = new(abiEncoder, registrar, readOnlyTxProcessingEnvFactory.Create());
+                CertifierContract certifierContract = new(abiEncoder, registerContract, readOnlyTxProcessingEnvFactory.Create());
                 return CreateFilter(new TxCertifierFilter(certifierContract, gasPriceTxFilter, specProvider, logManager), gasPriceTxFilter);
             }
 
@@ -78,8 +74,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             Address? registrar = chainSpec?.Parameters.Registrar;
             if (registrar is not null)
             {
-                RegisterContract registerContract = new(abiEncoder, registrar, CreateReadOnlyTransactionProcessorSource());
-                CertifierContract certifierContract = new(abiEncoder, registerContract, CreateReadOnlyTransactionProcessorSource());
+                RegisterContract registerContract = new(abiEncoder, registrar, readOnlyTxProcessingEnvFactory.Create());
+                CertifierContract certifierContract = new(abiEncoder, registerContract, readOnlyTxProcessingEnvFactory.Create());
                 return CreateFilter(new TxCertifierFilter(certifierContract, baseTxFilter, specProvider, logManager));
             }
 
@@ -95,7 +91,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                     new VersionedTransactionPermissionContract(abiEncoder,
                         chainSpec.Parameters.TransactionPermissionContract,
                         chainSpec.Parameters.TransactionPermissionContractTransition ?? 0,
-                        CreateReadOnlyTransactionProcessorSource(),
+                        readOnlyTxProcessingEnvFactory.Create(),
                         statefulComponents.TransactionPermissionContractVersions,
                         logManager,
                         specProvider),
@@ -134,7 +130,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             TxPriorityContract? txPriorityContract = null;
             if (usesTxPriorityContract)
             {
-                txPriorityContract = new TxPriorityContract(abiEncoder, txPriorityContractAddress, CreateReadOnlyTransactionProcessorSource());
+                txPriorityContract = new TxPriorityContract(abiEncoder, txPriorityContractAddress, readOnlyTxProcessingEnvFactory.Create());
             }
 
             return txPriorityContract;

@@ -40,7 +40,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             .AddModule(new PsudoNetworkModule())
             .AddModule(new BlockTreeModule())
-            .AddModule(new BlockProcessingModule())
+            .AddModule(new TestBlockProcessingModule())
 
             // Environments
             .AddSingleton<DisposableStack>()

@@ -84,7 +84,7 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-
+            VirtualMachine.WarmUpEvmInstructions();
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
@@ -102,11 +102,8 @@ namespace Nethermind.Init.Steps
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.ReadOnlyStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new ReadOnlyTxProcessingEnvFactory(
-                        _api.WorldStateManager!,
-                        _api.BlockTree!.AsReadOnly(),
-                        _api.SpecProvider!,
-                        _api.LogManager),
+                ? new(
+                    _api.ReadOnlyTxProcessingEnvFactory,
                     mainWorldState,
                     _api.SpecProvider!,
                     blocksConfig,

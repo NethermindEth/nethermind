@@ -20,6 +20,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -132,7 +133,7 @@ public class TxCertifierFilterTests
 
     public class TestTxPermissionsBlockchain : TestContractBlockchain
     {
-        public ReadOnlyTxProcessingEnv ReadOnlyTransactionProcessorSource { get; private set; }
+        public IReadOnlyTxProcessorSource ReadOnlyTransactionProcessorSource { get; private set; }
         public RegisterContract RegisterContract { get; private set; }
         public CertifierContract CertifierContract { get; private set; }
 
