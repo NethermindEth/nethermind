@@ -50,9 +50,36 @@ public class IPResolver : IIPResolver
 
     public IPAddress ExternalIp { get; private set; }
 
-    private Task<IPAddress> InitializeExternalIp()
+    private async Task<IPAddress> InitializeExternalIp()
     {
-        return Task.FromResult(IPAddress.Any);
+        IEnumerable<IIPSource> GetIPSources()
+        {
+            yield return new NetworkConfigExternalIPSource(_networkConfig, _logManager);
+            yield return new WebIPSource("http://ipv4.icanhazip.com", _logManager);
+            yield return new WebIPSource("http://ipv4bot.whatismyipaddress.com", _logManager);
+            yield return new WebIPSource("http://checkip.amazonaws.com", _logManager);
+            yield return new WebIPSource("http://ipinfo.io/ip", _logManager);
+            yield return new WebIPSource("http://api.ipify.org", _logManager);
+        }
+
+        try
+        {
+            foreach (IIPSource s in GetIPSources())
+            {
+                (bool success, IPAddress ip) = await s.TryGetIP();
+                if (success)
+                {
+                    ThisNodeInfo.AddInfo("External IP  :", $"{ip}");
+                    return ip;
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Error while getting external ip", e);
+        }
+
+        return IPAddress.Any;
     }
 
     private async Task<IPAddress> InitializeLocalIp()

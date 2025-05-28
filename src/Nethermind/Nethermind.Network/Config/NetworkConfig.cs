@@ -8,11 +8,7 @@ namespace Nethermind.Network.Config
 {
     public class NetworkConfig : INetworkConfig
     {
-        public string? ExternalIp
-        {
-            get => "0.0.0.0";
-            set { }
-        }
+        public string? ExternalIp { get; set; }
         public string? LocalIp { get; set; }
         public string? StaticPeers { get; set; }
         public string? DiscoveryDns { get; set; }

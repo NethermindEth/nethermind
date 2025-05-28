@@ -28,7 +28,7 @@ namespace Nethermind.Init.Steps
             INetworkConfig networkConfig = _api.Config<INetworkConfig>();
             _api.IpResolver = new IPResolver(networkConfig, _api.LogManager);
             await _api.IpResolver.Initialize();
-            //networkConfig.ExternalIp = _api.IpResolver.ExternalIp.ToString();
+            networkConfig.ExternalIp = _api.IpResolver.ExternalIp.ToString();
             networkConfig.LocalIp = _api.IpResolver.LocalIp.ToString();
         }
     }
