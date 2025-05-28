@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -27,7 +28,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class BlockProcessingModule : Module
+public class TestBlockProcessingModule : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -65,12 +66,11 @@ public class BlockProcessingModule : Module
             .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
             .AddScoped<IBlockProcessor, BlockProcessor>()
             .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardCalculatorSource, txProcessor) => rewardCalculatorSource.Get(txProcessor))
-            .AddScoped<ITransactionProcessor, TransactionProcessor>()
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
             .AddScoped<IBlockhashStore, BlockhashStore>()
-            .AddScoped<IVirtualMachine, VirtualMachine>()
+            .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
+            .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddScoped<BlockchainProcessor>()
-            .AddScoped<IBlockhashProvider, BlockhashProvider>()
 
             // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
             // in a `MainBlockProcessingContext`.
@@ -87,9 +87,6 @@ public class BlockProcessingModule : Module
             .AddScoped<ISealEngine, SealEngine>()
             .AddScoped<IComparer<Transaction>, ITransactionComparerProvider>(txComparer => txComparer.GetDefaultComparer())
             .AddScoped<BlockProducerEnvFactory>()
-
-            // Is this like a common thing or what?
-            .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
 
             // Much like block validation, anything that require the use of IWorldState in block producer, is wrapped in
             // a `BlockProducerContext`.

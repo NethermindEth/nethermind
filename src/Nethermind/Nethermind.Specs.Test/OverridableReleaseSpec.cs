@@ -126,6 +126,8 @@ namespace Nethermind.Specs.Test
 
         public bool IsEip7623Enabled => _spec.IsEip7623Enabled;
 
+        public bool IsEip7883Enabled => _spec.IsEip7883Enabled;
+
         public bool IsEip3607Enabled { get; set; }
 
         public bool IsEip158IgnoredAccount(Address address) => _spec.IsEip158IgnoredAccount(address);
@@ -189,6 +191,7 @@ namespace Nethermind.Specs.Test
         public bool IsEofEnabled => _spec.IsEofEnabled;
         public bool IsEip6110Enabled => _spec.IsEip6110Enabled;
         public Address DepositContractAddress => _spec.DepositContractAddress;
+        public bool IsEip7594Enabled => _spec.IsEip7594Enabled;
 
         Array? IReleaseSpec.EvmInstructionsNoTrace { get => _spec.EvmInstructionsNoTrace; set => _spec.EvmInstructionsNoTrace = value; }
         Array? IReleaseSpec.EvmInstructionsTraced { get => _spec.EvmInstructionsTraced; set => _spec.EvmInstructionsTraced = value; }

@@ -52,9 +52,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     protected override MergeTestBlockchain CreateBaseBlockchain(
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,
-        ILogManager? logManager = null,
-        IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null)
-        => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService, null, logManager, mockedExecutionRequestsProcessor);
+        ILogManager? logManager = null)
+        => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService, null, logManager);
 
     protected override Hash256 ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
 
@@ -111,10 +110,9 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         private AuRaNethermindApi? _api;
         protected ITxSource? _additionalTxSource;
 
-        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ITxSource? additionalTxSource = null, ILogManager? logManager = null, IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null)
-            : base(mergeConfig, mockedPayloadPreparationService, logManager, mockedExecutionRequestsProcessor)
+        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ITxSource? additionalTxSource = null, ILogManager? logManager = null)
+            : base(mergeConfig, mockedPayloadPreparationService, logManager)
         {
-            ExecutionRequestsProcessor = mockedExecutionRequestsProcessor;
             SealEngineType = Core.SealEngineType.AuRa;
             _additionalTxSource = additionalTxSource;
         }
@@ -182,13 +180,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, state),
                 state,
                 ReceiptStorage,
-                TxProcessor,
                 new BeaconBlockRootHandler(TxProcessor, state),
                 new BlockhashStore(SpecProvider, state),
                 LogManager,
                 WithdrawalProcessor,
-                executionRequestsProcessor: ExecutionRequestsProcessor,
-                preWarmer: CreateBlockCachePreWarmer());
+                ExecutionRequestsProcessorOverride ?? new ExecutionRequestsProcessor(TxProcessor),
+                CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
@@ -213,6 +210,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 _api!.ChainSpec,
                 _api.AbiEncoder,
                 _api.CreateStartBlockProducer,
+                _api.ReadOnlyTxProcessingEnvFactory,
                 WorldStateManager,
                 BlockTree,
                 SpecProvider,
@@ -223,9 +221,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 TxPool,
                 transactionComparerProvider,
                 blocksConfig,
-                LogManager,
-                ExecutionRequestsProcessor);
-
+                LogManager);
+            blockProducerEnvFactory.ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(_additionalTxSource);
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);

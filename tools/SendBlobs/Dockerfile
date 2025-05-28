@@ -11,7 +11,6 @@ ARG TARGETOS
 
 COPY . .
 
-ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
     dotnet publish tools/SendBlobs -c $BUILD_CONFIG -r $TARGETOS-$arch -o out --sc true \
       -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
@@ -23,5 +22,4 @@ WORKDIR /nethermind
 COPY --from=build /out/SendBlobs .
 
 RUN apt update && apt-get install -y ca-certificates
-ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 ENTRYPOINT ["./SendBlobs"]

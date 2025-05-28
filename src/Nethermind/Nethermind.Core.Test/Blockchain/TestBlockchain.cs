@@ -22,6 +22,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
@@ -57,6 +58,7 @@ public class TestBlockchain : IDisposable
     public IReceiptStorage ReceiptStorage => _fromContainer.ReceiptStorage;
     public ITxPool TxPool => _fromContainer.TxPool;
     public IWorldStateManager WorldStateManager => _fromContainer.WorldStateManager;
+    public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => _fromContainer.ReadOnlyTxProcessingEnvFactory;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
@@ -113,7 +115,7 @@ public class TestBlockchain : IDisposable
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
-    public IExecutionRequestsProcessor? ExecutionRequestsProcessor { get; protected set; } = null!;
+    public IExecutionRequestsProcessor MainExecutionRequestsProcessor => ((MainBlockProcessingContext)_fromContainer.MainProcessingContext).LifetimeScope.Resolve<IExecutionRequestsProcessor>();
     public IChainLevelInfoRepository ChainLevelInfoRepository => _fromContainer.ChainLevelInfoRepository;
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
@@ -143,6 +145,7 @@ public class TestBlockchain : IDisposable
         IBlockValidator BlockValidator,
         IChainLevelInfoRepository ChainLevelInfoRepository,
         IMainProcessingContext MainProcessingContext,
+        IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory,
         Configuration Configuration,
         ISealer Sealer
     );
@@ -291,6 +294,7 @@ public class TestBlockchain : IDisposable
     {
         BlockProducerEnvFactory blockProducerEnvFactory = new(
             WorldStateManager,
+            ReadOnlyTxProcessingEnvFactory,
             BlockTree,
             SpecProvider,
             BlockValidator,
@@ -373,21 +377,17 @@ public class TestBlockchain : IDisposable
             new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, state),
             state,
             ReceiptStorage,
-            TxProcessor,
             new BeaconBlockRootHandler(TxProcessor, state),
             new BlockhashStore(SpecProvider, state),
             LogManager,
-            preWarmer: CreateBlockCachePreWarmer(),
-            executionRequestsProcessor: ExecutionRequestsProcessor);
+            new WithdrawalProcessor(state, LogManager),
+            MainExecutionRequestsProcessor,
+            preWarmer: CreateBlockCachePreWarmer());
 
 
     protected IBlockCachePreWarmer CreateBlockCachePreWarmer() =>
         new BlockCachePreWarmer(
-            new ReadOnlyTxProcessingEnvFactory(
-                WorldStateManager,
-                BlockTree,
-                SpecProvider,
-                LogManager),
+            ReadOnlyTxProcessingEnvFactory,
             WorldStateManager.GlobalWorldState,
             SpecProvider,
             4,
