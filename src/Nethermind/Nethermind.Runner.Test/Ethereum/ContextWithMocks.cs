@@ -86,6 +86,7 @@ namespace Nethermind.Runner.Test.Ethereum
                     .AddSingleton(Substitute.For<IRewardCalculatorSource>())
                     .AddSingleton(Substitute.For<ISealer>())
                     .AddSingleton(Substitute.For<ISealValidator>())
+                    .AddSingleton(Substitute.For<IGasPriceOracle>())
                     .Build()
             );
 
