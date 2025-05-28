@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Logging;
 
@@ -14,6 +15,11 @@ namespace Nethermind.Consensus.AuRa
         private readonly IList<StepDurationInfo> _stepDurations;
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
+
+        public AuRaStepCalculator(AuRaChainSpecEngineParameters parameters, ITimestamper timestamper, ILogManager logManager)
+            : this(parameters.StepDuration, timestamper, logManager)
+        {
+        }
 
         public AuRaStepCalculator(IDictionary<long, long> stepDurations, ITimestamper timestamper, ILogManager logManager)
         {
