@@ -3,10 +3,15 @@
 
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
@@ -15,11 +20,26 @@ public class BlockProcessingModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
+            // Validators
+            .AddSingleton<TxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
+            .Bind<ITxValidator, TxValidator>()
+            .AddSingleton<IBlockValidator, BlockValidator>()
+            .AddSingleton<IHeaderValidator, HeaderValidator>()
+            .AddSingleton<IUnclesValidator, UnclesValidator>()
+
+            // Block processing components
             .AddScoped<ITransactionProcessor, TransactionProcessor>()
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
             .AddScoped<IVirtualMachine, VirtualMachine>()
             .AddScoped<IBlockhashProvider, BlockhashProvider>()
             .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
+
+            // Block production components
+            .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
+            .AddSingleton<ISealValidator>(NullSealEngine.Instance)
+            .AddSingleton<ISealer>(NullSealEngine.Instance)
+            .AddSingleton<ISealEngine, ISealValidator, ISealer>((validator, sealer) => new SealEngine(sealer, validator))
+
             ;
     }
 }

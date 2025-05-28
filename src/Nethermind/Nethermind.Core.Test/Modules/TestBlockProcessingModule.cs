@@ -34,8 +34,6 @@ public class TestBlockProcessingModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
-            .AddSingleton<ISealValidator>(NullSealEngine.Instance)
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
             // NOTE: The ordering of block preprocessor is not guarenteed
             .AddComposite<IBlockPreprocessorStep, CompositeBlockPreprocessorStep>()
@@ -86,7 +84,6 @@ public class TestBlockProcessingModule : Module
             .AddScoped<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
             .AddScoped<ITxSource, TxPoolTxSource>()
             .AddScoped<ITxFilterPipeline, ILogManager, ISpecProvider, IBlocksConfig>(TxFilterPipelineBuilder.CreateStandardFilteringPipeline)
-            .AddScoped<ISealEngine, SealEngine>()
             .AddScoped<IComparer<Transaction>, ITransactionComparerProvider>(txComparer => txComparer.GetDefaultComparer())
             .AddScoped<BlockProducerEnvFactory>()
 

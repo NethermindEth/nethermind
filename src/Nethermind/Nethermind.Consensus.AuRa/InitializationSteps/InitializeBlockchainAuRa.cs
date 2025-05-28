@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
+using Microsoft.ClearScript;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -41,7 +43,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     private readonly AuRaChainSpecEngineParameters _parameters;
     private INethermindApi NethermindApi => _api;
 
-    private AuRaSealValidator? _sealValidator;
     private IAuRaStepCalculator? _auRaStepCalculator;
     private readonly IAuraConfig _auraConfig;
 
@@ -71,10 +72,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         _api.FinalizationManager.SetMainBlockProcessor(_api.MainProcessingContext!.BlockProcessor!);
 
         // SealValidator is assigned before AuraValidator is created, so this is needed also
-        if (_sealValidator is not null)
-        {
-            _sealValidator.ReportingValidator = _api.ReportingValidator;
-        }
+        ((AuRaSealValidator)_api.SealValidator).ReportingValidator = _api.ReportingValidator;
     }
 
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
@@ -187,19 +185,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
         // do not return target gas limit calculator here - this is used for validation to check if the override should have been used
         return null;
-    }
-
-    protected override void InitSealEngine()
-    {
-        if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-        if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
-        if (_api.EthereumEcdsa is null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
-        if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-
-        ValidSealerStrategy validSealerStrategy = new ValidSealerStrategy();
-        _api.SealValidator = _sealValidator = new AuRaSealValidator(_parameters, _auRaStepCalculator, _api.BlockTree, _api.ValidatorStore, validSealerStrategy, _api.EthereumEcdsa, _api.LogManager);
-        _api.RewardCalculatorSource = new AuRaRewardCalculator.AuRaRewardCalculatorSource(_parameters, _api.AbiEncoder);
-        _api.Sealer = new AuRaSealer(_api.BlockTree, _api.ValidatorStore, _auRaStepCalculator, _api.EngineSigner, validSealerStrategy, _api.LogManager);
     }
 
     private IComparer<Transaction> CreateTxPoolTxComparer(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)

@@ -83,6 +83,9 @@ namespace Nethermind.Runner.Test.Ethereum
                     .AddSingleton(Substitute.For<ITrustedNodesManager>())
                     .AddSingleton(Substitute.For<IReadOnlyTxProcessingEnvFactory>())
                     .AddSingleton(Substitute.For<IPeerManager>())
+                    .AddSingleton(Substitute.For<IRewardCalculatorSource>())
+                    .AddSingleton(Substitute.For<ISealer>())
+                    .AddSingleton(Substitute.For<ISealValidator>())
                     .Build()
             );
 
@@ -102,10 +105,8 @@ namespace Nethermind.Runner.Test.Ethereum
             api.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
             api.ReceiptStorage = Substitute.For<IReceiptStorage>();
             api.ReceiptFinder = Substitute.For<IReceiptFinder>();
-            api.RewardCalculatorSource = Substitute.For<IRewardCalculatorSource>();
             api.TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
             api.BloomStorage = Substitute.For<IBloomStorage>();
-            api.Sealer = Substitute.For<ISealer>();
             api.BlockProducer = Substitute.For<IBlockProducer>();
             api.EngineSigner = Substitute.For<ISigner>();
             api.FileSystem = Substitute.For<IFileSystem>();
@@ -118,7 +119,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.ProtocolsManager = Substitute.For<IProtocolsManager>();
             api.ProtocolValidator = Substitute.For<IProtocolValidator>();
             api.RlpxPeer = Substitute.For<IRlpxHost>();
-            api.SealValidator = Substitute.For<ISealValidator>();
             api.SessionMonitor = Substitute.For<ISessionMonitor>();
             api.MainProcessingContext = Substitute.For<IMainProcessingContext>();
             api.TxSender = Substitute.For<ITxSender>();

@@ -46,8 +46,6 @@ namespace Nethermind.Merge.Plugin
 
                 BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create(txSource);
 
-                _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, _api.SealValidator, _api.LogManager);
-                _api.Sealer = _api.SealEngine;
                 _postMergeBlockProducer = CreateBlockProducerFactory().Create(blockProducerEnv);
                 _api.BlockProducer = new MergeBlockProducer(blockProducer, _postMergeBlockProducer, _poSSwitcher);
             }

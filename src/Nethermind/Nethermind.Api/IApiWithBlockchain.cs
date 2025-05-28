@@ -49,10 +49,10 @@ namespace Nethermind.Api
         [SkipServiceCollection]
         IHeaderValidator? HeaderValidator { get; }
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
-        IRewardCalculatorSource? RewardCalculatorSource { get; set; }
-        ISealer? Sealer { get; set; }
-        ISealValidator? SealValidator { get; set; }
-        ISealEngine SealEngine { get; set; }
+        IRewardCalculatorSource? RewardCalculatorSource { get; }
+        ISealer Sealer { get; }
+        ISealValidator SealValidator { get; }
+        ISealEngine SealEngine { get; }
         IStateReader? StateReader { get; }
 
         IWorldStateManager? WorldStateManager { get; }

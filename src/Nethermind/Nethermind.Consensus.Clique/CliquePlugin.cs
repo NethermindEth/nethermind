@@ -3,6 +3,8 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
@@ -17,10 +19,12 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Specs.ChainSpecStyle;
+using ZstdSharp.Unsafe;
 
 namespace Nethermind.Consensus.Clique
 {
@@ -40,35 +44,13 @@ namespace Nethermind.Consensus.Clique
 
             (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _nethermindApi.ForInit;
 
-
-            var chainSpec = getFromApi!.ChainSpec.EngineChainSpecParametersProvider
-                .GetChainSpecParameters<CliqueChainSpecEngineParameters>();
-            _cliqueConfig = new CliqueConfig
-            {
-                BlockPeriod = chainSpec.Period,
-                Epoch = chainSpec.Epoch,
-                MinimumOutOfTurnDelay = nethermindApi.Config<ICliqueConfig>().MinimumOutOfTurnDelay
-            };
-
-            _snapshotManager = new SnapshotManager(
-                _cliqueConfig,
-                getFromApi.DbProvider!.BlocksDb,
-                getFromApi.BlockTree!,
-                getFromApi.EthereumEcdsa!,
-                getFromApi.LogManager);
-
+            _snapshotManager = nethermindApi.Context.Resolve<ISnapshotManager>();
+            _cliqueConfig = nethermindApi.Context.Resolve<ICliqueConfig>();
             setInApi.HealthHintService = new CliqueHealthHintService(_snapshotManager,
                 getFromApi.ChainSpec.EngineChainSpecParametersProvider
                     .GetChainSpecParameters<CliqueChainSpecEngineParameters>());
 
-            setInApi.SealValidator = new CliqueSealValidator(
-                _cliqueConfig,
-                _snapshotManager,
-                getFromApi.LogManager);
-
-            // both Clique and the merge provide no block rewards
-            setInApi.RewardCalculatorSource = NoBlockRewards.Instance;
-            setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
+            setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager));
 
             return Task.CompletedTask;
         }
@@ -89,12 +71,6 @@ namespace Nethermind.Consensus.Clique
             {
                 throw new InvalidOperationException("Request to start block producer while mining disabled.");
             }
-
-            setInApi.Sealer = new CliqueSealer(
-                getFromApi.EngineSigner!,
-                _cliqueConfig!,
-                _snapshotManager!,
-                getFromApi.LogManager);
 
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree!.AsReadOnly();
             ITransactionComparerProvider transactionComparerProvider = getFromApi.TransactionComparerProvider;
@@ -201,5 +177,33 @@ namespace Nethermind.Consensus.Clique
 
         private IBlocksConfig? _blocksConfig;
         private CliqueBlockProducerRunner _blockProducerRunner = null!;
+
+        public IModule Module => new CliqueModule();
+    }
+
+    public class CliqueModule : Module
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            base.Load(builder);
+
+            builder
+                .Map<CliqueChainSpecEngineParameters, ChainSpec>(chainSpec =>
+                    chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<CliqueChainSpecEngineParameters>())
+
+                .AddDecorator<ICliqueConfig>((ctx, cfg) =>
+                {
+                    CliqueChainSpecEngineParameters? param = ctx.Resolve<CliqueChainSpecEngineParameters>();
+                    cfg.BlockPeriod = param.Period;
+                    cfg.Epoch = param.Epoch;
+
+                    return cfg;
+                })
+
+                .AddSingleton<ISnapshotManager, SnapshotManager>()
+                .AddSingleton<ISealValidator, CliqueSealValidator>()
+                .AddSingleton<ISealer, CliqueSealer>()
+                ;
+        }
     }
 }
