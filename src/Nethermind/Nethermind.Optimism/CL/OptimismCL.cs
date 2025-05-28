@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -51,7 +52,6 @@ public sealed class OptimismCL : IDisposable
         ArgumentNullException.ThrowIfNull(config.L1BeaconApiEndpoint);
         ArgumentNullException.ThrowIfNull(config.L1EthApiEndpoint);
         ArgumentNullException.ThrowIfNull(engineParameters.UnsafeBlockSigner);
-        ArgumentNullException.ThrowIfNull(engineParameters.Nodes);
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
 
@@ -67,6 +67,17 @@ public sealed class OptimismCL : IDisposable
         _l2Api = l2Api;
         _executionEngineManager = executionEngineManager;
 
+        string[] peerList;
+        if (_peers.ContainsKey(chainId))
+        {
+            peerList = _peers[chainId];
+        }
+        else
+        {
+            ArgumentNullException.ThrowIfNull(engineParameters.Nodes);
+            peerList = engineParameters.Nodes;
+        }
+
         _driver = new Driver(
             _l1Bridge,
             _decodingPipeline,
@@ -79,13 +90,29 @@ public sealed class OptimismCL : IDisposable
         _p2p = new OptimismCLP2P(
             _executionEngineManager,
             chainId,
-            engineParameters.Nodes,
+            peerList,
             config,
             engineParameters.UnsafeBlockSigner,
             timestamper,
             externalIp,
             logManager);
     }
+
+    private readonly Dictionary<ulong, string[]> _peers = new()
+    {
+        {
+            10, // op-mainnet
+            [
+                "/ip4/15.235.226.147/tcp/9222/16Uiu2HAmC7Stf2EqVG8Cz2KMHbwJ437EfbnYK5DL56jS4gL6hBZf",
+                "/ip4/162.55.243.13/tcp/9222/16Uiu2HAmFwWf7F81BRUBHQPitn31D7jP2Y2k2yGJxWiarYTwEfy4",
+                "/ip4/15.235.218.129/tcp/9333/16Uiu2HAm34B3KrxabGK1vNQQNAqygz78eWdmddo2tqUY9trKQEps",
+                "/ip4/204.16.247.89/tcp/9222/16Uiu2HAm1nmLdozFd2obdJQ7BgeBGrwYLFUN5693r1Vu4ypUM5Wn",
+                "/ip4/147.28.180.35/tcp/9222/16Uiu2HAkzw2WYdbP9iM4BoNRTHK1su1k3z6b8JPJAWxL5G8fMqVM",
+                "/ip4/141.98.219.58/tcp/9222/16Uiu2HAkyY6HfnGyZo41Bg6mMbZCsD3zQZCp5D4g6T1g7TH5hFP4",
+                "/ip4/34.91.135.174/tcp/9003/16Uiu2HAmETR3xDPHe5DvqGTL5ZCGDFUFvb4ysGbx4VaUhFGeaUW3"
+            ]
+        }
+    };
 
     public async Task Start()
     {

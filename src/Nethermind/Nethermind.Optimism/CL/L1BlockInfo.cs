@@ -24,6 +24,8 @@ public class L1BlockInfo
     public required UInt256 BlobBaseFee { get; init; }
     public required Hash256 BlockHash { get; init; }
     public required Address BatcherAddress { get; init; }
+    public required UInt32? OperatorFeeScalar { get; init; }
+    public required UInt64? OperatorFeeConstant { get; init; }
 
     public override string ToString()
     {
@@ -43,6 +45,8 @@ public class L1BlockInfo
         Number = 0,
         SequenceNumber = 0,
         Timestamp = 0,
+        OperatorFeeConstant = null,
+        OperatorFeeScalar = null,
     };
 }
 
@@ -51,12 +55,13 @@ public class L1BlockInfoBuilder
     public const UInt32 L1InfoTransactionMethodId = 1141530144;
 
     private const int SystemTxDataLengthEcotone = 164;
+    private const int SystemTxDataLengthIsthmus = 176;
 
     public static L1BlockInfo FromL2DepositTxDataAndExtraData(ReadOnlySpan<byte> depositTxData, ReadOnlySpan<byte> extraData)
     {
-        if (depositTxData.Length != SystemTxDataLengthEcotone)
+        if (depositTxData.Length != SystemTxDataLengthEcotone && depositTxData.Length != SystemTxDataLengthIsthmus)
         {
-            throw new ArgumentException("System tx data length is incorrect");
+            throw new ArgumentException($"System tx data length is incorrect: {depositTxData.Length}");
         }
 
         uint methodId = BinaryPrimitives.ReadUInt32BigEndian(depositTxData.TakeAndMove(4));
@@ -79,6 +84,15 @@ public class L1BlockInfoBuilder
         }
 
         Address batcherAddress = new(depositTxData.TakeAndMove(20));
+
+        UInt64? operatorFeeConstant = null;
+        UInt32? operatorFeeScalar = null;
+        if (!depositTxData.IsEmpty)
+        {
+            operatorFeeScalar = BinaryPrimitives.ReadUInt32BigEndian(depositTxData.TakeAndMove(8));
+            operatorFeeConstant = BinaryPrimitives.ReadUInt64BigEndian(depositTxData.TakeAndMove(4));
+        }
+
         return new()
         {
             BaseFeeScalar = baseFeeScalar,
@@ -89,7 +103,9 @@ public class L1BlockInfoBuilder
             BaseFee = baseFee,
             BlobBaseFee = blobBaseFee,
             BlockHash = blockHash,
-            BatcherAddress = batcherAddress
+            BatcherAddress = batcherAddress,
+            OperatorFeeConstant = operatorFeeConstant,
+            OperatorFeeScalar = operatorFeeScalar
         };
     }
 
@@ -108,6 +124,8 @@ public class L1BlockInfoBuilder
             BlobBaseFee = feePerBlobGas,
             BlockHash = block.Hash,
             BatcherAddress = config.BatcherAddress,
+            OperatorFeeConstant = config.OperatorFeeConstant,
+            OperatorFeeScalar = config.OperatorFeeScalar
         };
     }
 }

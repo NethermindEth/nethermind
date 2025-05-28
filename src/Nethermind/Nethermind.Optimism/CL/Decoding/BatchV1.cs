@@ -131,6 +131,13 @@ public sealed class BatchV1
                             DecodeEip1559Transaction(Txs.Datas[(int)txIdx].Span);
                         break;
                     }
+                case TxType.SetCode:
+                    {
+                        v = EthereumEcdsaExtensions.CalculateV(chainId, parityBit);
+                        (tx.Value, tx.GasPrice, tx.DecodedMaxFeePerGas, tx.Data, tx.AccessList, tx.AuthorizationList) =
+                            DecodeSetCodeTransaction(Txs.Datas[(int)txIdx].Span);
+                        break;
+                    }
                 default:
                     {
                         throw new ArgumentException($"Invalid tx type {Txs.Types[(int)txIdx]}");
@@ -179,5 +186,21 @@ public sealed class BatchV1
         byte[] data = decoder.DecodeByteArray();
         AccessList? accessList = AccessListDecoder.Instance.Decode(ref decoder);
         return (value, maxPriorityFeePerGas, maxFeePerGas, data, accessList);
+    }
+
+    private (UInt256 Value, UInt256 MaxPriorityFeePerGas, UInt256 MaxFeePerGas, byte[] Data, AccessList? AccessList,
+        AuthorizationTuple[] AuthorizationList) DecodeSetCodeTransaction(ReadOnlySpan<byte> encoded)
+    {
+        // 0x04 ++ rlp_encode(value, max_priority_fee_per_gas, max_fee_per_gas, data, access_list, authorization_list)
+        Rlp.ValueDecoderContext decoder = new(encoded);
+        int length = decoder.ReadSequenceLength();
+        UInt256 value = decoder.DecodeUInt256();
+        UInt256 maxPriorityFeePerGas = decoder.DecodeUInt256();
+        UInt256 maxFeePerGas = decoder.DecodeUInt256();
+        byte[] data = decoder.DecodeByteArray();
+        AccessList? accessList = AccessListDecoder.Instance.Decode(ref decoder);
+        AuthorizationTuple[] authorizationList = decoder.DecodeArray<AuthorizationTuple>(AuthorizationTupleDecoder.Instance);
+
+        return (value, maxPriorityFeePerGas, maxFeePerGas, data, accessList, authorizationList);
     }
 }

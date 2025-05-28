@@ -55,6 +55,17 @@ public record SystemConfig
     public uint BlobBaseFeeScalar => BinaryPrimitives.ReadUInt32BigEndian(Scalar.AsSpan(24, 4));
     public uint BaseFeeScalar => BinaryPrimitives.ReadUInt32BigEndian(Scalar.AsSpan(28, 4));
 
+    /// <summary>
+    /// Isthmus. Encoded OperatorFeeScalar and OperatorFeeConstant
+    /// OperatorFeeParams = operatorFeeScalar * 2^64 | operatorFeeConstant
+    /// </summary>
+    public byte[]? OperatorFeeParams;
+
+    public UInt32 OperatorFeeScalar => BinaryPrimitives.ReadUInt32BigEndian(OperatorFeeParams.AsSpan(20, 4));
+    public UInt64 OperatorFeeConstant => BinaryPrimitives.ReadUInt64BigEndian(OperatorFeeParams.AsSpan(24, 8));
+
+
+
     public virtual bool Equals(SystemConfig? other)
     {
         if (other is null) return false;

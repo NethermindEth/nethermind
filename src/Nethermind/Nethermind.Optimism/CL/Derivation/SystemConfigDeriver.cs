@@ -36,12 +36,20 @@ public class SystemConfigDeriver(
         scalar[0] = 1;
         BinaryPrimitives.WriteUInt32BigEndian(scalar.AsSpan(24), l1BlockInfo.BlobBaseFeeScalar);
         BinaryPrimitives.WriteUInt32BigEndian(scalar.AsSpan(28), l1BlockInfo.BaseFeeScalar);
+        byte[]? operatorFeeParams = null;
+        if (l1BlockInfo.OperatorFeeConstant is not null)
+        {
+            operatorFeeParams = new byte[32];
+            BinaryPrimitives.WriteUInt32BigEndian(scalar.AsSpan(20), l1BlockInfo.BlobBaseFeeScalar);
+            BinaryPrimitives.WriteUInt32BigEndian(scalar.AsSpan(24), l1BlockInfo.BaseFeeScalar);
+        }
         return new SystemConfig()
         {
             BatcherAddress = l1BlockInfo.BatcherAddress,
             GasLimit = gasLimit,
             Scalar = scalar,
-            EIP1559Params = extraData.ToArray()[1..]
+            EIP1559Params = extraData.ToArray()[1..],
+            OperatorFeeParams = operatorFeeParams
         };
     }
 
