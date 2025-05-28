@@ -236,23 +236,31 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
+    /// Implements the BLOBBASEFEE opcode.
     /// Returns the blob base fee from the block header.
-    /// Throws an exception if the blob base fee is not set.
     /// </summary>
-    public struct OpBlobBaseFee : IOpEnvUInt256
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The execution stack.</param>
+    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="programCounter">The program counter.</param>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/>, or <see cref="EvmExceptionType.BadInstruction"/> if blob base fee not set.
+    /// </returns>
+    public static EvmExceptionType InstructionBlobBaseFee<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
-        public static ref readonly UInt256 Operation(EvmState vmState)
-        {
-            ref readonly BlockExecutionContext context = ref vmState.Env.TxExecutionContext.BlockExecutionContext;
-            // If the blob base fee is missing (no ExcessBlobGas set), this opcode is invalid.
-            if (!context.Header.ExcessBlobGas.HasValue) ThrowBadInstruction();
+        ref readonly BlockExecutionContext context = ref vm.EvmState.Env.TxExecutionContext.BlockExecutionContext;
+        // If the blob base fee is missing (no ExcessBlobGas set), this opcode is invalid.
+        if (!context.Header.ExcessBlobGas.HasValue) goto BadInstruction;
+        
+        // Charge the base gas cost for this opcode.
+        gasAvailable -= GasCostOf.Base;
+        stack.Push32Bytes<TTracingInst>(in context.BlobBaseFee);
 
-            return ref context.BlobBaseFee;
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowBadInstruction() => throw new BadInstructionException();
-        }
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor.
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     /// <summary>
