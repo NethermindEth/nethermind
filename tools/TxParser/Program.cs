@@ -6,7 +6,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Crypto;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
