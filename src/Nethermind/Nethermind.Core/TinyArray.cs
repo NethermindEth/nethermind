@@ -51,6 +51,8 @@ public static class TinyArray
 
         public int CommonPrefixLength(ReadOnlySpan<byte> other)
             => _payload.Span.CommonPrefixLength(other);
+
+        public Span<byte> Span => _payload.Span;
     }
 
     /// <summary>
@@ -214,4 +216,6 @@ public interface ITinyArray
     bool SequenceEqual(ReadOnlySpan<byte> other);
 
     int CommonPrefixLength(ReadOnlySpan<byte> other);
+
+    Span<byte> Span { get; }
 }
