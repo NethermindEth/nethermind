@@ -3,6 +3,8 @@
 
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -11,6 +13,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.Logging;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
@@ -40,6 +44,15 @@ public class BlockProcessingModule : Module
             .AddSingleton<ISealer>(NullSealEngine.Instance)
             .AddSingleton<ISealEngine, ISealValidator, ISealer>((validator, sealer) => new SealEngine(sealer, validator))
 
+
+
+            .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>
+                new GasPriceOracle(
+                    blockTree,
+                    specProvider,
+                    logManager,
+                    blocksConfig.MinGasPrice
+                ))
             ;
     }
 }

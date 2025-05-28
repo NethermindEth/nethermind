@@ -49,7 +49,7 @@ namespace Nethermind.Api
         [SkipServiceCollection]
         IHeaderValidator? HeaderValidator { get; }
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
-        IRewardCalculatorSource? RewardCalculatorSource { get; }
+        IRewardCalculatorSource RewardCalculatorSource { get; }
         ISealer Sealer { get; }
         ISealValidator SealValidator { get; }
         ISealEngine SealEngine { get; }
@@ -81,7 +81,7 @@ namespace Nethermind.Api
         IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
         IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory { get; }
 
-        IGasPriceOracle? GasPriceOracle { get; set; }
+        IGasPriceOracle? GasPriceOracle { get; }
 
         [SkipServiceCollection]
         IEthSyncingInfo? EthSyncingInfo { get; }

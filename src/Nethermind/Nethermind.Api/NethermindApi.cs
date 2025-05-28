@@ -119,7 +119,7 @@ namespace Nethermind.Api
             );
         }
 
-        public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
+        public IAbiEncoder AbiEncoder => Context.Resolve<IAbiEncoder>();
         public IBlobTxStorage? BlobTxStorage { get; set; }
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
@@ -199,7 +199,7 @@ namespace Nethermind.Api
 
         public IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
         public IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
-        public IGasPriceOracle? GasPriceOracle { get; set; }
+        public IGasPriceOracle GasPriceOracle => Context.Resolve<IGasPriceOracle>();
 
         public IEthSyncingInfo? EthSyncingInfo => Context.Resolve<IEthSyncingInfo>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }

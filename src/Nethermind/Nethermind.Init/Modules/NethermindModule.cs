@@ -2,14 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -19,7 +16,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
@@ -52,6 +48,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .Bind<IEcdsa, IEthereumEcdsa>()
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
+            .AddSingleton<IAbiEncoder>(Nethermind.Abi.AbiEncoder.Instance)
             ;
     }
 
