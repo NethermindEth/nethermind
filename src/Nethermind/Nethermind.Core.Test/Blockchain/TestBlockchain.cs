@@ -122,7 +122,7 @@ public class TestBlockchain : IDisposable
 
     public IContainer Container { get; set; } = null!;
     private ChainSpec? _chainSpec = null!;
-    protected ChainSpec ChainSpec => _chainSpec ?? CreateChainSpec();
+    protected ChainSpec ChainSpec => _chainSpec ??= CreateChainSpec();
 
     // Resolving all these component at once is faster.
     private FromContainer _fromContainer = null!;
