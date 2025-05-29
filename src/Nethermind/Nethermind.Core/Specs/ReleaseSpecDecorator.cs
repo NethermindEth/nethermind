@@ -83,19 +83,22 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual Address Eip2935ContractAddress => spec.Eip2935ContractAddress;
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
     public bool IsEip7702Enabled => spec.IsEip7702Enabled;
+    public bool IsEip7823Enabled => spec.IsEip7823Enabled;
     public virtual bool IsRip7212Enabled => spec.IsRip7212Enabled;
     public virtual bool IsEip7805Enabled => spec.IsEip7805Enabled;
     public virtual bool IsOpGraniteEnabled => spec.IsOpGraniteEnabled;
     public virtual bool IsOpHoloceneEnabled => spec.IsOpHoloceneEnabled;
     public virtual bool IsOpIsthmusEnabled => spec.IsOpIsthmusEnabled;
     public virtual bool IsEip7623Enabled => spec.IsEip7623Enabled;
+    public virtual bool IsEip7825Enabled => spec.IsEip7825Enabled;
+    public bool IsEip7883Enabled => spec.IsEip7883Enabled;
+    public virtual bool IsEip7918Enabled => spec.IsEip7918Enabled;
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
-
     public virtual bool IsEofEnabled => spec.IsEofEnabled;
-
     public virtual bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
     public bool IsEip4844FeeCollectorEnabled => spec.IsEip4844FeeCollectorEnabled;
+    public bool IsEip7594Enabled => spec.IsEip7594Enabled;
 
     public virtual long MaxInitCodeSize => spec.MaxInitCodeSize;
     public virtual bool ValidateChainId => spec.ValidateChainId;

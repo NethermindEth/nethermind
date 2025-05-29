@@ -35,6 +35,16 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Optimism.ProtocolVersion;
+using Nethermind.Optimism.Cl.Rpc;
+using Nethermind.Optimism.CL.L1Bridge;
+using Nethermind.Core.Specs;
+using Nethermind.Serialization.Json;
+using Nethermind.Crypto;
+using System.Net;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Optimism.CL.Decoding;
+using Nethermind.Optimism.CL.Derivation;
+using Nethermind.Optimism.CL.P2P;
 
 namespace Nethermind.Optimism;
 
@@ -89,6 +99,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
             _api.WorldStateManager,
+            _api.ReadOnlyTxProcessingEnvFactory,
             _api.BlockTree,
             _api.SpecProvider,
             _api.BlockValidator,
@@ -233,6 +244,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
             new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+            new GetPayloadV5Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
             newPayloadHandler,
             new ForkchoiceUpdatedHandler(
                 _api.BlockTree,
@@ -256,6 +268,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new GetBlobsHandler(_api.TxPool),
             new GetInclusionListTransactionsHandler(_api.BlockTree, null),
             new UpdatePayloadWithInclusionListHandler(payloadPreparationService, null),
+            new GetBlobsHandlerV2(_api.TxPool),
             _api.EngineRequestsTracker,
             _api.SpecProvider,
             new GCKeeper(
@@ -279,22 +292,58 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         IOptimismConfig config = _api.Config<IOptimismConfig>();
         if (config.ClEnabled)
         {
-            CLChainSpecEngineParameters chainSpecEngineParameters = _api.ChainSpec.EngineChainSpecParametersProvider
+            ArgumentNullException.ThrowIfNull(config.L1BeaconApiEndpoint);
+            ArgumentNullException.ThrowIfNull(config.L1EthApiEndpoint);
+
+            CLChainSpecEngineParameters clParameters = _api.ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<CLChainSpecEngineParameters>();
+            OptimismChainSpecEngineParameters engineParameters = chainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<OptimismChainSpecEngineParameters>();
+
+            ArgumentNullException.ThrowIfNull(clParameters.UnsafeBlockSigner);
+            ArgumentNullException.ThrowIfNull(clParameters.Nodes);
+            ArgumentNullException.ThrowIfNull(clParameters.SystemConfigProxy);
+            ArgumentNullException.ThrowIfNull(clParameters.L2BlockTime);
+
+            IEthApi ethApi = new EthereumEthApi(config.L1EthApiEndpoint, _api.EthereumJsonSerializer, _api.LogManager);
+            IBeaconApi beaconApi = new EthereumBeaconApi(new Uri(config.L1BeaconApiEndpoint), _api.EthereumJsonSerializer, _api.EthereumEcdsa, _api.LogManager);
+
+            IDecodingPipeline decodingPipeline = new DecodingPipeline(_api.LogManager);
+            IL1Bridge l1Bridge = new EthereumL1Bridge(ethApi, beaconApi, clParameters, _api.LogManager);
+            IL1ConfigValidator l1ConfigValidator = new L1ConfigValidator(ethApi, _api.LogManager);
+
+            ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(clParameters.SystemConfigProxy);
+            IL2Api l2Api = new L2Api(_api.OptimismEthRpcModule, opEngine, systemConfigDeriver, _api.LogManager);
+            IExecutionEngineManager executionEngineManager = new ExecutionEngineManager(l2Api, _api.LogManager);
+
             _cl = new OptimismCL(
-                _api.SpecProvider,
-                chainSpecEngineParameters,
-                config,
-                _api.EthereumJsonSerializer,
-                _api.EthereumEcdsa,
+                decodingPipeline,
+                l1Bridge,
+                l1ConfigValidator,
+                l2Api,
+                executionEngineManager,
                 _api.Timestamper,
-                _api.ChainSpec.Genesis.Timestamp,
-                _api!.LogManager,
-                _api.OptimismEthRpcModule,
+                // Configs
+                config,
+                clParameters,
                 _api.IpResolver.ExternalIp,
-                opEngine);
+                _api.SpecProvider.ChainId,
+                _api.ChainSpec.Genesis.Timestamp,
+                // Logging
+                _api.LogManager
+            );
             _ = _cl.Start(); // NOTE: Fire and forget, exception handling must be done inside `Start`
             _api.DisposeStack.Push(_cl);
+
+            IOptimismOptimismRpcModule optimismRpcModule = new OptimismOptimismRpcModule(
+                ethApi,
+                l2Api,
+                executionEngineManager,
+                decodingPipeline,
+                clParameters,
+                engineParameters,
+                _api.ChainSpec);
+            _api.RpcModuleProvider.RegisterSingle(optimismRpcModule);
         }
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
@@ -334,6 +383,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
             .AddSingleton(chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<OptimismChainSpecEngineParameters>())
             .AddSingleton<IOptimismSpecHelper, OptimismSpecHelper>()
+            .AddSingleton<ICostHelper, OptimismCostHelper>()
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
@@ -342,6 +392,9 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddSingleton<IBlockValidator, OptimismBlockValidator>()
             .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
+
+            // Block processing
+            .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
             ;
 
     }

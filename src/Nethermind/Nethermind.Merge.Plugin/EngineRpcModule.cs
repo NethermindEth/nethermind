@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -27,6 +27,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IAsyncHandler<byte[], GetPayloadV2Result?> getPayloadHandlerV2,
         IAsyncHandler<byte[], GetPayloadV3Result?> getPayloadHandlerV3,
         IAsyncHandler<byte[], GetPayloadV4Result?> getPayloadHandlerV4,
+        IAsyncHandler<byte[], GetPayloadV5Result?> getPayloadHandlerV5,
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
         IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
@@ -36,6 +37,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
         IHandler<ArrayPoolList<byte[]>> getInclusionListTransactionsHandler,
         IHandler<(string, byte[][]), string?> updatePayloadWithInclusionListHandler,
+        IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?> getBlobsHandlerV2,
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
@@ -46,6 +48,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         _getPayloadHandlerV2 = getPayloadHandlerV2;
         _getPayloadHandlerV3 = getPayloadHandlerV3;
         _getPayloadHandlerV4 = getPayloadHandlerV4;
+        _getPayloadHandlerV5 = getPayloadHandlerV5;
         _newPayloadV1Handler = newPayloadV1Handler;
         _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
         _executionGetPayloadBodiesByHashV1Handler = executionGetPayloadBodiesByHashV1Handler;
@@ -54,6 +57,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         _getBlobsHandler = getBlobsHandler;
         _getInclusionListTransactionsHandler = getInclusionListTransactionsHandler;
         _updatePayloadWithInclusionListHandler = updatePayloadWithInclusionListHandler;
+        _getBlobsHandlerV2 = getBlobsHandlerV2;
         _engineRequestsTracker = engineRequestsTracker;
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _gcKeeper = gcKeeper;

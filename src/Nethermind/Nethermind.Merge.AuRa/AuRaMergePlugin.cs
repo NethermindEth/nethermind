@@ -53,7 +53,10 @@ namespace Nethermind.Merge.AuRa
         public override IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
         {
             _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
-                _auraApi!,
+                _auraApi!.ChainSpec,
+                _auraApi.AbiEncoder,
+                _auraApi.CreateStartBlockProducer,
+                _api.ReadOnlyTxProcessingEnvFactory,
                 _api.WorldStateManager!,
                 _api.BlockTree!,
                 _api.SpecProvider!,

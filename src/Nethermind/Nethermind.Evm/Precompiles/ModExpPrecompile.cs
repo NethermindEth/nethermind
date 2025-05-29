@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -18,6 +18,12 @@ namespace Nethermind.Evm.Precompiles
     public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     {
         public static readonly ModExpPrecompile Instance = new();
+        /// <summary>
+        /// Maximum input size (in bytes) for the modular exponentiation operation under EIP-7823.
+        /// This constant defines the upper limit for the size of the input data that can be processed.
+        /// For more details, see: https://eips.ethereum.org/EIPS/eip-7823
+        /// </summary>
+        public const int ModExpMaxInputSizeEip7823 = 1024;
 
         private ModExpPrecompile()
         {
@@ -59,21 +65,35 @@ namespace Nethermind.Evm.Precompiles
                 UInt256 expLength = new(extendedInput.Slice(32, 32), true);
                 UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
 
-                UInt256 complexity = MultComplexity(baseLength, modulusLength);
+                if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
+                {
+                    return long.MaxValue;
+                }
+
+                if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
+                {
+                    return long.MaxValue;
+                }
+
+                UInt256 complexity = MultComplexity(baseLength, modulusLength, releaseSpec.IsEip7883Enabled);
 
                 UInt256 expLengthUpTo32 = UInt256.Min(32, expLength);
                 UInt256 startIndex = 96 + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
                 UInt256 exp = new(inputData.Span.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
-                UInt256 iterationCount = CalculateIterationCount(expLength, exp);
+                UInt256 iterationCount = CalculateIterationCount(expLength, exp, releaseSpec.IsEip7883Enabled);
                 bool overflow = UInt256.MultiplyOverflow(complexity, iterationCount, out UInt256 result);
                 result /= 3;
-                return result > long.MaxValue || overflow ? long.MaxValue : Math.Max(200L, (long)result);
+                return result > long.MaxValue || overflow ? long.MaxValue : Math.Max(releaseSpec.IsEip7883Enabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExpEip2565, (long)result);
             }
             catch (OverflowException)
             {
                 return long.MaxValue;
             }
         }
+
+        private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, UInt256 baseLength, UInt256 expLength, UInt256 modulusLength)
+            => releaseSpec.IsEip7823Enabled &&
+                (baseLength > ModExpMaxInputSizeEip7823 || expLength > ModExpMaxInputSizeEip7823 || modulusLength > ModExpMaxInputSizeEip7823);
 
         private static mpz_t ImportDataToGmp(byte[] data)
         {
@@ -107,8 +127,12 @@ namespace Nethermind.Evm.Precompiles
             Metrics.ModExpPrecompile++;
 
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
+            if (ExceedsMaxInputSize(releaseSpec, (uint)baseLength, (uint)expLength, (uint)modulusLength))
+            {
+                return IPrecompile.Failure;
+            }
 
-            // if both are 0, than expLenght can be huge, which leads to potential buffer to big exception
+            // if both are 0, then expLength can be huge, which leads to a potential buffer too big exception
             if (baseLength == 0 && modulusLength == 0)
             {
                 return (Bytes.Empty, true);
@@ -173,13 +197,17 @@ namespace Nethermind.Evm.Precompiles
         /// return words**2
         /// </summary>
         /// <returns></returns>
-        private static UInt256 MultComplexity(in UInt256 baseLength, in UInt256 modulusLength)
+        private static UInt256 MultComplexity(in UInt256 baseLength, in UInt256 modulusLength, bool isEip7883Enabled)
         {
             UInt256 maxLength = UInt256.Max(baseLength, modulusLength);
             UInt256.Mod(maxLength, 8, out UInt256 mod8);
             UInt256 words = (maxLength / 8) + ((mod8.IsZero) ? UInt256.Zero : UInt256.One);
-            return words * words;
+            return maxLength > 32 && isEip7883Enabled ? 2 * words * words : words * words;
         }
+
+        static readonly UInt256 IterationCountMultiplierEip2565 = 8;
+
+        static readonly UInt256 IterationCountMultiplierEip7883 = 16;
 
         /// <summary>
         /// def calculate_iteration_count(exponent_length, exponent):
@@ -191,8 +219,9 @@ namespace Nethermind.Evm.Precompiles
         /// </summary>
         /// <param name="exponentLength"></param>
         /// <param name="exponent"></param>
+        /// <param name="isEip7883Enabled"></param>
         /// <returns></returns>
-        private static UInt256 CalculateIterationCount(UInt256 exponentLength, UInt256 exponent)
+        private static UInt256 CalculateIterationCount(UInt256 exponentLength, UInt256 exponent, bool isEip7883Enabled)
         {
             try
             {
@@ -209,7 +238,9 @@ namespace Nethermind.Evm.Precompiles
                         bitLength--;
                     }
 
-                    bool overflow = UInt256.MultiplyOverflow((exponentLength - 32), 8, out UInt256 multiplicationResult);
+                    bool overflow = UInt256.MultiplyOverflow(exponentLength - 32,
+                        isEip7883Enabled ? IterationCountMultiplierEip7883 : IterationCountMultiplierEip2565,
+                        out UInt256 multiplicationResult);
                     overflow |= UInt256.AddOverflow(multiplicationResult, (UInt256)bitLength, out iterationCount);
                     if (overflow)
                     {

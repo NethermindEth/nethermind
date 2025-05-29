@@ -4,6 +4,7 @@
 using System.IO.Abstractions;
 using System.Reflection;
 using Autofac;
+using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
@@ -14,7 +15,7 @@ using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.Config;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Module = Autofac.Module;
@@ -40,7 +41,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             .AddModule(new PsudoNetworkModule())
             .AddModule(new BlockTreeModule())
-            .AddModule(new BlockProcessingModule())
+            .AddModule(new TestBlockProcessingModule())
 
             // Environments
             .AddSingleton<DisposableStack>()
@@ -53,6 +54,8 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<IFileSystem>(new FileSystem())
             .AddSingleton<IDbProvider>(new DbProvider())
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
+            .AddSingleton<IAbiEncoder>(Nethermind.Abi.AbiEncoder.Instance)
+            .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
             // Crypto
             .AddSingleton<ICryptoRandom>(new CryptoRandom())

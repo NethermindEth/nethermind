@@ -37,6 +37,8 @@ using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Test;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
@@ -107,10 +109,11 @@ namespace Nethermind.JsonRpc.Benchmark
                 transactionsExecutor,
                 stateProvider,
                 NullReceiptStorage.Instance,
-                transactionProcessor,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 new BlockhashStore(specProvider, stateProvider),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+                new ExecutionRequestsProcessor(transactionProcessor));
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId);
             BlockchainProcessor blockchainProcessor = new(
