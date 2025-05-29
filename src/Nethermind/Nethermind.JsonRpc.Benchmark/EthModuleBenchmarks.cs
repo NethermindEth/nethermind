@@ -195,7 +195,6 @@ namespace Nethermind.JsonRpc.Benchmark
                 Substitute.For<INetworkStorage>(),
                 new ForkInfo(specProvider, genesisBlock.Hash!),
                 Substitute.For<IGossipPolicy>(),
-                Substitute.For<INetworkConfig>(),
                 stateManager,
                 LimboLogs.Instance,
                 Substitute.For<ITxGossipPolicy>()
