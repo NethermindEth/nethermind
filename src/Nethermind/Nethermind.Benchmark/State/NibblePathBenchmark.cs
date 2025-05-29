@@ -30,13 +30,13 @@ public class NibblePathBenchmark
 
     private static readonly NibblePath.Key Long = NibblePath.Key.FromHexString("0x123456789123456789123456789123456789");
 
-    private static readonly (byte[] nibbles, NibblePath.Key path)[] NibblesWithPaths =
+    private static readonly NibblePath.Key[] NibblesWithPaths =
         Nibbles
-            .Select(n => (n, NibblePath.Key.FromNibbles(n)))
+            .Select(n => NibblePath.Key.FromNibbles(n))
             .ToArray();
 
     public static IEnumerable<byte[]> GetNibbles() => Nibbles;
-    public static IEnumerable<(byte[] nibbles, NibblePath.Key path)> GetNibblesWithKeys() => NibblesWithPaths;
+    public static IEnumerable<NibblePath.Key> GetKeys() => NibblesWithPaths;
 
     [Benchmark]
     [ArgumentsSource(nameof(GetNibbles))]
@@ -46,20 +46,18 @@ public class NibblePathBenchmark
     }
 
     [Benchmark]
-    [ArgumentsSource(nameof(GetNibblesWithKeys))]
-    public int CommonPrefixLength_Key((byte[] nibbles, NibblePath.Key key) pair)
+    [ArgumentsSource(nameof(GetKeys))]
+    public int CommonPrefixLength_Key(NibblePath.Key key)
     {
-        NibblePath.Key key = pair.key;
         NibblePath path = key.AsPath();
 
         return key.CommonPrefixLength(path);
     }
 
     [Benchmark]
-    [ArgumentsSource(nameof(GetNibblesWithKeys))]
-    public int CommonPrefixLength_Path((byte[] nibbles, NibblePath.Key key) pair)
+    [ArgumentsSource(nameof(GetKeys))]
+    public int CommonPrefixLength_Path( NibblePath.Key key)
     {
-        NibblePath.Key key = pair.key;
         NibblePath path = key.AsPath();
 
         return path.CommonPrefixLength(path);
@@ -67,20 +65,18 @@ public class NibblePathBenchmark
 
 
     [Benchmark]
-    [ArgumentsSource(nameof(GetNibblesWithKeys))]
-    public bool Equals_Path_Key((byte[] nibbles, NibblePath.Key key) pair)
+    [ArgumentsSource(nameof(GetKeys))]
+    public bool Equals_Path_Key(NibblePath.Key key)
     {
-        NibblePath.Key key = pair.key;
         NibblePath path = key.AsPath();
 
         return path.Equals(key);
     }
 
     [Benchmark]
-    [ArgumentsSource(nameof(GetNibblesWithKeys))]
-    public bool Equals_Key_Key((byte[] nibbles, NibblePath.Key key) pair)
+    [ArgumentsSource(nameof(GetKeys))]
+    public bool Equals_Key_Key(NibblePath.Key key)
     {
-        NibblePath.Key key = pair.key;
         return key.Equals(key);
     }
 
