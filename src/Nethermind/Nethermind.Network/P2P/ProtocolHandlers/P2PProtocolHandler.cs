@@ -215,7 +215,7 @@ public class P2PProtocolHandler(
             _nodeStatsManager.ReportFailedValidation(Session.Node, CompatibilityValidationType.Capabilities);
             Session.InitiateDisconnect(
                 DisconnectReason.NoCapabilityMatched,
-                $"capabilities: {string.Join(", ", capabilities)}");
+                $"capabilities: requested: {string.Join(", ", capabilities)}, supported: {string.Join(", ", _supportedCapabilities)}");
         }
 
         ReceivedProtocolInitMsg(hello);
