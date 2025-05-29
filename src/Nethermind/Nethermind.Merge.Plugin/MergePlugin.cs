@@ -234,12 +234,25 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.MainProcessingContext!.BlockchainProcessor!);
 
             if (_poSSwitcher.TransitionFinished)
-                _api.ProtocolsManager.AddSupportedCapability(new(Protocol.Eth, 69));
+            {
+                AddEth69();
+            }
             else
-                _poSSwitcher.TerminalBlockReached += (_, _) => _api.ProtocolsManager.AddSupportedCapability(new(Protocol.Eth, 69));
+            {
+                // TODO: use Debug level
+                if (_logger.IsInfo) _logger.Info("Delayed adding eth/69 capability until terminal block reached");
+                _poSSwitcher.TerminalBlockReached += (_, _) => AddEth69();
+            }
         }
 
         return Task.CompletedTask;
+    }
+
+    private void AddEth69()
+    {
+        // TODO: use Debug level
+        if (_logger.IsInfo) _logger.Info("Adding eth/69 capability");
+        _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 69));
     }
 
     protected virtual IBlockFinalizationManager InitializeMergeFinilizationManager()
