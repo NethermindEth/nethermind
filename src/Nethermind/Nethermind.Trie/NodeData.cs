@@ -108,23 +108,23 @@ public class LeafData : INodeWithKey
     public int Length => 0;
     public int MemorySize => MemorySizes.RefSize + MemorySizes.RefSize + MemorySizes.RefSize +
          (Key is not null ? (int)MemorySizes.Align(Key.Length + MemorySizes.ArrayOverhead) : 0) +
-         (_value.IsNotNull ? (int)MemorySizes.Align(_value.Length + MemorySizes.ArrayOverhead) : 0);
+         _value.MemorySize;
 
-    private readonly CappedArray<byte> _value;
+    private readonly SpanSource _value;
 
     public byte[] Key { get; set; }
-    public ref readonly CappedArray<byte> Value => ref _value;
+    public SpanSource Value => _value;
     public TrieNode? StorageRoot { get; set; }
 
     public LeafData() { }
 
-    internal LeafData(byte[] key, in CappedArray<byte> value)
+    internal LeafData(byte[] key, SpanSource value)
     {
         Key = key;
         _value = value;
     }
 
-    private LeafData(byte[] key, in CappedArray<byte> value, TrieNode? storageRoot)
+    private LeafData(byte[] key, SpanSource value, TrieNode? storageRoot)
     {
         Key = key;
         _value = value;
@@ -132,6 +132,7 @@ public class LeafData : INodeWithKey
     }
     public ref object this[int index] => throw new IndexOutOfRangeException();
 
-    INodeData INodeData.Clone() => new LeafData(Key, in _value);
-    public LeafData CloneWithNewValue(in CappedArray<byte> value) => new LeafData(Key, in value, StorageRoot);
+    INodeData INodeData.Clone() => new LeafData(Key, _value);
+
+    public LeafData CloneWithNewValue(SpanSource value) => new(Key, value, StorageRoot);
 }

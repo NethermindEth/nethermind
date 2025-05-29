@@ -9,7 +9,7 @@ namespace Nethermind.Serialization.Rlp
 {
     public static class RlpDecoderExtensions
     {
-        private readonly static CappedArray<byte>[] s_intPreEncodes = CreatePreEncodes();
+        private readonly static SpanSource[] s_intPreEncodes = CreatePreEncodes();
 
         public static T[] DecodeArray<T>(this IRlpStreamDecoder<T> decoder, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -95,24 +95,25 @@ namespace Nethermind.Serialization.Rlp
             return rlpStream;
         }
 
-        public static CappedArray<byte> EncodeToCappedArray<T>(this IRlpStreamDecoder<T> decoder, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null)
+        public static SpanSource EncodeToSpanSource<T>(this IRlpStreamDecoder<T> decoder, T? item,
+            RlpBehaviors rlpBehaviors = RlpBehaviors.None, ISpanSourcePool? bufferPool = null)
         {
             int size = decoder.GetLength(item, rlpBehaviors);
-            CappedArray<byte> buffer = bufferPool.SafeRentBuffer(size);
+            SpanSource buffer = bufferPool.SafeRentBuffer(size);
             decoder.Encode(buffer.AsRlpStream(), item, rlpBehaviors);
 
             return buffer;
         }
 
-        public static CappedArray<byte> EncodeToCappedArray(this int item, ICappedArrayPool? bufferPool = null)
+        public static SpanSource EncodeToSpanSource(this int item, ISpanSourcePool? bufferPool = null)
         {
-            CappedArray<byte>[] cache = s_intPreEncodes;
+            SpanSource[] cache = s_intPreEncodes;
             if ((uint)item < (uint)cache.Length)
             {
                 return cache[item];
             }
 
-            CappedArray<byte> buffer = bufferPool.SafeRentBuffer(Rlp.LengthOf(item));
+            SpanSource buffer = bufferPool.SafeRentBuffer(Rlp.LengthOf(item));
             buffer.AsRlpStream().Encode(item);
             return buffer;
         }
@@ -183,16 +184,16 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(decoder.GetContentLength(items, behaviors));
         }
 
-        private static CappedArray<byte>[] CreatePreEncodes()
+        private static SpanSource[] CreatePreEncodes()
         {
             const int MaxCache = 1024;
 
-            CappedArray<byte>[] cache = new CappedArray<byte>[MaxCache];
+            SpanSource[] cache = new SpanSource[MaxCache];
 
             for (int i = 0; i < cache.Length; i++)
             {
                 int size = Rlp.LengthOf(i);
-                CappedArray<byte> buffer = new CappedArray<byte>(new byte[size]);
+                SpanSource buffer = new SpanSource(new byte[size]);
                 buffer.AsRlpStream().Encode(i);
                 cache[i] = buffer;
             }

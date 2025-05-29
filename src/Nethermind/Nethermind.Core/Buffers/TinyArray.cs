@@ -18,6 +18,20 @@ public static class TinyArray
     /// <summary>
     /// Create a tiny array of minimal inline capacity based on source length.
     /// </summary>
+    public static ISpanSource Create(int size)
+    {
+        return (size / 8) switch
+        {
+            0 => new TinyArrayImpl<Payload8>(size),
+            1 => new TinyArrayImpl<Payload16>(size),
+            2 => new TinyArrayImpl<Payload24>(size),
+            3 => new TinyArrayImpl<Payload32>(size),
+
+            // assumes fixed
+            _ => new TinyArrayImpl<PayloadFixed32>(size)
+        };
+    }
+
     public static ISpanSource Create(ReadOnlySpan<byte> src)
     {
         return (src.Length / 8) switch
@@ -37,12 +51,17 @@ public static class TinyArray
     {
         private TPayload _payload;
 
+        public TinyArrayImpl(int size)
+        {
+            _payload = default;
+            _payload.SetSize(size);
+        }
+
         /// <summary>
         /// Construct from a source span. Throws if length > payload capacity.
         /// </summary>
         public TinyArrayImpl(ReadOnlySpan<byte> src)
         {
-            _payload = default;
             _payload.Load(src);
         }
 
@@ -62,6 +81,7 @@ public static class TinyArray
     /// </summary>
     private interface IPayload
     {
+        void SetSize(int size);
         void Load(ReadOnlySpan<byte> src);
         byte Length { get; }
         Span<byte> Span { get; }
@@ -79,6 +99,11 @@ public static class TinyArray
     {
         private byte _data;
         private const int Size = 8;
+
+        public void SetSize(int size)
+        {
+            _data = (byte)size;
+        }
 
         public void Load(ReadOnlySpan<byte> src)
         {
@@ -142,6 +167,11 @@ public static class TinyArray
         private byte _data;
         private const int Size = 16;
 
+        public void SetSize(int size)
+        {
+            _data = (byte)size;
+        }
+
         public void Load(ReadOnlySpan<byte> src)
         {
             _data = (byte)src.Length;
@@ -178,6 +208,11 @@ public static class TinyArray
     {
         private byte _data;
         private const int Size = 24;
+
+        public void SetSize(int size)
+        {
+            _data = (byte)size;
+        }
 
         public void Load(ReadOnlySpan<byte> src)
         {
@@ -217,6 +252,11 @@ public static class TinyArray
         private byte _data;
         private const int Size = 32;
 
+        public void SetSize(int size)
+        {
+            _data = (byte)size;
+        }
+
         public void Load(ReadOnlySpan<byte> src)
         {
             _data = (byte)src.Length;
@@ -255,6 +295,8 @@ public static class TinyArray
         private const int Size = 32;
         private byte _data;
         private const int Capacity = Size;
+
+        public void SetSize(int size) { }
 
         public void Load(ReadOnlySpan<byte> src)
         {

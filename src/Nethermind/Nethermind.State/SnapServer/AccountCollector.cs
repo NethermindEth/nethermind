@@ -15,7 +15,7 @@ public class AccountCollector : RangeQueryVisitor.ILeafValueCollector
 {
     public ArrayPoolList<PathWithAccount> Accounts { get; } = new(0);
 
-    public int Collect(in ValueHash256 path, CappedArray<byte> value)
+    public int Collect(in ValueHash256 path, SpanSource value)
     {
         if (value.IsNull)
         {

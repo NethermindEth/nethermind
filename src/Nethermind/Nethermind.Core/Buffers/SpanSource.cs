@@ -3,14 +3,19 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 
 namespace Nethermind.Core.Buffers;
 
 /// <summary>
 /// Represents a source of a span.
-/// It can be either an array or another span source.
 /// </summary>
-public readonly struct SpanSource : ISpanSource
+/// <remarks>
+/// The design is similar to the <see cref="ValueTask"/> where a single field contains
+/// a value of two types. In this case it can be an array, or an actual implementation of a <see cref="ISpanSource"/>,
+/// like <see cref="TinyArray"/>.
+/// </remarks>
+public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
 {
     private readonly object _obj;
 
@@ -23,6 +28,9 @@ public readonly struct SpanSource : ISpanSource
     {
         _obj = source;
     }
+
+    // TODO: make it correct
+    public int MemorySize => 0;
 
     public int Length
     {
@@ -63,5 +71,23 @@ public readonly struct SpanSource : ISpanSource
 
             return Unsafe.As<ISpanSource>(obj).Span;
         }
+    }
+
+    public bool IsNotNull => !IsNull;
+    public bool IsNull => _obj == null;
+    public bool IsNotNullOrEmpty => throw new Exception("");
+
+    public static readonly SpanSource Empty = new([]);
+
+    public static readonly SpanSource Null = default;
+
+    public bool Equals(SpanSource other)
+    {
+        throw new NotImplementedException();
+    }
+
+    public byte[] ToArray()
+    {
+        throw new NotImplementedException();
     }
 }
