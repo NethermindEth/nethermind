@@ -187,7 +187,12 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-        _vmConfig = vmConfig;
+        _vmConfig = new VMConfig
+        {
+            IsILEvmEnabled = true,
+            IsIlEvmAggressiveModeEnabled = true,
+            IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
+        };
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
