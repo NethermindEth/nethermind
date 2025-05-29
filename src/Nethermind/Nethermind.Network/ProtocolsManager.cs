@@ -88,7 +88,7 @@ namespace Nethermind.Network
             IGossipPolicy gossipPolicy,
             IWorldStateManager worldStateManager,
             ILogManager logManager,
-            ITxGossipPolicy transactionsGossipPolicy)
+            ITxGossipPolicy? transactionsGossipPolicy = null)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));

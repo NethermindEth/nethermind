@@ -21,7 +21,7 @@ namespace Nethermind.Network
     {
         private readonly INodeStatsManager _nodeStatsManager;
         private readonly IBlockTree _blockTree;
-        private readonly ForkInfo _forkInfo;
+        private readonly IForkInfo _forkInfo;
         private readonly ILogger _logger;
         private readonly Regex? _clientIdPattern;
         private readonly IPeerManager _peerManager;
@@ -29,7 +29,7 @@ namespace Nethermind.Network
         public ProtocolValidator(
             INodeStatsManager nodeStatsManager,
             IBlockTree blockTree,
-            ForkInfo forkInfo,
+            IForkInfo forkInfo,
             IPeerManager peerManager,
             INetworkConfig networkConfig,
             ILogManager logManager
@@ -68,7 +68,7 @@ namespace Nethermind.Network
                 return false;
             }
 
-            if (_peerManager.ActivePeers.Count > _peerManager.MaxActivePeers)
+            if (_peerManager.ActivePeersCount > _peerManager.MaxActivePeers)
             {
                 session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"Too many peer");
                 return false;
