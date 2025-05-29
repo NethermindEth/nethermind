@@ -105,6 +105,7 @@ namespace Nethermind.Network
             lock (_lock)
             {
                 int newPeerPoolLength = _peerPool.PeerCount;
+                Metrics.PeerCandidateCount = newPeerPoolLength;
                 _lastPeerPoolLength = newPeerPoolLength;
 
                 if (_lastPeerPoolLength > _maxPeerPoolLength + 100)

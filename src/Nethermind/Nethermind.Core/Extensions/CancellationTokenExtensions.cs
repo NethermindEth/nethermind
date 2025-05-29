@@ -71,5 +71,15 @@ namespace Nethermind.Core.Extensions
 
             return new AutoCancelTokenSource(cts);
         }
+
+        public static CancellationTokenRegistration RegisterToCompletionSource(this CancellationToken cancellationToken, TaskCompletionSource taskCompletionSource)
+        {
+            return cancellationToken.Register(() => taskCompletionSource.TrySetCanceled(), false);
+        }
+
+        public static CancellationTokenRegistration RegisterToCompletionSource<T>(this CancellationToken cancellationToken, TaskCompletionSource<T> taskCompletionSource)
+        {
+            return cancellationToken.Register(() => taskCompletionSource.TrySetCanceled(), false);
+        }
     }
 }
