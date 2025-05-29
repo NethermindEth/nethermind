@@ -11,7 +11,7 @@ using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using System;
 using Nethermind.Consensus;
 using Nethermind.Init.Steps.Migrations;
-using Nethermind.L2.Common.L1Rpc;
+using Nethermind.JsonRpc.Client;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.Taiko.Config;
 
@@ -56,18 +56,18 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         if (taikoSpec.UseCustomGasPriceOracle)
         {
             ITaikoConfig taikoConfig = _api.Config<ITaikoConfig>();
-            IEthApi l1Client = new EthereumEthApi(
-                taikoConfig.L1EthApiEndpoint ?? "http://host.docker.internal:32002",
+
+            IJsonRpcClient l1RpcClient = new BasicJsonRpcClient(
+                new Uri(taikoConfig.L1EthApiEndpoint ?? "http://host.docker.internal:32002"),
                 _api.EthereumJsonSerializer,
                 _api.LogManager);
 
             TaikoGasPriceOracle taikoGasPriceOracle = new(
                 _api.BlockTree,
-                _api.SpecProvider,
-                feeHistoryOracle,
                 _api.LogManager,
+                _api.SpecProvider,
                 _api.Config<IBlocksConfig>().MinGasPrice,
-                l1Client);
+                l1RpcClient);
             _api.GasPriceOracle = taikoGasPriceOracle;
         }
 

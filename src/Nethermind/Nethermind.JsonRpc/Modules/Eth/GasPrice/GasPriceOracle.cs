@@ -16,13 +16,13 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 {
     public class GasPriceOracle : IGasPriceOracle
     {
-        private readonly IBlockFinder _blockFinder;
-        private readonly ILogger _logger;
-        private readonly UInt256 _minGasPrice;
-        internal PriceCache _gasPriceEstimation;
-        internal PriceCache _maxPriorityFeePerGasEstimation;
+        protected readonly IBlockFinder _blockFinder;
+        protected readonly ILogger _logger;
+        protected readonly UInt256 _minGasPrice;
+        protected internal PriceCache _gasPriceEstimation;
+        protected internal PriceCache _maxPriorityFeePerGasEstimation;
         private UInt256 FallbackGasPrice(in UInt256? baseFeePerGas = null) => _gasPriceEstimation.LastPrice ?? GetMinimumGasPrice(baseFeePerGas ?? UInt256.Zero);
-        private ISpecProvider SpecProvider { get; }
+        protected ISpecProvider SpecProvider { get; }
         internal UInt256 IgnoreUnder { get; init; } = EthGasPriceConstants.DefaultIgnoreUnder;
         internal int BlockLimit { get; init; } = EthGasPriceConstants.DefaultBlocksLimit;
         private int SoftTxThreshold => BlockLimit * 2;
@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             SpecProvider = specProvider;
         }
 
-        public UInt256 GetGasPriceEstimate()
+        public virtual UInt256 GetGasPriceEstimate()
         {
             Block? headBlock = _blockFinder.Head;
             if (headBlock is null)
@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             GetGasPricesFromRecentBlocks(blockNumber, BlockLimit,
             static (transaction, eip1559Enabled, baseFee) => transaction.CalculateEffectiveGasPrice(eip1559Enabled, baseFee));
 
-        public UInt256 GetMaxPriorityGasFeeEstimate()
+        public virtual UInt256 GetMaxPriorityGasFeeEstimate()
         {
             Block? headBlock = _blockFinder.Head;
             if (headBlock is null)
