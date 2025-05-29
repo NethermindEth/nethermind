@@ -5,10 +5,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
     <Content Include="..\..\tests\GeneralStateTests\st*\**\*.*">
       <Link>EthereumTestFiles\%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -17,5 +13,9 @@
       <Link>EthereumTestFiles\%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
   </ItemGroup>
 </Project>

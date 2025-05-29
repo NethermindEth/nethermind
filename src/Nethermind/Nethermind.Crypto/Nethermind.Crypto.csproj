@@ -13,6 +13,7 @@
   <ItemGroup>
     <PackageReference Include="BouncyCastle.Cryptography" />
     <PackageReference Include="Ckzg.Bindings" />
+    <PackageReference Include="EthKZG.Bindings" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />

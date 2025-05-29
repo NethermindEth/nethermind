@@ -3,10 +3,12 @@
 
 using System;
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 namespace Nethermind.Crypto;
 
 internal class BlobProofsManagerV1 : IBlobProofsManager
