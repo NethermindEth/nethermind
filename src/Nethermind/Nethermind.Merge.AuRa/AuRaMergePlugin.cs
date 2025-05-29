@@ -4,8 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -93,6 +94,19 @@ namespace Nethermind.Merge.AuRa
         {
             yield return typeof(InitializeBlockchainAuRaMerge);
             yield return typeof(RegisterAuRaMergeRpcModules);
+        }
+
+        public override IModule Module => new AuraMergeModule();
+    }
+
+    public class AuraMergeModule : Module
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            base.Load(builder);
+
+            // Nothing right now, just making it clear it is using `MergePluginModule`
+            builder.AddModule(new MergePluginModule());
         }
     }
 }

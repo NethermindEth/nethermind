@@ -7,6 +7,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -32,7 +33,13 @@ namespace Nethermind.Consensus.Clique
         private ulong _lastSignersCount = 0;
         private readonly LruCache<ValueHash256, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
 
-        public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
+        public SnapshotManager(
+            ICliqueConfig cliqueConfig,
+            [KeyFilter(DbNames.Blocks)] IDb blocksDb,
+            IBlockTree blockTree,
+            IEthereumEcdsa ecdsa,
+            ILogManager logManager
+        )
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));

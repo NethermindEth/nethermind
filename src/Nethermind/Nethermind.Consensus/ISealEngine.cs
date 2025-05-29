@@ -3,6 +3,8 @@
 
 namespace Nethermind.Consensus
 {
+    // Note: Prefer to override `ISealer, ISealValidator` instead.
+    // Default `SealEngine` combine the two.
     public interface ISealEngine : ISealer, ISealValidator
     {
     }

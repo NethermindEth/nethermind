@@ -51,9 +51,6 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
 
             // Validators
-            .AddDecorator<ISealValidator, MergeSealValidator>()
-            .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
-
             .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
             .AddSingleton<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
 
@@ -70,7 +67,6 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
                 IPoSSwitcher posSwitcher = ctx.Resolve<IPoSSwitcher>();
                 return new MergeBlockProducer(currentBlockProducer, postMerge, posSwitcher);
             })
-            .AddDecorator<ISealEngine, MergeSealEngine>()
             .AddSingleton<IPayloadPreparationService, BlockProducerContext>((producerContext) =>
             {
                 ILifetimeScope ctx = producerContext.LifetimeScope;

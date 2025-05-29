@@ -15,10 +15,13 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.AuRa.Rewards;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 
@@ -109,6 +112,14 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<IReportingValidator, IMainProcessingContext>((mainProcessingContext) =>
                     ((AuRaBlockProcessor)mainProcessingContext.BlockProcessor).AuRaValidator.GetReportingValidator())
                 .AddSource(new FallbackToFieldFromApi<AuRaNethermindApi>())
+
+                .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
+                .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()
+                .AddSingleton<IAuRaStepCalculator, AuRaChainSpecEngineParameters, ITimestamper, ILogManager>((param, timestamper, logManager)
+                    => new AuRaStepCalculator(param.StepDuration, timestamper, logManager))
+                .AddSingleton<AuRaSealValidator>()
+                .Bind<ISealValidator, AuRaSealValidator>()
+                .AddSingleton<ISealer, AuRaSealer>()
                 ;
 
             if (specParam.BlockGasLimitContractTransitions?.Any() == true)

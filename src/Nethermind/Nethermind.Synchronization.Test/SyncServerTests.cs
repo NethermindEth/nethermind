@@ -428,11 +428,9 @@ public class SyncServerTests
             testSpecProvider,
             new ChainSpec(),
             LimboLogs.Instance);
-        MergeSealEngine sealEngine = new(
-            new SealEngine(new NethDevSealEngine(), Always.Valid),
-            poSSwitcher,
-            new MergeSealValidator(poSSwitcher, Always.Valid),
-            LimboLogs.Instance);
+        MergeSealer mergeSealer = new(new NethDevSealEngine(), poSSwitcher);
+        MergeSealValidator mergeSealValidator = new MergeSealValidator(poSSwitcher, Always.Valid);
+        SealEngine sealEngine = new(mergeSealer, mergeSealValidator);
         HeaderValidator headerValidator = new(
             localBlockTree,
             sealEngine,

@@ -15,7 +15,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Ethash
 {
-    internal class EthashSealValidator : ISealValidator
+    public class EthashSealValidator : ISealValidator
     {
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly ICryptoRandom _cryptoRandom;
@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Ethash
         private const long AllowedFutureBlockTimeSeconds = 15;
         private int _sealValidationInterval = SealValidationIntervalConstantComponent;
 
-        internal EthashSealValidator(ILogManager logManager, IDifficultyCalculator difficultyCalculator, ICryptoRandom cryptoRandom, IEthash ethash, ITimestamper timestamper)
+        public EthashSealValidator(ILogManager logManager, IDifficultyCalculator difficultyCalculator, ICryptoRandom cryptoRandom, IEthash ethash, ITimestamper timestamper)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));

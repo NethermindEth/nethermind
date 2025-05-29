@@ -26,6 +26,8 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
@@ -56,6 +58,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Taiko.TaikoSpec;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
@@ -240,6 +243,15 @@ public class EthereumRunnerTests
             api.Context.Resolve<IAdminEraService>();
             api.Context.Resolve<IRpcModuleProvider>();
             api.Context.Resolve<IMessageSerializationService>();
+            api.Context.Resolve<ISealValidator>();
+            api.Context.Resolve<ISealer>();
+            api.Context.Resolve<ISealEngine>();
+            api.Context.Resolve<IRewardCalculatorSource>();
+            api.Context.Resolve<IBlockValidator>();
+            api.Context.Resolve<IHeaderValidator>();
+            api.Context.Resolve<IUnclesValidator>();
+            api.Context.Resolve<ITxValidator>();
+            api.Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
 
             // A root registration should not have both keyed and unkeyed registration. This is confusing and may
             // cause unexpected registration. Either have a single non-keyed registration or all keyed-registration,

@@ -119,7 +119,7 @@ namespace Nethermind.Api
             );
         }
 
-        public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
+        public IAbiEncoder AbiEncoder => Context.Resolve<IAbiEncoder>();
         public IBlobTxStorage? BlobTxStorage { get; set; }
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
@@ -164,28 +164,15 @@ namespace Nethermind.Api
         public IReceiptStorage? ReceiptStorage { get; set; }
         public IReceiptFinder? ReceiptFinder { get; set; }
         public IReceiptMonitor? ReceiptMonitor { get; set; }
-        public IRewardCalculatorSource? RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
+        public IRewardCalculatorSource RewardCalculatorSource => Context.Resolve<IRewardCalculatorSource>();
         public IRlpxHost? RlpxPeer { get; set; }
         public IRpcModuleProvider? RpcModuleProvider => Context.Resolve<IRpcModuleProvider>();
         public IRpcAuthentication? RpcAuthentication { get; set; }
         public IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
-        public ISealer? Sealer { get; set; } = NullSealEngine.Instance;
+        public ISealer Sealer => Context.Resolve<ISealer>();
         public string SealEngineType => ChainSpec.SealEngineType;
-        public ISealValidator? SealValidator { get; set; } = NullSealEngine.Instance;
-        private ISealEngine? _sealEngine;
-
-        public ISealEngine SealEngine
-        {
-            get
-            {
-                return _sealEngine ??= new SealEngine(Sealer, SealValidator);
-            }
-
-            set
-            {
-                _sealEngine = value;
-            }
-        }
+        public ISealValidator SealValidator => Context.Resolve<ISealValidator>();
+        public ISealEngine SealEngine => Context.Resolve<ISealEngine>();
 
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider SpecProvider => _dependencies.SpecProvider;
@@ -212,7 +199,7 @@ namespace Nethermind.Api
 
         public IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
         public IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
-        public IGasPriceOracle? GasPriceOracle { get; set; }
+        public IGasPriceOracle GasPriceOracle => Context.Resolve<IGasPriceOracle>();
 
         public IEthSyncingInfo? EthSyncingInfo => Context.Resolve<IEthSyncingInfo>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }

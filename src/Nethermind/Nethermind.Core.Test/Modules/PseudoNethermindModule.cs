@@ -4,7 +4,6 @@
 using System.IO.Abstractions;
 using System.Reflection;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
@@ -54,7 +53,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<IFileSystem>(new FileSystem())
             .AddSingleton<IDbProvider>(new DbProvider())
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
-            .AddSingleton<IAbiEncoder>(Nethermind.Abi.AbiEncoder.Instance)
             .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
             // Crypto
