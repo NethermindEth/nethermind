@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Collections
@@ -23,6 +24,7 @@ namespace Nethermind.Core.Collections
 
         private int Position => Count - 1;
 
+        [SkipLocalsInit]
         public void Restore(int snapshot)
         {
             int count = _set.Count;
