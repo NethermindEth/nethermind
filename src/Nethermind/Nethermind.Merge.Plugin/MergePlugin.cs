@@ -240,7 +240,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             else
             {
                 // TODO: use Debug level
-                if (_logger.IsInfo) _logger.Info("Delayed adding eth/69 capability until terminal block reached");
+                if (_logger.IsDebug) _logger.Debug("Delayed adding eth/69 capability until terminal block reached");
                 _poSSwitcher.TerminalBlockReached += (_, _) => AddEth69();
             }
         }
@@ -250,7 +250,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
     private void AddEth69()
     {
-        // TODO: use Debug level
         if (_logger.IsInfo) _logger.Info("Adding eth/69 capability");
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 69));
     }
