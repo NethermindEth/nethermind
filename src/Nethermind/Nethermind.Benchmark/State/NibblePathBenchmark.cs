@@ -8,6 +8,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Benchmarks.State;
 
+[ShortRunJob]
 [DisassemblyDiagnoser]
 [MemoryDiagnoser]
 public class NibblePathBenchmark
@@ -16,19 +17,20 @@ public class NibblePathBenchmark
     [
         [1],
         [2, 3],
-        [2, 3, 4],
+        //[2, 3, 4],
         [2, 3, 5, 6],
-        [2, 3, 5, 6, 7],
+        //[2, 3, 5, 6, 7],
         [2, 3, 5, 6, 7, 8, 9],
-        [2, 3, 5, 6, 7, 8, 9, 0xA],
-        [2, 3, 5, 6, 7, 8, 9, 0xA, 0xB],
-        [2, 3, 5, 6, 7, 8, 9, 0xA, 0xB, 0xC],
-        [2, 3, 5, 6, 7, 8, 9, 0xA, 0xB, 0xC, 0xD],
-        [2, 3, 5, 6, 7, 8, 9, 0xA, 0xB, 0xC, 0xD, 2, 3, 5, 6, 7, 8, 9, 0xA, 0xB, 0xC, 0xD],
+        //[2, 3, 5, 6, 7, 8, 9, 0xA],
+        //[2, 3, 5, 6, 7, 8, 9, 0xA, 0xB],
+        //[2, 3, 5, 6, 7, 8, 9, 0xA, 0xB, 0xC],
+        //[2, 3, 5, 6, 7, 8, 9, 0xA, 0xB, 0xC, 0xD],
+        //[2, 3, 5, 6, 7, 8, 9, 0xA, 0xB, 0xC, 0xD, 2, 3, 5, 6, 7, 8, 9, 0xA, 0xB, 0xC, 0xD],
         Enumerable.Repeat(3, 63).Select(b => (byte)b).ToArray()
     ];
 
-    private static readonly NibblePath.Key Long = NibblePath.Key.FromHexString("0x123456789123456789123456789123456789");
+    private static readonly NibblePath.Key
+        Long = NibblePath.Key.FromHexString("0x123456789123456789123456789123456789");
 
     private static readonly NibblePath.Key[] NibblesWithPaths =
         Nibbles
@@ -56,13 +58,12 @@ public class NibblePathBenchmark
 
     [Benchmark]
     [ArgumentsSource(nameof(GetKeys))]
-    public int CommonPrefixLength_Path( NibblePath.Key key)
+    public int CommonPrefixLength_Path(NibblePath.Key key)
     {
         NibblePath path = key.AsPath();
 
         return path.CommonPrefixLength(path);
     }
-
 
     [Benchmark]
     [ArgumentsSource(nameof(GetKeys))]
@@ -84,7 +85,7 @@ public class NibblePathBenchmark
     [Arguments(1, 2)]
     [Arguments(0, 3)]
     [Arguments(0, 30)]
-    public NibblePath Slice(int start, int length)
+    public NibblePath Slice_Path(int start, int length)
     {
         NibblePath path = Long.AsPath();
         return path.Slice(start, length);

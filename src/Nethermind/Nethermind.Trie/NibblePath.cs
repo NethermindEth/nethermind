@@ -871,33 +871,42 @@ public readonly ref struct NibblePath
         {
             var length = Math.Min(other.Length, Length);
 
-            ref byte d = ref MemoryMarshal.GetArrayDataReference(_data);
-
-            var oddA = Odd;
-            var oddB = other._odd;
-
-            ref byte a = ref Unsafe.Add(ref d, 1 - oddA);
-            ref byte b = ref other._span;
-
-            int i = 0;
-            for (; i < length; i++)
+            return length switch
             {
-                if (GetAt(ref a, i, oddA) != GetAt(ref b, i, oddB))
-                {
-                    break;
-                }
-            }
+                0 => 0,
+                1 => this[0] == other.GetAt(0) ? 1 : 0,
+                _ => AsPath().CommonPrefixLength(other)
+            };
 
-            return i;
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            static byte GetAt(ref byte b, int nibble, byte odd)
-            {
-                var v = Unsafe.Add(ref b, (nibble + odd) / 2);
-                var shift = (1 - ((nibble + odd) & OddBit)) * NibbleShift;
-
-                return (byte)((v >> shift) & NibbleMask);
-            }
+            // var length = Math.Min(other.Length, Length);
+            //
+            // ref byte d = ref MemoryMarshal.GetArrayDataReference(_data);
+            //
+            // var oddA = Odd;
+            // var oddB = other._odd;
+            //
+            // ref byte a = ref Unsafe.Add(ref d, 1 - oddA);
+            // ref byte b = ref other._span;
+            //
+            // int i = 0;
+            // for (; i < length; i++)
+            // {
+            //     if (GetAt(ref a, i, oddA) != GetAt(ref b, i, oddB))
+            //     {
+            //         break;
+            //     }
+            // }
+            //
+            // return i;
+            //
+            // [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            // static byte GetAt(ref byte b, int nibble, byte odd)
+            // {
+            //     var v = Unsafe.Add(ref b, (nibble + odd) / 2);
+            //     var shift = (1 - ((nibble + odd) & OddBit)) * NibbleShift;
+            //
+            //     return (byte)((v >> shift) & NibbleMask);
+            // }
         }
 
         // PSHUFB mask to pick bytes [0,2,4,…,14] then zero the rest
