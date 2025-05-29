@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../tests.props" />
+  
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <EnableNUnitRunner>true</EnableNUnitRunner>
-    <IsPackable>false</IsPackable>
     <Nullable>annotations</Nullable>
   </PropertyGroup>
 
@@ -14,14 +14,7 @@
     <PackageReference Include="Microsoft.ClearScript.V8.Native.osx-arm64" />
     <PackageReference Include="Microsoft.ClearScript.V8.Native.osx-x64" />
     <PackageReference Include="Microsoft.ClearScript.V8.Native.win-x64" />
-    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <PackageReference Include="NSubstitute" />
-    <PackageReference Include="NUnit" />
-    <PackageReference Include="NUnit.Analyzers">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="NUnit3TestAdapter" />
     <PackageReference Include="TestableIO.System.IO.Abstractions.TestingHelpers" />
   </ItemGroup>
   <ItemGroup>

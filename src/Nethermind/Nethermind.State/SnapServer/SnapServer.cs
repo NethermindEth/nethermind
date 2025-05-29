@@ -251,7 +251,8 @@ public class SnapServer : ISnapServer
 
             if (pathWithStorageCollector.Slots.Count == 0)
             {
-                break;
+                //return proof of absence
+                return (responseNodes, proofs);
             }
 
             responseNodes.Add(pathWithStorageCollector.Slots);

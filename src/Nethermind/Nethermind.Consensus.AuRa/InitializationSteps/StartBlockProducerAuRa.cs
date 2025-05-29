@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -16,6 +17,7 @@ using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -56,14 +58,14 @@ public class StartBlockProducerAuRa(
     DisposableStack disposeStack,
     AuRaContractGasLimitOverride.Cache gasLimitCalculatorCache,
     IAbiEncoder abiEncoder,
-    IWorldStateManager worldStateManager,
+    IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
     TxAuRaFilterBuilders apiTxAuRaFilterBuilders,
-    TxPriorityContract.LocalDataSource txPriorityContractLocalDataSource,
+    AuraStatefulComponents auraStatefulComponents,
     ITxPool txPool,
     IStateReader apiStateReader,
     ITransactionComparerProvider transactionComparerProvider,
     CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
-    IProtectedPrivateKey protectedPrivateKey,
+    [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey protectedPrivateKey,
     ICryptoRandom cryptoRandom,
     IBlockValidator blockValidator,
     IRewardCalculatorSource rewardCalculatorSource,
@@ -140,7 +142,7 @@ public class StartBlockProducerAuRa(
                 changeableTxProcessingEnv.WorldState,
                 changeableTxProcessingEnv.TransactionProcessor,
                 blockTree,
-                CreateReadOnlyTransactionProcessorSource(),
+                readOnlyTxProcessingEnvFactory.Create(),
                 receiptStorage,
                 validatorStore,
                 auRaBlockFinalizationManager,
@@ -175,7 +177,7 @@ public class StartBlockProducerAuRa(
             logManager,
             blockTree,
             NullWithdrawalProcessor.Instance,
-            changeableTxProcessingEnv.TransactionProcessor,
+            new ExecutionRequestsProcessor(changeableTxProcessingEnv.TransactionProcessor),
             _validator,
             auRaTxFilter,
             CreateGasLimitCalculator() as AuRaContractGasLimitOverride,
@@ -185,7 +187,7 @@ public class StartBlockProducerAuRa(
     internal TxPoolTxSource CreateTxPoolTxSource()
     {
         _txPriorityContract = apiTxAuRaFilterBuilders.CreateTxPrioritySources();
-        _localDataSource = txPriorityContractLocalDataSource;
+        _localDataSource = auraStatefulComponents.TxPriorityContractLocalDataSource;
 
         if (_txPriorityContract is not null || _localDataSource is not null)
         {
@@ -255,7 +257,7 @@ public class StartBlockProducerAuRa(
         {
             ReadOnlyBlockTree readOnlyBlockTree = blockTree.AsReadOnly();
 
-            ReadOnlyTxProcessingEnv txProcessingEnv = CreateReadOnlyTransactionProcessorSource();
+            IReadOnlyTxProcessorSource txProcessingEnv = readOnlyTxProcessingEnvFactory.Create();
             IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
             BlockProcessor blockProcessor = CreateBlockProcessor(scope);
 
@@ -278,7 +280,7 @@ public class StartBlockProducerAuRa(
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = scope.WorldState,
                 TxSource = CreateTxSourceForProducer(additionalTxSource),
-                ReadOnlyTxProcessingEnv = CreateReadOnlyTransactionProcessorSource(),
+                ReadOnlyTxProcessingEnv = readOnlyTxProcessingEnvFactory.Create(),
             };
         }
 
@@ -320,7 +322,7 @@ public class StartBlockProducerAuRa(
             {
                 RandomContractTxSource randomContractTxSource = new RandomContractTxSource(
                     GetRandomContracts(randomnessContractAddress, abiEncoder,
-                        CreateReadOnlyTransactionProcessorSource(),
+                        readOnlyTxProcessingEnvFactory.Create(),
                         signer),
                     new EciesCipher(cryptoRandom),
                     signer,
@@ -377,7 +379,7 @@ public class StartBlockProducerAuRa(
                                 abiEncoder,
                                 blockGasLimitContractTransition.Value,
                                 blockGasLimitContractTransition.Key,
-                                CreateReadOnlyTransactionProcessorSource()))
+                                readOnlyTxProcessingEnvFactory.Create()))
                         .ToArray<IBlockGasLimitContract>(),
                     gasLimitCalculatorCache,
                     auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,
@@ -389,7 +391,4 @@ public class StartBlockProducerAuRa(
 
         return gasLimitCalculator;
     }
-
-    private ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
-        new ReadOnlyTxProcessingEnv(worldStateManager!, blockTree!.AsReadOnly(), specProvider!, logManager!);
 }

@@ -10,10 +10,12 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -64,25 +66,21 @@ namespace Nethermind.Consensus.Ethash
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
-            ReadOnlyTxProcessingEnv producerEnv = new(
-                _nethermindApi.WorldStateManager!,
-                readOnlyBlockTree,
-                getFromApi.SpecProvider,
-                getFromApi.LogManager);
+            IReadOnlyTxProcessingScope scope = getFromApi.ReadOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
 
-            IReadOnlyTxProcessingScope scope = producerEnv.Build(Keccak.EmptyTreeHash);
-
-            BlockProcessor producerProcessor = new(
+            BlockProcessor producerProcessor = new BlockProcessor(
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockProductionTransactionsExecutor(scope, getFromApi!.SpecProvider, getFromApi.LogManager),
                 scope.WorldState,
                 NullReceiptStorage.Instance,
-                scope.TransactionProcessor,
                 new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
                 new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
-                getFromApi.LogManager);
+                getFromApi.LogManager,
+                new WithdrawalProcessor(scope.WorldState, getFromApi.LogManager),
+                new ExecutionRequestsProcessor(scope.TransactionProcessor)
+            );
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
                 readOnlyBlockTree,
