@@ -1,35 +1,26 @@
 name: Build tools
 
 on:
-  merge_group:
-    types: [checks_requested]
-  pull_request:
-    branches: [master]
   push:
-    branches: [master]
+    branches: [test/satori]
+  workflow_dispatch:
 
 jobs:
-  build:
-    name: Build
+  run:
+    name: Build Satori
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        config: [release]
-        project:
-          - DocGen/DocGen.slnx
-          - Evm/Evm.slnx
-          - HiveCompare/HiveCompare.slnx
-          - HiveConsensusWorkflowGenerator/HiveConsensusWorkflowGenerator.slnx
-          - Nethermind.Tools.Kute/Nethermind.Tools.Kute.slnx
-          # - SchemaGenerator/SchemaGenerator.slnx
-          - SendBlobs/SendBlobs.slnx
-          - TxParser/TxParser.slnx
     steps:
-      - name: Check out repository
+      - name: Check out
         uses: actions/checkout@v4
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v4
-      - name: Build ${{ matrix.project }}
-        working-directory: tools
-        run: dotnet build ./${{ matrix.project }} -c ${{ matrix.config }}
+        with:
+          repository: VSadov/Satori
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y libkrb5-dev liblttng-ust-dev
+      - name: Build
+        run: |
+          ./build.sh clr -c Release
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: coreclr
+          path: "${{ github.workspace }}/artifacts/bin/coreclr/*"
