@@ -2,7 +2,7 @@ name: Build tools
 
 on:
   push:
-    branches: [test/satori]
+    branches: [test/satori9]
   workflow_dispatch:
 
 jobs:
