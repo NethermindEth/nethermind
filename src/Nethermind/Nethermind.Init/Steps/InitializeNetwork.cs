@@ -298,7 +298,13 @@ public class InitializeNetwork : IStep
         ISyncServer syncServer = _api.SyncServer!;
         ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
 
-        ProtocolValidator protocolValidator = new(_nodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
+        ProtocolValidator protocolValidator = new(
+            _nodeStatsManager!,
+            _api.BlockTree,
+            forkInfo,
+            _api.PeerManager!,
+            _networkConfig,
+            _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>(), _api.SpecProvider);
 
         _api.ProtocolsManager = new ProtocolsManager(
@@ -315,7 +321,6 @@ public class InitializeNetwork : IStep
             _peerStorage,
             forkInfo,
             _api.GossipPolicy,
-            _networkConfig,
             _api.WorldStateManager!,
             _api.LogManager,
             _api.TxGossipPolicy);

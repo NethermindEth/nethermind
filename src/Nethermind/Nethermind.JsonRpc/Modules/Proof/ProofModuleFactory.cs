@@ -18,6 +18,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 {
     public class ProofModuleFactory(
         IWorldStateManager worldStateManager,
+        IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
         IBlockTree blockTree,
         IBlockPreprocessorStep recoveryStep,
         IReceiptFinder receiptFinder,
@@ -32,11 +33,6 @@ namespace Nethermind.JsonRpc.Modules.Proof
         protected readonly IReadOnlyBlockTree BlockTree = blockTree.AsReadOnly();
         protected readonly IWorldStateManager WorldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
 
-        protected virtual ReadOnlyTxProcessingEnv CreateTxProcessingEnv()
-        {
-            return new ReadOnlyTxProcessingEnv(WorldStateManager, BlockTree, SpecProvider, LogManager);
-        }
-
         protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateRpcBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
         {
             return new RpcBlockTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
@@ -44,7 +40,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         public override IProofRpcModule Create()
         {
-            ReadOnlyTxProcessingEnv txProcessingEnv = CreateTxProcessingEnv();
+            IReadOnlyTxProcessorSource txProcessingEnv = txProcessingEnvFactory.Create();
 
             IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 

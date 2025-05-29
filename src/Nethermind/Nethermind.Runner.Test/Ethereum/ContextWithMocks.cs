@@ -26,13 +26,11 @@ using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.KeyStore;
-using Nethermind.Monitoring;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -83,6 +81,7 @@ namespace Nethermind.Runner.Test.Ethereum
                     .AddSingleton(Substitute.For<IDiscoveryApp>())
                     .AddSingleton(Substitute.For<IStaticNodesManager>())
                     .AddSingleton(Substitute.For<ITrustedNodesManager>())
+                    .AddSingleton(Substitute.For<IReadOnlyTxProcessingEnvFactory>())
                     .AddSingleton(Substitute.For<IPeerManager>())
                     .Build()
             );

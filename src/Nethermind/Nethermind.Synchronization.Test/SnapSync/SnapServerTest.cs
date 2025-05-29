@@ -299,6 +299,36 @@ public class SnapServerTest
     }
 
     [Test]
+    public void TestGetStorageRange_NoSlotsForAccount()
+    {
+        MemDb stateDb = new MemDb();
+        MemDb codeDb = new MemDb();
+        TrieStore store = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
+
+        (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store);
+
+        SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
+
+        IDbProvider dbProviderClient = new DbProvider();
+        dbProviderClient.RegisterDb(DbNames.State, new MemDb());
+        dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
+
+        ValueHash256 lastStorageHash = TestItem.Tree.SlotsWithPaths[^1].Path;
+        var asInt = lastStorageHash.ToUInt256();
+        ValueHash256 beyondLast = new ValueHash256((++asInt).ToBigEndian());
+
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
+            server.GetStorageRanges(inputStateTree.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
+                beyondLast, ValueKeccak.MaxValue, 10, CancellationToken.None);
+
+        storageSlots.Count.Should().Be(0);
+        proofs?.Count.Should().BeGreaterThan(0); //in worst case should get at least root node
+
+        storageSlots.DisposeRecursive();
+        proofs?.Dispose();
+    }
+
+    [Test]
     public void TestGetStorageRangeMulti()
     {
         MemDb stateDb = new MemDb();

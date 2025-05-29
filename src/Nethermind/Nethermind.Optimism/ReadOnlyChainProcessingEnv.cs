@@ -5,6 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -31,7 +32,7 @@ public class OptimismReadOnlyChainProcessingEnv(
     ILogManager logManager,
     IOptimismSpecHelper opSpecHelper,
     Create2DeployerContractRewriter contractRewriter,
-    IWithdrawalProcessor? withdrawalProcessor,
+    IWithdrawalProcessor withdrawalProcessor,
     IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null) : ReadOnlyChainProcessingEnv(
     txEnv,
     blockValidator,
@@ -63,12 +64,12 @@ public class OptimismReadOnlyChainProcessingEnv(
             transactionsExecutor,
             scope.WorldState,
             receiptStorage,
-            scope.TransactionProcessor,
             new BlockhashStore(specProvider, scope.WorldState),
             new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
             logManager,
             opSpecHelper,
             contractRewriter,
-            withdrawalProcessor);
+            withdrawalProcessor,
+            new ExecutionRequestsProcessor(scope.TransactionProcessor));
     }
 }
