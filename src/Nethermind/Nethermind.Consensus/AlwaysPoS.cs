@@ -23,8 +23,9 @@ public class AlwaysPoS : IPoSSwitcher
 
     public long? ConfiguredTerminalBlockNumber => 0;
 
-    public event EventHandler TerminalBlockReached { add { } remove { } }
-    public event EventHandler Transitioned { add { } remove { } }
+#pragma warning disable CS0067
+    public event EventHandler TerminalBlockReached;
+#pragma warning restore CS0067
 
     public void ForkchoiceUpdated(BlockHeader newHeadHash, Hash256 finalizedHash) { }
 

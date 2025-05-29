@@ -278,7 +278,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<INetworkStorage>(),
                 new ForkInfo(SpecProvider, GetGenesisBlock(WorldStateManager.GlobalWorldState).Hash!),
                 Substitute.For<IGossipPolicy>(),
-                Substitute.For<INetworkConfig>(),
                 WorldStateManager,
                 LimboLogs.Instance,
                 Substitute.For<ITxGossipPolicy>()

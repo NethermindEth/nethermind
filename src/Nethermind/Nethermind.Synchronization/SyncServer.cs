@@ -238,7 +238,7 @@ namespace Nethermind.Synchronization
 
         private void UpdatePeerInfoBasedOnBlockData(Block block, ISyncPeer syncPeer)
         {
-            if (syncPeer.TotalDifficulty is { } peerTD && (block.TotalDifficulty ?? 0) > peerTD)
+            if (syncPeer.TotalDifficulty is { } peerTD && (block.TotalDifficulty ?? UInt256.Zero) > peerTD)
             {
                 if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
                 syncPeer.HeadNumber = block.Number;

@@ -568,7 +568,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 !best.IsInFullSync &&
                 !best.IsInStateSync &&
                 // maybe some more sophisticated heuristic?
-                (best.Peer.TotalDifficulty ?? 0).IsZero &&
+                (best.Peer.TotalDifficulty ?? UInt256.Zero).IsZero &&
                 best.Peer.Block == 0;
         }
 

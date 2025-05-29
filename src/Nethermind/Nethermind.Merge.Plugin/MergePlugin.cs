@@ -236,7 +236,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             if (_poSSwitcher.TransitionFinished)
                 _api.ProtocolsManager.AddSupportedCapability(new(Protocol.Eth, 69));
             else
-                _poSSwitcher.Transitioned += (_, _) => _api.ProtocolsManager.AddSupportedCapability(new(Protocol.Eth, 69));
+                _poSSwitcher.TerminalBlockReached += (_, _) => _api.ProtocolsManager.AddSupportedCapability(new(Protocol.Eth, 69));
         }
 
         return Task.CompletedTask;

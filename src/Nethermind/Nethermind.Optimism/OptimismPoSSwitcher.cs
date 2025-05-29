@@ -24,7 +24,6 @@ public class OptimismPoSSwitcher(ISpecProvider specProvider, long bedrockBlockNu
     public long? ConfiguredTerminalBlockNumber => null;
 
     public event EventHandler TerminalBlockReached { add { } remove { } }
-    public event EventHandler Transitioned { add { } remove { } }
 
     public void ForkchoiceUpdated(BlockHeader newHeadHash, Hash256 finalizedHash) { }
 

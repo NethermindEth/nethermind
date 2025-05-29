@@ -14,17 +14,7 @@ namespace Nethermind.Consensus
 
         bool HasEverReachedTerminalBlock();
 
-        /// <summary>
-        /// Fires once when the terminal block is received.
-        /// Doesn't repeat in case of reorgs.
-        /// </summary>
         event EventHandler TerminalBlockReached;
-
-        /// <summary>
-        /// Fires once when the terminal block is finalized.
-        /// Doesn't repeat in case of reorgs.
-        /// </summary>
-        event EventHandler Transitioned;
 
         UInt256? TerminalTotalDifficulty { get; }
 

@@ -152,7 +152,7 @@ namespace Nethermind.Synchronization.Peers
 
         public bool HasEqualOrBetterTDOrBlock(PeerInfo? other)
         {
-            if (other == null)
+            if (other is null)
                 return true;
 
             if (TotalDifficulty is null || other.TotalDifficulty is null)

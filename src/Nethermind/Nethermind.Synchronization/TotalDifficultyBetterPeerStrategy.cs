@@ -26,7 +26,7 @@ public class TotalDifficultyBetterPeerStrategy : IBetterPeerStrategy
     public bool IsDesiredPeer(in (UInt256? TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestHeader)
     {
         bool desiredPeerKnown = IsBetterThanLocalChain(bestPeerInfo, bestHeader) ||
-            (bestPeerInfo.TotalDifficulty != null && bestPeerInfo.TotalDifficulty == bestHeader.TotalDifficulty && bestPeerInfo.Number > bestHeader.Number);
+            (bestPeerInfo.TotalDifficulty is not null && bestPeerInfo.TotalDifficulty == bestHeader.TotalDifficulty && bestPeerInfo.Number > bestHeader.Number);
 
         if (desiredPeerKnown && _logger.IsTrace)
             _logger.Trace($"   Best peer [{bestPeerInfo.Number},{bestPeerInfo.TotalDifficulty}] > local [{bestHeader}, {bestHeader.TotalDifficulty}]");

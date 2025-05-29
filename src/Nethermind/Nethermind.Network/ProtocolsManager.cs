@@ -433,21 +433,12 @@ namespace Nethermind.Network
             }
         }
 
-        public IEnumerable<Capability> GetCapabilities(string protocol)
-        {
-            foreach (Capability capability in _capabilities)
-            {
-                if (capability.ProtocolCode == protocol)
-                    yield return capability;
-            }
-        }
-
         public int GetHighestProtocolVersion(string protocol)
         {
             int highestVersion = 0;
-            foreach (Capability capability in GetCapabilities(protocol))
+            foreach (Capability capability in _capabilities)
             {
-                if (highestVersion < capability.Version)
+                if (capability.ProtocolCode == protocol && highestVersion < capability.Version)
                     highestVersion = capability.Version;
             }
 
