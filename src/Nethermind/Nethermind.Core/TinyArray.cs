@@ -20,14 +20,16 @@ public static class TinyArray
     /// </summary>
     public static ITinyArray Create(ReadOnlySpan<byte> src)
     {
-        int len = src.Length;
-        if (len <= Payload8.Capacity) return new TinyArrayImpl<Payload8>(src);
-        if (len <= Payload16.Capacity) return new TinyArrayImpl<Payload16>(src);
-        if (len <= Payload24.Capacity) return new TinyArrayImpl<Payload24>(src);
-        if (len <= Payload32.Capacity) return new TinyArrayImpl<Payload32>(src);
+        return (src.Length / 8) switch
+        {
+            0 => new TinyArrayImpl<Payload8>(src),
+            1 => new TinyArrayImpl<Payload16>(src),
+            2 => new TinyArrayImpl<Payload24>(src),
+            3 => new TinyArrayImpl<Payload32>(src),
 
-        Debug.Assert(len == PayloadFixed32.Capacity);
-        return new TinyArrayImpl<PayloadFixed32>(src);
+            // assumes fixed
+            _ => new TinyArrayImpl<PayloadFixed32>(src)
+        };
     }
 
     private sealed class TinyArrayImpl<TPayload> : ITinyArray
