@@ -671,9 +671,9 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 _state.IncrementNonce(env.ExecutingAccount);
             }
 
-            if (_vmConfig.IsVmOptimizationEnabled && vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
+            if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed && vmState.Env.CodeInfo.Codehash is not null)
             {
-                vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger, spec);
+                IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE,  _vmConfig, _logger);
             }
         }
 
