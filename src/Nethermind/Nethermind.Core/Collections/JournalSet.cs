@@ -45,7 +45,7 @@ namespace Nethermind.Core.Collections
         [DoesNotReturn]
         [StackTraceHidden]
         private void ThrowInvalidRestore(int snapshot)
-            => throw new InvalidOperationException($"{nameof(JournalCollection<T>)} tried to restore snapshot {snapshot} beyond current position {Count}");
+            => throw new InvalidOperationException($"{nameof(JournalSet<T>)} tried to restore snapshot {snapshot} beyond current position {Count}");
 
         public bool Add(T item)
         {
