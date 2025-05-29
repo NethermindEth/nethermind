@@ -55,7 +55,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
         return (eip4788ContractAddress, builder.Build());
     }
 
-    public void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer)
+    public void StoreBeaconRoot(Block block, in BlockExecutionContext blkCtx, IReleaseSpec spec, ITxTracer tracer)
     {
         (Address? toAddress, AccessList? accessList) = BeaconRootsAccessList(block, spec, includeStorageCells: false);
 
@@ -75,7 +75,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
 
             transaction.Hash = transaction.CalculateHash();
 
-            processor.Execute(transaction, new BlockExecutionContext(header, spec), tracer);
+            processor.Execute(transaction, in blkCtx, tracer);
         }
     }
 }

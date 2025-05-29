@@ -140,6 +140,7 @@ public class ChainParameters
     public ulong? Eip7823TransitionTimestamp { get; set; }
     public ulong? Eip7883TransitionTimestamp { get; set; }
     public ulong? Eip7825TransitionTimestamp { get; set; }
+    public ulong? Eip7918TransitionTimestamp { get; set; }
 
     public SortedSet<BlobScheduleSettings>? BlobSchedule { get; set; } = [];
 

@@ -110,6 +110,11 @@ namespace Nethermind.Specs.ChainSpecStyle
                         throw new ArgumentException($"Blob settings are scheduled at {settings.Timestamp}, before EIP-4844, activated at {chainSpec.Parameters.Eip4844TransitionTimestamp}");
                     }
 
+                    if (settings.Target > settings.Max)
+                    {
+                        throw new ArgumentException($"Blob schedule target ({settings.Target}) should not exceed max ({settings.Max}).");
+                    }
+
                     transitions.Add(settings.Timestamp);
                 }
             }
@@ -267,6 +272,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsEip7594Enabled = (chainSpec.Parameters.Eip7594TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7825Enabled = (chainSpec.Parameters.Eip7825TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip7918Enabled = (chainSpec.Parameters.Eip7918TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock;
             bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? long.MaxValue) <= releaseStartTimestamp;

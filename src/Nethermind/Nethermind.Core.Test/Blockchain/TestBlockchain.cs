@@ -121,6 +121,8 @@ public class TestBlockchain : IDisposable
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
     public IContainer Container { get; set; } = null!;
+    private ChainSpec? _chainSpec = null!;
+    protected ChainSpec ChainSpec => _chainSpec ??= CreateChainSpec();
 
     // Resolving all these component at once is faster.
     private FromContainer _fromContainer = null!;
@@ -263,7 +265,7 @@ public class TestBlockchain : IDisposable
 
     protected virtual ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
         builder
-            .AddModule(new PseudoNethermindModule(CreateChainSpec(), configProvider, LimboLogs.Instance))
+            .AddModule(new PseudoNethermindModule(ChainSpec, configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
             .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
             .AddDecorator<ISpecProvider>((ctx, specProvider) => WrapSpecProvider(specProvider))
