@@ -47,12 +47,12 @@ public class InclusionListValidator(
                 continue;
             }
 
-			// todo: check conditions
-			UInt256 txCost = tx.Value + (UInt256)tx.GasLimit * tx.GasPrice;
+            // todo: check conditions
+            UInt256 txCost = tx.Value + (UInt256)tx.GasLimit * tx.GasPrice;
             bool couldIncludeTx =
-				tx.GasPrice >= block.BaseFeePerGas &&
-				worldState.GetBalance(tx.SenderAddress) >= txCost &&
-				worldState.GetNonce(tx.SenderAddress) == tx.Nonce;
+                tx.GasPrice >= block.BaseFeePerGas &&
+                worldState.GetBalance(tx.SenderAddress) >= txCost &&
+                worldState.GetNonce(tx.SenderAddress) == tx.Nonce;
 
             if (couldIncludeTx)
             {
