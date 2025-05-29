@@ -124,7 +124,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor(SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
-                return _systemTransactionProcessor.Execute(tx, new BlockExecutionContext(blCtx.Header, SpecProvider.GetSpec(blCtx.Header)), tracer, opts);
+                return _systemTransactionProcessor.Execute(tx, in blCtx, tracer, opts);
             }
 
             TransactionResult result = Execute(tx, in blCtx, tracer, opts);
@@ -595,7 +595,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual bool ShouldValidate(ExecutionOptions opts) => !opts.HasFlag(ExecutionOptions.SkipValidation);
 
-        protected virtual void ExecuteEvmCall<TTracingInstructions>(
+        protected virtual void ExecuteEvmCall<TTracingInst>(
             Transaction tx,
             BlockHeader header,
             IReleaseSpec spec,
@@ -609,7 +609,7 @@ namespace Nethermind.Evm.TransactionProcessing
             out TransactionSubstate? substate,
             out GasConsumed gasConsumed,
             out byte statusCode)
-            where TTracingInstructions : struct, IFlag
+            where TTracingInst : struct, IFlag
         {
             _ = ShouldValidate(opts);
 
@@ -649,7 +649,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             using (EvmState state = EvmState.RentTopLevel(unspentGas, executionType, snapshot, env, accessedItems))
             {
-                substate = VirtualMachine.ExecuteTransaction<TTracingInstructions>(state, WorldState, tracer);
+                substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
 
                 unspentGas = state.GasAvailable;
 

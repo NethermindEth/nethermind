@@ -7,8 +7,10 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -66,10 +68,12 @@ namespace Nethermind.Consensus.Processing
                 transactionsExecutor,
                 scope.WorldState,
                 receiptStorage,
-                scope.TransactionProcessor,
                 new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
                 new BlockhashStore(specProvider, scope.WorldState),
-                logManager);
+                logManager,
+                new WithdrawalProcessor(scope.WorldState, logManager),
+                new ExecutionRequestsProcessor(scope.TransactionProcessor)
+            );
         }
 
         public ValueTask DisposeAsync() => _blockProcessingQueue?.DisposeAsync() ?? default;

@@ -15,17 +15,14 @@ namespace Nethermind.Taiko.Rpc;
 
 class TaikoProofModuleFactory(
     IWorldStateManager worldStateManager,
+    IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
     IBlockTree blockTree,
     IBlockPreprocessorStep recoveryStep,
     IReceiptFinder receiptFinder,
     ISpecProvider specProvider,
     ILogManager logManager)
-    : ProofModuleFactory(worldStateManager, blockTree, recoveryStep, receiptFinder, specProvider, logManager)
+    : ProofModuleFactory(worldStateManager, readOnlyTxProcessingEnvFactory, blockTree, recoveryStep, receiptFinder, specProvider, logManager)
 {
-
-    protected override ReadOnlyTxProcessingEnv CreateTxProcessingEnv()
-        => new TaikoReadOnlyTxProcessingEnv(WorldStateManager, BlockTree, SpecProvider, LogManager);
-
     protected override IBlockProcessor.IBlockTransactionsExecutor CreateRpcBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
         => new TaikoRpcBlockTransactionExecutor(scope.TransactionProcessor, scope.WorldState);
 }
