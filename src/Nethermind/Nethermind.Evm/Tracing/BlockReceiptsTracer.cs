@@ -172,7 +172,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportExtraGasPressure(long extraGasPressure) =>
         _currentTxTracer.ReportExtraGasPressure(extraGasPressure);
 
-    public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) =>
+    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells) =>
         _currentTxTracer.ReportAccess(accessedAddresses, accessedStorageCells);
 
     public void SetOperationStack(TraceStack stack) =>
