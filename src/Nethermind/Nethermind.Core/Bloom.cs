@@ -211,19 +211,7 @@ namespace Nethermind.Core
             public bool IsZero() => Index1 == 0 && Index2 == 0 && Index3 == 0;
         }
 
-        public bool IsZero()
-        {
-            ReadOnlySpan<byte> bytes = Bytes;
-            for (int i = 0; i < ByteLength; i++)
-            {
-                if (bytes[i] != 0)
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-
+        public bool IsZero() => !Bytes.ContainsAnyExcept((byte)0);
         public BloomStructRef ToStructRef() => new(Bytes);
 
         public Bloom Clone()
