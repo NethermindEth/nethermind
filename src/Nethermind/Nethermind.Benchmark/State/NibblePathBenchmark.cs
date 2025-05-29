@@ -36,7 +36,7 @@ public class NibblePathBenchmark
             .ToArray();
 
     public static IEnumerable<byte[]> GetNibbles() => Nibbles;
-    public static IEnumerable<(byte[] nibbles, NibblePath.Key path)> GetNibblesWithPaths() => NibblesWithPaths;
+    public static IEnumerable<(byte[] nibbles, NibblePath.Key path)> GetNibblesWithKeys() => NibblesWithPaths;
 
     [Benchmark]
     [ArgumentsSource(nameof(GetNibbles))]
@@ -45,40 +45,52 @@ public class NibblePathBenchmark
         return NibblePath.Key.FromNibbles(nibbles);
     }
 
+    [Benchmark]
+    [ArgumentsSource(nameof(GetNibblesWithKeys))]
+    public int CommonPrefixLength_Key((byte[] nibbles, NibblePath.Key key) pair)
+    {
+        NibblePath.Key key = pair.key;
+        NibblePath path = key.AsPath();
+
+        return key.CommonPrefixLength(path);
+    }
+
+    [Benchmark]
+    [ArgumentsSource(nameof(GetNibblesWithKeys))]
+    public int CommonPrefixLength_Path((byte[] nibbles, NibblePath.Key key) pair)
+    {
+        NibblePath.Key key = pair.key;
+        NibblePath path = key.AsPath();
+
+        return path.CommonPrefixLength(path);
+    }
 
 
+    [Benchmark]
+    [ArgumentsSource(nameof(GetNibblesWithKeys))]
+    public bool Equals_Path_Key((byte[] nibbles, NibblePath.Key key) pair)
+    {
+        NibblePath.Key key = pair.key;
+        NibblePath path = key.AsPath();
 
+        return path.Equals(key);
+    }
 
-    //
-    // [Benchmark]
-    // [ArgumentsSource(nameof(GetNibblesWithPaths))]
-    // public int CommonPrefixLength_ByRef((byte[] nibbles, NibblePath path) pair)
-    // {
-    //     NibblePath.ByRef byRef = pair.path;
-    //     return byRef.CommonPrefixLength(byRef);
-    // }
-    //
-    // [Benchmark]
-    // [ArgumentsSource(nameof(GetNibblesWithPaths))]
-    // public bool Equals((byte[] nibbles, NibblePath path) pair)
-    // {
-    //     return pair.path.Equals(pair.path);
-    // }
-    //
-    // [Benchmark]
-    // [ArgumentsSource(nameof(GetNibblesWithPaths))]
-    // public bool Equals_Ref((byte[] nibbles, NibblePath path) pair)
-    // {
-    //     NibblePath path = pair.path;
-    //     return ((NibblePath.ByRef)path).Equals(path);
-    // }
-    //
-    // [Benchmark]
-    // [Arguments(1, 2)]
-    // [Arguments(0, 3)]
-    // [Arguments(0, 30)]
-    // public NibblePath Slice(int start, int length)
-    // {
-    //     return Long.Slice(start, length);
-    // }
+    [Benchmark]
+    [ArgumentsSource(nameof(GetNibblesWithKeys))]
+    public bool Equals_Key_Key((byte[] nibbles, NibblePath.Key key) pair)
+    {
+        NibblePath.Key key = pair.key;
+        return key.Equals(key);
+    }
+
+    [Benchmark]
+    [Arguments(1, 2)]
+    [Arguments(0, 3)]
+    [Arguments(0, 30)]
+    public NibblePath Slice(int start, int length)
+    {
+        NibblePath path = Long.AsPath();
+        return path.Slice(start, length);
+    }
 }
