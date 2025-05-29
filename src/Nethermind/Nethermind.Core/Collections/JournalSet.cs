@@ -27,13 +27,10 @@ namespace Nethermind.Core.Collections
         [SkipLocalsInit]
         public void Restore(int snapshot)
         {
-            int count = _set.Count;
-            if (snapshot >= count)
+            if (snapshot >= _set.Count)
             {
                 ThrowInvalidRestore(snapshot);
             }
-
-            if (count == 0) return;
 
             // we use dictionary to remove items added after snapshot
             foreach (T item in CollectionsMarshal.AsSpan(_items)[(snapshot + 1)..])
