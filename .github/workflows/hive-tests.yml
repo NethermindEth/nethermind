@@ -93,6 +93,7 @@ jobs:
       - name: Run Hive
         continue-on-error: true
         working-directory: hive
+        timeout-minutes: 5
         run: |
           HIVE_ARGS="--client nethermind --sim $TEST_SUITE --sim.loglevel $LOG_LEVEL"
           
@@ -109,11 +110,13 @@ jobs:
           eval "./hive $HIVE_ARGS"
       - name: Upload results
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: results-${{ github.run_number }}-${{ github.run_attempt }}
           path: hive/workspace
           retention-days: 7
       - name: Print results
+        if: always()
         run: |
           rm hive/workspace/logs/hive.json # redundant: remove to avoid jq error
           chmod +x nethermind/scripts/hive-results.sh
