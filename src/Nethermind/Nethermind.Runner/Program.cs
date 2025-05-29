@@ -45,6 +45,12 @@ using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
 using NullLogger = Nethermind.Logging.NullLogger;
 
+_ = Task.Run(async () =>
+{
+    await Task.Delay(TimeSpan.FromMinutes(3));
+    Environment.Exit(0);
+});
+
 Console.Title = ProductInfo.Name;
 // Increase regex cache size as more added in log coloring matches
 Regex.CacheSize = 128;
