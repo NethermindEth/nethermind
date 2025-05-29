@@ -233,7 +233,7 @@ namespace Nethermind.Api
         public IProtectedPrivateKey? OriginalSignerKey { get; set; }
 
         public ChainSpec ChainSpec => _dependencies.ChainSpec;
-        public DisposableStack DisposeStack { get; }
+        public IDisposableStack DisposeStack { get; }
         public IReadOnlyList<INethermindPlugin> Plugins => _dependencies.Plugins;
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public IProcessExitSource ProcessExit => _dependencies.ProcessExitSource;

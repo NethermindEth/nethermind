@@ -8,7 +8,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Core
 {
-    public class DisposableStack(ILogManager logManager) : Stack<IAsyncDisposable>, IAsyncDisposable
+    public class DisposableStack(ILogManager logManager) : Stack<IAsyncDisposable>, IDisposableStack
     {
         private readonly ILogger _logger = logManager.GetClassLogger<DisposableStack>();
 
