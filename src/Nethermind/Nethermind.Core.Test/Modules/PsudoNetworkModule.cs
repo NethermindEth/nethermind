@@ -45,7 +45,7 @@ public class PsudoNetworkModule() : Module
 
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
             .AddSingleton<IPooledTxsRequestor, PooledTxsRequestor>()
-            .AddSingleton<ForkInfo>()
+            .AddSingleton<IForkInfo, ForkInfo>()
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
 

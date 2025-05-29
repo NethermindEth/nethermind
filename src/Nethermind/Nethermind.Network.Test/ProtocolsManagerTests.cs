@@ -70,6 +70,8 @@ public class ProtocolsManagerTests
         private readonly IPacketSender _packetSender;
         private readonly IBlockTree _blockTree;
         private readonly IGossipPolicy _gossipPolicy;
+        private readonly IPeerManager _peerManager;
+        private readonly INetworkConfig _networkConfig;
 
         public Context()
         {
@@ -104,7 +106,9 @@ public class ProtocolsManagerTests
             _blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
             _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
             ForkInfo forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer.Genesis.Hash!);
-            _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, LimboLogs.Instance);
+            _peerManager = Substitute.For<IPeerManager>();
+            _networkConfig = new NetworkConfig();
+            _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, _peerManager, _networkConfig, LimboLogs.Instance);
             _peerStorage = Substitute.For<INetworkStorage>();
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
@@ -122,7 +126,6 @@ public class ProtocolsManagerTests
                 _peerStorage,
                 forkInfo,
                 _gossipPolicy,
-                new NetworkConfig(),
                 Substitute.For<IWorldStateManager>(),
                 LimboLogs.Instance);
         }
