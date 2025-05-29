@@ -4,9 +4,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Core.Buffers;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test;
+namespace Nethermind.Core.Test.Buffers;
 
 [TestFixture]
 public class TinyArrayTests
@@ -25,7 +26,7 @@ public class TinyArrayTests
     [TestCaseSource(nameof(Payloads))]
     public void Equality(byte[] src)
     {
-        ITinyArray tiny = TinyArray.Create(src);
+        ISpanSource tiny = TinyArray.Create(src);
 
         tiny.Length.Should().Be(src.Length);
 
@@ -41,7 +42,7 @@ public class TinyArrayTests
         // Special case for 1, so that they differ
         var reversed = src.Length == 1 ? [(byte)(byte.MaxValue - src[0])] : src.Reverse().ToArray();
 
-        ITinyArray tiny = TinyArray.Create(reversed);
+        ISpanSource tiny = TinyArray.Create(reversed);
 
         tiny.Length.Should().Be(src.Length);
 

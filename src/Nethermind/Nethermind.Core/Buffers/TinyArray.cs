@@ -1,14 +1,9 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only
-
 using System;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using static System.Runtime.CompilerServices.Unsafe;
 
-namespace Nethermind.Core;
+namespace Nethermind.Core.Buffers;
 
 /// <summary>
 /// Non-generic factory entry point for creating tiny arrays with inline payloads.
@@ -16,9 +11,14 @@ namespace Nethermind.Core;
 public static class TinyArray
 {
     /// <summary>
+    /// Max length of a tiny array.
+    /// </summary>
+    public const int MaxLength = 32;
+
+    /// <summary>
     /// Create a tiny array of minimal inline capacity based on source length.
     /// </summary>
-    public static ITinyArray Create(ReadOnlySpan<byte> src)
+    public static ISpanSource Create(ReadOnlySpan<byte> src)
     {
         return (src.Length / 8) switch
         {
@@ -32,7 +32,7 @@ public static class TinyArray
         };
     }
 
-    private sealed class TinyArrayImpl<TPayload> : ITinyArray
+    private sealed class TinyArrayImpl<TPayload> : ISpanSource
         where TPayload : struct, IPayload
     {
         private TPayload _payload;
@@ -79,7 +79,6 @@ public static class TinyArray
     {
         private byte _data;
         private const int Size = 8;
-        public const int Capacity = Size - 1;
 
         public void Load(ReadOnlySpan<byte> src)
         {
@@ -89,7 +88,7 @@ public static class TinyArray
 
         public byte Length => _data;
 
-        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Add(ref _data, ValueOffset), _data);
+        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _data, ValueOffset), _data);
 
         public bool SequenceEqual(ReadOnlySpan<byte> other)
         {
@@ -102,7 +101,7 @@ public static class TinyArray
                 goto Return;
             }
 
-            ref byte first = ref Add(ref _data, ValueOffset);
+            ref byte first = ref Unsafe.Add(ref _data, ValueOffset);
             ref byte second = ref MemoryMarshal.GetReference(other);
 
             if (length < sizeof(uint))
@@ -111,12 +110,12 @@ public static class TinyArray
                 int offset = length & 2;
                 if (offset != 0)
                 {
-                    differentBits = ReadUnaligned<ushort>(ref first);
-                    differentBits -= ReadUnaligned<ushort>(ref second);
+                    differentBits = Unsafe.ReadUnaligned<ushort>(ref first);
+                    differentBits -= Unsafe.ReadUnaligned<ushort>(ref second);
                 }
                 if ((length & 1) != 0)
                 {
-                    differentBits |= (uint)AddByteOffset(ref first, offset) - (uint)AddByteOffset(ref second, offset);
+                    differentBits |= (uint)Unsafe.AddByteOffset(ref first, offset) - (uint)Unsafe.AddByteOffset(ref second, offset);
                 }
 
                 result = differentBits == 0;
@@ -125,9 +124,8 @@ public static class TinyArray
             {
                 int offset = length - sizeof(uint);
 
-                uint differentBits = ReadUnaligned<uint>(ref first) - ReadUnaligned<uint>(ref second);
-                differentBits |= ReadUnaligned<uint>(ref Add(ref first, offset)) -
-                                 ReadUnaligned<uint>(ref Add(ref second, offset));
+                uint differentBits = Unsafe.ReadUnaligned<uint>(ref first) - Unsafe.ReadUnaligned<uint>(ref second);
+                differentBits |= Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref first, offset)) - Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref second, offset));
 
                 result = differentBits == 0;
             }
@@ -143,7 +141,6 @@ public static class TinyArray
     {
         private byte _data;
         private const int Size = 16;
-        public const int Capacity = Size - 1;
 
         public void Load(ReadOnlySpan<byte> src)
         {
@@ -153,7 +150,7 @@ public static class TinyArray
 
         public byte Length => _data;
 
-        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Add(ref _data, ValueOffset), _data);
+        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _data, ValueOffset), _data);
 
         public bool SequenceEqual(ReadOnlySpan<byte> other)
         {
@@ -163,14 +160,13 @@ public static class TinyArray
                 return false;
             }
 
-            ref byte first = ref Add(ref _data, ValueOffset);
+            ref byte first = ref Unsafe.Add(ref _data, ValueOffset);
             ref byte second = ref MemoryMarshal.GetReference(other);
 
             int offset = length - sizeof(long);
 
-            ulong differentBits = ReadUnaligned<ulong>(ref first) - ReadUnaligned<ulong>(ref second);
-            differentBits |= ReadUnaligned<ulong>(ref Add(ref first, offset)) -
-                             ReadUnaligned<ulong>(ref Add(ref second, offset));
+            ulong differentBits = Unsafe.ReadUnaligned<ulong>(ref first) - Unsafe.ReadUnaligned<ulong>(ref second);
+            differentBits |= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref first, offset)) - Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref second, offset));
 
             return differentBits == 0;
         }
@@ -182,7 +178,6 @@ public static class TinyArray
     {
         private byte _data;
         private const int Size = 24;
-        public const int Capacity = Size - 1;
 
         public void Load(ReadOnlySpan<byte> src)
         {
@@ -192,7 +187,7 @@ public static class TinyArray
 
         public byte Length => _data;
 
-        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Add(ref _data, ValueOffset), _data);
+        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _data, ValueOffset), _data);
 
         public bool SequenceEqual(ReadOnlySpan<byte> other)
         {
@@ -202,15 +197,15 @@ public static class TinyArray
                 return false;
             }
 
-            ref byte first = ref Add(ref _data, ValueOffset);
+            ref byte first = ref Unsafe.Add(ref _data, ValueOffset);
             ref byte second = ref MemoryMarshal.GetReference(other);
 
             int offset = length - Vector128<byte>.Count;
 
             return
                 ((Vector128.LoadUnsafe(ref first) ^ Vector128.LoadUnsafe(ref second)) |
-                 (Vector128.LoadUnsafe(ref Add(ref first, offset)) ^
-                  Vector128.LoadUnsafe(ref Add(ref second, offset)))) ==
+                 (Vector128.LoadUnsafe(ref Unsafe.Add(ref first, offset)) ^
+                  Vector128.LoadUnsafe(ref Unsafe.Add(ref second, offset)))) ==
                 Vector128<byte>.Zero;
         }
     }
@@ -221,7 +216,6 @@ public static class TinyArray
     {
         private byte _data;
         private const int Size = 32;
-        public const int Capacity = Size - 1;
 
         public void Load(ReadOnlySpan<byte> src)
         {
@@ -231,7 +225,7 @@ public static class TinyArray
 
         public byte Length => _data;
 
-        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Add(ref _data, ValueOffset), _data);
+        public Span<byte> Span => MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _data, ValueOffset), _data);
 
         public bool SequenceEqual(ReadOnlySpan<byte> other)
         {
@@ -241,15 +235,15 @@ public static class TinyArray
                 return false;
             }
 
-            ref byte first = ref Add(ref _data, ValueOffset);
+            ref byte first = ref Unsafe.Add(ref _data, ValueOffset);
             ref byte second = ref MemoryMarshal.GetReference(other);
 
             int offset = length - Vector128<byte>.Count;
 
             return
                 ((Vector128.LoadUnsafe(ref first) ^ Vector128.LoadUnsafe(ref second)) |
-                 (Vector128.LoadUnsafe(ref Add(ref first, offset)) ^
-                  Vector128.LoadUnsafe(ref Add(ref second, offset)))) ==
+                 (Vector128.LoadUnsafe(ref Unsafe.Add(ref first, offset)) ^
+                  Vector128.LoadUnsafe(ref Unsafe.Add(ref second, offset)))) ==
                 Vector128<byte>.Zero;
         }
     }
@@ -260,12 +254,11 @@ public static class TinyArray
     {
         private const int Size = 32;
         private byte _data;
-        public const int Capacity = Size;
+        private const int Capacity = Size;
 
         public void Load(ReadOnlySpan<byte> src)
         {
-            As<byte, Vector256<byte>>(ref _data) =
-                As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(src));
+            Unsafe.As<byte, Vector256<byte>>(ref _data) = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(src));
         }
 
         public byte Length => Size;
@@ -274,23 +267,7 @@ public static class TinyArray
 
         public bool SequenceEqual(ReadOnlySpan<byte> other)
         {
-            return Length == other.Length &&
-                   As<byte, Vector256<byte>>(ref _data) ==
-                   As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(other));
+            return Length == other.Length && Unsafe.As<byte, Vector256<byte>>(ref _data) == Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(other));
         }
     }
-}
-
-/// <summary>
-/// A tiny array, allocating just enough space to hold the payload with a byte-long length.
-/// </summary>
-public interface ITinyArray
-{
-    int Length { get; }
-
-    bool SequenceEqual(ReadOnlySpan<byte> other);
-
-    int CommonPrefixLength(ReadOnlySpan<byte> other);
-
-    Span<byte> Span { get; }
 }
