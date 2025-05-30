@@ -7,6 +7,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Taiko.Rpc;
+using Nethermind.Taiko.Config;
 using NSubstitute;
 using NUnit.Framework;
 using System.Threading.Tasks;
@@ -15,13 +16,14 @@ using Nethermind.JsonRpc.Client;
 
 namespace Nethermind.Taiko.Test;
 
-public class TaikoGasPriceOracleTests
+public class SurgeGasPriceOracleTests
 {
     private IBlockFinder _blockFinder = null!;
     private ILogManager _logManager = null!;
     private ISpecProvider _specProvider = null!;
     private IJsonRpcClient _l1RpcClient = null!;
-    private TaikoGasPriceOracle _gasPriceOracle = null!;
+    private ISurgeConfig _surgeConfig = null!;
+    private SurgeGasPriceOracle _gasPriceOracle = null!;
     private static readonly UInt256 MinGasPrice = UInt256.Parse("1000000000"); // 1 Gwei
 
     [SetUp]
@@ -31,13 +33,15 @@ public class TaikoGasPriceOracleTests
         _logManager = Substitute.For<ILogManager>();
         _specProvider = Substitute.For<ISpecProvider>();
         _l1RpcClient = Substitute.For<IJsonRpcClient>();
+        _surgeConfig = new SurgeConfig();
 
-        _gasPriceOracle = new TaikoGasPriceOracle(
+        _gasPriceOracle = new SurgeGasPriceOracle(
             _blockFinder,
             _logManager,
             _specProvider,
             MinGasPrice,
-            _l1RpcClient);
+            _l1RpcClient,
+            _surgeConfig);
     }
 
     [Test]
@@ -105,7 +109,8 @@ public class TaikoGasPriceOracleTests
             ]
         };
 
-        _l1RpcClient.Post<L1FeeHistoryResults?>(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<BlockParameter>(), Arg.Any<object>())
+        // Set up the mock to match the exact parameters that will be passed
+        _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", 200, BlockParameter.Latest, null)
             .Returns(Task.FromResult<L1FeeHistoryResults?>(feeHistory));
 
         UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
@@ -123,11 +128,11 @@ public class TaikoGasPriceOracleTests
         {
             BaseFeePerGas =
             [
-                UInt256.Parse("20000000000")  // 20 Gwei
+                UInt256.Parse("20000000000")
             ],
             BaseFeePerBlobGas =
             [
-                UInt256.Parse("1000000000")   // 1 Gwei
+                UInt256.Parse("1000000000")
             ]
         };
 
