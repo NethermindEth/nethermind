@@ -144,6 +144,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 .AddSingleton<ChainSpec>(new ChainSpec())
                 .AddSingleton<ISpecProvider>(Substitute.For<ISpecProvider>())
                 .AddSingleton<IProcessExitSource>(Substitute.For<IProcessExitSource>())
+                .AddSingleton<IDisposableStack, AutofacDisposableStack>()
                 .AddSingleton<IEthereumStepsLoader, EthereumStepsLoader>()
                 .AddSingleton<EthereumStepsManager>()
                 .AddSingleton<ILogManager>(LimboLogs.Instance);

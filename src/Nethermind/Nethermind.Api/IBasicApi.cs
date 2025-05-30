@@ -22,7 +22,7 @@ namespace Nethermind.Api
 {
     public interface IBasicApi
     {
-        DisposableStack DisposeStack { get; }
+        IDisposableStack DisposeStack { get; }
 
         IAbiEncoder AbiEncoder { get; }
         [SkipServiceCollection]
