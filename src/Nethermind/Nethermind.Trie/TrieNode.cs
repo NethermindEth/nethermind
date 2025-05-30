@@ -135,10 +135,7 @@ namespace Nethermind.Trie
 
         public bool HasRlp => _rlp.IsNotNull;
 
-        public SpanSource FullRlp
-        {
-            get => _rlp;
-        }
+        public SpanSource FullRlp => _rlp.IsNotNull ? _rlp : SpanSource.Empty;
 
         public ValueRlpStream RlpStream
         {

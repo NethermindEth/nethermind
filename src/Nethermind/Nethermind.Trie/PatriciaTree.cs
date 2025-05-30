@@ -335,7 +335,7 @@ namespace Nethermind.Trie
                 SpanSource result = Run(ref updatePathTreePath, SpanSource.Empty, nibbles, isUpdate: false, startRootHash: rootHash);
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
 
-                return result.Span;
+                return result.IsNull ? ReadOnlySpan<byte>.Empty : result.Span;
             }
             catch (TrieException e)
             {
