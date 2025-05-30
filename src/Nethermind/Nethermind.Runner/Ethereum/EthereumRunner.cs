@@ -14,10 +14,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum;
 
-public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManager, ILifetimeScope lifetimeScope)
+public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManager, ILifetimeScope lifetimeScope, IServiceStopper serviceStopper)
 {
-    private readonly INethermindApi _api = api;
-    public INethermindApi Api => _api;
+    public INethermindApi Api => api;
     public ILifetimeScope LifetimeScope => lifetimeScope;
     private readonly ILogger _logger = api.LogManager.GetClassLogger();
 
@@ -34,23 +33,19 @@ public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManage
 
     public async Task StopAsync()
     {
-        await _api.Context.Resolve<IServiceStopper>().StopAllServices();
+        await serviceStopper.StopAllServices();
 
-        foreach (INethermindPlugin plugin in _api.Plugins)
+        foreach (INethermindPlugin plugin in api.Plugins)
         {
             await Stop(async () => await plugin.DisposeAsync(), $"Disposing plugin {plugin.Name}");
         }
 
-        await _api.DisposeStack.DisposeAsync();
-        Stop(() => _api.DbProvider?.Dispose(), "Closing DBs");
-
+        await lifetimeScope.DisposeAsync();
         if (_logger.IsInfo)
         {
             _logger.Info("All DBs closed");
             _logger.Info("Ethereum runner stopped");
         }
-
-        await lifetimeScope.DisposeAsync();
     }
 
     private void Stop(Action stopAction, string description)

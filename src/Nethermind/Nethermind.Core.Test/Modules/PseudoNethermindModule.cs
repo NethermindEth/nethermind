@@ -44,7 +44,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddModule(new TestBlockProcessingModule())
 
             // Environments
-            .AddSingleton<IDisposableStack>((ctx) => new DisposableStack(LimboLogs.Instance))
             .AddSingleton<ITimerFactory, TimerFactory>()
             .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext>((blockProcessingContext) => new BackgroundTaskScheduler(
                 blockProcessingContext.BlockProcessor,

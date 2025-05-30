@@ -61,9 +61,6 @@ namespace Nethermind.Api
         public NethermindApi(Dependencies dependencies)
         {
             _dependencies = dependencies;
-            CryptoRandom = new CryptoRandom();
-            DisposeStack = new DisposableStack(dependencies.LogManager);
-            DisposeStack.Push(CryptoRandom);
         }
 
         // A simple class to prevent having to modify subclass of NethermindApi many time
@@ -75,6 +72,7 @@ namespace Nethermind.Api
             ISpecProvider SpecProvider,
             IReadOnlyList<INethermindPlugin> Plugins,
             IProcessExitSource ProcessExitSource,
+            IDisposableStack DisposableStack,
             ILifetimeScope Context
         );
 
@@ -130,7 +128,7 @@ namespace Nethermind.Api
         public IBloomStorage? BloomStorage { get; set; }
         public IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
         public IConfigProvider ConfigProvider => _dependencies.ConfigProvider;
-        public ICryptoRandom CryptoRandom { get; }
+        public ICryptoRandom CryptoRandom => Context.Resolve<ICryptoRandom>();
         public IDbProvider? DbProvider { get; set; }
         public IDbFactory? DbFactory { get; set; }
         public IDisconnectsAnalyzer DisconnectsAnalyzer => Context.Resolve<IDisconnectsAnalyzer>();
@@ -233,7 +231,7 @@ namespace Nethermind.Api
         public IProtectedPrivateKey? OriginalSignerKey { get; set; }
 
         public ChainSpec ChainSpec => _dependencies.ChainSpec;
-        public IDisposableStack DisposeStack { get; }
+        public IDisposableStack DisposeStack => _dependencies.DisposableStack;
         public IReadOnlyList<INethermindPlugin> Plugins => _dependencies.Plugins;
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public IProcessExitSource ProcessExit => _dependencies.ProcessExitSource;

@@ -10,7 +10,6 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Network;
-using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
@@ -23,10 +22,6 @@ namespace Nethermind.Api
     {
         (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
 
-        IDisconnectsAnalyzer DisconnectsAnalyzer { get; }
-
-        [SkipServiceCollection]
-        IDiscoveryApp DiscoveryApp { get; }
         IGrpcServer? GrpcServer { get; set; }
         IIPResolver? IpResolver { get; set; }
         IMessageSerializationService MessageSerializationService { get; }

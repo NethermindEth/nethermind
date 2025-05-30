@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.Core;
 
-public interface IDisposableStack : IAsyncDisposable
+public interface IDisposableStack
 {
     void Push(IAsyncDisposable item);
     void Push(IDisposable item);
