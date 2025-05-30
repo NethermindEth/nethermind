@@ -84,7 +84,7 @@ public class VirtualMachine : IVirtualMachine
             IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
             IlEvmBytecodeMinLength = 4,
             IlEvmBytecodeMaxLength = (int)24.KB(),
-            IlEvmPersistPrecompiledContractsOnDisk = true,
+            IlEvmPersistPrecompiledContractsOnDisk = false,
             IlEvmContractsPerDllCount = 16,
             IlEvmAnalysisThreshold = 2,
             IlEvmAnalysisQueueMaxSize = 1,
