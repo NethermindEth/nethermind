@@ -16,7 +16,7 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Network
 {
-    public class ForkInfo
+    public class ForkInfo : IForkInfo
     {
         private Dictionary<uint, (ForkActivation Activation, ForkId Id)> DictForks { get; }
         private (ForkActivation Activation, ForkId Id)[] Forks { get; }

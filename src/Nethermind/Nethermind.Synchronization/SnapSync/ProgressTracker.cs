@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -372,7 +373,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (_enableStorageRangeSplit && lastProcessed < fullRange / StorageRangeSplitFactor + start)
             {
-                ValueHash256 halfOfLeftHash = new((limit - lastProcessed) / 2 + lastProcessed);
+                ValueHash256 halfOfLeftHash = ((limit - lastProcessed) / 2 + lastProcessed).ToValueHash();
 
                 NextSlotRange.Enqueue(new StorageRange
                 {

@@ -44,7 +44,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddModule(new TestBlockProcessingModule())
 
             // Environments
-            .AddSingleton<DisposableStack>()
             .AddSingleton<ITimerFactory, TimerFactory>()
             .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext>((blockProcessingContext) => new BackgroundTaskScheduler(
                 blockProcessingContext.BlockProcessor,
@@ -61,7 +60,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<ICryptoRandom>(new CryptoRandom())
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
             .Bind<IEcdsa, IEthereumEcdsa>()
-            .AddSingleton<IEciesCipher, EciesCipher>()
             ;
 
 
