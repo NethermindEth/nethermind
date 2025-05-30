@@ -65,16 +65,16 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
     [TestCase(
-        "0xe05eb5783e1ee8b0b6a6c4c9a09a9bdeb798835d3d44cda510e3083c0578165f",
-        "0xd75d320c3a98a02ec7fe2abdcb1769bd063fec04d73f1735810f365ac12bc4ba")]
+        "0x67c4b87edb1ae82efc29a4b04c625ab7efd5ed681366c2f9ba672d7bd40e9bef",
+        "0x26b9598dd31cd520c6dcaf4f6fa13e279b4fa1f94d150357290df0e944f53115")]
     public override Task NewPayloadV5_should_return_invalid_for_unsatisfied_inclusion_list_V5(string blockHash, string stateRoot)
         => base.NewPayloadV5_should_return_invalid_for_unsatisfied_inclusion_list_V5(blockHash, stateRoot);
 
     [TestCase(
-        "0x1270af16dfea9b40aa9381529cb2629008fea35386041f52c07034ea8c038a05",
-        "0x81a41f22fa776446737cc3dfab96f8536bacfa2fd3d85b0f013b55a6be3ecfe7",
-        "0x6d43db6fab328470c4ad01d6658a317496d373a1892aab8273bf52448beb915e",
-        "0x9971bfe0d6f1fe54",
+        "0x1f26afbef938a122f4f55d2f081ac81cd9c8851ca22452fa5baf58845e574fc6",
+        "0x18e34081587cde90ddac14e7d06ae141a22b42c57184464d82a5bc5e215a128f",
+        "0x1cdeda061d1ea1b3ed89a2ce9aafbd4a9502a2eed652f3feaa66b95e3898dcda",
+        "0x87a6172799c906f7",
         "0x642cd2bcdba228efb3996bf53981250d3608289522b80754c4e3c085c93c806f",
         "0x2632e314a000",
         "0x5208")]
@@ -89,18 +89,14 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         => base.Should_build_block_with_inclusion_list_transactions_V5(latestValidHash, blockHash, stateRoot, payloadId, receiptsRoot, blockFees, gasUsed);
 
     [TestCase(
-        "0x1270af16dfea9b40aa9381529cb2629008fea35386041f52c07034ea8c038a05",
-        "0xea3bdca86662fa8b5399f2c3ff494ced747f07834740ead723ebe023852e9ea1",
-        "0xd75d320c3a98a02ec7fe2abdcb1769bd063fec04d73f1735810f365ac12bc4ba",
-        "0x7389011914b1ca84")]
+        "0x1f26afbef938a122f4f55d2f081ac81cd9c8851ca22452fa5baf58845e574fc6",
+        "0x343ab3716f2475c9cdd993dc654dd0ea143379a62f0556180bff1869eb451858",
+        "0x26b9598dd31cd520c6dcaf4f6fa13e279b4fa1f94d150357290df0e944f53115",
+        "0x2de3ad8b5939b3b9")]
     public override Task Should_process_block_as_expected_V5(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V5(latestValidHash, blockHash, stateRoot, payloadId);
 
     [TestCase(
-        // "0x1270af16dfea9b40aa9381529cb2629008fea35386041f52c07034ea8c038a05",
-        // "0xea3bdca86662fa8b5399f2c3ff494ced747f07834740ead723ebe023852e9ea1",
-        // "0xd75d320c3a98a02ec7fe2abdcb1769bd063fec04d73f1735810f365ac12bc4ba",
-        // "0x7389011914b1ca84")]
         "0x1f26afbef938a122f4f55d2f081ac81cd9c8851ca22452fa5baf58845e574fc6",
         "0x343ab3716f2475c9cdd993dc654dd0ea143379a62f0556180bff1869eb451858",
         "0x26b9598dd31cd520c6dcaf4f6fa13e279b4fa1f94d150357290df0e944f53115",
