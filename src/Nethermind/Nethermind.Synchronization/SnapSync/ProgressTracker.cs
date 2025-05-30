@@ -522,7 +522,7 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             progress = (float)((_estimatedStorageRemaining - storagesToRetrieve) / (float)_estimatedStorageRemaining);
 
-                            stateRangesReport = $"Snap         Remaining storage: ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
+                            stateRangesReport = $"Snap syncing storage differences: ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
                         }
                         else
                         {
