@@ -233,16 +233,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             // Need to do it here because blockprocessor is not available in init
             _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.MainProcessingContext!.BlockchainProcessor!);
 
-            if (_poSSwitcher.TransitionFinished)
-            {
-                AddEth69();
-            }
-            else
-            {
-                // TODO: use Debug level
-                if (_logger.IsInfo) _logger.Info("Delayed adding eth/69 capability until terminal block reached");
-                _poSSwitcher.TerminalBlockReached += (_, _) => AddEth69();
-            }
+            AddEth69();
         }
 
         return Task.CompletedTask;
