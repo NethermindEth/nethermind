@@ -55,7 +55,7 @@ public class StartBlockProducerAuRa(
     ISigner engineSigner,
     IGasPriceOracle gasPriceOracle,
     ReportingContractBasedValidator.Cache reportingContractValidatorCache,
-    DisposableStack disposeStack,
+    IDisposableStack disposeStack,
     AuRaContractGasLimitOverride.Cache gasLimitCalculatorCache,
     IAbiEncoder abiEncoder,
     IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,

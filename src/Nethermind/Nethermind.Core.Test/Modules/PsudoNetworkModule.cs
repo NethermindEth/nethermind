@@ -38,11 +38,6 @@ public class PsudoNetworkModule() : Module
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
             .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
 
-            .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
-            .AddSingleton<ISessionMonitor, SessionMonitor>()
-            .AddSingleton<IRlpxHost, RlpxHost>()
-            .AddSingleton<IHandshakeService, HandshakeService>()
-
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
             .AddSingleton<IPooledTxsRequestor, PooledTxsRequestor>()
             .AddSingleton<IForkInfo, ForkInfo>()
