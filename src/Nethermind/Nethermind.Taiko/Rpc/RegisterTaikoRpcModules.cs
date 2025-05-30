@@ -51,24 +51,30 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         FeeHistoryOracle feeHistoryOracle = new(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
         _api.DisposeStack.Push(feeHistoryOracle);
 
-        // Initialize gas price oracle based on chainspec configuration
+        // Use the Surge gas price oracle if specified in the chainspec configuration
         var taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GenesisSpec;
-        if (taikoSpec.UseCustomGasPriceOracle)
+        if (taikoSpec.UseSurgeGasPriceOracle)
         {
-            ITaikoConfig taikoConfig = _api.Config<ITaikoConfig>();
+            ISurgeConfig surgeConfig = _api.Config<ISurgeConfig>();
+
+            if (string.IsNullOrEmpty(surgeConfig.L1EthApiEndpoint))
+            {
+                throw new ArgumentException("L1EthApiEndpoint must be provided in the Surge configuration to compute the gas price");
+            }
 
             IJsonRpcClient l1RpcClient = new BasicJsonRpcClient(
-                new Uri(taikoConfig.L1EthApiEndpoint ?? "http://host.docker.internal:32002"),
+                new Uri(surgeConfig.L1EthApiEndpoint),
                 _api.EthereumJsonSerializer,
                 _api.LogManager);
 
-            TaikoGasPriceOracle taikoGasPriceOracle = new(
+            SurgeGasPriceOracle surgeGasPriceOracle = new(
                 _api.BlockTree,
                 _api.LogManager,
                 _api.SpecProvider,
                 _api.Config<IBlocksConfig>().MinGasPrice,
-                l1RpcClient);
-            _api.GasPriceOracle = taikoGasPriceOracle;
+                l1RpcClient,
+                surgeConfig);
+            _api.GasPriceOracle = surgeGasPriceOracle;
         }
 
         ModuleFactoryBase<ITaikoRpcModule> ethModuleFactory = new TaikoEthModuleFactory(

@@ -9,33 +9,30 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Taiko.Config;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
 
 namespace Nethermind.Taiko.Rpc;
 
-public class TaikoGasPriceOracle : GasPriceOracle
+public class SurgeGasPriceOracle : GasPriceOracle
 {
     private readonly IJsonRpcClient _l1RpcClient;
+    private readonly ISurgeConfig _surgeConfig;
 
-    // Constants required for computing the gas price
-    private static readonly UInt256 L2GasPerL2Batch = 1_000_000;
-    private const ulong ProvingCostPerL2Batch = 800_000_000_000_000;
-    private const ulong BatchPostingGasWithoutCallData = 180_000;
-    private const ulong BatchPostingGasWithCallData = 260_000;
-    private const ulong ProofPostingGas = 750_000;
-    private const int FeeHistoryBlockCount = 200; // Number of blocks to consider for average base fee
     private const int BlobSize = 128 * 1024;
 
-    public TaikoGasPriceOracle(
+    public SurgeGasPriceOracle(
         IBlockFinder blockFinder,
         ILogManager logManager,
         ISpecProvider specProvider,
         UInt256 minGasPrice,
-        IJsonRpcClient l1RpcClient) : base(blockFinder, specProvider, logManager, minGasPrice)
+        IJsonRpcClient l1RpcClient,
+        ISurgeConfig surgeConfig) : base(blockFinder, specProvider, logManager, minGasPrice)
     {
         _l1RpcClient = l1RpcClient;
+        _surgeConfig = surgeConfig;
     }
 
     private UInt256 FallbackGasPrice() => _gasPriceEstimation.LastPrice ?? _minGasPrice;
@@ -45,14 +42,14 @@ public class TaikoGasPriceOracle : GasPriceOracle
         Block? headBlock = _blockFinder.Head;
         if (headBlock is null)
         {
-            if (_logger.IsTrace) _logger.Trace("[TaikoGasPriceOracle] No head block available, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] No head block available, using fallback gas price");
             return FallbackGasPrice();
         }
 
         Hash256 headBlockHash = headBlock.Hash!;
         if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price))
         {
-            if (_logger.IsTrace) _logger.Trace($"[TaikoGasPriceOracle] Using cached gas price estimate: {price}");
+            if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Using cached gas price estimate: {price}");
             return price!.Value;
         }
 
@@ -60,7 +57,7 @@ public class TaikoGasPriceOracle : GasPriceOracle
         var feeHistory = GetL1FeeHistory().GetAwaiter().GetResult();
         if (feeHistory == null || feeHistory.BaseFeePerGas.Length == 0)
         {
-            if (_logger.IsTrace) _logger.Trace("[TaikoGasPriceOracle] Failed to get fee history, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Failed to get fee history, using fallback gas price");
             return FallbackGasPrice();
         }
 
@@ -70,16 +67,16 @@ public class TaikoGasPriceOracle : GasPriceOracle
         UInt256 l1AverageBaseFee = (UInt256)feeHistory.BaseFeePerGas.Average(fee => (decimal)fee);
 
         // Compute the gas cost to post a batch on L1
-        UInt256 costWithCallData = BatchPostingGasWithCallData * l1BaseFee;
-        UInt256 costWithBlobs = (BatchPostingGasWithoutCallData * l1BaseFee) + (BlobSize * l1BlobBaseFee);
-        UInt256 minCost = UInt256.Min(costWithCallData, costWithBlobs);
+        UInt256 costWithCallData = _surgeConfig.BatchPostingGasWithCallData * l1BaseFee;
+        UInt256 costWithBlobs = (_surgeConfig.BatchPostingGasWithoutCallData * l1BaseFee) + (BlobSize * l1BlobBaseFee);
+        UInt256 minProposingCost = UInt256.Min(costWithCallData, costWithBlobs);
 
-        UInt256 proofPostingCost = ProofPostingGas * UInt256.Max(l1BaseFee, l1AverageBaseFee);
+        UInt256 proofPostingCost = _surgeConfig.ProofPostingGas * UInt256.Max(l1BaseFee, l1AverageBaseFee);
 
-        UInt256 gasPriceEstimate = (minCost + proofPostingCost + ProvingCostPerL2Batch) / L2GasPerL2Batch;
+        UInt256 gasPriceEstimate = (minProposingCost + proofPostingCost + _surgeConfig.ProvingCostPerL2Batch) / _surgeConfig.L2GasPerL2Batch;
         _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
 
-        if (_logger.IsTrace) _logger.Trace($"[TaikoGasPriceOracle] Calculated new gas price estimate: {gasPriceEstimate}, " +
+        if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Calculated new gas price estimate: {gasPriceEstimate}, " +
             $"L1 Base Fee: {l1BaseFee}, L1 Blob Base Fee: {l1BlobBaseFee}, L1 Average Base Fee: {l1AverageBaseFee}");
 
         return gasPriceEstimate;
@@ -89,11 +86,11 @@ public class TaikoGasPriceOracle : GasPriceOracle
     {
         try
         {
-            return await _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", FeeHistoryBlockCount, BlockParameter.Latest, null);
+            return await _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", _surgeConfig.FeeHistoryBlockCount, BlockParameter.Latest, null);
         }
         catch (Exception ex)
         {
-            if (_logger.IsTrace) _logger.Trace($"[TaikoGasPriceOracle] Failed to get fee history: {ex.Message}");
+            if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Failed to get fee history: {ex.Message}");
             return null;
         }
     }
