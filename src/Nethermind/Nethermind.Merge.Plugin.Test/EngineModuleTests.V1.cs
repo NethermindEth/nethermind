@@ -1470,7 +1470,7 @@ public partial class EngineModuleTests
         result.Data.Should().BeEquivalentTo([new ClientVersionV1()]);
     }
 
-	// fails due to Osaka capabilities
+    // fails due to Osaka capabilities
     // [Test]
     // public async Task Should_return_capabilities()
     // {

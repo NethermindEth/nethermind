@@ -32,10 +32,10 @@ public partial class EngineModuleTests
     private const int responseId = 67;
 
     [TestCase(
-        "0x9233c931ff3c17ae124b9aa2ca8db1c641a2dd87fa2d7e00030b274bcc33f928",
-        "0xe97fdbfa2fcf60073d9579d87b127cdbeffbe6c7387b9e1e836eb7f8fb2d9548",
-        "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154",
-        "0x2fc07c25edadc149")]
+        "0x9e205909311e6808bd7167e07bda30bda2b1061127e89e76167781214f3024bf",
+        "0x701f48fd56e6ded89a9ec83926eb99eebf9a38b15b4b8f0066574ac1dd9ff6df",
+        "0x73cecfc66bc1c8545aa3521e21be51c31bd2054badeeaa781f5fd5b871883f35",
+        "0x80ce7f68a5211b5d")]
     public virtual async Task Should_process_block_as_expected_V5(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
@@ -153,8 +153,8 @@ public partial class EngineModuleTests
     }
 
     [TestCase(
-        "0x2bc9c183553124a0f95ae47b35660f7addc64f2f0eb2d03f7f774085f0ed8117",
-        "0x692ba034d9dc8c4c2d7d172a2fb1f3773f8a250fde26501b99d2733a2b48e70b")]
+        "0xc07d9fa552b7bac79bf9903a644641c50159d5407a781d4ea574fb55176ad65f",
+        "0xaeab64ea7e001370482e6f65ee554a7fb812abb326b09e085b2319e69bdfdf4a")]
     public virtual async Task NewPayloadV5_should_return_invalid_for_unsatisfied_inclusion_list_V5(
         string blockHash,
         string stateRoot)
@@ -209,10 +209,10 @@ public partial class EngineModuleTests
     }
 
     [TestCase(
-        "0x9233c931ff3c17ae124b9aa2ca8db1c641a2dd87fa2d7e00030b274bcc33f928",
-        "0x6ee90247ca4b3cc8092f032a1c4b30e878797eb12c9852a598aa561410eb31bf",
-        "0x3c3e0bb8ade764491e6073541192a076b10e0f550c3ba6635a8f48cc9cc96996",
-        "0x8a0d7d85cb3ac65e",
+        "0x9e205909311e6808bd7167e07bda30bda2b1061127e89e76167781214f3024bf",
+        "0xb516e35c0108656404d14ddd341bd9730c5bb2e2b426ae158275407b24fc4a81",
+        "0xc646c486410b6682874f8e7e978f4944d4947c791a7af740cae6ce8526b1ff0b",
+        "0xbb6408787d9389f4",
         "0x642cd2bcdba228efb3996bf53981250d3608289522b80754c4e3c085c93c806f",
         "0x2632e314a000",
         "0x5208")]
@@ -263,6 +263,10 @@ public partial class EngineModuleTests
             Assert.That(successResponse, Is.Not.Null);
             Assert.That(response, Is.EqualTo(expectedUpdatePayloadWithInclusionListResponse));
         });
+
+        // Give time to build & proccess before requesting payload
+        // Otherwise processing short circuits and IL txs not included
+        await Task.Delay(500);
 
         Block block = ExpectedBlock(
             chain,
