@@ -21,6 +21,7 @@ public class InclusionListBuilder(ITxPool txPool)
         return DecodeTransactionsUpToLimit(orderedTxs);
     }
 
+	// todo: score txs and randomly sample weighted by score
     private IEnumerable<Transaction> OrderTransactions(IEnumerable<Transaction> txs)
         => txs.Shuffle(_rnd, Eip7805Constants.MaxTransactionsPerInclusionList);
 
