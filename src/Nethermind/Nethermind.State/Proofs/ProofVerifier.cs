@@ -16,11 +16,11 @@ namespace Nethermind.State.Proofs
         /// Verifies one proof - address path from the bottom to the root.
         /// </summary>
         /// <returns>The Value of the bottom most proof node. For example an Account.</returns>
-        public static CappedArray<byte> VerifyOneProof(byte[][] proof, Hash256 root)
+        public static SpanSource VerifyOneProof(byte[][] proof, Hash256 root)
         {
             if (proof.Length == 0)
             {
-                return null;
+                return SpanSource.Null;
             }
 
             for (int i = proof.Length; i > 0; i--)

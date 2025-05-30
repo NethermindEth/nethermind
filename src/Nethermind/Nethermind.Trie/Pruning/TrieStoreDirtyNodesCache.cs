@@ -387,7 +387,7 @@ internal class TrieStoreDirtyNodesCache
             Key key = new Key(address, path, n.Keccak);
             if (wasPersisted.TryAdd(key, true))
             {
-                nodeStorage.Set(address, path, n.Keccak, n.FullRlp);
+                nodeStorage.Set(address, path, n.Keccak, n.FullRlp.Span);
                 n.IsPersisted = true;
                 persistedCount++;
             }

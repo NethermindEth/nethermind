@@ -975,7 +975,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             // to prevent it from being removed from cache and also want to have it persisted.
 
             if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
-            writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp, writeFlags);
+            writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp.Span, writeFlags);
             currentNode.IsPersisted = true;
             IncrementPersistedNodesCount();
         }

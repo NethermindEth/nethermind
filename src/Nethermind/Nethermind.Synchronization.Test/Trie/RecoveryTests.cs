@@ -54,7 +54,7 @@ public class RecoveryTests
     [SetUp]
     public void SetUp()
     {
-        TrieNode node = new TrieNode(new LeafData(Nibbles.BytesToNibbleBytes(Bytes.FromHexString("34000000000000000000000000000000000000000000000000000000000000")), new CappedArray<byte>([0])));
+        TrieNode node = new TrieNode(new LeafData(Nibbles.BytesToNibbleBytes(Bytes.FromHexString("34000000000000000000000000000000000000000000000000000000000000")), new SpanSource([0])));
         _path = TreePath.FromNibble([1, 2]);
         _nodeRlp = node.RlpEncode(Substitute.For<ITrieNodeResolver>(), ref _path).ToArray()!;
         _returnedRlp = _nodeRlp;

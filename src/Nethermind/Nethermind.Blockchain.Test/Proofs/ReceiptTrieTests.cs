@@ -60,7 +60,7 @@ public class ReceiptTrieTests
     {
         TrieNode node = new(NodeType.Unknown, proof.Last());
         node.ResolveNode(Substitute.For<ITrieNodeResolver>(), TreePath.Empty);
-        TxReceipt receipt = _decoder.Decode(node.Value.AsRlpStream());
+        TxReceipt receipt = _decoder.Decode(node.Value.ToArray().AsRlpStream());
         Assert.That(receipt.Bloom, Is.Not.Null);
 
         for (int i = proof.Length; i > 0; i--)

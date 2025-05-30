@@ -55,21 +55,21 @@ public class RlpTrieNodeEncodingBenchmark
     }
 
     [Benchmark]
-    public CappedArray<byte> Encode_Extension()
+    public SpanSource Encode_Extension()
     {
         TreePath path = default;
         return _extension.RlpEncode(_store, ref path);
     }
 
     [Benchmark]
-    public CappedArray<byte> Encode_Branch()
+    public SpanSource Encode_Branch()
     {
         TreePath path = default;
         return _branch.RlpEncode(_store, ref path);
     }
 
     [Benchmark]
-    public CappedArray<byte> Encode_Leaf()
+    public SpanSource Encode_Leaf()
     {
         TreePath path = default;
         return _leaf.RlpEncode(_store, ref path);
