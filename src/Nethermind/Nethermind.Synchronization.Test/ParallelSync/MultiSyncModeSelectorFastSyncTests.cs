@@ -584,7 +584,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.HeadHash.Returns(header.Hash);
             syncPeer.HeadNumber.Returns(header.Number);
-            syncPeer.TotalDifficulty.Returns(header.TotalDifficulty ?? 0);
+            syncPeer.TotalDifficulty.Returns(header.TotalDifficulty ?? UInt256.Zero);
             syncPeer.IsInitialized.Returns(true);
             syncPeer.ClientId.Returns("nethermind");
 

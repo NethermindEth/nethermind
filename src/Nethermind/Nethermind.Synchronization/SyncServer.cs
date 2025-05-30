@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -237,7 +238,7 @@ namespace Nethermind.Synchronization
 
         private void UpdatePeerInfoBasedOnBlockData(Block block, ISyncPeer syncPeer)
         {
-            if ((block.TotalDifficulty ?? 0) > syncPeer.TotalDifficulty)
+            if (syncPeer.TotalDifficulty is { } peerTD && (block.TotalDifficulty ?? UInt256.Zero) > peerTD)
             {
                 if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
                 syncPeer.HeadNumber = block.Number;
@@ -261,7 +262,9 @@ namespace Nethermind.Synchronization
 
         private void BroadcastBlock(Block block, bool allowHashes, ISyncPeer? nodeWhoSentTheBlock = null)
         {
-            if (!_gossipPolicy.CanGossipBlocks) return;
+            // TODO: may be better to remove this check at all, since most nodes will eventually switch to eth/69
+            if (!_gossipPolicy.CanGossipBlocks && !_pool.AllPeers.Any(p => p.AlwaysNotifyOfNewBlock))
+                return;
 
             Task.Run(() =>
                 {
@@ -424,7 +427,7 @@ namespace Nethermind.Synchronization
 
         private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockMode mode)
         {
-            if (!_gossipPolicy.CanGossipBlocks) return;
+            if (!_gossipPolicy.CanGossipBlocks && !syncPeer.AlwaysNotifyOfNewBlock) return;
 
             try
             {

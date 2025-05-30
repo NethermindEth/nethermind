@@ -34,6 +34,7 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -219,6 +220,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             ArgumentNullException.ThrowIfNull(_api.BlockTree);
             ArgumentNullException.ThrowIfNull(_api.SpecProvider);
             ArgumentNullException.ThrowIfNull(_api.UnclesValidator);
+            ArgumentNullException.ThrowIfNull(_api.ProtocolsManager);
             if (_api.BlockProductionPolicy is null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
             if (_api.SealValidator is null) throw new ArgumentException(nameof(_api.SealValidator));
 
@@ -230,9 +232,26 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
             // Need to do it here because blockprocessor is not available in init
             _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.MainProcessingContext!.BlockchainProcessor!);
+
+            if (_poSSwitcher.TransitionFinished)
+            {
+                AddEth69();
+            }
+            else
+            {
+                // TODO: use Debug level
+                if (_logger.IsDebug) _logger.Debug("Delayed adding eth/69 capability until terminal block reached");
+                _poSSwitcher.TerminalBlockReached += (_, _) => AddEth69();
+            }
         }
 
         return Task.CompletedTask;
+    }
+
+    private void AddEth69()
+    {
+        if (_logger.IsInfo) _logger.Info("Adding eth/69 capability");
+        _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 69));
     }
 
     protected virtual IBlockFinalizationManager InitializeMergeFinilizationManager()
@@ -406,7 +425,6 @@ public class BaseMergePluginModule : Module
             .AddSingleton<InvalidChainTracker.InvalidChainTracker>()
                 .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
-
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
