@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 
 namespace Nethermind.Benchmarks.Core;
 
@@ -15,7 +16,7 @@ public class TinyArrayBenchmark
 {
     private const int MaxLength = 32;
 
-    public static IEnumerable<ITinyArray> Arrays()
+    public static IEnumerable<ISpanSource> Arrays()
     {
         for (int i = 1; i <= MaxLength; i++)
         {
@@ -26,7 +27,7 @@ public class TinyArrayBenchmark
 
     [Benchmark(OperationsPerInvoke = 4)]
     [ArgumentsSource(nameof(Arrays))]
-    public bool SequenceEqual(ITinyArray array)
+    public bool SequenceEqual(ISpanSource array)
     {
         Span<byte> span = array.Span;
 
@@ -36,9 +37,9 @@ public class TinyArrayBenchmark
                array.SequenceEqual(span);
     }
 
-    // [Benchmark(OperationsPerInvoke = 4)]
-    // [ArgumentsSource(nameof(Arrays))]
-    public int CommonPrefixLength(ITinyArray array)
+    [Benchmark(OperationsPerInvoke = 4)]
+    [ArgumentsSource(nameof(Arrays))]
+    public int CommonPrefixLength(ISpanSource array)
     {
         Span<byte> span = array.Span;
 
