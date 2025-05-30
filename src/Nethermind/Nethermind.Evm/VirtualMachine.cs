@@ -718,6 +718,8 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             {
                 Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls 
 
+                Console.WriteLine($"{env.CodeInfo.Codehash} precompile is called");
+
                 int programCounter = vmState.ProgramCounter;
                 var codeAsSpan = env.CodeInfo.MachineCode.Span; 
                 ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
