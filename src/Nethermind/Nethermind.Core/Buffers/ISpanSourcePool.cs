@@ -15,10 +15,11 @@ public static class SpanSourcePoolExtensions
 {
     public static SpanSource SafeRentBuffer(this ISpanSourcePool? pool, int size)
     {
-        if (size <= TinyArray.MaxLength)
-        {
-            return new SpanSource(TinyArray.Create(size));
-        }
+        // TODO: decide what to do with tiny arrays
+        // if (size <= TinyArray.MaxLength)
+        // {
+        //     return new SpanSource(TinyArray.Create(size));
+        // }
 
         if (pool is null)
         {
