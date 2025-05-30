@@ -12,6 +12,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -101,7 +102,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 calls[i].Transaction.EnsureDefaults(_jsonRpcConfig.GasCap);
                 Transaction tx = calls[i].Transaction.ToTransaction();
-                tx.Hash = new Hash256(new UInt256((ulong)i).ToBigEndian());
+                tx.Hash = new Hash256(new UInt256((ulong)i).ToValueHash());
                 ParityTraceTypes traceTypes = GetParityTypes(calls[i].TraceTypes);
                 txs[i] = tx;
                 traceTypeByTransaction.Add(tx.Hash, traceTypes);
