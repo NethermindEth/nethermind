@@ -5,14 +5,14 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
-using NSubstitute;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
@@ -27,8 +27,15 @@ public class InclusionListValidatorTests
     [SetUp]
     public void Setup()
     {
-        _stateProvider = Substitute.For<IWorldState>();
         _specProvider = new CustomSpecProvider(((ForkActivation)0, Fork7805.Instance));
+
+        MemDb stateDb = new();
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
+        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        _stateProvider.CreateAccount(TestItem.AddressA, 10.Ether());
+        _stateProvider.Commit(_specProvider.GenesisSpec);
+        _stateProvider.CommitTree(0);
+
         _inclusionListValidator = new InclusionListValidator(
             _specProvider,
             _stateProvider);
@@ -36,8 +43,8 @@ public class InclusionListValidatorTests
         _validTx = Build.A.Transaction
             .WithGasLimit(100_000)
             .WithGasPrice(10.GWei())
-            .WithNonce(1)
-            .WithValue(100.Ether())
+            .WithNonce(0)
+            .WithValue(1.Ether())
             .WithTo(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
@@ -46,7 +53,7 @@ public class InclusionListValidatorTests
     [Test]
     public void When_block_full_then_accept()
     {
-        var block = Build.A.Block
+        Block block = Build.A.Block
             .WithGasLimit(30_000_000)
             .WithGasUsed(30_000_000)
             .WithInclusionListTransactions([_validTx])
@@ -59,7 +66,7 @@ public class InclusionListValidatorTests
     [Test]
     public void When_all_inclusion_list_txs_included_then_accept()
     {
-        var block = Build.A.Block
+        Block block = Build.A.Block
             .WithGasLimit(30_000_000)
             .WithGasUsed(1_000_000)
             .WithTransactions(_validTx)
@@ -73,11 +80,7 @@ public class InclusionListValidatorTests
     [Test]
     public void When_valid_tx_excluded_then_reject()
     {
-        // _transactionProcessor.BuildUp(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
-        //     .Returns(TransactionResult.Ok);
-        // todo: fake world state
-
-        var block = Build.A.Block
+        Block block = Build.A.Block
             .WithGasLimit(30_000_000)
             .WithGasUsed(1_000_000)
             .WithInclusionListTransactions([_validTx])
@@ -90,7 +93,7 @@ public class InclusionListValidatorTests
     [Test]
     public void When_no_inclusion_list_then_reject()
     {
-        var block = Build.A.Block
+        Block block = Build.A.Block
             .WithGasLimit(30_000_000)
             .WithGasUsed(1_000_000)
             .TestObject;
