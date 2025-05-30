@@ -197,42 +197,53 @@ namespace Nethermind.Trie
             }
         }
 
-        public SpanSource Value { get; set; }
-
-        private void SetValue(SpanSource value)
+        public SpanSource Value
         {
-            if (_nodeData is not LeafData leafData)
+            get
             {
-                ThrowNoValueOnBranches();
-            }
-
-            if (IsSealed)
-            {
-                SpanSource current = leafData.Value;
-                if ((current.IsNull && value.IsNull) || (!current.IsNull && !value.IsNull && current.Equals(value)))
+                if (_nodeData is LeafData data)
                 {
-                    // No change, parallel read
-                    return;
+                    return data.Value;
                 }
 
-                ThrowAlreadySealed();
+                // branches that we use for state will never have value set as all the keys are equal length
+                return SpanSource.Empty;
             }
-
-            _nodeData = leafData.CloneWithNewValue(value);
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            void ThrowAlreadySealed()
+            set
             {
-                throw new InvalidOperationException(
-                    $"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Value)}.");
-            }
+                if (_nodeData is not LeafData leafData)
+                {
+                    ThrowNoValueOnBranches();
+                }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowNoValueOnBranches()
-            {
-                throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
+                if (IsSealed)
+                {
+                    SpanSource current = leafData.Value;
+                    if ((current.IsNull && value.IsNull) || (!current.IsNull && !value.IsNull && current.Equals(value)))
+                    {
+                        // No change, parallel read
+                        return;
+                    }
+
+                    ThrowAlreadySealed();
+                }
+
+                _nodeData = leafData.CloneWithNewValue(value);
+
+                [DoesNotReturn]
+                [StackTraceHidden]
+                void ThrowAlreadySealed()
+                {
+                    throw new InvalidOperationException(
+                        $"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Value)}.");
+                }
+
+                [DoesNotReturn]
+                [StackTraceHidden]
+                static void ThrowNoValueOnBranches()
+                {
+                    throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
+                }
             }
         }
 
@@ -333,7 +344,7 @@ namespace Nethermind.Trie
         {
 #if DEBUG
             return
-                $"[{NodeType}({FullRlp.Length}){(FullRlp.IsNotNull && FullRlp.Length < 32 ? $"{FullRlp.Span.ToHexString()}" : "")}" +
+                $"[{NodeType}({(FullRlp.IsNotNullOrEmpty ? FullRlp.Length : 0)}){(FullRlp.IsNotNull && FullRlp.Length < 32 ? $"{FullRlp.Span.ToHexString()}" : "")}" +
                 $"|{Id}|{Keccak}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #else
             return $"[{NodeType}({FullRlp.Length})|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
@@ -778,7 +789,7 @@ namespace Nethermind.Trie
         public long GetMemorySize(bool recursive)
         {
             int keccakSize = Keccak is null ? MemorySizes.RefSize : MemorySizes.RefSize + Hash256.MemorySize;
-            long rlpSize = MemorySizes.RefSize + _rlp.MemorySize;
+            long rlpSize = _rlp.MemorySize;
             long dataSize = MemorySizes.RefSize + (_nodeData?.MemorySize ?? 0);
             int objectOverhead = MemorySizes.ObjectHeaderMethodTable;
             int blockAndFlagsSize = sizeof(long);

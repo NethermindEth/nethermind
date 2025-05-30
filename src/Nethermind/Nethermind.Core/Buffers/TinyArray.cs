@@ -7,6 +7,8 @@ namespace Nethermind.Core.Buffers;
 
 /// <summary>
 /// Non-generic factory entry point for creating tiny arrays with inline payloads.
+/// Implements <see cref="ISpanSource"/> in an effective vectorized way (benchmarked to be faster than some of
+/// <see cref="MemoryExtensions"/> methods.
 /// </summary>
 public static class TinyArray
 {
@@ -141,9 +143,11 @@ public static class TinyArray
                     differentBits = Unsafe.ReadUnaligned<ushort>(ref first);
                     differentBits -= Unsafe.ReadUnaligned<ushort>(ref second);
                 }
+
                 if ((length & 1) != 0)
                 {
-                    differentBits |= (uint)Unsafe.AddByteOffset(ref first, offset) - (uint)Unsafe.AddByteOffset(ref second, offset);
+                    differentBits |= (uint)Unsafe.AddByteOffset(ref first, offset) -
+                                     (uint)Unsafe.AddByteOffset(ref second, offset);
                 }
 
                 result = differentBits == 0;
@@ -153,7 +157,8 @@ public static class TinyArray
                 int offset = length - sizeof(uint);
 
                 uint differentBits = Unsafe.ReadUnaligned<uint>(ref first) - Unsafe.ReadUnaligned<uint>(ref second);
-                differentBits |= Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref first, offset)) - Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref second, offset));
+                differentBits |= Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref first, offset)) -
+                                 Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref second, offset));
 
                 result = differentBits == 0;
             }
@@ -201,7 +206,8 @@ public static class TinyArray
             int offset = length - sizeof(long);
 
             ulong differentBits = Unsafe.ReadUnaligned<ulong>(ref first) - Unsafe.ReadUnaligned<ulong>(ref second);
-            differentBits |= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref first, offset)) - Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref second, offset));
+            differentBits |= Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref first, offset)) -
+                             Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref second, offset));
 
             return differentBits == 0;
         }
@@ -307,11 +313,14 @@ public static class TinyArray
         private byte _data;
         private const int Capacity = Size;
 
-        public void SetSize(int size) { }
+        public void SetSize(int size)
+        {
+        }
 
         public void Load(ReadOnlySpan<byte> src)
         {
-            Unsafe.As<byte, Vector256<byte>>(ref _data) = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(src));
+            Unsafe.As<byte, Vector256<byte>>(ref _data) =
+                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(src));
         }
 
         public byte Length => Size;
@@ -320,7 +329,8 @@ public static class TinyArray
 
         public bool SequenceEqual(ReadOnlySpan<byte> other)
         {
-            return Length == other.Length && Unsafe.As<byte, Vector256<byte>>(ref _data) == Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(other));
+            return Length == other.Length && Unsafe.As<byte, Vector256<byte>>(ref _data) ==
+                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(other));
         }
 
         public static int MemorySize => Size;

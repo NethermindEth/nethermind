@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Nethermind.Core.Extensions;
 
 
 namespace Nethermind.Core.Buffers;
@@ -47,13 +48,21 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
     {
         get
         {
-            var obj = _obj;
-            if (obj == null)
-                return 0;
-            if (obj is byte[] array)
-                return MemorySizes.RefSize + MemorySizes.ArrayOverhead + array.Length;
+            const int objSize = MemorySizes.RefSize;
 
-            return MemorySizes.RefSize + Unsafe.As<CappedArraySource>(obj).MemorySize;
+            var obj = _obj;
+
+            if (obj == null)
+                return objSize;
+
+            if (obj is byte[] array)
+            {
+                return ReferenceEquals(array, Empty._obj)
+                    ? objSize
+                    : objSize + MemorySizes.ArrayOverhead + array.Length;
+            }
+
+            return objSize + Unsafe.As<CappedArraySource>(obj).MemorySize;
         }
     }
 
@@ -101,7 +110,21 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
 
     public bool IsNotNull => !IsNull;
     public bool IsNull => _obj == null;
-    public bool IsNotNullOrEmpty => throw new Exception("");
+    public bool IsNotNullOrEmpty
+    {
+        get
+        {
+            var obj = _obj;
+
+            if (obj == null)
+                return false;
+
+            if (obj is byte[] array)
+                return array.Length != 0;
+
+            return Unsafe.As<CappedArraySource>(obj).Length != 0;
+        }
+    }
 
     public static readonly SpanSource Empty = new([]);
 
@@ -162,5 +185,19 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
         public int MemorySize => MemorySizes.SmallObjectOverhead +
                                  MemorySizes.ArrayOverhead +
                                  Capped.UnderlyingLength;
+    }
+
+    public override string ToString()
+    {
+        var obj = _obj;
+        if (obj is null)
+            return "null";
+
+        if (obj is byte[] array)
+        {
+            return $"array: {array.ToHexString()}";
+        }
+
+        return $"capped: {Unsafe.As<CappedArraySource>(obj).Span.ToHexString()}";
     }
 }
