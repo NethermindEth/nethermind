@@ -88,12 +88,10 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     }
 
     public Task StopAsync() => Task.WhenAll(
-            _connections.StopAsync(),
-            _v4?.StopAsync() ?? Task.CompletedTask,
-            _v5?.StopAsync() ?? Task.CompletedTask
-        );
+        _connections.StopAsync()
+    );
 
-    string IStoppableService.Description => "discovery app";
+    string IStoppableService.Description => "discovery connection";
 
     public void AddNodeToDiscovery(Node node)
     {

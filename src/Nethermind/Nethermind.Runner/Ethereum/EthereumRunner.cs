@@ -34,15 +34,6 @@ public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManage
 
     public async Task StopAsync()
     {
-        Stop(() => _api.SessionMonitor?.Stop(), "Stopping session monitor");
-        // Stop(() => _api.SyncModeSelector?.Stop(), "Stopping session sync mode selector");
-        // Task discoveryStopTask = Stop(() => _api.DiscoveryApp?.StopAsync(), "Stopping discovery app");
-        // Task blockProducerTask = Stop(() => _api.BlockProducerRunner?.StopAsync(), "Stopping block producer");
-        // Task peerPoolTask = Stop(() => _api.PeerPool?.StopAsync(), "Stopping peer pool");
-        // Task peerManagerTask = Stop(() => _api.PeerManager?.StopAsync(), "Stopping peer manager");
-        // Task blockchainProcessorTask = Stop(() => _api.MainProcessingContext?.BlockchainProcessor?.StopAsync(), "Stopping blockchain processor");
-        Task rlpxPeerTask = Stop(() => _api.RlpxPeer?.Shutdown(), "Stopping RLPx peer");
-        await Task.WhenAll(rlpxPeerTask);
         await _api.Context.Resolve<IServiceStopper>().StopAllServices();
 
         foreach (INethermindPlugin plugin in _api.Plugins)

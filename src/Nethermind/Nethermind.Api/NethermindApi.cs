@@ -133,7 +133,7 @@ namespace Nethermind.Api
         public ICryptoRandom CryptoRandom { get; }
         public IDbProvider? DbProvider { get; set; }
         public IDbFactory? DbFactory { get; set; }
-        public IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
+        public IDisconnectsAnalyzer DisconnectsAnalyzer => Context.Resolve<IDisconnectsAnalyzer>();
         public IDiscoveryApp DiscoveryApp => Context.Resolve<IDiscoveryApp>();
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
@@ -165,7 +165,7 @@ namespace Nethermind.Api
         public IReceiptFinder? ReceiptFinder { get; set; }
         public IReceiptMonitor? ReceiptMonitor { get; set; }
         public IRewardCalculatorSource? RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
-        public IRlpxHost? RlpxPeer { get; set; }
+        public IRlpxHost RlpxPeer => Context.Resolve<IRlpxHost>();
         public IRpcModuleProvider? RpcModuleProvider => Context.Resolve<IRpcModuleProvider>();
         public IRpcAuthentication? RpcAuthentication { get; set; }
         public IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
@@ -187,7 +187,7 @@ namespace Nethermind.Api
             }
         }
 
-        public ISessionMonitor? SessionMonitor { get; set; }
+        public ISessionMonitor SessionMonitor => Context.Resolve<ISessionMonitor>();
         public ISpecProvider SpecProvider => _dependencies.SpecProvider;
         public ISyncModeSelector SyncModeSelector => Context.Resolve<ISyncModeSelector>()!;
 

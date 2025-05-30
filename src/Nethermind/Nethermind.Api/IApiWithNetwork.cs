@@ -23,7 +23,7 @@ namespace Nethermind.Api
     {
         (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
 
-        IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
+        IDisconnectsAnalyzer DisconnectsAnalyzer { get; }
 
         [SkipServiceCollection]
         IDiscoveryApp DiscoveryApp { get; }
@@ -36,12 +36,12 @@ namespace Nethermind.Api
         IProtocolsManager? ProtocolsManager { get; set; }
         IProtocolValidator? ProtocolValidator { get; set; }
         IList<IPublisher> Publishers { get; }
-        IRlpxHost? RlpxPeer { get; set; }
+        IRlpxHost RlpxPeer { get; }
 
         [SkipServiceCollection]
         IRpcModuleProvider? RpcModuleProvider { get; }
         IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
-        ISessionMonitor? SessionMonitor { get; set; }
+        ISessionMonitor SessionMonitor { get; }
         IStaticNodesManager StaticNodesManager { get; }
         ITrustedNodesManager TrustedNodesManager { get; }
         ISyncModeSelector SyncModeSelector { get; }

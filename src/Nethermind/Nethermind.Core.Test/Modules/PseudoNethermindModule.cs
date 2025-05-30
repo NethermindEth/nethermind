@@ -61,7 +61,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<ICryptoRandom>(new CryptoRandom())
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
             .Bind<IEcdsa, IEthereumEcdsa>()
-            .AddSingleton<IEciesCipher, EciesCipher>()
             ;
 
 

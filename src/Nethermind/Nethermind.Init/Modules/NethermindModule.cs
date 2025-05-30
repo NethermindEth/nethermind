@@ -55,6 +55,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IUnclesValidator, UnclesValidator>()
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
+            .AddSingleton<IEciesCipher, EciesCipher>()
             ;
     }
 
