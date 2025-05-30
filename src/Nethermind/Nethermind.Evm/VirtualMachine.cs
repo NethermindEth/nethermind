@@ -77,7 +77,12 @@ public class VirtualMachine : IVirtualMachine
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-        _vmConfig = vmConfig ?? new VMConfig();
+        _vmConfig = new VMConfig
+        {
+            IsILEvmEnabled = true,
+            IsIlEvmAggressiveModeEnabled = true,
+            IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
+        };
 
         switch (_vmConfig.IlEvmEnabledMode)
         {
@@ -187,12 +192,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-        _vmConfig = new VMConfig
-        {
-            IsILEvmEnabled = true,
-            IsIlEvmAggressiveModeEnabled = true,
-            IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
-        };
+        _vmConfig = vmConfig;
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
