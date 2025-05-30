@@ -26,7 +26,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public void NoticeExecution(IVMConfig vmConfig, ILogger logger, IReleaseSpec spec)
         {
-            if (vmConfig.IlEvmEnabledMode == ILMode.NO_ILVM || !IlInfo.IsNotProcessed)
+            if (Codehash is null || vmConfig.IlEvmEnabledMode == ILMode.NO_ILVM || !IlInfo.IsNotProcessed)
                 return;
 
             if (MachineCode.Length < vmConfig.IlEvmBytecodeMinLength
