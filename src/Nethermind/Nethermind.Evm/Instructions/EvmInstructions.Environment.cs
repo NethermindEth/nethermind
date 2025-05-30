@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
@@ -205,7 +202,7 @@ internal static partial class EvmInstructions
     public struct OpNumber : IOpEnvUInt64
     {
         public static ulong Operation(EvmState vmState)
-            => (ulong)vmState.Env.TxExecutionContext.BlockExecutionContext.Header.Number;
+            => vmState.Env.TxExecutionContext.BlockExecutionContext.Number;
     }
 
     /// <summary>
@@ -214,7 +211,7 @@ internal static partial class EvmInstructions
     public struct OpGasLimit : IOpEnvUInt64
     {
         public static ulong Operation(EvmState vmState)
-            => (ulong)vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasLimit;
+            => vmState.Env.TxExecutionContext.BlockExecutionContext.GasLimit;
     }
 
     /// <summary>
@@ -236,23 +233,31 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
+    /// Implements the BLOBBASEFEE opcode.
     /// Returns the blob base fee from the block header.
-    /// Throws an exception if the blob base fee is not set.
     /// </summary>
-    public struct OpBlobBaseFee : IOpEnvUInt256
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The execution stack.</param>
+    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="programCounter">The program counter.</param>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/>, or <see cref="EvmExceptionType.BadInstruction"/> if blob base fee not set.
+    /// </returns>
+    public static EvmExceptionType InstructionBlobBaseFee<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
-        public static ref readonly UInt256 Operation(EvmState vmState)
-        {
-            ref readonly BlockExecutionContext context = ref vmState.Env.TxExecutionContext.BlockExecutionContext;
-            // If the blob base fee is missing (no ExcessBlobGas set), this opcode is invalid.
-            if (!context.Header.ExcessBlobGas.HasValue) ThrowBadInstruction();
+        ref readonly BlockExecutionContext context = ref vm.EvmState.Env.TxExecutionContext.BlockExecutionContext;
+        // If the blob base fee is missing (no ExcessBlobGas set), this opcode is invalid.
+        if (!context.Header.ExcessBlobGas.HasValue) goto BadInstruction;
 
-            return ref context.BlobBaseFee;
+        // Charge the base gas cost for this opcode.
+        gasAvailable -= GasCostOf.Base;
+        stack.Push32Bytes<TTracingInst>(in context.BlobBaseFee);
 
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowBadInstruction() => throw new BadInstructionException();
-        }
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor.
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 
     /// <summary>
@@ -306,7 +311,7 @@ internal static partial class EvmInstructions
     public struct OpCoinbase : IOpEnvAddress
     {
         public static Address Operation(EvmState vmState)
-            => vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasBeneficiary;
+            => vmState.Env.TxExecutionContext.BlockExecutionContext.Coinbase;
     }
 
     /// <summary>
@@ -506,18 +511,7 @@ internal static partial class EvmInstructions
     {
         // Charge the base gas cost for this opcode.
         gasAvailable -= GasCostOf.Base;
-        BlockHeader header = vm.EvmState.Env.TxExecutionContext.BlockExecutionContext.Header;
-
-        // Use the random value if post-merge; otherwise, use block difficulty.
-        if (header.IsPostMerge)
-        {
-            stack.Push32Bytes<TTracingInst>(in header.Random.ValueHash256);
-        }
-        else
-        {
-            stack.PushUInt256<TTracingInst>(in header.Difficulty);
-        }
-
+        stack.Push32Bytes<TTracingInst>(in vm.EvmState.Env.TxExecutionContext.BlockExecutionContext.PrevRandao);
         return EvmExceptionType.None;
     }
 

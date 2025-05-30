@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -25,6 +26,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc;
@@ -45,6 +47,7 @@ namespace Nethermind.Init.Steps
     public class InitializeBlockchain(INethermindApi api) : IStep
     {
         private readonly INethermindApi _api = api;
+        private readonly IServiceStopper _serviceStopper = api.Context.Resolve<IServiceStopper>();
 
         public async Task Execute(CancellationToken _)
         {
@@ -84,7 +87,7 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-
+            VirtualMachine.WarmUpEvmInstructions();
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
@@ -102,11 +105,8 @@ namespace Nethermind.Init.Steps
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.ReadOnlyStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new ReadOnlyTxProcessingEnvFactory(
-                        _api.WorldStateManager!,
-                        _api.BlockTree!.AsReadOnly(),
-                        _api.SpecProvider!,
-                        _api.LogManager),
+                ? new(
+                    _api.ReadOnlyTxProcessingEnvFactory,
                     mainWorldState,
                     _api.SpecProvider!,
                     blocksConfig,
@@ -133,11 +133,12 @@ namespace Nethermind.Init.Steps
 
             getApi.DisposeStack.Push(blockchainProcessor);
 
-            setApi.MainProcessingContext = new MainProcessingContext(
+            var mainProcessingContext = setApi.MainProcessingContext = new MainProcessingContext(
                 transactionProcessor,
                 mainBlockProcessor,
                 blockchainProcessor,
                 mainWorldState);
+            _serviceStopper.AddStoppable(mainProcessingContext);
             setApi.BlockProcessingQueue = blockchainProcessor;
 
             IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();

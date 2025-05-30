@@ -342,6 +342,7 @@ public abstract partial class BaseEngineModuleTests
 
             BlockProducerEnvFactory blockProducerEnvFactory = new(
                 WorldStateManager!,
+                ReadOnlyTxProcessingEnvFactory,
                 BlockTree,
                 SpecProvider,
                 BlockValidator,

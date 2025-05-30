@@ -95,7 +95,9 @@ internal static unsafe partial class EvmInstructions
         // Extended code hash opcode handling.
         if (spec.ExtCodeHashOpcodeEnabled)
         {
-            lookup[(int)Instruction.EXTCODEHASH] = spec.IsEofEnabled ? &InstructionExtCodeHashEof<TTracingInst> : &InstructionExtCodeHash<TTracingInst>;
+            lookup[(int)Instruction.EXTCODEHASH] = spec.IsEofEnabled ?
+                &InstructionExtCodeHashEof<TTracingInst> :
+                &InstructionExtCodeHash<TTracingInst>;
         }
 
         lookup[(int)Instruction.BLOCKHASH] = &InstructionBlockHash<TTracingInst>;
@@ -124,7 +126,7 @@ internal static unsafe partial class EvmInstructions
         }
         if (spec.BlobBaseFeeEnabled)
         {
-            lookup[(int)Instruction.BLOBBASEFEE] = &InstructionEnvUInt256<OpBlobBaseFee, TTracingInst>;
+            lookup[(int)Instruction.BLOBBASEFEE] = &InstructionBlobBaseFee<TTracingInst>;
         }
 
         // Gap: opcodes 0x4b to 0x4f are unassigned.
