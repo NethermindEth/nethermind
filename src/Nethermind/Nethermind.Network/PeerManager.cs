@@ -15,6 +15,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -200,6 +201,8 @@ namespace Nethermind.Network
             await Task.CompletedTask;
             if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete.. please wait for all components to close");
         }
+
+        string IStoppableService.Description => "peer manager";
 
         #region Inactive peer loop handling. Peer may be discovered but inactive.
 
