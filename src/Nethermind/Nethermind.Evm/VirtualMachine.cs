@@ -80,7 +80,7 @@ public class VirtualMachine : IVirtualMachine
         _vmConfig = new VMConfig
         {
             IsILEvmEnabled = true,
-            IsIlEvmAggressiveModeEnabled = true,
+            IsIlEvmAggressiveModeEnabled = !logger.IsTrace,
             IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
             IlEvmBytecodeMinLength = 4,
             IlEvmBytecodeMaxLength = (int)24.KB(),
@@ -686,17 +686,16 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             if (typeof(IsPrecompiling) == typeof(TOptimizing))
             {
                 // testing :
-                /*
                 if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed && vmState.Env.CodeInfo.Codehash is not null && vmState.Env.CodeInfo.MachineCode.Length < 24.KB())
                 {
                     IlAnalyzer.Analyse(env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
                 }
-                */
-
+                /*
                 if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
                 {
                     env.CodeInfo.NoticeExecution(_vmConfig, _logger, spec);
                 }
+                */
             }
 
         }
