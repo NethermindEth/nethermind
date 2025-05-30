@@ -10,9 +10,7 @@ namespace Nethermind.Consensus;
 public interface IBlockProducerRunner: IStoppableService
 {
     void Start();
-
     string IStoppableService.Description => "block producer";
-
     bool IsProducingBlocks(ulong? maxProducingInterval);
     event EventHandler<BlockEventArgs> BlockProduced;
 }

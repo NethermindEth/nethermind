@@ -58,7 +58,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 Substitute.For<ISpecProvider>(),
                 [],
                 Substitute.For<IProcessExitSource>(),
-                Substitute.For<IDisposableStack>(),
                 new ContainerBuilder()
                     .AddSingleton<ITxValidator>(new TxValidator(MainnetSpecProvider.Instance.ChainId))
                     .AddSource(new NSubstituteRegistrationSource())

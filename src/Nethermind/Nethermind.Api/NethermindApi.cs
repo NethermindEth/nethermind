@@ -72,7 +72,6 @@ namespace Nethermind.Api
             ISpecProvider SpecProvider,
             IReadOnlyList<INethermindPlugin> Plugins,
             IProcessExitSource ProcessExitSource,
-            IDisposableStack DisposableStack,
             ILifetimeScope Context
         );
 
@@ -131,8 +130,6 @@ namespace Nethermind.Api
         public ICryptoRandom CryptoRandom => Context.Resolve<ICryptoRandom>();
         public IDbProvider? DbProvider { get; set; }
         public IDbFactory? DbFactory { get; set; }
-        public IDisconnectsAnalyzer DisconnectsAnalyzer => Context.Resolve<IDisconnectsAnalyzer>();
-        public IDiscoveryApp DiscoveryApp => Context.Resolve<IDiscoveryApp>();
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }
@@ -231,7 +228,7 @@ namespace Nethermind.Api
         public IProtectedPrivateKey? OriginalSignerKey { get; set; }
 
         public ChainSpec ChainSpec => _dependencies.ChainSpec;
-        public IDisposableStack DisposeStack => _dependencies.DisposableStack;
+        public IDisposableStack DisposeStack => Context.Resolve<IDisposableStack>();
         public IReadOnlyList<INethermindPlugin> Plugins => _dependencies.Plugins;
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public IProcessExitSource ProcessExit => _dependencies.ProcessExitSource;
