@@ -174,7 +174,7 @@ public class AsyncDb(IDb db) : IDb
             {
                 using IWriteBatch batch = asyncDb._db.StartWriteBatch();
                 WriteFlags flags = _flags;
-                foreach (var kv in _dictionary)
+                foreach (KeyValuePair<byte[], byte[]> kv in _dictionary.OrderBy(static kvp => kvp.Key))
                 {
                     batch.Set(kv.Key, kv.Value, flags);
                 }
