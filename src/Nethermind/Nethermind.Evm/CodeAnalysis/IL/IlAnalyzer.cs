@@ -165,7 +165,7 @@ public static class IlAnalyzer
         Metrics.IncrementIlvmCurrentlyCompiling();
         if(Precompiler.TryCompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig, SimpleConsoleLogManager.Instance.GetLogger("IlvmLogger"), out ILExecutionStep? contractDelegate))
         {
-            AotContractsRepository.AddIledCode(codeInfo.Codehash, contractDelegate);
+            AotContractsRepository.AddIledCode(codeInfo.Codehash.Value, contractDelegate);
             codeInfo.IlInfo.PrecompiledContract = contractDelegate;
             return true;
         }

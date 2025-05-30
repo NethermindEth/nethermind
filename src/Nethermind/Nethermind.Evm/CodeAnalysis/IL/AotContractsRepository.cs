@@ -10,11 +10,11 @@ namespace Nethermind.Evm.CodeAnalysis.IL
 {
     public class AotContractsRepository
     {
-        private static ConcurrentDictionary<ValueHash256?, ILExecutionStep> _processed = new();
+        private static ConcurrentDictionary<ValueHash256, ILExecutionStep> _processed = new();
 
-        public static void AddIledCode(ValueHash256? codeHash, ILExecutionStep ilCode)
+        public static void AddIledCode(ValueHash256 codeHash, ILExecutionStep ilCode)
         {
-            if (codeHash is null || ilCode is null)
+            if (ilCode is null)
             {
                 return;
             }

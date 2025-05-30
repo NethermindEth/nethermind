@@ -83,7 +83,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             InsertCode(returningCode, Address.FromNumber((int)Instruction.RETURNDATASIZE));
         }
 
-        public void Execute<T>(byte[] bytecode, T tracer, ForkActivation? fork = null, long gasAvailable = 10_000_000, byte[][] blobVersionedHashes  = null)
+        public void Execute<T>(byte[] bytecode, T tracer, ForkActivation? fork = null, long gasAvailable = 10_000_000, byte[][] blobVersionedHashes = null)
             where T : ITxTracer
         {
             Execute<T>(tracer, bytecode, fork ?? MainnetSpecProvider.PragueActivation, gasAvailable, blobVersionedHashes);
@@ -2085,9 +2085,37 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assembly assembly = Assembly.LoadFile(assemblyPath);
             MethodInfo method = assembly
                 .GetTypes()
-                .First()
-                .GetMethod("MoveNext");
+                .First(type => type.CustomAttributes.Any(attr => attr.AttributeType == typeof(NethermindPrecompileAttribute)))
+                .GetMethod(nameof(ILExecutionStep));
             Assert.That(method, Is.Not.Null);
+        }
+
+
+        [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
+        public void ILVM_Attribute_is_Correctly_Attached((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, bool enableAggressiveMode, IReleaseSpec spec) testcase)
+        {
+            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            {
+                IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
+                IlEvmAnalysisThreshold = 1,
+                IlEvmAnalysisQueueMaxSize = 1,
+                IlEvmContractsPerDllCount = 1,
+                IsIlEvmAggressiveModeEnabled = true,
+            }, Prague.Instance);
+
+            var address = enhancedChain.InsertCode(testcase.bytecode);
+
+            enhancedChain.ForceRunAnalysis(address, ILMode.FULL_AOT_MODE);
+
+            var hashcode = Keccak.Compute(testcase.bytecode);
+
+            AotContractsRepository.TryGetIledCode(hashcode, out var iledCode);
+
+            Assert.That(iledCode, Is.Not.Null, "ILVM AOT code is not found in the repository");
+
+            var attributes = iledCode.Method.DeclaringType.GetCustomAttributes(typeof(NethermindPrecompileAttribute), false);
+
+            Assert.That(attributes.Length, Is.EqualTo(1), "ILVM AOT code does not have NethermindPrecompileAttribute");
         }
     }
 }

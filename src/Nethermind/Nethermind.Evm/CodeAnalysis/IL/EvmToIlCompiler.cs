@@ -67,6 +67,10 @@ public static class Precompiler
             var typeBuilder = moduleBuilder.DefineType(identifier,
                 TypeAttributes.Public | TypeAttributes.Class);
 
+            ConstructorInfo attributeCtor = typeof(NethermindPrecompileAttribute).GetConstructor(Type.EmptyTypes)!;
+            var attributeBuilder = new CustomAttributeBuilder(attributeCtor, Array.Empty<object>());
+            typeBuilder.SetCustomAttribute(attributeBuilder);
+
             EmitMoveNext(Emit<ILExecutionStep>.BuildMethod(
                 typeBuilder, nameof(ILExecutionStep), MethodAttributes.Public | MethodAttributes.Static,
                 CallingConventions.Standard,

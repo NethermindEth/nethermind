@@ -59,6 +59,7 @@ public static class ReleaseSpecEmit
 
     public static void EmitAmortizedOpcodeCheck<T>(this Emit<T> method, SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
     {
+        // can be made better to save more memory using vectorized (think BitVectors)
         Label alreadyCheckedLabel = method.DefineLabel(locals.GetLabelName());
         Label hasToCheckLabel = method.DefineLabel(locals.GetLabelName());
         string segmentRefName = GetSegmentId(segmentMetadata);
@@ -381,6 +382,7 @@ public static class WordEmit
         il.Call(Word.GetUInt256);
         il.StoreLocal(localNames.uint256B);
 
+        // push 23 push 23 add 
 
         // invoke op  on the uint256
         il.LoadLocalAddress(localNames.uint256A);
@@ -715,6 +717,7 @@ static class EmitExtensions
     }
     public static void FakeBranch<T>(this Emit<T> il, Sigil.Label label)
     {
+        // this is to silence the PEVerifyException for dead code in CLR emitted code
         il.LoadConstant(true);
         il.BranchIfTrue(label);
     }

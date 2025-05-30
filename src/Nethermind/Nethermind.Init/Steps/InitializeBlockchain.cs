@@ -270,6 +270,9 @@ namespace Nethermind.Init.Steps
                         Assembly assembly = AssemblyLoadContext.Default.LoadFromStream(fs);
                         foreach (var type in assembly!.GetTypes())
                         {
+                            var netherminAotAttr = type.GetCustomAttribute(typeof(NethermindPrecompileAttribute), false);
+                            if (netherminAotAttr is null) continue;
+
                             ValueHash256 codeHash = new ValueHash256(type.Name);
                             var method = type.GetMethod(nameof(ILExecutionStep), BindingFlags.Public | BindingFlags.Static);
                             ILExecutionStep? precompiledContract = (ILExecutionStep)Delegate.CreateDelegate(typeof(ILExecutionStep), method!);
