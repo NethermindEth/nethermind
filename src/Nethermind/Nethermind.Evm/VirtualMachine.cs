@@ -82,6 +82,13 @@ public class VirtualMachine : IVirtualMachine
             IsILEvmEnabled = true,
             IsIlEvmAggressiveModeEnabled = true,
             IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
+            IlEvmBytecodeMinLength = 4,
+            IlEvmBytecodeMaxLength = (int)24.KB(),
+            IlEvmPersistPrecompiledContractsOnDisk = true,
+            IlEvmContractsPerDllCount = 16,
+            IlEvmAnalysisThreshold = 2,
+            IlEvmAnalysisQueueMaxSize = 1,
+            IlEvmAnalysisCoreUsage = 0.75f
         };
 
         switch (_vmConfig.IlEvmEnabledMode)
@@ -676,10 +683,14 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 _state.IncrementNonce(env.ExecutingAccount);
             }
 
-            if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed && vmState.Env.CodeInfo.Codehash is not null && vmState.Env.CodeInfo.MachineCode.Length < 24.KB())
+            if (typeof(IsPrecompiling) == typeof(TOptimizing))
             {
-                IlAnalyzer.Analyse(vmState.Env.CodeInfo, ILMode.FULL_AOT_MODE,  _vmConfig, _logger);
+                if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
+                {
+                    env.CodeInfo.NoticeExecution(_vmConfig, _logger, spec);
+                }
             }
+
         }
 
         if (env.CodeInfo.MachineCode.Length == 0)
@@ -718,7 +729,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             {
                 Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls 
 
-                Console.WriteLine($"{env.CodeInfo.Codehash} precompile is called");
+                _logger.Info($"{env.CodeInfo.Codehash} precompile is being called");
 
                 int programCounter = vmState.ProgramCounter;
                 var codeAsSpan = env.CodeInfo.MachineCode.Span; 
