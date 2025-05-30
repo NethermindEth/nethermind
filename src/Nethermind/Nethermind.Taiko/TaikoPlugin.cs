@@ -179,7 +179,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new ExchangeTransitionConfigurationV1Handler(poSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
-            new GetInclusionListTransactionsHandler(_api.BlockTree, null),
+            new GetInclusionListTransactionsHandler(_api.TxPool),
             new UpdatePayloadWithInclusionListHandler(payloadPreparationService, null),
             new GetBlobsHandlerV2(_api.TxPool),
             _api.EngineRequestsTracker,

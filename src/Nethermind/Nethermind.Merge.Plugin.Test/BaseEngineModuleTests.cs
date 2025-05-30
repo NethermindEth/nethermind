@@ -118,9 +118,6 @@ public abstract partial class BaseEngineModuleTests
         chain.BeaconSync.AllowBeaconHeaderSync();
         EngineRpcCapabilitiesProvider capabilitiesProvider = new(chain.SpecProvider);
 
-        TxPoolTxSourceFactory txPoolTxSourceFactory = new(chain.TxPool, chain.SpecProvider, chain.TransactionComparerProvider, new BlocksConfig(), chain.LogManager);
-        TxPoolTxSource txPoolTxSource = txPoolTxSourceFactory.Create();
-
         return new EngineRpcModule(
             new GetPayloadV1Handler(
                 chain.PayloadPreparationService!,
@@ -176,7 +173,7 @@ public abstract partial class BaseEngineModuleTests
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
             new GetBlobsHandler(chain.TxPool),
-            new GetInclusionListTransactionsHandler(chain.BlockTree, txPoolTxSource),
+            new GetInclusionListTransactionsHandler(chain.TxPool),
             new UpdatePayloadWithInclusionListHandler(chain.PayloadPreparationService!, chain.InclusionListTxSource),
             new GetBlobsHandlerV2(chain.TxPool),
             Substitute.For<IEngineRequestsTracker>(),

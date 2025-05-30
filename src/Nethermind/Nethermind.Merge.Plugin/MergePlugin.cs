@@ -293,9 +293,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
             _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
-            TxPoolTxSourceFactory txPoolTxSourceFactory = new(_api.TxPool, _api.SpecProvider, _api.TransactionComparerProvider, _blocksConfig, _api.LogManager);
-            TxPoolTxSource txPoolTxSource = txPoolTxSourceFactory.Create();
-
             IBeaconSyncStrategy beaconSyncStrategy = _api.Context.Resolve<IBeaconSyncStrategy>();
             IMergeSyncController beaconSync = _api.Context.Resolve<IMergeSyncController>();
             IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
@@ -349,7 +346,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
                 new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
                 new GetBlobsHandler(_api.TxPool),
-                new GetInclusionListTransactionsHandler(_api.BlockTree, txPoolTxSource),
+                new GetInclusionListTransactionsHandler(_api.TxPool),
                 new UpdatePayloadWithInclusionListHandler(payloadPreparationService, _inclusionListTxSource!),
                 new GetBlobsHandlerV2(_api.TxPool),
                 _api.EngineRequestsTracker,

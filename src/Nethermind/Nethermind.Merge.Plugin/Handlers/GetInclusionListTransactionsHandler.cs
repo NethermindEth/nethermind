@@ -4,31 +4,28 @@
 using System;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
-using Nethermind.Blockchain;
 using System.Collections.Generic;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
+using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetInclusionListTransactionsHandler(
-    IBlockTree blockTree,
-    TxPoolTxSource? txPoolTxSource)
+public class GetInclusionListTransactionsHandler(ITxPool? txPool)
     : IHandler<ArrayPoolList<byte[]>>
 {
     private readonly Random _rnd = new();
 
     public ResultWrapper<ArrayPoolList<byte[]>> Handle()
     {
-        if (txPoolTxSource is null)
+        if (txPool is null)
         {
             return ResultWrapper<ArrayPoolList<byte[]>>.Success(ArrayPoolList<byte[]>.Empty());
         }
 
         // get highest priority fee transactions from txpool up to limit
-        IEnumerable<Transaction> txs = txPoolTxSource.GetTransactions(blockTree.Head!.Header, long.MaxValue);
+        Transaction[] txs = txPool.GetPendingTransactions();
         var orderedTxs = OrderTransactions(txs);
         ArrayPoolList<byte[]> txBytes = new(Eip7805Constants.MaxTransactionsPerInclusionList, DecodeTransactionsUpToLimit(orderedTxs));
         return ResultWrapper<ArrayPoolList<byte[]>>.Success(txBytes);
