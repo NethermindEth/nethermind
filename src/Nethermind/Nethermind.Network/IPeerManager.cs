@@ -7,7 +7,7 @@ using Nethermind.Core.ServiceStopper;
 
 namespace Nethermind.Network
 {
-    public interface IPeerManager: IStoppableService
+    public interface IPeerManager : IStoppableService
     {
         void Start();
         IReadOnlyCollection<Peer> ActivePeers { get; }

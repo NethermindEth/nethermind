@@ -9,7 +9,7 @@ using Autofac.Core.Resolving.Pipeline;
 
 namespace Nethermind.Core.ServiceStopper;
 
-public class ServiceStopperMiddleware: IResolveMiddleware
+public class ServiceStopperMiddleware : IResolveMiddleware
 {
     public static ServiceStopperMiddleware Instance { get; } = new ServiceStopperMiddleware();
 

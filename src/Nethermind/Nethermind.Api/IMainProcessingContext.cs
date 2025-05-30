@@ -16,7 +16,7 @@ namespace Nethermind.Api;
 /// Using these concurrently with block processing may result in random invalid block.
 /// Therefore only use these if you are sure that you definitely need the main block processing one.
 /// </summary>
-public interface IMainProcessingContext: IStoppableService
+public interface IMainProcessingContext : IStoppableService
 {
     ITransactionProcessor TransactionProcessor { get; }
     IBlockProcessor BlockProcessor { get; }

@@ -7,7 +7,7 @@ using Nethermind.Core.ServiceStopper;
 
 namespace Nethermind.Consensus;
 
-public interface IBlockProducerRunner: IStoppableService
+public interface IBlockProducerRunner : IStoppableService
 {
     void Start();
     string IStoppableService.Description => "block producer";

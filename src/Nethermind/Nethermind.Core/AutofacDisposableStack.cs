@@ -11,7 +11,7 @@ namespace Nethermind.Core;
 /// Hook up built in autofac's disposal stack to <see cref="IDisposableStack"/>
 /// </summary>
 /// <param name="lifetime"></param>
-public class AutofacDisposableStack(ILifetimeScope lifetime): IDisposableStack
+public class AutofacDisposableStack(ILifetimeScope lifetime) : IDisposableStack
 {
     private readonly IDisposer _disposer = lifetime.Disposer;
 

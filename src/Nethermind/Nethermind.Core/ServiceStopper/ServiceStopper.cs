@@ -9,7 +9,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Core.ServiceStopper;
 
-public class ServiceStopper(ILogManager logManager): IServiceStopper
+public class ServiceStopper(ILogManager logManager) : IServiceStopper
 {
     private HashSet<IStoppableService> _stoppables = new HashSet<IStoppableService>();
     private ILogger _logger = logManager.GetClassLogger<ServiceStopper>();

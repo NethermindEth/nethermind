@@ -13,7 +13,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network;
 
-public interface IPeerPool: IStoppableService
+public interface IPeerPool : IStoppableService
 {
     ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; }
     ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; }
