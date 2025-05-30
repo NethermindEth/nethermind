@@ -49,6 +49,9 @@ namespace Nethermind.Db
         protected void RegisterColumnsDb<T>(DbSettings settings) where T : struct, Enum =>
             AddRegisterAction(settings.DbName, () => CreateColumnDb<T>(settings));
 
+        protected void RegisterDb(DbSettings settings, Func<IDb, IDb> dbDecoratorFunc) =>
+            AddRegisterAction(settings.DbName, () => dbDecoratorFunc(CreateDb(settings)));
+
         private void AddRegisterAction(string dbName, Func<IDb> dbCreation) =>
             _registrations.Add(() => _dbProvider.RegisterDb(dbName, dbCreation()));
         private void AddRegisterAction<T>(string dbName, Func<IColumnsDb<T>> dbCreation) =>

@@ -49,7 +49,7 @@ namespace Nethermind.Db
                     : DbFactory,
                 () => Interlocked.Increment(ref Metrics.StateDbInPruningWrites)));
 
-            RegisterDb(BuildDbSettings(DbNames.Code));
+            RegisterDb(BuildDbSettings(DbNames.Code), db => new AsyncDb(db));
             RegisterDb(BuildDbSettings(DbNames.Bloom));
             if (useReceiptsDb)
             {

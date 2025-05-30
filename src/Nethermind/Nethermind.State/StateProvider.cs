@@ -611,12 +611,12 @@ namespace Nethermind.State
 
                 return Task.Run(() =>
                 {
-                    using (var batch = _codeDb.StartWriteBatch())
+                    using (IWriteBatch? batch = _codeDb.StartWriteBatch())
                     {
                         // Insert ordered for improved performance
-                        foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
+                        foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in dict)
                         {
-                            batch.PutSpan(kvp.Key.Value.Bytes, kvp.Value);
+                            batch.Set(kvp.Key.Value.Bytes, kvp.Value);
                         }
                     }
 
