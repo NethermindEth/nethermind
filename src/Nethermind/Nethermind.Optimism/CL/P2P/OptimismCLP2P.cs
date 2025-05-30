@@ -42,7 +42,7 @@ public class OptimismCLP2P : IDisposable
     private readonly Multiaddress[] _staticPeerList;
     private readonly IOptimismConfig _config;
     private readonly string _blocksV2TopicId;
-    private readonly Channel<ExecutionPayloadV3> _blocksP2PMessageChannel = Channel.CreateBounded<ExecutionPayloadV3>(10); // for safety add capacity
+    private readonly Channel<OptimismExecutionPayloadV3> _blocksP2PMessageChannel = Channel.CreateBounded<OptimismExecutionPayloadV3>(10); // for safety add capacity
     private readonly IPAddress _externalIp;
     private readonly Random _random = new();
 
@@ -70,7 +70,10 @@ public class OptimismCLP2P : IDisposable
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, logManager);
         _externalIp = externalIp;
 
-        _blocksV2TopicId = $"/optimism/{chainId}/2/blocks";
+        // TODO:
+        // Isthmus blocks are broadcasted on v3: https://specs.optimism.io/protocol/rollup-node-p2p.html?highlight=Isthmus#blocksv4
+        // We should have two topics: v2 for pre and v3 for post Isthmus
+        _blocksV2TopicId = $"/optimism/{chainId}/3/blocks";
 
         _serviceProvider = new ServiceCollection()
             .AddSingleton<PeerStore>()
@@ -124,7 +127,7 @@ public class OptimismCLP2P : IDisposable
         {
             try
             {
-                ExecutionPayloadV3 payload = await _blocksP2PMessageChannel.Reader.ReadAsync(token);
+                OptimismExecutionPayloadV3 payload = await _blocksP2PMessageChannel.Reader.ReadAsync(token);
 
                 if ((ulong)payload.BlockNumber <= _headNumber)
                 {
@@ -134,12 +137,12 @@ public class OptimismCLP2P : IDisposable
 
                 if (_headNumber is not null)
                 {
-                    List<ExecutionPayloadV3> missingPayloads = new();
+                    List<OptimismExecutionPayloadV3> missingPayloads = new();
                     Hash256 previousParentHash = payload.ParentHash;
                     // Rollback missing payloads
                     for (ulong i = (ulong)payload.BlockNumber - 1; i > _headNumber.Value; i--)
                     {
-                        ExecutionPayloadV3? missingPayload = await RequestPayload(i, previousParentHash, token);
+                        OptimismExecutionPayloadV3? missingPayload = await RequestPayload(i, previousParentHash, token);
                         if (missingPayload is null)
                         {
                             if (_logger.IsWarn) _logger.Warn($"Unable to request missing payload. Number: {i}");
@@ -198,15 +201,15 @@ public class OptimismCLP2P : IDisposable
         }
     }
 
-    private async Task<ExecutionPayloadV3?> TryRequestPayload
+    private async Task<OptimismExecutionPayloadV3?> TryRequestPayload
         (ISession session, ulong payloadNumber, Hash256 expectedHash, CancellationToken token)
     {
         try
         {
             using CancellationTokenSource cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
             cancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(5));
-            ExecutionPayloadV3? payload =
-                await session.DialAsync<PayloadByNumberProtocol, ulong, ExecutionPayloadV3?>(payloadNumber, cancellationTokenSource.Token);
+            OptimismExecutionPayloadV3? payload =
+                await session.DialAsync<PayloadByNumberProtocol, ulong, OptimismExecutionPayloadV3?>(payloadNumber, cancellationTokenSource.Token);
             if (payload is not null && payload.BlockHash != expectedHash)
             {
                 if (_logger.IsWarn)
@@ -223,12 +226,12 @@ public class OptimismCLP2P : IDisposable
         }
     }
 
-    private async Task<ExecutionPayloadV3?> RequestPayload(ulong payloadNumber, Hash256 expectedHash, CancellationToken token)
+    private async Task<OptimismExecutionPayloadV3?> RequestPayload(ulong payloadNumber, Hash256 expectedHash, CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info($"Requesting missing payload. Number: {payloadNumber}, Expected hash: {expectedHash}");
         try
         {
-            ExecutionPayloadV3? response = null;
+            OptimismExecutionPayloadV3? response = null;
             foreach (ISession peer in _localPeer!.Sessions.ToList().Shuffle(_random))
             {
                 response = await TryRequestPayload(peer, payloadNumber, expectedHash, token);
@@ -256,7 +259,7 @@ public class OptimismCLP2P : IDisposable
         return null;
     }
 
-    private bool TryValidateAndDecodePayload(byte[] msg, [MaybeNullWhen(false)] out ExecutionPayloadV3 payload)
+    private bool TryValidateAndDecodePayload(byte[] msg, [MaybeNullWhen(false)] out OptimismExecutionPayloadV3 payload)
     {
         int length = Snappy.GetUncompressedLength(msg);
         if (length is < 65 or > MaxGossipSize)
@@ -289,6 +292,7 @@ public class OptimismCLP2P : IDisposable
             return false;
         }
 
+        // TODO: Use `P2PTopic.BlocksV4` for Isthmus
         ValidityStatus validationResult = _blockValidator.Validate(payload, P2PTopic.BlocksV3);
 
         if (validationResult == ValidityStatus.Reject)

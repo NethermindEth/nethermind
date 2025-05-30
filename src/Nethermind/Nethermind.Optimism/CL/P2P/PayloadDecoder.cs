@@ -3,8 +3,8 @@
 
 using System;
 using System.Buffers.Binary;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Optimism.CL.P2P;
 
@@ -18,9 +18,9 @@ public class PayloadDecoder : IPayloadDecoder
     {
     }
 
-    public ExecutionPayloadV3 DecodePayload(ReadOnlySpan<byte> data)
+    public OptimismExecutionPayloadV3 DecodePayload(ReadOnlySpan<byte> data)
     {
-        ExecutionPayloadV3 payload = new();
+        OptimismExecutionPayloadV3 payload = new();
 
         if (PrefixDataSize >= data.Length)
         {
@@ -46,6 +46,9 @@ public class PayloadDecoder : IPayloadDecoder
         UInt32 withdrawalsOffset = 32 + BinaryPrimitives.ReadUInt32LittleEndian(movingData.TakeAndMove(4));
         payload.BlobGasUsed = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
         payload.ExcessBlobGas = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
+
+        // TODO: Only in Isthmus
+        payload.WithdrawalsRoot = new Hash256(movingData.TakeAndMove(32));
 
         if (withdrawalsOffset > data.Length || transactionsOffset >= withdrawalsOffset || extraDataOffset > transactionsOffset || withdrawalsOffset != data.Length)
         {
@@ -86,5 +89,5 @@ public class PayloadDecoder : IPayloadDecoder
         return txs;
     }
 
-    public byte[] EncodePayload(ExecutionPayloadV3 payload) => throw new NotImplementedException();
+    public byte[] EncodePayload(OptimismExecutionPayloadV3 payload) => throw new NotImplementedException();
 }

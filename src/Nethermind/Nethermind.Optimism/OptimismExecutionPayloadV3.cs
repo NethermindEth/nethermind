@@ -9,6 +9,9 @@ namespace Nethermind.Optimism;
 /// <summary>
 /// The Optimism specific execution payload.
 /// </summary>
+// TODO: Separate `OptimismExecutionPayloadV3` from a new `OptimismExecutionPayloadV4`
+// The former is equivalent to `ExecutionPayloadV3`, while the latter contains an additional `WithdrawalsRoot` field.
+// This is required to support pre and post Isthmus
 public class OptimismExecutionPayloadV3 : ExecutionPayloadV3
 {
     public Hash256? WithdrawalsRoot { get; set; }

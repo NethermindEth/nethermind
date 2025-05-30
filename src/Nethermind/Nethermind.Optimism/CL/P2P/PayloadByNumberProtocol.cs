@@ -10,11 +10,10 @@ using System.IO.Compression;
 using System.Threading.Tasks;
 using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Optimism.CL.P2P;
 
-public class PayloadByNumberProtocol : ISessionProtocol<ulong, ExecutionPayloadV3?>
+public class PayloadByNumberProtocol : ISessionProtocol<ulong, OptimismExecutionPayloadV3?>
 {
     private const int MaxResponseSizeBytes = 10000000;
     private readonly ulong _chainId;
@@ -51,7 +50,7 @@ public class PayloadByNumberProtocol : ISessionProtocol<ulong, ExecutionPayloadV
         public const uint Isthmus = 2;
     }
 
-    public async Task<ExecutionPayloadV3?> DialAsync(IChannel downChannel, ISessionContext context, ulong request)
+    public async Task<OptimismExecutionPayloadV3?> DialAsync(IChannel downChannel, ISessionContext context, ulong request)
     {
         byte[] requestBytes = new byte[8];
         BinaryPrimitives.WriteUInt64LittleEndian(requestBytes, request);

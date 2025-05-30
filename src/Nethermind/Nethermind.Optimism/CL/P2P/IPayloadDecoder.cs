@@ -8,6 +8,6 @@ namespace Nethermind.Optimism.CL.P2P;
 
 public interface IPayloadDecoder
 {
-    ExecutionPayloadV3 DecodePayload(ReadOnlySpan<byte> data);
-    byte[] EncodePayload(ExecutionPayloadV3 payload);
+    OptimismExecutionPayloadV3 DecodePayload(ReadOnlySpan<byte> data);
+    byte[] EncodePayload(OptimismExecutionPayloadV3 payload);
 }

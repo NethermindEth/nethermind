@@ -32,7 +32,7 @@ public class P2PBlockValidator : IP2PBlockValidator
         _logger = logManager.GetClassLogger();
     }
 
-    public ValidityStatus Validate(ExecutionPayloadV3 payload, P2PTopic topic)
+    public ValidityStatus Validate(OptimismExecutionPayloadV3 payload, P2PTopic topic)
     {
         if (!IsTopicValid(topic) || !IsTimestampValid(payload) || !IsBlockHashValid(payload) ||
             !IsBlobGasUsedValid(payload, topic) || !IsExcessBlobGasValid(payload, topic) ||
@@ -45,7 +45,7 @@ public class P2PBlockValidator : IP2PBlockValidator
     }
 
     // This method is not thread safe
-    public ValidityStatus IsBlockNumberPerHeightLimitReached(ExecutionPayloadV3 payload)
+    public ValidityStatus IsBlockNumberPerHeightLimitReached(OptimismExecutionPayloadV3 payload)
     {
         // [REJECT] if more than 5 different blocks have been seen with the same block height
         _numberOfBlocksSeen.TryGetValue(payload.BlockNumber, out var currentCount);
@@ -60,6 +60,7 @@ public class P2PBlockValidator : IP2PBlockValidator
 
     private bool IsTopicValid(P2PTopic topic)
     {
+        // TODO:
         // Reject everything except V3 for now
         // We assume later that we receive only V3 messages
         if (topic != P2PTopic.BlocksV3)
@@ -71,7 +72,7 @@ public class P2PBlockValidator : IP2PBlockValidator
         return true;
     }
 
-    private bool IsTimestampValid(ExecutionPayloadV3 payload)
+    private bool IsTimestampValid(OptimismExecutionPayloadV3 payload)
     {
         // [REJECT] if the payload.timestamp is older than 60 seconds in the past (graceful boundary for worst-case propagation and clock skew)
         // [REJECT] if the payload.timestamp is more than 5 seconds into the future
@@ -85,7 +86,7 @@ public class P2PBlockValidator : IP2PBlockValidator
         return true;
     }
 
-    private bool IsBlockHashValid(ExecutionPayloadV3 payload)
+    private bool IsBlockHashValid(OptimismExecutionPayloadV3 payload)
     {
         // [REJECT] if the block_hash in the payload is not valid
         BlockDecodingResult blockDecodingResult = payload.TryGetBlock();
@@ -106,7 +107,7 @@ public class P2PBlockValidator : IP2PBlockValidator
         return true;
     }
 
-    private bool IsBlobGasUsedValid(ExecutionPayloadV3 payload, P2PTopic topic)
+    private bool IsBlobGasUsedValid(OptimismExecutionPayloadV3 payload, P2PTopic topic)
     {
         // [REJECT] if the block is on a topic >= V3 and has a blob gas-used value that is not zero
         if (payload.BlobGasUsed != 0)
@@ -118,7 +119,7 @@ public class P2PBlockValidator : IP2PBlockValidator
         return true;
     }
 
-    private bool IsExcessBlobGasValid(ExecutionPayloadV3 payload, P2PTopic topic)
+    private bool IsExcessBlobGasValid(OptimismExecutionPayloadV3 payload, P2PTopic topic)
     {
         // [REJECT] if the block is on a topic >= V3 and has an excess blob gas value that is not zero
         if (payload.ExcessBlobGas != 0)
@@ -130,7 +131,7 @@ public class P2PBlockValidator : IP2PBlockValidator
         return true;
     }
 
-    private bool IsParentBeaconBlockRootValid(ExecutionPayloadV3 payload, P2PTopic topic)
+    private bool IsParentBeaconBlockRootValid(OptimismExecutionPayloadV3 payload, P2PTopic topic)
     {
         // [REJECT] if the block is on a topic >= V3 and the parent beacon block root is nil
         if (payload.ParentBeaconBlockRoot is null)
