@@ -200,23 +200,6 @@ namespace Nethermind.Trie
             }
         }
 
-        public SpanSource ValueRef
-        {
-            get
-            {
-                if (_nodeData is LeafData data)
-                {
-                    return data.Value;
-                }
-
-                // branches that we use for state will never have value set as all the keys are equal length
-                return SpanSource.Empty;
-            }
-        }
-
-        /// <summary>
-        /// Highly optimized
-        /// </summary>
         public SpanSource Value { get; set; }
 
         private void SetValue(SpanSource value)
@@ -361,7 +344,7 @@ namespace Nethermind.Trie
         }
 
         public void ResolveNode(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags = ReadFlags.None,
-            ISpanSourcePool? bufferPool = null)
+            ICappedArrayPool? bufferPool = null)
         {
             if (NodeType != NodeType.Unknown) return;
 
@@ -387,7 +370,7 @@ namespace Nethermind.Trie
         /// Highly optimized
         /// </summary>
         internal void ResolveUnknownNode(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags = ReadFlags.None,
-            ISpanSourcePool? bufferPool = null)
+            ICappedArrayPool? bufferPool = null)
         {
             SpanSource rlp = _rlp;
             if (rlp.IsNull)
@@ -442,7 +425,7 @@ namespace Nethermind.Trie
         /// Highly optimized
         /// </summary>
         public bool TryResolveNode(ITrieNodeResolver tree, ref TreePath path, ReadFlags readFlags = ReadFlags.None,
-            ISpanSourcePool? bufferPool = null)
+            ICappedArrayPool? bufferPool = null)
         {
             try
             {
@@ -481,7 +464,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private bool DecodeRlp(ValueRlpStream rlpStream, ISpanSourcePool bufferPool, out int itemsCount)
+        private bool DecodeRlp(ValueRlpStream rlpStream, ICappedArrayPool bufferPool, out int itemsCount)
         {
             Metrics.TreeNodeRlpDecodings++;
 
@@ -518,7 +501,7 @@ namespace Nethermind.Trie
         }
 
         public void ResolveKey(ITrieNodeResolver tree, ref TreePath path, bool isRoot,
-            ISpanSourcePool? bufferPool = null, bool canBeParallel = true)
+            ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
             if (Keccak is not null)
             {
@@ -531,7 +514,7 @@ namespace Nethermind.Trie
         }
 
         public Hash256? GenerateKey(ITrieNodeResolver tree, ref TreePath path, bool isRoot,
-            ISpanSourcePool? bufferPool = null, bool canBeParallel = true)
+            ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
             SpanSource rlp = _rlp;
             if (rlp.IsNull || IsDirty)
@@ -562,7 +545,7 @@ namespace Nethermind.Trie
             return null;
         }
 
-        internal SpanSource RlpEncode(ITrieNodeResolver tree, ref TreePath path, ISpanSourcePool? bufferPool = null)
+        internal SpanSource RlpEncode(ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool = null)
         {
             return NodeType switch
             {

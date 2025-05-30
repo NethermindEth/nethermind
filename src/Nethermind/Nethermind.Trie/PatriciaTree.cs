@@ -41,7 +41,7 @@ namespace Nethermind.Trie
 
         private Stack<StackedNode>? _nodeStack;
         public IScopedTrieStore TrieStore { get; }
-        public ISpanSourcePool? _bufferPool;
+        public ICappedArrayPool? _bufferPool;
 
         private readonly bool _parallelBranches;
 
@@ -84,12 +84,12 @@ namespace Nethermind.Trie
         {
         }
 
-        public PatriciaTree(ITrieStore trieStore, ILogManager logManager, ISpanSourcePool? bufferPool = null)
+        public PatriciaTree(ITrieStore trieStore, ILogManager logManager, ICappedArrayPool? bufferPool = null)
             : this(trieStore.GetTrieStore(null), EmptyTreeHash, false, true, logManager, bufferPool: bufferPool)
         {
         }
 
-        public PatriciaTree(IScopedTrieStore trieStore, ILogManager logManager, ISpanSourcePool? bufferPool = null)
+        public PatriciaTree(IScopedTrieStore trieStore, ILogManager logManager, ICappedArrayPool? bufferPool = null)
             : this(trieStore, EmptyTreeHash, false, true, logManager, bufferPool: bufferPool)
         {
         }
@@ -100,7 +100,7 @@ namespace Nethermind.Trie
             bool parallelBranches,
             bool allowCommits,
             ILogManager logManager,
-            ISpanSourcePool? bufferPool = null)
+            ICappedArrayPool? bufferPool = null)
             : this(
                 new RawScopedTrieStore(new NodeStorage(keyValueStore), null),
                 rootHash,
@@ -117,7 +117,7 @@ namespace Nethermind.Trie
             bool parallelBranches,
             bool allowCommits,
             ILogManager? logManager,
-            ISpanSourcePool? bufferPool = null)
+            ICappedArrayPool? bufferPool = null)
         {
             _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
             TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));

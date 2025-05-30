@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 
@@ -96,16 +98,26 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public static SpanSource EncodeToSpanSource<T>(this IRlpStreamDecoder<T> decoder, T? item,
-            RlpBehaviors rlpBehaviors = RlpBehaviors.None, ISpanSourcePool? bufferPool = null)
+            RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null)
         {
             int size = decoder.GetLength(item, rlpBehaviors);
             SpanSource buffer = bufferPool.SafeRentBuffer(size);
-            decoder.Encode(buffer.AsRlpStream(), item, rlpBehaviors);
+
+            if (buffer.TryGetCappedArray(out CappedArray<byte> capped))
+            {
+                // This should be the usual path as this method is used only for encoding big RLP objects,
+                // that should be pooled.
+                decoder.Encode(capped.AsRlpStream(), item, rlpBehaviors);
+            }
+            else
+            {
+                ThrowSpanSourceNotCappedArray();
+            }
 
             return buffer;
         }
 
-        public static SpanSource EncodeToSpanSource(this int item, ISpanSourcePool? bufferPool = null)
+        public static SpanSource EncodeToSpanSource(this int item, ICappedArrayPool? bufferPool = null)
         {
             SpanSource[] cache = s_intPreEncodes;
             if ((uint)item < (uint)cache.Length)
@@ -114,9 +126,23 @@ namespace Nethermind.Serialization.Rlp
             }
 
             SpanSource buffer = bufferPool.SafeRentBuffer(Rlp.LengthOf(item));
-            buffer.AsRlpStream().Encode(item);
+
+            if (buffer.TryGetCappedArray(out CappedArray<byte> capped))
+            {
+                // This should be the usual path as this method is used only for encoding big RLP objects,
+                // that should be pooled.
+                capped.AsRlpStream().Encode(item);
+            }
+            else
+            {
+                ThrowSpanSourceNotCappedArray();
+            }
+
             return buffer;
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowSpanSourceNotCappedArray() => throw new Exception("Encode to SpanSource failed to get a CappedArray.");
 
         public static Rlp Encode<T>(this IRlpObjectDecoder<T> decoder, IReadOnlyCollection<T?>? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
@@ -193,9 +219,9 @@ namespace Nethermind.Serialization.Rlp
             for (int i = 0; i < cache.Length; i++)
             {
                 int size = Rlp.LengthOf(i);
-                SpanSource buffer = new SpanSource(new byte[size]);
+                var buffer = new byte[size];
                 buffer.AsRlpStream().Encode(i);
-                cache[i] = buffer;
+                cache[i] = new SpanSource(buffer);
             }
 
             return cache;

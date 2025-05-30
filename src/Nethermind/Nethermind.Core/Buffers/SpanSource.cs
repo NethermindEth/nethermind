@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
+
 namespace Nethermind.Core.Buffers;
 
 /// <summary>
@@ -17,6 +18,10 @@ namespace Nethermind.Core.Buffers;
 /// </remarks>
 public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
 {
+    /// <summary>
+    /// A union reference, discriminated by its type.
+    /// It can be either byte[], or an actual implementation of a <see cref="ISpanSource"/>.
+    /// </summary>
     private readonly object _obj;
 
     public SpanSource(byte[] array)
@@ -24,13 +29,33 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
         _obj = array;
     }
 
-    public SpanSource(ISpanSource source)
+    // TODO: if TinyArray used, casting should be done to ISpanSource not CappedArraySource.
+    // public SpanSource(ISpanSource source)
+    // {
+    //     _obj = source;
+    // }
+
+    public SpanSource(CappedArray<byte> capped)
     {
-        _obj = source;
+        _obj = new CappedArraySource(capped);
     }
 
+    public static implicit operator SpanSource(byte[] bytes) => new(bytes);
+
     // TODO: make it correct
-    public int MemorySize => 0;
+    public int MemorySize
+    {
+        get
+        {
+            var obj = _obj;
+            if (obj == null)
+                return 0;
+            if (obj is byte[] array)
+                return MemorySizes.RefSize + MemorySizes.ArrayOverhead + array.Length;
+
+            return MemorySizes.RefSize + Unsafe.As<CappedArraySource>(obj).MemorySize;
+        }
+    }
 
     public int Length
     {
@@ -40,16 +65,17 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
             if (obj is byte[] array)
                 return array.Length;
 
-            return Unsafe.As<ISpanSource>(obj).Length;
+            return Unsafe.As<CappedArraySource>(obj).Length;
         }
     }
+
     public bool SequenceEqual(ReadOnlySpan<byte> other)
     {
         var obj = _obj;
         if (obj is byte[] array)
             return array.AsSpan().SequenceEqual(other);
 
-        return Unsafe.As<ISpanSource>(obj).SequenceEqual(other);
+        return Unsafe.As<CappedArraySource>(obj).SequenceEqual(other);
     }
 
     public int CommonPrefixLength(ReadOnlySpan<byte> other)
@@ -58,7 +84,7 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
         if (obj is byte[] array)
             return array.AsSpan().CommonPrefixLength(other);
 
-        return Unsafe.As<ISpanSource>(obj).CommonPrefixLength(other);
+        return Unsafe.As<CappedArraySource>(obj).CommonPrefixLength(other);
     }
 
     public Span<byte> Span
@@ -69,7 +95,7 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
             if (obj is byte[] array)
                 return array.AsSpan();
 
-            return Unsafe.As<ISpanSource>(obj).Span;
+            return Unsafe.As<CappedArraySource>(obj).Span;
         }
     }
 
@@ -83,11 +109,58 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
 
     public bool Equals(SpanSource other)
     {
-        throw new NotImplementedException();
+        Span<byte> comparand = other.Span;
+
+        var obj = _obj;
+        if (obj is byte[] array)
+        {
+            return array.AsSpan().SequenceEqual(comparand);
+        }
+
+        return Unsafe.As<CappedArraySource>(obj).SequenceEqual(comparand);
     }
 
     public byte[] ToArray()
     {
-        throw new NotImplementedException();
+        var obj = _obj;
+        if (obj is byte[] array)
+        {
+            return array;
+        }
+
+        return Unsafe.As<CappedArraySource>(obj).Span.ToArray();
+    }
+
+    public bool TryGetCappedArray(out CappedArray<byte> cappedArray)
+    {
+        if (_obj is CappedArraySource source)
+        {
+            cappedArray = source.Capped;
+            return true;
+        }
+
+        cappedArray = default;
+        return false;
+    }
+
+    private sealed class CappedArraySource : ISpanSource
+    {
+        public readonly CappedArray<byte> Capped;
+
+        public CappedArraySource(CappedArray<byte> capped)
+        {
+            Capped = capped;
+        }
+
+        public int Length => Capped.Length;
+
+        public bool SequenceEqual(ReadOnlySpan<byte> other) => Capped.AsSpan().SequenceEqual(other);
+
+        public int CommonPrefixLength(ReadOnlySpan<byte> other) => Capped.AsSpan().CommonPrefixLength(other);
+
+        public Span<byte> Span => Capped.AsSpan();
+        public int MemorySize => MemorySizes.SmallObjectOverhead +
+                                 MemorySizes.ArrayOverhead +
+                                 Capped.UnderlyingLength;
     }
 }

@@ -3,17 +3,9 @@
 
 namespace Nethermind.Core.Buffers;
 
-
-public interface ISpanSourcePool
-{
-    SpanSource Rent(int size);
-
-    void Return(SpanSource buffer);
-}
-
 public static class SpanSourcePoolExtensions
 {
-    public static SpanSource SafeRentBuffer(this ISpanSourcePool? pool, int size)
+    public static SpanSource SafeRentBuffer(this ICappedArrayPool? pool, int size)
     {
         // TODO: decide what to do with tiny arrays
         // if (size <= TinyArray.MaxLength)
@@ -26,11 +18,14 @@ public static class SpanSourcePoolExtensions
             return new SpanSource(new byte[size]);
         }
 
-        return pool.Rent(size);
+        return new SpanSource(pool.Rent(size));
     }
 
-    public static void SafeReturnBuffer(this ISpanSourcePool? pool, in SpanSource buffer)
+    public static void SafeReturnBuffer(this ICappedArrayPool? pool, SpanSource buffer)
     {
-        pool?.Return(buffer);
+        if (pool != null && buffer.TryGetCappedArray(out CappedArray<byte> capped))
+        {
+            pool.Return(capped);
+        }
     }
 }

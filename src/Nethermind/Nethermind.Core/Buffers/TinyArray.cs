@@ -74,6 +74,8 @@ public static class TinyArray
             => _payload.Span.CommonPrefixLength(other);
 
         public Span<byte> Span => _payload.Span;
+
+        public int MemorySize => MemorySizes.ObjectHeaderMethodTable + TPayload.MemorySize;
     }
 
     /// <summary>
@@ -86,6 +88,7 @@ public static class TinyArray
         byte Length { get; }
         Span<byte> Span { get; }
         bool SequenceEqual(ReadOnlySpan<byte> other);
+        public static abstract int MemorySize { get; }
     }
 
     /// <summary>
@@ -158,6 +161,8 @@ public static class TinyArray
             Return:
             return result;
         }
+
+        public static int MemorySize => Size;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -200,6 +205,8 @@ public static class TinyArray
 
             return differentBits == 0;
         }
+
+        public static int MemorySize => Size;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -243,6 +250,8 @@ public static class TinyArray
                   Vector128.LoadUnsafe(ref Unsafe.Add(ref second, offset)))) ==
                 Vector128<byte>.Zero;
         }
+
+        public static int MemorySize => Size;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -286,6 +295,8 @@ public static class TinyArray
                   Vector128.LoadUnsafe(ref Unsafe.Add(ref second, offset)))) ==
                 Vector128<byte>.Zero;
         }
+
+        public static int MemorySize => Size;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -311,5 +322,7 @@ public static class TinyArray
         {
             return Length == other.Length && Unsafe.As<byte, Vector256<byte>>(ref _data) == Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(other));
         }
+
+        public static int MemorySize => Size;
     }
 }

@@ -29,4 +29,9 @@ public interface ISpanSource
     /// The span accessor.
     /// </summary>
     Span<byte> Span { get; }
+
+    /// <summary>
+    /// The estimated memory size.
+    /// </summary>
+    int MemorySize { get; }
 }

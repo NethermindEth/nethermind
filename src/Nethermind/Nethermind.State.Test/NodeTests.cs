@@ -131,7 +131,7 @@ namespace Nethermind.Store.Test
         private static ITrieNodeResolver BuildATreeFromNode(TrieNode node)
         {
             TreePath emptyPath = TreePath.Empty;
-            CappedArray<byte> rlp = node.RlpEncode(null, ref emptyPath);
+            SpanSource rlp = node.RlpEncode(null, ref emptyPath);
             node.ResolveKey(null, ref emptyPath, true);
 
             MemDb memDb = new();

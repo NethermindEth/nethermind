@@ -158,7 +158,7 @@ public class TrieNodeTests
             }
 
             TreePath emptyPath = TreePath.Empty;
-            CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+            SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
             TrieNode restoredNode = new(NodeType.Branch, rlp);
 
             for (int childIndex = 0; childIndex < 16; childIndex++)
@@ -185,7 +185,7 @@ public class TrieNodeTests
         trieNode.SetChild(11, ctx.TiniestLeaf);
 
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode decoded = new(NodeType.Unknown, rlp);
         decoded.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
@@ -204,7 +204,7 @@ public class TrieNodeTests
         trieNode.SetChild(11, ctx.HeavyLeaf);
 
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode decoded = new(NodeType.Unknown, rlp);
         decoded.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
@@ -222,7 +222,7 @@ public class TrieNodeTests
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode decoded = new(NodeType.Unknown, rlp);
         decoded.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
@@ -243,7 +243,7 @@ public class TrieNodeTests
         trieNode.SetChild(0, ctx.HeavyLeaf);
 
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode decoded = new(NodeType.Unknown, rlp);
         decoded.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
@@ -273,7 +273,7 @@ public class TrieNodeTests
         TrieNode trieNode = new(NodeType.Branch);
         trieNode[11] = ctx.HeavyLeaf;
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
         TrieNode decoded = new(NodeType.Branch, rlp);
 
         Hash256 getResult = decoded.GetChildHash(11);
@@ -288,7 +288,7 @@ public class TrieNodeTests
 
         trieNode[11] = ctx.TiniestLeaf;
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
         TrieNode decoded = new(NodeType.Branch, rlp);
 
         Hash256 getResult = decoded.GetChildHash(11);
@@ -303,7 +303,7 @@ public class TrieNodeTests
         trieNode[0] = ctx.HeavyLeaf;
         trieNode.Key = new byte[] { 5 };
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
         TrieNode decoded = new(NodeType.Extension, rlp);
 
         Hash256 getResult = decoded.GetChildHash(0);
@@ -318,7 +318,7 @@ public class TrieNodeTests
         trieNode[0] = ctx.TiniestLeaf;
         trieNode.Key = new byte[] { 5 };
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
         TrieNode decoded = new(NodeType.Extension, rlp);
 
         Hash256 getResult = decoded.GetChildHash(0);
@@ -538,7 +538,7 @@ public class TrieNodeTests
         }
 
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = node.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = node.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode restoredNode = new(NodeType.Branch, rlp);
 
@@ -956,7 +956,7 @@ public class TrieNodeTests
         trieNode.SetChild(1, leaf1);
         trieNode.SetChild(2, leaf2);
         trieNode.ResolveKey(trieStore, ref emptyPath, true);
-        CappedArray<byte> rlp = trieNode.FullRlp;
+        SpanSource rlp = trieNode.FullRlp;
 
         TrieNode restoredBranch = new(NodeType.Branch, rlp);
 
@@ -980,7 +980,7 @@ public class TrieNodeTests
         }
 
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = node.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = node.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode restoredNode = new(NodeType.Branch, rlp);
 
