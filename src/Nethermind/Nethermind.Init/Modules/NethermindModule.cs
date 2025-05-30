@@ -57,7 +57,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
             .AddSingleton<IEciesCipher, EciesCipher>()
             .AddSingleton<ICryptoRandom, CryptoRandom>()
-            .AddSingleton<IDisposableStack, AutofacDisposableStack>()
+            .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
             ;
     }
 

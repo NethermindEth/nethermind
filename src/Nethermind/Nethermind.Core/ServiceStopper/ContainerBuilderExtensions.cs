@@ -9,7 +9,7 @@ public static class ContainerBuilderExtensions
 {
     /// <summary>
     /// Add service stopper middleware that automatically add <see cref="IStoppableService"/> to <see cref="IServiceStopper"/>.
-    /// Must be added before any service.
+    /// Must be added before any other service registration.
     /// </summary>
     /// <param name="builder"></param>
     /// <returns></returns>
