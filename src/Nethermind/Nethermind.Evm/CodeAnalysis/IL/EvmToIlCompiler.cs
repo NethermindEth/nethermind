@@ -137,6 +137,11 @@ public static class Precompiler
     {
         if (_currentPersistentAsmBuilder is null) return;
 
+        if(!Path.Exists(config.IlEvmPrecompiledContractsPath))
+        {
+            Directory.CreateDirectory(config.IlEvmPrecompiledContractsPath);
+        }
+
         var assemblyPath = Path.Combine(config.IlEvmPrecompiledContractsPath, GetTargetFileName());
 
         ((PersistedAssemblyBuilder)_currentPersistentAsmBuilder.Value).Save(assemblyPath);  // or pass filename to save into a file
