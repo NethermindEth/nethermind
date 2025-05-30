@@ -78,7 +78,7 @@ internal static partial class EvmInstructions
     /// <typeparam name="TOpCall">
     /// The call opcode type (e.g. <see cref="OpCall"/>, <see cref="OpStaticCall"/>).
     /// </typeparam>
-    /// <typeparam name="TTracingInstructions">
+    /// <typeparam name="TTracingInst">
     /// A type implementing <see cref="IFlag"/> that indicates whether instruction tracing is active.
     /// </typeparam>
     /// <param name="vm">The current virtual machine instance containing execution state.</param>
@@ -89,13 +89,13 @@ internal static partial class EvmInstructions
     /// An <see cref="EvmExceptionType"/> value indicating success or the type of error encountered.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCall<TOpCall, TTracingInstructions>(
+    public static EvmExceptionType InstructionCall<TOpCall, TTracingInst>(
         VirtualMachine vm,
         ref EvmStack stack,
         ref long gasAvailable,
         ref int programCounter)
         where TOpCall : struct, IOpCall
-        where TTracingInstructions : struct, IFlag
+        where TTracingInst : struct, IFlag
     {
         // Increment global call metrics.
         Metrics.IncrementCalls();
@@ -205,7 +205,7 @@ internal static partial class EvmInstructions
         {
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
 
             // Optionally report memory changes for refund tracing.
             if (vm.TxTracer.IsTracingRefunds)
@@ -215,7 +215,7 @@ internal static partial class EvmInstructions
                 vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? default : memoryTrace.Value.Span);
             }
 
-            if (TTracingInstructions.IsActive)
+            if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportOperationRemainingGas(gasAvailable);
                 vm.TxTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
@@ -223,7 +223,7 @@ internal static partial class EvmInstructions
 
             // Refund the remaining gas to the caller.
             UpdateGasUp(gasLimitUl, ref gasAvailable);
-            if (TTracingInstructions.IsActive)
+            if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
             }
@@ -236,10 +236,10 @@ internal static partial class EvmInstructions
         state.SubtractFromBalance(caller, transferValue, spec);
 
         // Fast-path for calls to externally owned accounts (non-contracts)
-        if (codeInfo.IsEmpty && !TTracingInstructions.IsActive && !vm.TxTracer.IsTracingActions)
+        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
             vm.ReturnDataBuffer = default;
-            stack.PushBytes(StatusCode.SuccessBytes.Span);
+            stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
             UpdateGasUp(gasLimitUl, ref gasAvailable);
             return FastCall(vm, spec, in transferValue, target);
         }

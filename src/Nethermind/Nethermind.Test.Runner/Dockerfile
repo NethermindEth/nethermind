@@ -4,6 +4,8 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0-noble AS build
 
 COPY src/Nethermind src/Nethermind
+COPY Directory.*.props .
+COPY nuget.config .
 
 RUN dotnet publish src/Nethermind/Nethermind.Test.Runner -c release -o /publish --sc false
 

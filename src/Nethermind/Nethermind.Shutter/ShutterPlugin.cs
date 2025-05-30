@@ -98,7 +98,7 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
             _api.LogManager,
             _api.SpecProvider,
             _api.Timestamper,
-            _api.WorldStateManager,
+            _api.ReadOnlyTxProcessingEnvFactory,
             _api.FileSystem,
             _api.Config<IKeyStoreConfig>(),
             shutterConfig,

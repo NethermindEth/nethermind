@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Tracing
             GasSpent += gasSpent.SpentGas;
         }
 
-        public override void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        public override void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
         {
             Dictionary<Address, ISet<UInt256>> dictionary = new();
             foreach (Address address in accessedAddresses)

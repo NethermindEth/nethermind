@@ -184,22 +184,19 @@ namespace Nethermind.State
 
         public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);
 
-        public UInt256 GetBalance(Address address) => _stateProvider.GetBalance(address);
+        public ref readonly UInt256 GetBalance(Address address) => ref _stateProvider.GetBalance(address);
+
+        UInt256 IAccountStateProvider.GetBalance(Address address) => _stateProvider.GetBalance(address);
 
         public ValueHash256 GetStorageRoot(Address address) => _stateProvider.GetStorageRoot(address);
 
         public byte[] GetCode(Address address) => _stateProvider.GetCode(address);
 
-        public byte[] GetCode(Hash256 codeHash) => _stateProvider.GetCode(codeHash);
+        public byte[] GetCode(in ValueHash256 codeHash) => _stateProvider.GetCode(in codeHash);
 
-        public byte[] GetCode(ValueHash256 codeHash) => _stateProvider.GetCode(codeHash);
+        public ref readonly ValueHash256 GetCodeHash(Address address) => ref _stateProvider.GetCodeHash(address);
 
-        public Hash256 GetCodeHash(Address address) => _stateProvider.GetCodeHash(address);
-
-        ValueHash256 IAccountStateProvider.GetCodeHash(Address address)
-        {
-            return _stateProvider.GetCodeHash(address);
-        }
+        ValueHash256 IAccountStateProvider.GetCodeHash(Address address) => _stateProvider.GetCodeHash(address);
 
         public void Accept<TContext>(ITreeVisitor<TContext> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TContext : struct, INodeContext<TContext>
         {

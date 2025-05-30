@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.RegularExpressions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -19,15 +21,29 @@ namespace Nethermind.Network
     {
         private readonly INodeStatsManager _nodeStatsManager;
         private readonly IBlockTree _blockTree;
-        private readonly ForkInfo _forkInfo;
+        private readonly IForkInfo _forkInfo;
         private readonly ILogger _logger;
+        private readonly Regex? _clientIdPattern;
+        private readonly IPeerManager _peerManager;
 
-        public ProtocolValidator(INodeStatsManager nodeStatsManager, IBlockTree blockTree, ForkInfo forkInfo, ILogManager? logManager)
+        public ProtocolValidator(
+            INodeStatsManager nodeStatsManager,
+            IBlockTree blockTree,
+            IForkInfo forkInfo,
+            IPeerManager peerManager,
+            INetworkConfig networkConfig,
+            ILogManager logManager
+        )
         {
-            _logger = logManager?.GetClassLogger<ProtocolValidator>() ?? throw new ArgumentNullException(nameof(logManager));
-            _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
+            if (networkConfig.ClientIdMatcher is not null)
+            {
+                _clientIdPattern = new Regex(networkConfig.ClientIdMatcher, RegexOptions.Compiled);
+            }
+            _logger = logManager.GetClassLogger<ProtocolValidator>();
+            _nodeStatsManager = nodeStatsManager;
+            _blockTree = blockTree;
+            _forkInfo = forkInfo;
+            _peerManager = peerManager;
         }
 
         public bool DisconnectOnInvalid(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs)
@@ -43,7 +59,22 @@ namespace Nethermind.Network
         private bool ValidateP2PProtocol(ISession session, ProtocolInitializedEventArgs eventArgs)
         {
             P2PProtocolInitializedEventArgs args = (P2PProtocolInitializedEventArgs)eventArgs;
-            return ValidateP2PVersion(args.P2PVersion) || Disconnect(session, DisconnectReason.IncompatibleP2PVersion, CompatibilityValidationType.P2PVersion, $"p2p.{args.P2PVersion}");
+            bool valid = ValidateP2PVersion(args.P2PVersion) || Disconnect(session, DisconnectReason.IncompatibleP2PVersion, CompatibilityValidationType.P2PVersion, $"p2p.{args.P2PVersion}");
+            if (!valid) return false;
+
+            if (_clientIdPattern?.IsMatch(args.ClientId) == false)
+            {
+                session.InitiateDisconnect(DisconnectReason.ClientFiltered, $"clientId: {args.ClientId}");
+                return false;
+            }
+
+            if (_peerManager.ActivePeersCount > _peerManager.MaxActivePeers)
+            {
+                session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"Too many peer");
+                return false;
+            }
+
+            return true;
         }
 
         private bool ValidateEthProtocol(ISession session, ProtocolInitializedEventArgs eventArgs)

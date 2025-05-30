@@ -25,8 +25,10 @@ using System.Threading;
 using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm.TransactionProcessing;
@@ -43,17 +45,17 @@ public class BlockProcessorTests
         TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockProcessor processor = new(
-            HoleskySpecProvider.Instance,
+        BlockProcessor processor = new BlockProcessor(HoleskySpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
-            transactionProcessor,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashStore>(),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor));
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -74,17 +76,18 @@ public class BlockProcessorTests
         TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockProcessor processor = new(
+        BlockProcessor processor = new BlockProcessor(
             HoleskySpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             new RewardCalculator(MainnetSpecProvider.Instance),
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
-            transactionProcessor,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashStore>(),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor));
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;

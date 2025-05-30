@@ -106,16 +106,16 @@ jobs:
     - name: Replace Placeholders in YAML
       run: |
         assertoor_params=$(cat ${{ env.ASSERTOOR_PARAMS_FILE}})
-        sed -i "s|<DOCKER_IMAGE_PLACEHOLDER>|nethermindeth/nethermind:${{ env.CLEAN_REF }}|g" main-repo/.github/tests/assertor.yaml
+        sed -i "s|<DOCKER_IMAGE_PLACEHOLDER>|nethermindeth/nethermind:${{ env.CLEAN_REF }}|g" main-repo/scripts/assertoor.yml
         sed -i "/<ASSERTOOR_PARAMS_PLACEHOLDER>/ {
           r /tmp/output.txt
           d
-        }" main-repo/.github/tests/assertor.yaml
-        cat main-repo/.github/tests/assertor.yaml
+        }" main-repo/scripts/assertoor.yml
+        cat main-repo/scripts/assertoor.yml
       
     - name: Kurtosis Assertoor GitHub Action
       uses: ethpandaops/kurtosis-assertoor-github-action@v1
       with:
         ethereum_package_url: "github.com/ethpandaops/ethereum-package"
         ethereum_package_branch: ""
-        ethereum_package_args: main-repo/.github/tests/assertor.yaml
+        ethereum_package_args: main-repo/scripts/assertoor.yml

@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv5;
@@ -87,10 +88,10 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     }
 
     public Task StopAsync() => Task.WhenAll(
-            _connections.StopAsync(),
-            _v4?.StopAsync() ?? Task.CompletedTask,
-            _v5?.StopAsync() ?? Task.CompletedTask
-        );
+        _connections.StopAsync()
+    );
+
+    string IStoppableService.Description => "discovery connection";
 
     public void AddNodeToDiscovery(Node node)
     {

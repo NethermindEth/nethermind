@@ -821,7 +821,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                         TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
                         MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, BeaconSyncStrategy, bestPeerStrategy, LimboLogs.Instance);
-                        selector.Stop();
+                        selector.StopAsync().Wait();
                         selector.Update();
                         selector.Current.Should().Be(syncMode);
                     }

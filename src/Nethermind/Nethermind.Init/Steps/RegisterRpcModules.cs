@@ -137,6 +137,7 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
         ProofModuleFactory proofModuleFactory = new(
             _api.WorldStateManager,
+            _api.ReadOnlyTxProcessingEnvFactory,
             _api.BlockTree,
             _api.BlockPreprocessor,
             _api.ReceiptFinder,

@@ -22,7 +22,7 @@ using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract;
 
-public class ContractDataStoreTests
+public abstract class ContractDataStoreTests
 {
     [Test]
     public void returns_data_from_getAll_on_init()

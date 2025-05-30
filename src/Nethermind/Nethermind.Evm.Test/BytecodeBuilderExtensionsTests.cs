@@ -13,7 +13,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test;
 
-[Ignore("Broken and fails for NUnit v3.14.0. Skipped for some reason for earlier versions.")]
 public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
 {
     public class TestCase

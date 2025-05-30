@@ -41,6 +41,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Serialization.Json;
 using Nethermind.Crypto;
 using System.Net;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.CL.P2P;
@@ -98,6 +99,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
             _api.WorldStateManager,
+            _api.ReadOnlyTxProcessingEnvFactory,
             _api.BlockTree,
             _api.SpecProvider,
             _api.BlockValidator,
@@ -240,6 +242,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
             new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+            new GetPayloadV5Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
             newPayloadHandler,
             new ForkchoiceUpdatedHandler(
                 _api.BlockTree,
@@ -261,6 +264,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new ExchangeTransitionConfigurationV1Handler(posSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
+            new GetBlobsHandlerV2(_api.TxPool),
             _api.EngineRequestsTracker,
             _api.SpecProvider,
             new GCKeeper(
@@ -375,6 +379,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
             .AddSingleton(chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<OptimismChainSpecEngineParameters>())
             .AddSingleton<IOptimismSpecHelper, OptimismSpecHelper>()
+            .AddSingleton<ICostHelper, OptimismCostHelper>()
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
@@ -383,6 +388,9 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddSingleton<IBlockValidator, OptimismBlockValidator>()
             .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
+
+            // Block processing
+            .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
             ;
 
     }

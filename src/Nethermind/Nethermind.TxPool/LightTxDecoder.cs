@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -21,8 +21,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.MaxFeePerBlobGas!.Value)
                + Rlp.LengthOf(tx.BlobVersionedHashes!)
                + Rlp.LengthOf(tx.PoolIndex)
-               + Rlp.LengthOf(tx.GetLength());
-
+               + Rlp.LengthOf(tx.GetLength())
+               + Rlp.LengthOf(sizeof(byte));
     }
 
     public static byte[] Encode(Transaction tx)
@@ -41,6 +41,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         rlpStream.Encode(tx.BlobVersionedHashes!);
         rlpStream.Encode(tx.PoolIndex);
         rlpStream.Encode(tx.GetLength());
+        rlpStream.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
 
         return rlpStream.Data.ToArray()!;
     }
@@ -60,6 +61,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             rlpStream.DecodeUInt256(),
             rlpStream.DecodeByteArrays(),
             rlpStream.DecodeUlong(),
-            rlpStream.DecodeInt());
+            rlpStream.DecodeInt(),
+            rlpStream.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)rlpStream.ReadByte() : default);
     }
 }

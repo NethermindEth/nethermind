@@ -9,9 +9,7 @@ using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -135,6 +133,8 @@ public class DiscoveryApp : IDiscoveryApp
 
         if (_logger.IsInfo) _logger.Info("Discovery shutdown complete.. please wait for all components to close");
     }
+
+    string IStoppableService.Description => "discv4";
 
     public void AddNodeToDiscovery(Node node)
     {

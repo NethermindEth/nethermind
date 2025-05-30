@@ -17,7 +17,7 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Api.Extensions;
 
-public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger logger, params Type[] embedded) : IPluginLoader
+public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger logger, params IReadOnlyList<Type> embedded) : IPluginLoader
 {
     private readonly List<Type> _pluginTypes = [];
     private readonly IFileSystem _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));

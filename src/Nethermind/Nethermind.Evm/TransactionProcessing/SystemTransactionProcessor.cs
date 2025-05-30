@@ -33,7 +33,7 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
 
     protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
-        if (_isAura && !blCtx.Header.IsGenesis)
+        if (_isAura && !blCtx.IsGenesis)
         {
             WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
         }

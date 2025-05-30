@@ -24,9 +24,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
-using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -57,9 +55,7 @@ using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization;
-using Nethermind.Taiko;
 using Nethermind.Taiko.TaikoSpec;
-using Nethermind.UPnP.Plugin;
 using NSubstitute;
 using NUnit.Framework;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
@@ -175,14 +171,7 @@ public class EthereumRunnerTests
             "plugins",
             new FileSystem(),
             NullLogger.Instance,
-            typeof(AuRaPlugin),
-            typeof(CliquePlugin),
-            typeof(OptimismPlugin),
-            typeof(TaikoPlugin),
-            typeof(EthashPlugin),
-            typeof(NethDevPlugin),
-            typeof(HivePlugin),
-            typeof(UPnPPlugin)
+            NethermindPlugins.EmbeddedPlugins
         );
         pluginLoader.Load();
 
@@ -337,14 +326,7 @@ public class EthereumRunnerTests
                 "plugins",
                 new FileSystem(),
                 NullLogger.Instance,
-                typeof(AuRaPlugin),
-                typeof(CliquePlugin),
-                typeof(OptimismPlugin),
-                typeof(TaikoPlugin),
-                typeof(EthashPlugin),
-                typeof(NethDevPlugin),
-                typeof(HivePlugin),
-                typeof(UPnPPlugin)
+                NethermindPlugins.EmbeddedPlugins
             );
             pluginLoader.Load();
 

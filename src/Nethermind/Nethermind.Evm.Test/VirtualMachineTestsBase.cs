@@ -23,7 +23,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class VirtualMachineTestsBase
+public abstract class VirtualMachineTestsBase
 {
     protected const string SampleHexData1 = "a01234";
     protected const string SampleHexData2 = "b15678";

@@ -39,9 +39,9 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 
     private bool _isDisposed = true;
 
+    private ExecutionEnvironment _env;
     private EvmPooledMemory _memory;
     private Snapshot _snapshot;
-    private ExecutionEnvironment _env;
     private StackAccessTracker _accessTracker;
 
 #if DEBUG

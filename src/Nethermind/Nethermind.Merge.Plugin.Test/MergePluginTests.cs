@@ -71,6 +71,7 @@ public class MergePluginTests
                 api.DbFactory = new MemDbFactory();
                 api.BlockProducerEnvFactory = new BlockProducerEnvFactory(
                     api.WorldStateManager!,
+                    api.ReadOnlyTxProcessingEnvFactory,
                     api.BlockTree!,
                     api.SpecProvider!,
                     api.BlockValidator!,

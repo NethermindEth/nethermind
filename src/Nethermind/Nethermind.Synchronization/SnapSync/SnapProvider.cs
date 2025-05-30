@@ -120,7 +120,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 UInt256 nextPath = accounts[^1].Path.ToUInt256();
                 nextPath += UInt256.One;
-                _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, new ValueHash256(nextPath), moreChildrenToRight);
+                _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, nextPath.ToValueHash(), moreChildrenToRight);
             }
             else if (result == AddRangeResult.MissingRootHashInProofs)
             {

@@ -12,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core.ServiceStopper;
 
 namespace Nethermind.Init.Steps
 {
@@ -20,10 +21,12 @@ namespace Nethermind.Init.Steps
     public class InitializeBlockProducer : IStep
     {
         private readonly IApiWithBlockchain _api;
+        private readonly IServiceStopper _serviceStopper;
 
-        public InitializeBlockProducer(INethermindApi api)
+        public InitializeBlockProducer(INethermindApi api, IServiceStopper serviceStopper)
         {
             _api = api;
+            _serviceStopper = serviceStopper;
         }
 
         public Task Execute(CancellationToken _)
@@ -59,6 +62,7 @@ namespace Nethermind.Init.Steps
 
             _api.BlockProducer = blockProducerFactory.InitBlockProducer();
             _api.BlockProducerRunner = blockProducerRunnerFactory.InitBlockProducerRunner(_api.BlockProducer);
+            _serviceStopper.AddStoppable(_api.BlockProducerRunner);
 
             return Task.CompletedTask;
         }
@@ -74,6 +78,7 @@ namespace Nethermind.Init.Steps
         protected virtual IBlockProducerEnvFactory InitBlockProducerEnvFactory() =>
             new BlockProducerEnvFactory(
                 _api.WorldStateManager!,
+                _api.ReadOnlyTxProcessingEnvFactory,
                 _api.BlockTree!,
                 _api.SpecProvider!,
                 _api.BlockValidator!,

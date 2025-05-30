@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
@@ -118,10 +119,12 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        public void Stop()
+        public Task StopAsync()
         {
-            _cancellation.Cancel();
+            return _cancellation.CancelAsync();
         }
+
+        string IStoppableService.Description => "sync mode selector";
 
         public void Update()
         {

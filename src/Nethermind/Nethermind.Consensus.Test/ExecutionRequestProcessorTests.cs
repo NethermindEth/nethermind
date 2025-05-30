@@ -144,7 +144,7 @@ public class ExecutionProcessorTests
                 CreateLogEntry(TestItem.ExecutionRequestA.RequestDataParts)
             ).TestObject
         ];
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, new BlockExecutionContext(block.Header, _spec), txReceipts, _spec);
 
         Assert.That(block.Header.RequestsHash, Is.Null);
     }
@@ -162,7 +162,7 @@ public class ExecutionProcessorTests
                 CreateLogEntry(TestItem.ExecutionRequestC.RequestDataParts)
             ).TestObject
         ];
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, new BlockExecutionContext(block.Header, _spec), txReceipts, _spec);
 
         Assert.That(block.Header.RequestsHash, Is.EqualTo(
            CalculateHash(_executionDepositRequests, _executionWithdrawalRequests, _executionConsolidationRequests)

@@ -8,6 +8,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
@@ -54,18 +55,17 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
         if (_api.EthereumEcdsa is null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
 
-        return new BlockProcessor(
-            _api.SpecProvider,
+        return new BlockProcessor(_api.SpecProvider,
             _api.BlockValidator,
             _api.RewardCalculatorSource.Get(transactionProcessor),
             new BlockInvalidTxExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
             worldState,
-            _api.ReceiptStorage,
-            transactionProcessor,
+            _api.ReceiptStorage!,
             new BeaconBlockRootHandler(transactionProcessor, worldState),
             new BlockhashStore(_api.SpecProvider, worldState),
             _api.LogManager,
-            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
+            new WithdrawalProcessor(worldState, _api.LogManager),
+            new ExecutionRequestsProcessor(transactionProcessor),
             preWarmer: preWarmer);
     }
 

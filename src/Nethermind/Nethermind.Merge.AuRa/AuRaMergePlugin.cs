@@ -56,6 +56,7 @@ namespace Nethermind.Merge.AuRa
                 _auraApi!.ChainSpec,
                 _auraApi.AbiEncoder,
                 _auraApi.CreateStartBlockProducer,
+                _api.ReadOnlyTxProcessingEnvFactory,
                 _api.WorldStateManager!,
                 _api.BlockTree!,
                 _api.SpecProvider!,

@@ -3,15 +3,16 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Core.ServiceStopper;
 
 namespace Nethermind.Network
 {
-    public interface IPeerManager
+    public interface IPeerManager : IStoppableService
     {
         void Start();
-        Task StopAsync();
         IReadOnlyCollection<Peer> ActivePeers { get; }
         IReadOnlyCollection<Peer> ConnectedPeers { get; }
         int MaxActivePeers { get; }
+        int ActivePeersCount { get; }
     }
 }

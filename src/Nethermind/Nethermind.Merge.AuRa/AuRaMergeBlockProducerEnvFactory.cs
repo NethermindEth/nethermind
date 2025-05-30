@@ -28,7 +28,6 @@ namespace Nethermind.Merge.AuRa;
 public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
 {
     private readonly ChainSpec _chainSpec;
-    private readonly IExecutionRequestsProcessor? _executionRequestsProcessor;
     private readonly IAbiEncoder _abiEncoder;
     private readonly Func<StartBlockProducerAuRa> _startBlockProducerFactory;
 
@@ -36,6 +35,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ChainSpec chainSpec,
         IAbiEncoder abiEncoder,
         Func<StartBlockProducerAuRa> startBlockProducerFactory,
+        IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
         IWorldStateManager worldStateManager,
         IBlockTree blockTree,
         ISpecProvider specProvider,
@@ -46,9 +46,9 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITxPool txPool,
         ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
-        ILogManager logManager,
-        IExecutionRequestsProcessor? executionRequestsProcessor = null) : base(
+        ILogManager logManager) : base(
             worldStateManager,
+            txProcessingEnvFactory,
             blockTree,
             specProvider,
             blockValidator,
@@ -58,13 +58,11 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             txPool,
             transactionComparerProvider,
             blocksConfig,
-            logManager,
-            executionRequestsProcessor)
+            logManager)
     {
         _chainSpec = chainSpec;
         _abiEncoder = abiEncoder;
         _startBlockProducerFactory = startBlockProducerFactory;
-        _executionRequestsProcessor = executionRequestsProcessor;
     }
 
     protected override BlockProcessor CreateBlockProcessor(
@@ -96,13 +94,12 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
                     logManager
                 )
             ),
-            readOnlyTxProcessingEnv.TransactionProcessor,
-            null,
-            executionRequestsProcessor: _executionRequestsProcessor);
+            ExecutionRequestsProcessorOverride ?? new ExecutionRequestsProcessor(readOnlyTxProcessingEnv.TransactionProcessor),
+            null);
     }
 
     protected override TxPoolTxSource CreateTxPoolTxSource(
-        ReadOnlyTxProcessingEnv processingEnv,
+        IReadOnlyTxProcessorSource processingEnv,
         ITxPool txPool,
         IBlocksConfig blocksConfig,
         ITransactionComparerProvider transactionComparerProvider,

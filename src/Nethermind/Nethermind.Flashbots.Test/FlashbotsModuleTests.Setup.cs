@@ -50,29 +50,18 @@ public partial class FlashbotsModuleTests
         }
     }
 
-    public ReadOnlyTxProcessingEnvFactory CreateReadOnlyTxProcessingEnvFactory(EngineModuleTests.MergeTestBlockchain chain)
-    {
-        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(
-            chain.WorldStateManager,
-            chain.BlockTree,
-            chain.SpecProvider,
-            chain.LogManager
-        );
-        return readOnlyTxProcessingEnvFactory;
-    }
-
     protected static async Task<EngineModuleTests.MergeTestBlockchain> CreateBlockChain(
         IReleaseSpec? releaseSpec = null)
     => await new EngineModuleTests.MergeTestBlockchain().Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
-    private IFlashbotsRpcModule CreateFlashbotsModule(EngineModuleTests.MergeTestBlockchain chain, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory)
+    private IFlashbotsRpcModule CreateFlashbotsModule(EngineModuleTests.MergeTestBlockchain chain)
     {
         return new FlashbotsRpcModule(
             new ValidateSubmissionHandler(
                 chain.HeaderValidator,
                 chain.BlockTree,
                 chain.BlockValidator,
-                readOnlyTxProcessingEnvFactory,
+                chain.ReadOnlyTxProcessingEnvFactory,
                 chain.LogManager,
                 chain.SpecProvider,
                 new FlashbotsConfig(),

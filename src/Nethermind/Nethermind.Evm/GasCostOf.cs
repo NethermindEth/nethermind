@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.Evm
@@ -70,6 +70,9 @@ namespace Nethermind.Evm
 
         public const long TxDataNonZeroMultiplier = TxDataNonZero / TxDataZero;
         public const long TxDataNonZeroMultiplierEip2028 = TxDataNonZeroEip2028 / TxDataZero;
+
+        public const long MinModExpEip2565 = 200; // eip-2565
+        public const long MinModExpEip7883 = 500; // eip-7883
 
         // Eof Execution EIP-7692
         public const long DataLoad = 4;

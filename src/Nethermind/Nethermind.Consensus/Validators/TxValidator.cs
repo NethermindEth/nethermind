@@ -3,8 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using CkzgLib;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -172,7 +170,7 @@ public sealed class NonBlobFieldsTxValidator : ITxValidator
         // Execution-payload version verification
         { MaxFeePerBlobGas: not null } => TxErrorMessages.NotAllowedMaxFeePerBlobGas,
         { BlobVersionedHashes: not null } => TxErrorMessages.NotAllowedBlobVersionedHashes,
-        { NetworkWrapper: ShardBlobNetworkWrapper } => TxErrorMessages.InvalidTransaction,
+        { NetworkWrapper: ShardBlobNetworkWrapper } => TxErrorMessages.InvalidTransactionForm,
         _ => ValidationResult.Success
     };
 }
@@ -239,45 +237,26 @@ public sealed class MempoolBlobTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        int blobCount = transaction.BlobVersionedHashes!.Length;
-        return transaction.NetworkWrapper is not ShardBlobNetworkWrapper wrapper ? ValidationResult.Success
-            : wrapper.Blobs.Length != blobCount ? TxErrorMessages.InvalidBlobData
-            : wrapper.Commitments.Length != blobCount ? TxErrorMessages.InvalidBlobData
-            : wrapper.Proofs.Length != blobCount ? TxErrorMessages.InvalidBlobData
-            : ValidateBlobs();
-
-        ValidationResult ValidateBlobs()
+        return transaction switch
         {
-            for (int i = 0; i < blobCount; i++)
+            { NetworkWrapper: null } => ValidationResult.Success,
+            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateBlobs(transaction, wrapper, releaseSpec),
+            { Type: TxType.Blob } or { NetworkWrapper: not null } => TxErrorMessages.InvalidTransactionForm,
+        };
+
+        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper, IReleaseSpec releaseSpec)
+        {
+            if (wrapper.Version != releaseSpec.BlobProofVersion)
             {
-                if (wrapper.Blobs[i].Length != Ckzg.BytesPerBlob)
-                {
-                    return TxErrorMessages.ExceededBlobSize;
-                }
-
-                if (wrapper.Commitments[i].Length != Ckzg.BytesPerCommitment)
-                {
-                    return TxErrorMessages.ExceededBlobCommitmentSize;
-                }
-
-                if (wrapper.Proofs[i].Length != Ckzg.BytesPerProof)
-                {
-                    return TxErrorMessages.InvalidBlobProofSize;
-                }
+                return TxErrorMessages.InvalidProofVersion;
             }
 
-            Span<byte> hash = stackalloc byte[32];
-            for (int i = 0; i < blobCount; i++)
-            {
-                if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(wrapper.Commitments[i].AsSpan(), hash) || !hash.SequenceEqual(transaction.BlobVersionedHashes[i]))
-                {
-                    return TxErrorMessages.InvalidBlobCommitmentHash;
-                }
-            }
+            IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
 
-            return !KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs)
-                ? TxErrorMessages.InvalidBlobProof
-                : ValidationResult.Success;
+            return !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
+                !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
+                !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
+                ValidationResult.Success;
         }
     }
 }
