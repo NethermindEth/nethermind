@@ -14,11 +14,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
     public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
     {
         private readonly ISpecProvider _specProvider;
+        private readonly bool _useAdditionalBehaviors;
         private static readonly IRlpStreamDecoder<TxReceipt> _decoder = Rlp.GetStreamDecoder<TxReceipt>();
 
-        public ReceiptsMessageSerializer(ISpecProvider specProvider)
+        public ReceiptsMessageSerializer(ISpecProvider specProvider, bool useAdditionalBehaviors = false)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _useAdditionalBehaviors = useAdditionalBehaviors;
         }
 
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
@@ -47,8 +49,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                         continue;
                     }
 
-                    _decoder.Encode(stream, txReceipt,
-                        _specProvider.GetReceiptSpec(txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+                    RlpBehaviors behaviors = (_specProvider.GetReceiptSpec(txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | (_useAdditionalBehaviors ? RlpBehaviors.AllowExtraData : RlpBehaviors.None);
+                    _decoder.Encode(stream, txReceipt, behaviors);
                 }
             }
         }
@@ -111,7 +113,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 }
                 else
                 {
-                    contentLength += _decoder.GetLength(txReceipt, _specProvider.GetSpec((ForkActivation)txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+                    RlpBehaviors behaviors = (_specProvider.GetSpec((ForkActivation)txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | (_useAdditionalBehaviors ? RlpBehaviors.AllowExtraData : RlpBehaviors.None);
+                    contentLength += _decoder.GetLength(txReceipt, behaviors);
                 }
             }
 
