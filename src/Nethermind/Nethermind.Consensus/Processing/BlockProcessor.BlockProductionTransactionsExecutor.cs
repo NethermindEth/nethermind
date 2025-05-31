@@ -60,6 +60,8 @@ namespace Nethermind.Consensus.Processing
             {
             }
 
+            public bool IsTransactionInBlock(Transaction tx) => throw new NotImplementedException();
+
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
             event EventHandler<TxProcessedEventArgs>? IBlockProcessor.IBlockTransactionsExecutor.TransactionProcessed

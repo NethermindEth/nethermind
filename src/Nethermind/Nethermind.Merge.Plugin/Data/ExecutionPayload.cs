@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -12,8 +11,8 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Server.Kestrel.Transport.Quic;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Crypto;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -106,6 +105,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     [JsonIgnore]
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    /// <summary>
+    /// Gets or sets <see cref="InclusionListTransactions"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.
+    /// </summary>
+    [JsonIgnore]
+    public virtual byte[][]? InclusionListTransactions { get; set; }
+
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
@@ -137,7 +143,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <param name="block">When this method returns, contains the execution block.</param>
     /// <param name="totalDifficulty">A total difficulty of the block.</param>
     /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
-    public virtual BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
+    public virtual BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null, IEthereumEcdsa? ecdsa = null)
     {
         TransactionDecodingResult transactions = TryGetTransactions();
         if (transactions.Error is not null)

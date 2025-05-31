@@ -339,6 +339,11 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsRip7212Enabled { get; }
 
+        /// <summary>
+        /// EIP-7805: Inclusion lists
+        /// </summary>
+        bool IsEip7805Enabled { get; }
+
         /// OP Granite
         bool IsOpGraniteEnabled { get; }
 
@@ -457,6 +462,7 @@ namespace Nethermind.Core.Specs
         bool IsAuthorizationListEnabled => IsEip7702Enabled;
 
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
+        public bool InclusionListsEnabled => IsEip7805Enabled;
 
         public bool IsEip7594Enabled { get; }
 

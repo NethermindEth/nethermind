@@ -46,6 +46,8 @@ public partial class BlockProcessor(
     IBlockCachePreWarmer? preWarmer = null)
     : IBlockProcessor
 {
+    private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
+    private readonly IInclusionListValidator _inclusionListValidator = new InclusionListValidator(specProvider, stateProvider);
     private readonly ILogger _logger = logManager.GetClassLogger();
     protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider);
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = ReceiptsRootCalculator.Instance;
@@ -292,6 +294,17 @@ public partial class BlockProcessor(
         // Block is valid, copy the account changes as we use the suggested block not the processed one
         suggestedBlock.AccountChanges = block.AccountChanges;
         suggestedBlock.ExecutionRequests = block.ExecutionRequests;
+    }
+
+    public bool ValidateInclusionList(Block suggestedBlock, Block block, ProcessingOptions options)
+    {
+        if (options.ContainsFlag(ProcessingOptions.NoValidation))
+        {
+            return true;
+        }
+
+        block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
+        return _inclusionListValidator.ValidateInclusionList(block, _blockTransactionsExecutor.IsTransactionInBlock);
     }
 
     private bool ShouldComputeStateRoot(BlockHeader header) =>
