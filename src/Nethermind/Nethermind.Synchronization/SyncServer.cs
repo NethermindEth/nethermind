@@ -55,6 +55,9 @@ namespace Nethermind.Synchronization
         private readonly Hash256 _pivotHash;
         private BlockHeader? _pivotHeader;
 
+        private const int BlockRangeUpdateFrequency = 32;
+        private (BlockHeader earliest, BlockHeader latest)? _lastBlockRangeUpdate;
+
         public SyncServer(
             IWorldStateManager worldStateManager,
             [KeyFilter(DbNames.Code)] IReadOnlyKeyValueStore codeDb,
@@ -85,6 +88,7 @@ namespace Nethermind.Synchronization
             _pivotHash = new Hash256(config.PivotHash ?? Keccak.Zero.ToString());
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
+            _blockTree.NewHeadBlock += OnBlockRangeUpdate;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
         }
 
@@ -262,9 +266,7 @@ namespace Nethermind.Synchronization
 
         private void BroadcastBlock(Block block, bool allowHashes, ISyncPeer? nodeWhoSentTheBlock = null)
         {
-            // TODO: may be better to remove this check at all, since most nodes will eventually switch to eth/69
-            if (!_gossipPolicy.CanGossipBlocks && !_pool.AllPeers.Any(p => p.AlwaysNotifyOfNewBlock))
-                return;
+            if (!_gossipPolicy.CanGossipBlocks) return;
 
             Task.Run(() =>
                 {
@@ -425,9 +427,51 @@ namespace Nethermind.Synchronization
             }
         }
 
+        private void OnBlockRangeUpdate(object? sender, BlockEventArgs latestBlockEventArgs)
+        {
+            if (Genesis is null)
+                return;
+
+            Task.Run(() =>
+                {
+                    Block latestBlock = latestBlockEventArgs.Block;
+
+                    // Notify about every divisible block number for convenience
+                    if (latestBlock.Number % BlockRangeUpdateFrequency != 0)
+                    {
+                        return;
+                    }
+
+                    // Check if not already notified about
+                    if (_lastBlockRangeUpdate.HasValue &&
+                        _lastBlockRangeUpdate.Value.latest.Number == latestBlock.Number &&
+                        _lastBlockRangeUpdate.Value.latest.Hash == latestBlock.Hash)
+                    {
+                        return;
+                    }
+
+                    var counter = 0;
+                    // TODO: use actual earliest available block - once history expiry is implemented
+                    (BlockHeader earliest, BlockHeader latest) update = (Genesis, latestBlock.Header);
+                    _lastBlockRangeUpdate = update;
+
+                    foreach (PeerInfo peerInfo in _pool.AllPeers)
+                    {
+                        NotifyOfBlockRangeUpdate(peerInfo, update.earliest, update.latest);
+                        counter++;
+                    }
+
+                    if (counter > 0 && _logger.IsDebug)
+                    {
+                        _logger.Debug($"Broadcasting block {latestBlock.ToString(Block.Format.Short)} to {counter} peers.");
+                    }
+                }
+            );
+        }
+
         private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockMode mode)
         {
-            if (!_gossipPolicy.CanGossipBlocks && !syncPeer.AlwaysNotifyOfNewBlock) return;
+            if (!_gossipPolicy.CanGossipBlocks) return;
 
             try
             {
@@ -439,8 +483,20 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockMode.FullBlock);
+        private void NotifyOfBlockRangeUpdate(PeerInfo peerInfo, BlockHeader earliest, BlockHeader latest)
+        {
+            try
+            {
+                peerInfo.SyncPeer.NotifyOfBlockRangeUpdate(earliest, latest);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Error while broadcasting block range update: [{earliest.Number}, {latest.Number}, {latest.Hash}] to peer {peerInfo.SyncPeer}.", e);
+            }
+        }
 
+
+        private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockMode.FullBlock);
 
         public void StopNotifyingPeersAboutNewBlocks()
         {
@@ -452,9 +508,15 @@ namespace Nethermind.Synchronization
             }
         }
 
+        private void StopNotifyingPeersAboutBlockRangeUpdates()
+        {
+            _blockTree.NewHeadBlock -= OnBlockRangeUpdate;
+        }
+
         public void Dispose()
         {
             StopNotifyingPeersAboutNewBlocks();
+            StopNotifyingPeersAboutBlockRangeUpdates();
         }
     }
 }

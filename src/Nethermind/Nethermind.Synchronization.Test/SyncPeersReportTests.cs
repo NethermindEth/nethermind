@@ -192,7 +192,6 @@ namespace Nethermind.Synchronization.Test
             public override string Name { get; }
             public override byte ProtocolVersion { get; } = default;
             public override string ProtocolCode { get; } = default!;
-            public override bool AlwaysNotifyOfNewBlock { get; } = default;
             public override int MessageIdSpaceSize { get; } = default;
             protected override TimeSpan InitTimeout { get; } = default;
             public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized = static delegate { };
