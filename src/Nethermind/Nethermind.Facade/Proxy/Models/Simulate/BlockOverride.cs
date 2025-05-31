@@ -60,6 +60,14 @@ public class BlockOverride
             RequestsHash = parent.RequestsHash,
         };
 
+        if (spec.WithdrawalsEnabled) {
+            result.WithdrawalsRoot = Keccak.EmptyTreeHash;
+        }
+
+        if (spec.IsEip4844Enabled) {
+            result.ParentBeaconBlockRoot = Keccak.Zero;
+        }
+
         return result;
     }
 }

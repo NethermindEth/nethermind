@@ -31,5 +31,14 @@ public enum RlpBehaviors
     /// </summary>
     InMempoolForm = 64,
     ExcludeHashes = 128,
+
+    /// <summary>
+    /// The `simulate` flag enables a special workaround for cases where `baseFeePerGas` is zero.
+    /// Technically, `baseFeePerGas` should never be zero, as it is required to be at least 7 or higher.
+    /// However, some execution clients, such as Geth, permit this edge case.
+    /// In such cases, we write `EmptyRlpByte` (0x80) to the byte array as a fallback.
+    /// </summary>
+    Simulate = 256,
+    
     All = AllowExtraBytes | ForSealing | Storage | Eip658Receipts | AllowUnsigned | SkipTypedWrapping | InMempoolForm | ExcludeHashes,
 }
