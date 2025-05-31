@@ -13,7 +13,8 @@ public static class TestTrieStoreFactory
 {
     private static IPruningConfig _testPruningConfig = new PruningConfig()
     {
-        Mode = PruningMode.Full
+        Mode = PruningMode.Full,
+        DirtyNodeShardBit = 1,
     };
 
     public static TrieStore Build(INodeStorage nodeStorage, ILogManager logManager)
