@@ -219,7 +219,7 @@ public class MainPruningTrieStoreFactory
         IDbProvider dbProvider,
         INodeStorageFactory nodeStorageFactory,
         IBlockTree blockTree,
-        DisposableStack disposeStack,
+        IDisposableStack disposeStack,
         ILogManager logManager
         )
     {
