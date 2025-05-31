@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Metric;
 
 namespace Nethermind.Core.Attributes;
 
@@ -44,7 +45,7 @@ public sealed class SummaryMetricAttribute : Attribute
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
 public sealed class ExponentialPowerHistogramMetric : Attribute
 {
-    public string[] LabelNames { get; } = [];
+    public string[] LabelNames { get; init; } = [];
     public double Start { get; set; }
     public double Factor { get; set; }
     public int Count { get; set; }
@@ -56,4 +57,9 @@ public sealed class ExponentialPowerHistogramMetric : Attribute
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
 public sealed class DetailedMetricAttribute : Attribute
 {
+}
+
+public record StringLabel(string label) : IMetricLabels
+{
+    public string[] Labels => [label];
 }

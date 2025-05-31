@@ -88,6 +88,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected virtual long TotalBlocks => _blockTree.SyncPivot.BlockNumber;
 
         public override bool IsFinished => AllHeadersDownloaded;
+        public override string FeedName => nameof(HeadersSyncFeed);
         private bool AnyHeaderDownloaded => LowestInsertedBlockHeader is not null;
 
         private long HeadersInQueue

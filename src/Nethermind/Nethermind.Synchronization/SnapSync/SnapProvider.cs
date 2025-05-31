@@ -79,6 +79,7 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.ReportAccountRangePartitionFinished(request.LimitHash.Value);
             response.Dispose();
 
+            Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: false, result: result));
             return result;
         }
 
@@ -105,7 +106,6 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     _progressTracker.EnqueueAccountStorage(item);
                 }
-
 
                 using ArrayPoolList<ValueHash256> filteredCodeHashes = codeHashes.AsParallel().Where((code) =>
                 {
@@ -143,7 +143,8 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count}), {request.StartingHash}");
 
-                _progressTracker.ReportStorageRangeRequestFinished(request.Copy());
+                _progressTracker.RetryStorageRange(request.Copy());
+                Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: AddRangeResult.ExpiredRootHash));
 
                 return AddRangeResult.ExpiredRootHash;
             }
@@ -163,17 +164,18 @@ namespace Nethermind.Synchronization.SnapSync
                     }
 
                     result = AddStorageRangeForAccount(request, i, responses[i], proofs);
+                    Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: result));
 
                     slotCount += responses[i].Count;
                 }
 
                 if (requestLength > responses.Count)
                 {
-                    _progressTracker.ReportFullStorageRequestFinished(request.Accounts.Skip(responses.Count));
+                    _progressTracker.ReportFullStorageRequestFinished(requestLength, request.Accounts.Skip(responses.Count));
                 }
                 else
                 {
-                    _progressTracker.ReportFullStorageRequestFinished();
+                    _progressTracker.ReportFullStorageRequestFinished(requestLength);
                 }
 
                 if (result == AddRangeResult.OK && slotCount > 0)
@@ -197,7 +199,11 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 if (moreChildrenToRight)
                 {
-                    _progressTracker.EnqueueStorageRange(request, accountIndex, slots[^1].Path);
+                    _progressTracker.EnqueueNextSlot(request, accountIndex, slots[^1].Path);
+                }
+                else if (accountIndex == 0 && request.Accounts.Count == 1)
+                {
+                    _progressTracker.OnCompletedLargeStorage(pathWithAccount);
                 }
             }
             else if (result == AddRangeResult.MissingRootHashInProofs)
@@ -253,7 +259,7 @@ namespace Nethermind.Synchronization.SnapSync
                                 LimitHash = requestedPath.StorageHashLimit
                             };
 
-                            _progressTracker.EnqueueStorageRange(range);
+                            _progressTracker.EnqueueNextSlot(range);
                         }
                         else
                         {
@@ -312,7 +318,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if (batch.StorageRangeRequest is not null)
             {
-                _progressTracker.ReportStorageRangeRequestFinished(batch.StorageRangeRequest.Copy());
+                _progressTracker.RetryStorageRange(batch.StorageRangeRequest.Copy());
             }
             else if (batch.CodesRequest is not null)
             {
