@@ -19,7 +19,7 @@ public class ReceiptsRootCalculator : IReceiptsRootCalculator
     {
         Hash256 CalculateSkipStateAndStatusReceiptsRoot()
         {
-            return ReceiptTrie<TxReceipt>.CalculateRoot(spec, receipts, _decoder, RlpBehaviors.SkipStateAndStatusInRlp);
+            return ReceiptTrie<TxReceipt>.CalculateRoot(spec, receipts, _decoder);
         }
 
         Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(spec, receipts, _decoder);
