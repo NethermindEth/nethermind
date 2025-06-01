@@ -51,6 +51,8 @@ namespace Nethermind.Serialization.Rlp
         static Rlp()
         {
             RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
+            RegisterStreamDecoder<TxReceipt>(RlpDecoderKey.Default, new ReceiptMessageDecoder());
+            RegisterStreamDecoder<TxReceipt>(RlpDecoderKey.Trie, new ReceiptMessageDecoder(skipStateAndStatusInRlp: true));
         }
 
         /// <summary>
