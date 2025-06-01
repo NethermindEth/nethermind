@@ -39,7 +39,6 @@ public static class IlAnalyzer
     private static Task? _workerTask;
     private static CancellationTokenSource _cts = new();
 
-    private static readonly ConcurrentQueue<CodeInfo> _queue = new();
     public static void Enqueue(CodeInfo codeInfo, IVMConfig config, ILogger logger)
     {
         if (Interlocked.CompareExchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Queued, AnalysisPhase.NotStarted) != AnalysisPhase.NotStarted)
