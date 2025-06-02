@@ -83,23 +83,9 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-            var vmConfig = new VMConfig
-            {
-                IsILEvmEnabled = true,
-                IsIlEvmAggressiveModeEnabled = true,
-                IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
-                IlEvmBytecodeMinLength = 4,
-                IlEvmBytecodeMaxLength = (int)24.KB(),
-                IlEvmPersistPrecompiledContractsOnDisk = true,
-                IlEvmContractsPerDllCount = 16,
-                IlEvmAnalysisThreshold = 2,
-                IlEvmAnalysisQueueMaxSize = 1,
-                IlEvmAnalysisCoreUsage = 0.75f
-            };
+            InitializeIlEvmProcesses(getApi.VMConfig);
 
-            InitializeIlEvmProcesses(vmConfig );
-
-            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState, vmConfig );
+            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState, getApi.VMConfig);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
             InitSealEngine();
