@@ -18,7 +18,7 @@ public class PayloadDecoder : IPayloadDecoder
     {
     }
 
-    public OptimismExecutionPayloadV3 DecodePayload(ReadOnlySpan<byte> data)
+    public OptimismExecutionPayloadV3 DecodePayload(ReadOnlySpan<byte> data, uint version)
     {
         OptimismExecutionPayloadV3 payload = new();
 
@@ -47,8 +47,10 @@ public class PayloadDecoder : IPayloadDecoder
         payload.BlobGasUsed = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
         payload.ExcessBlobGas = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
 
-        // TODO: Only in Isthmus
-        payload.WithdrawalsRoot = new Hash256(movingData.TakeAndMove(32));
+        if (version == PayloadVersion.Isthmus)
+        {
+            payload.WithdrawalsRoot = new Hash256(movingData.TakeAndMove(32));
+        }
 
         if (withdrawalsOffset > data.Length || transactionsOffset >= withdrawalsOffset || extraDataOffset > transactionsOffset || withdrawalsOffset != data.Length)
         {
@@ -58,6 +60,11 @@ public class PayloadDecoder : IPayloadDecoder
         payload.ExtraData = data[(int)extraDataOffset..(int)transactionsOffset].ToArray();
         payload.Transactions = DecodeTransactions(data[(int)transactionsOffset..(int)withdrawalsOffset]);
         payload.Withdrawals = [];
+
+        if (version == PayloadVersion.Isthmus)
+        {
+            payload.ExecutionRequests = [];
+        }
 
         return payload;
     }

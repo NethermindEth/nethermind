@@ -44,12 +44,6 @@ public class PayloadByNumberProtocol : ISessionProtocol<ulong, OptimismExecution
         public const byte Invalid = 2;
     }
 
-    private static class Version
-    {
-        public const uint Ecotone = 1;
-        public const uint Isthmus = 2;
-    }
-
     public async Task<OptimismExecutionPayloadV3?> DialAsync(IChannel downChannel, ISessionContext context, ulong request)
     {
         byte[] requestBytes = new byte[8];
@@ -70,9 +64,8 @@ public class PayloadByNumberProtocol : ISessionProtocol<ulong, OptimismExecution
                 if (_logger.IsWarn) _logger.Warn($"{nameof(PayloadByNumberProtocol)}: Got unknown error code({res}). Payload number: {request}");
                 return null;
         }
-        var version = BinaryPrimitives.ReadUInt32LittleEndian((await downChannel.ReadAsync(4)).Data.ToArray());
-
-        if (version != Version.Ecotone)
+        var source = (await downChannel.ReadAsync(4)).Data.ToArray();
+        if (!PayloadVersion.TryParse(source, out uint? version))
         {
             if (_logger.IsWarn) _logger.Warn($"{nameof(PayloadByNumberProtocol)}: Unsupported version. Payload number: {request}");
             return null;
@@ -101,7 +94,7 @@ public class PayloadByNumberProtocol : ISessionProtocol<ulong, OptimismExecution
                 totalRead += bytesRead;
             }
 
-            return _payloadDecoder.DecodePayload(buffer.AsSpan(0, totalRead));
+            return _payloadDecoder.DecodePayload(buffer.AsSpan(0, totalRead), version.Value);
         }
         catch (Exception e)
         {
