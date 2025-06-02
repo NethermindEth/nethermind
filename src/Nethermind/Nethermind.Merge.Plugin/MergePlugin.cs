@@ -241,7 +241,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
     private void AddEth69()
     {
-        // TODO: use Debug level
         if (_logger.IsInfo) _logger.Info("Adding eth/69 capability");
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 69));
     }

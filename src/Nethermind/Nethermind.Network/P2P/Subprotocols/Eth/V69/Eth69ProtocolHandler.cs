@@ -4,11 +4,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -27,12 +26,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-7642
 /// </summary>
-public class Eth69ProtocolHandler : Eth68ProtocolHandler
+public class Eth69ProtocolHandler : Eth68ProtocolHandler, ISyncPeer
 {
-    private const int LatestBlockFrequency = 32;
-    private long _earliestBlockUpdate = long.MaxValue;
-    private long _latestBlockUpdate = -1;
-
     public Eth69ProtocolHandler(ISession session,
         IMessageSerializationService serializer,
         INodeStatsManager nodeStatsManager,
@@ -52,10 +47,6 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
     public override byte ProtocolVersion => EthVersions.Eth69;
 
     public override int MessageIdSpaceSize => 18;
-
-    // For BlockRangeUpdate message
-    // TODO: check if CanGossip can be used instead
-    public override bool AlwaysNotifyOfNewBlock => true;
 
     // Explicitly mark as not supported
     public override UInt256? TotalDifficulty
@@ -162,31 +153,22 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
         Send(statusMessage);
     }
 
-    public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
+    public void NotifyOfBlockRangeUpdate(BlockHeader earliest, BlockHeader latest)
     {
-        if (block.Hash is not null)
-            SendBlockRangeUpdate(0, block.Number, block.Hash);
-    }
+        if (earliest.Number > latest.Number)
+            throw new ArgumentException($"Earliest block ({earliest.Number}) greater than latest ({latest.Number}) in BlockRangeUpdate.");
 
-    private void SendBlockRangeUpdate(long earliestBlock, long latestBlock, Hash256 latestBlockHash)
-    {
-        if (_earliestBlockUpdate <= earliestBlock && _latestBlockUpdate + LatestBlockFrequency > latestBlock)
-            return;
-
-        if (earliestBlock > latestBlock)
-            throw new ArgumentException($"Earliest block ({earliestBlock}) greater than latest ({latestBlock}) in BlockRangeUpdate.");
-
-        _earliestBlockUpdate = Math.Min(_earliestBlockUpdate, earliestBlock);
-        _latestBlockUpdate = Math.Max(_latestBlockUpdate, latestBlock);
+        if (latest.Hash is null)
+            throw new ArgumentException($"Latest block ({latest.Number}) hash is not provided.");
 
         if (Logger.IsTrace)
             Logger.Trace($"OUT {Counter:D5} BlockRangeUpdate to {Node:c}");
 
         BlockRangeUpdateMessage msg = new()
         {
-            EarliestBlock = earliestBlock,
-            LatestBlock = latestBlock,
-            LatestBlockHash = latestBlockHash
+            EarliestBlock = earliest.Number,
+            LatestBlock = latest.Number,
+            LatestBlockHash = latest.Hash
         };
 
         Send(msg);

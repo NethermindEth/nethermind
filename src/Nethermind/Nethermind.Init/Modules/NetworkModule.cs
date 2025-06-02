@@ -9,6 +9,8 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Handshake = Nethermind.Network.Rlpx.Handshake;
 using P2P = Nethermind.Network.P2P.Messages;
@@ -30,6 +32,12 @@ public class NetworkModule(IConfigProvider configProvider) : Module
         base.Load(builder);
         builder
             .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
+
+            // Rlpxhost
+            .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
+            .AddSingleton<ISessionMonitor, SessionMonitor>()
+            .AddSingleton<IRlpxHost, RlpxHost>()
+            .AddSingleton<Handshake.IHandshakeService, Handshake.HandshakeService>()
 
             .AddSingleton<INodeStatsManager>(ctx => new NodeStatsManager(
                 ctx.Resolve<ITimerFactory>(),

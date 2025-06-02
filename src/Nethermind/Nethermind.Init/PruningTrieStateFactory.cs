@@ -40,7 +40,7 @@ public class PruningTrieStateFactory(
     ITimerFactory timerFactory,
     IProcessExitSource processExit,
     ChainSpec chainSpec,
-    DisposableStack disposeStack,
+    IDisposableStack disposeStack,
     ILogManager logManager
 )
 {
