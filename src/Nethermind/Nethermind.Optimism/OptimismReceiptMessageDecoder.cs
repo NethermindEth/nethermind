@@ -36,7 +36,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
         else if (firstItem.Length is >= 1 and <= 4)
         {
             txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
-            txReceipt.SkipStateAndStatusInRlp = true;
+            rlpBehaviors |= RlpBehaviors.SkipStateAndStatusInRlp;
         }
         else
         {
@@ -87,8 +87,9 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
         contentLength += Rlp.LengthOfSequence(logsLength);
 
         bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
+        bool skipStateAndStatus = (rlpBehaviors & RlpBehaviors.SkipStateAndStatusInRlp) == RlpBehaviors.SkipStateAndStatusInRlp;
 
-        if (!item.SkipStateAndStatusInRlp)
+        if (!skipStateAndStatus)
         {
             contentLength += isEip658Receipts
                 ? Rlp.LengthOf(item.StatusCode)
@@ -161,7 +162,9 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
         }
 
         rlpStream.StartSequence(totalContentLength);
-        if (!item.SkipStateAndStatusInRlp)
+        bool skipStateAndStatus = (rlpBehaviors & RlpBehaviors.SkipStateAndStatusInRlp) == RlpBehaviors.SkipStateAndStatusInRlp;
+
+        if (!skipStateAndStatus)
         {
             rlpStream.Encode(item.StatusCode);
         }
