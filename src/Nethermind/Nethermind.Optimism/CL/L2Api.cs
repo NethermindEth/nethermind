@@ -168,8 +168,15 @@ public class L2Api(
         return getPayloadResult.Data!;
     }
 
-    public async Task<PayloadStatusV1> NewPayloadV3(ExecutionPayloadV3 payload, Hash256? parentBeaconBlockRoot)
-        => await RetryEngineApi(async () => await l2EngineRpc.engine_newPayloadV3(payload, [], parentBeaconBlockRoot),
+    public async Task<PayloadStatusV1> NewPayloadV3(ExecutionPayloadV3 payload, Hash256? parentBeaconBlockRoot) =>
+        // TODO: This is a bit hacky: we rely on the fact that `V3` payloads do not include a `WithdrawalsRoot` field, hence
+        // it will always be `null`. For `V4` (Isthmus payloads), the `WithdrawalsRoot` value must always be set, hence it's never `null`.
+        // With this we determine whether to call `engine_newPayloadV3` or `engine_newPayloadV4`.
+        await RetryEngineApi(
+            async () =>
+                payload is OptimismExecutionPayloadV3 optimism && optimism.WithdrawalsRoot is not null
+                    ? await l2EngineRpc.engine_newPayloadV4((OptimismExecutionPayloadV3)payload, [], parentBeaconBlockRoot, payload.ExecutionRequests)
+                    : await l2EngineRpc.engine_newPayloadV3(payload, [], parentBeaconBlockRoot),
             err => $"NewPayload request error: {err}");
 
     private async Task<BlockForRpc?> RetryGetBlock(BlockParameter blockParameter)
@@ -189,7 +196,7 @@ public class L2Api(
         return result.Data;
     }
 
-    private async Task<T> RetryEngineApi<T>(Func<Task<JsonRpc.ResultWrapper<T>>> rpcCall, Func<string?, string> getErrorMessage)
+    private async Task<T> RetryEngineApi<T>(Func<Task<ResultWrapper<T>>> rpcCall, Func<string?, string> getErrorMessage)
     {
         var result = await rpcCall();
         while (result?.Result.ResultType != ResultType.Success)
