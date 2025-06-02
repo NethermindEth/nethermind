@@ -6,7 +6,6 @@ using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -28,7 +27,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
 
     public new static ExecutionPayloadV3 Create(Block block) => Create<ExecutionPayloadV3>(block);
 
-    public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null, IEthereumEcdsa? ecdsa = null)
+    public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
     {
         BlockDecodingResult baseResult = base.TryGetBlock(totalDifficulty);
         Block? block = baseResult.Block;
@@ -41,7 +40,6 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.BlobGasUsed = BlobGasUsed;
         block.Header.ExcessBlobGas = ExcessBlobGas;
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
-        block.InclusionListTransactions = InclusionListTransactions is null ? [] : [.. InclusionListDecoder.Decode(InclusionListTransactions, ecdsa!)];
         return baseResult;
     }
 

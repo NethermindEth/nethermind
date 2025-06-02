@@ -86,6 +86,9 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             if (_api.SpecProvider is null) throw new ArgumentException(nameof(_api.SpecProvider));
             if (_api.ChainSpec is null) throw new ArgumentException(nameof(_api.ChainSpec));
             if (_api.SealValidator is null) throw new ArgumentException(nameof(_api.SealValidator));
+            if (_api.EthereumEcdsa is null) throw new ArgumentException(nameof(_api.EthereumEcdsa));
+            if (_api.TxPool is null) throw new ArgumentException(nameof(_api.TxPool));
+            if (_api.LogManager is null) throw new ArgumentException(nameof(_api.LogManager));
 
             EnsureJsonRpcUrl();
             EnsureReceiptAvailable();
@@ -94,7 +97,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             _poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
             _invalidChainTracker = _api.Context.Resolve<InvalidChainTracker.InvalidChainTracker>();
             _blockFinalizationManager = new ManualBlockFinalizationManager();
-            _inclusionListTxSource = new InclusionListTxSource(_api.SpecProvider.ChainId);
+            _inclusionListTxSource = new InclusionListTxSource(_api.EthereumEcdsa, _api.TxPool, _api.SpecProvider, _api.LogManager);
             if (_txPoolConfig.BlobsSupport.SupportsReorgs())
             {
                 ProcessedTransactionsDbCleaner processedTransactionsDbCleaner = new(_blockFinalizationManager, _api.DbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _api.LogManager);
@@ -347,7 +350,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
                 new GetBlobsHandler(_api.TxPool),
                 new GetInclusionListTransactionsHandler(_api.TxPool),
-                new UpdatePayloadWithInclusionListHandler(payloadPreparationService, _inclusionListTxSource!),
+                new UpdatePayloadWithInclusionListHandler(payloadPreparationService, _inclusionListTxSource!, _api.SpecProvider),
                 new GetBlobsHandlerV2(_api.TxPool),
                 _api.EngineRequestsTracker,
                 _api.SpecProvider,

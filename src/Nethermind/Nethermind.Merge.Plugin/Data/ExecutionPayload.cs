@@ -12,7 +12,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
 using Nethermind.Core.ExecutionRequest;
-using Nethermind.Crypto;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -143,7 +142,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <param name="block">When this method returns, contains the execution block.</param>
     /// <param name="totalDifficulty">A total difficulty of the block.</param>
     /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
-    public virtual BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null, IEthereumEcdsa? ecdsa = null)
+    public virtual BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
     {
         TransactionDecodingResult transactions = TryGetTransactions();
         if (transactions.Error is not null)

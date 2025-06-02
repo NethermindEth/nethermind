@@ -448,6 +448,9 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
     }
 
+    public BlockHeader? GetPayloadHeader(string payloadId)
+        => _payloadStorage.GetValueOrDefault(payloadId)?.Header;
+
     // for testing
     internal PayloadStore? GetPayloadStore(string payloadId)
         => _payloadStorage.GetValueOrDefault(payloadId);

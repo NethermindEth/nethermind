@@ -174,7 +174,7 @@ public abstract partial class BaseEngineModuleTests
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
             new GetBlobsHandler(chain.TxPool),
             new GetInclusionListTransactionsHandler(chain.TxPool),
-            new UpdatePayloadWithInclusionListHandler(chain.PayloadPreparationService!, chain.InclusionListTxSource),
+            new UpdatePayloadWithInclusionListHandler(chain.PayloadPreparationService!, chain.InclusionListTxSource, chain.SpecProvider),
             new GetBlobsHandlerV2(chain.TxPool),
             Substitute.For<IEngineRequestsTracker>(),
             chain.SpecProvider,
@@ -360,7 +360,7 @@ public abstract partial class BaseEngineModuleTests
                 LogManager);
             blockProducerEnvFactory.ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
 
-            InclusionListTxSource = new InclusionListTxSource(SpecProvider.ChainId);
+            InclusionListTxSource = new InclusionListTxSource(EthereumEcdsa, TxPool, SpecProvider, LogManager);
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(InclusionListTxSource);
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;

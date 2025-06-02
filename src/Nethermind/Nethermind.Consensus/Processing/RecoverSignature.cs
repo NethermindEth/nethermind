@@ -39,12 +39,21 @@ namespace Nethermind.Consensus.Processing
 
         public void RecoverData(Block block)
         {
-            Transaction[] txs = block.Transactions;
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+            RecoverData(block.Transactions, spec, true);
+            if (block.InclusionListTransactions is not null)
+            {
+                RecoverData(block.InclusionListTransactions, spec, false);
+            }
+        }
+
+        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool checkFirst)
+        {
             if (txs.Length == 0)
                 return;
 
             Transaction firstTx = txs[0];
-            if (firstTx.IsSigned && firstTx.SenderAddress is not null)
+            if (checkFirst && firstTx.IsSigned && firstTx.SenderAddress is not null)
                 // already recovered a sender for a signed tx in this block,
                 // so we assume the rest of txs in the block are already recovered
                 return;
@@ -114,7 +123,7 @@ namespace Nethermind.Consensus.Processing
             if (recoverFromEcdsa == 0)
                 return;
 
-            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
+            // IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
             bool useSignatureChainId = !releaseSpec.ValidateChainId;
             if (recoverFromEcdsa > 3)
             {

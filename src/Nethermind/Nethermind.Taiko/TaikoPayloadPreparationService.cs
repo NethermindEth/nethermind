@@ -156,5 +156,10 @@ public class TaikoPayloadPreparationService(
         throw new NotImplementedException();
     }
 
+    public BlockHeader? GetPayloadHeader(string payloadId)
+    {
+        throw new NotImplementedException();
+    }
+
     public event EventHandler<BlockEventArgs>? BlockImproved { add { } remove { } }
 }

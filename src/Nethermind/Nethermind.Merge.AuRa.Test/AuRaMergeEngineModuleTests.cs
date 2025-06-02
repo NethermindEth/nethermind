@@ -259,7 +259,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             blockProducerEnvFactory.ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
             this._blockProducerEnvFactory = blockProducerEnvFactory;
 
-            InclusionListTxSource = new InclusionListTxSource(SpecProvider.ChainId);
+            InclusionListTxSource = new InclusionListTxSource(EthereumEcdsa, TxPool, SpecProvider, LogManager);
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(_additionalTxSource.Then(InclusionListTxSource));
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
