@@ -14,10 +14,10 @@ namespace Nethermind.Optimism.Test.CL;
 public class PayloadDecoderTests
 {
     [TestCaseSource(nameof(RealPayloadsTestCases))]
-    public void OpMainnetPayloadsTest((string Data, ExecutionPayloadV3 Payload) testCase)
+    public void OpMainnetPayloadsTest_Ecotone((string Data, ExecutionPayloadV3 Payload) testCase)
     {
         byte[] bytes = Convert.FromBase64String(testCase.Data);
-        ExecutionPayloadV3 decoded = PayloadDecoder.Instance.DecodePayload(bytes);
+        ExecutionPayloadV3 decoded = PayloadDecoder.Instance.DecodePayload(bytes, PayloadVersion.Ecotone);
         ComparePayloads(testCase.Payload, decoded);
     }
 
