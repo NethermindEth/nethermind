@@ -728,8 +728,8 @@ namespace Nethermind.Trie.Test
                     ? No.Pruning
                     : Prune.WhenCacheReaches(dirtyNodeSize);
 
-                return TestTrieStoreFactory.Build(
-                    new MemDb(),
+                return new TrieStore(
+                    new NodeStorage(new MemDb()),
                     pruneStrategy,
                     Persist.EveryNBlock(PersistEveryN),
                     new PruningConfig()

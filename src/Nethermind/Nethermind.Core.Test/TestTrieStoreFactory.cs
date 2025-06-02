@@ -31,9 +31,4 @@ public static class TestTrieStoreFactory
     {
         return new TrieStore(new NodeStorage(keyValueStore), pruningStrategy, persistenceStrategy, _testPruningConfig, logManager);
     }
-
-    public static TrieStore Build(IKeyValueStoreWithBatching keyValueStore, IPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy, IPruningConfig pruningConfig, ILogManager logManager)
-    {
-        return new TrieStore(new NodeStorage(keyValueStore), pruningStrategy, persistenceStrategy, pruningConfig, logManager);
-    }
 }
