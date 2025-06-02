@@ -143,9 +143,16 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
         return Unsafe.As<CappedArraySource>(obj).SequenceEqual(comparand);
     }
 
-    public byte[] ToArray()
+    /// <summary>
+    /// A <see cref="IsNull"/> aware span source. Returns null if the underlying is null or materializes the array.
+    /// </summary>
+    /// <returns></returns>
+    public byte[]? ToArray()
     {
         var obj = _obj;
+        if(obj is null)
+            return null;
+
         if (obj is byte[] array)
         {
             return array;

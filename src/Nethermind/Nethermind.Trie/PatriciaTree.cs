@@ -377,7 +377,7 @@ namespace Nethermind.Trie
                 SpanSource result = Run(ref updatePathTreePath, SpanSource.Empty, nibbles, false, startRootHash: rootHash,
                     isNodeRead: true);
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
-                return result.ToArray();
+                return result.ToArray() ?? [];
             }
             catch (TrieException e)
             {
