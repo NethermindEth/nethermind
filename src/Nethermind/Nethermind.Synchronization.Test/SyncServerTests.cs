@@ -670,6 +670,66 @@ public class SyncServerTests
     }
 
     [Test]
+    public void Broadcast_BlockRangeUpdate_when_latest_increased_enough()
+    {
+        Console.SetOut(TestContext.Out);
+
+        Context ctx = new();
+
+        const int frequency = 32;
+        BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
+
+        ctx.SyncServer = new SyncServer(
+            ctx.WorldStateManager,
+            new MemDb(),
+            localBlockTree,
+            NullReceiptStorage.Instance,
+            Always.Valid,
+            Always.Valid,
+            ctx.PeerPool,
+            StaticSelector.Full,
+            new TestSyncConfig(),
+            Policy.FullGossip,
+            MainnetSpecProvider.Instance,
+            LimboLogs.Instance);
+
+        PeerInfo[] peers = Enumerable.Range(0, 3)
+            .Select(_ => Substitute.For<ISyncPeer>())
+            .Select(p => new PeerInfo(p))
+            .ToArray();
+
+        ctx.PeerPool.AllPeers.Returns(peers);
+        ctx.PeerPool.PeerCount.Returns(peers.Length);
+
+        const int blocksCount = 100;
+        var startBlock = (int)localBlockTree.Head!.Number;
+        localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
+
+        // Block last = localBlockTree.Head!;
+        // for (var i = 0; i < blockCount; i++)
+        // {
+        //     Block block = Build.A.Block.WithParent(last).WithNumber(last.Number + 1).WithTotalDifficulty(last.TotalDifficulty).TestObject;
+        //     ctx.SyncServer.AddNewBlock(block, peers[0].SyncPeer);
+        //     last = block;
+        // }
+
+        var expectedUpdates = Enumerable.Range(0, blocksCount)
+            .Where(x => (x - startBlock - 1) % frequency == 0)
+            .Select(x => new[] { localBlockTree.Genesis!.Number, x })
+            .ToArray();
+
+        foreach (PeerInfo peerInfo in peers)
+        {
+            var receivedCalls = peerInfo.SyncPeer.ReceivedCalls()
+                .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfBlockRangeUpdate))
+                .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
+                .ToArray();
+
+            Assert.That(receivedCalls, Is.EquivalentTo(expectedUpdates));
+        }
+    }
+
+    [Test]
     public void GetNodeData_returns_cached_trie_nodes()
     {
         Context ctx = new();

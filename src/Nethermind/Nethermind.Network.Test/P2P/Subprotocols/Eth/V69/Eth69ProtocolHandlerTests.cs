@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -194,48 +192,24 @@ public class Eth69ProtocolHandlerTests
         action.Should().Throw<SubprotocolException>();
     }
 
-    [TestCase(0, 100, 1)]
-    [TestCase(1, 100, 3)]
-    public void Should_send_BlockRangeUpdate_every_32_blocks(int from, int to, int step)
+    [Test]
+    public void Should_send_BlockRangeUpdate()
     {
-        var sequence = new List<int>((to - from) / step + 1);
-        for (var i = from; i <= to; i += step)
-            sequence.Add(i);
+        var (earliest, latest) = (Build.A.BlockHeader.WithNumber(0).TestObject, Build.A.BlockHeader.WithNumber(42).TestObject);
+        _handler.NotifyOfBlockRangeUpdate(earliest, latest);
 
-        var expected = sequence.Aggregate(new List<int>(), (list, elem) =>
-        {
-            if (list.Count == 0 || elem >= list[^1] + 32)
-                list.Add(elem);
-            return list;
-        });
-
-        _session.ClearReceivedCalls();
-
-        foreach (var blockNum in sequence)
-            _handler.NotifyOfNewBlock(Build.A.Block.WithNumber(blockNum).TestObject, SendBlockMode.HashOnly);
-
-        var received = _session.ReceivedCalls()
-            .Where(c => c.GetMethodInfo().Name == nameof(_session.DeliverMessage))
-            .Where(c => c.GetArguments()[0] is BlockRangeUpdateMessage)
-            .Select(c => (c.GetArguments()[0] as BlockRangeUpdateMessage)?.LatestBlock);
-
-        Assert.That(received, Is.EquivalentTo(expected));
+        _session.Received(1).DeliverMessage(Arg.Is<BlockRangeUpdateMessage>(m =>
+            m.EarliestBlock == earliest.Number && m.LatestBlock == latest.Number && m.LatestBlockHash == latest.Hash)
+        );
     }
 
     [Test]
-    public void Should_not_send_BlockRangeUpdate_on_same_block()
+    public void Should_not_send_invalid_BlockRangeUpdate()
     {
-        const int blockNum = 42;
-        var block = Build.A.Block.WithNumber(blockNum).TestObject;
+        var (earliest, latest) = (Build.A.BlockHeader.WithNumber(42).TestObject, Build.A.BlockHeader.WithNumber(0).TestObject);
 
-        _session.ClearReceivedCalls();
+        Assert.Catch<Exception>(() => _handler.NotifyOfBlockRangeUpdate(earliest, latest));
 
-        _handler.NotifyOfNewBlock(block, SendBlockMode.HashOnly);
-        _session.Received(1).DeliverMessage(Arg.Any<BlockRangeUpdateMessage>());
-
-        _session.ClearReceivedCalls();
-
-        _handler.NotifyOfNewBlock(block, SendBlockMode.HashOnly);
         _session.DidNotReceive().DeliverMessage(Arg.Any<BlockRangeUpdateMessage>());
     }
 

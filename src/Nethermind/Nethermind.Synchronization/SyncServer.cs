@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization
         private BlockHeader? _pivotHeader;
 
         private const int BlockRangeUpdateFrequency = 32;
-        private Tuple<BlockHeader, BlockHeader> _lastBlockRangeUpdate;
+        private (BlockHeader earliest, BlockHeader latest)? _lastBlockRangeUpdate;
 
         public SyncServer(
             IWorldStateManager worldStateManager,
@@ -432,39 +432,29 @@ namespace Nethermind.Synchronization
             if (Genesis is null)
                 return;
 
+            Block latestBlock = latestBlockEventArgs.Block;
+            BlockHeader? latestUpdate = _lastBlockRangeUpdate?.latest;
+
+            // Notify at most once per 32 blocks
+            if (latestUpdate is not null && latestBlock.Number - latestUpdate.Number < BlockRangeUpdateFrequency)
+                return;
+
+            // TODO: use actual earliest available block - once history expiry is implemented
+            _lastBlockRangeUpdate = (Genesis, latestBlock.Header);
+
             Task.Run(() =>
                 {
-                    Block newLatest = latestBlockEventArgs.Block;
-
-                    // Send at most once per 32 blocks
-                    Tuple<BlockHeader, BlockHeader>? prevUpdate = _lastBlockRangeUpdate;
-                    if (prevUpdate?.Item2 is { } prevLatest && newLatest.Number - prevLatest.Number < BlockRangeUpdateFrequency)
-                    {
-                        return;
-                    }
-
                     var counter = 0;
-                    var update = new Tuple<BlockHeader, BlockHeader>(Genesis, newLatest.Header);
-
-                    // Ensure proper update frequency in concurrent environment
-                    if (!Equals(
-                            Interlocked.CompareExchange(ref _lastBlockRangeUpdate, update, prevUpdate),
-                            prevUpdate
-                        ))
-                    {
-                        return;
-                    }
+                    (BlockHeader earliest, BlockHeader latest) = _lastBlockRangeUpdate.Value;
 
                     foreach (PeerInfo peerInfo in _pool.AllPeers)
                     {
-                        NotifyOfBlockRangeUpdate(peerInfo, update.Item1, update.Item2);
+                        NotifyOfBlockRangeUpdate(peerInfo, earliest, latest);
                         counter++;
                     }
 
                     if (counter > 0 && _logger.IsDebug)
-                    {
-                        _logger.Debug($"Broadcasting block {newLatest.ToString(Block.Format.Short)} to {counter} peers.");
-                    }
+                        _logger.Debug($"Broadcasting range update {earliest}-{latest} to {counter} peers.");
                 }
             );
         }
@@ -494,7 +484,6 @@ namespace Nethermind.Synchronization
                 if (_logger.IsError) _logger.Error($"Error while broadcasting block range update: [{earliest.Number}, {latest.Number}, {latest.Hash}] to peer {peerInfo.SyncPeer}.", e);
             }
         }
-
 
         private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockMode.FullBlock);
 
