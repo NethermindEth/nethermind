@@ -57,7 +57,7 @@ public class SurgeGasPriceOracleTests
     [Test]
     public void GetGasPriceEstimate_WhenL1FeeHistoryFails_ReturnsMinGasPrice()
     {
-        Block headBlock = Build.A.Block.WithNumber(1).TestObject;
+        Block headBlock = Build.A.Block.WithNumber(1).WithGasUsed(1000000).TestObject;
         _blockFinder.Head.Returns(headBlock);
         _l1RpcClient.Post<L1FeeHistoryResults?>(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<BlockParameter>(), Arg.Any<object>())
             .Returns(Task.FromResult<L1FeeHistoryResults?>(null));
@@ -70,7 +70,7 @@ public class SurgeGasPriceOracleTests
     [Test]
     public void GetGasPriceEstimate_WithEmptyFeeHistory_ReturnsMinGasPrice()
     {
-        Block headBlock = Build.A.Block.WithNumber(1).TestObject;
+        Block headBlock = Build.A.Block.WithNumber(1).WithGasUsed(1000000).TestObject;
         _blockFinder.Head.Returns(headBlock);
 
         var feeHistory = new L1FeeHistoryResults
@@ -90,7 +90,7 @@ public class SurgeGasPriceOracleTests
     [Test]
     public void GetGasPriceEstimate_WithValidL1FeeHistory_CalculatesCorrectGasPrice()
     {
-        Block headBlock = Build.A.Block.WithNumber(1).TestObject;
+        Block headBlock = Build.A.Block.WithNumber(1).WithGasUsed(1000000).TestObject;
         _blockFinder.Head.Returns(headBlock);
 
         // Dummy Ethereum L1 fee history
@@ -119,9 +119,38 @@ public class SurgeGasPriceOracleTests
     }
 
     [Test]
+    public void GetGasPriceEstimate_WithZeroGasUsed_ReturnsMinGasPrice()
+    {
+        Block headBlock = Build.A.Block.WithNumber(1).WithGasUsed(0).TestObject;
+        _blockFinder.Head.Returns(headBlock);
+
+        var feeHistory = new L1FeeHistoryResults
+        {
+            BaseFeePerGas =
+            [
+                UInt256.Parse("15000000000"),
+                UInt256.Parse("25000000000"),
+                UInt256.Parse("35000000000")
+            ],
+            BaseFeePerBlobGas =
+            [
+                UInt256.Parse("1000000000"),
+                UInt256.Parse("1500000000")
+            ]
+        };
+
+        _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", 200, BlockParameter.Latest, null)
+            .Returns(Task.FromResult<L1FeeHistoryResults?>(feeHistory));
+
+        UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
+
+        Assert.That(gasPrice, Is.EqualTo(MinGasPrice));
+    }
+
+    [Test]
     public void GetGasPriceEstimate_WithCachedPrice_ReturnsCachedPrice()
     {
-        Block headBlock = Build.A.Block.WithNumber(1).TestObject;
+        Block headBlock = Build.A.Block.WithNumber(1).WithGasUsed(1000000).TestObject;
         _blockFinder.Head.Returns(headBlock);
 
         var feeHistory = new L1FeeHistoryResults

@@ -20,6 +20,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
 {
     private readonly IJsonRpcClient _l1RpcClient;
     private readonly ISurgeConfig _surgeConfig;
+    private readonly GasUsageRingBuffer _gasUsageBuffer;
 
     private const int BlobSize = 128 * 1024;
 
@@ -33,6 +34,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
     {
         _l1RpcClient = l1RpcClient;
         _surgeConfig = surgeConfig;
+        _gasUsageBuffer = new GasUsageRingBuffer(_surgeConfig.L2GasUsageWindowSize);
     }
 
     private UInt256 FallbackGasPrice() => _gasPriceEstimation.LastPrice ?? _minGasPrice;
@@ -54,7 +56,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
         }
 
         // Get the fee history from the L1 client with RPC
-        var feeHistory = GetL1FeeHistory().GetAwaiter().GetResult();
+        L1FeeHistoryResults? feeHistory = GetL1FeeHistory().GetAwaiter().GetResult();
         if (feeHistory == null || feeHistory.BaseFeePerGas.Length == 0)
         {
             if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Failed to get fee history, using fallback gas price");
@@ -73,11 +75,22 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         UInt256 proofPostingCost = _surgeConfig.ProofPostingGas * UInt256.Max(l1BaseFee, l1AverageBaseFee);
 
-        UInt256 gasPriceEstimate = (minProposingCost + proofPostingCost + _surgeConfig.ProvingCostPerL2Batch) / _surgeConfig.L2GasPerL2Batch;
+        // Record the current block's gas usage and compute the average
+        _gasUsageBuffer.Add((ulong)headBlock.GasUsed);
+        UInt256 averageGasUsage = _gasUsageBuffer.Average;
+
+        if (averageGasUsage == UInt256.Zero)
+        {
+            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Average gas usage is zero, using fallback gas price");
+            return FallbackGasPrice();
+        }
+
+        UInt256 gasPriceEstimate = (minProposingCost + proofPostingCost + _surgeConfig.ProvingCostPerL2Batch) / averageGasUsage;
         _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
 
         if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Calculated new gas price estimate: {gasPriceEstimate}, " +
-            $"L1 Base Fee: {l1BaseFee}, L1 Blob Base Fee: {l1BlobBaseFee}, L1 Average Base Fee: {l1AverageBaseFee}");
+            $"L1 Base Fee: {l1BaseFee}, L1 Blob Base Fee: {l1BlobBaseFee}, L1 Average Base Fee: {l1AverageBaseFee}, " +
+            $"Average Gas Usage: {averageGasUsage}");
 
         return gasPriceEstimate;
     }
@@ -92,6 +105,45 @@ public class SurgeGasPriceOracle : GasPriceOracle
         {
             if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Failed to get fee history: {ex.Message}");
             return null;
+        }
+    }
+
+    /// <summary>
+    /// A fixed-size ring buffer for tracking gas usage and computing moving averages.
+    /// </summary>
+    private sealed class GasUsageRingBuffer
+    {
+        private readonly UInt256[] _buffer;
+        private int _index;
+        private int _count;
+        private UInt256 _total;
+
+        public int Count => _count;
+        public UInt256 Average => _count == 0 ? UInt256.Zero : _total / (ulong)_count;
+
+        public GasUsageRingBuffer(int capacity)
+        {
+            _buffer = new UInt256[capacity];
+            _index = 0;
+            _count = 0;
+            _total = UInt256.Zero;
+        }
+
+        public void Add(ulong gasUsed)
+        {
+            // If the buffer is full, remove the oldest value
+            if (_count == _buffer.Length)
+            {
+                _total -= _buffer[_index];
+            }
+            else
+            {
+                _count++;
+            }
+
+            _buffer[_index] = (UInt256)gasUsed;
+            _total += _buffer[_index];
+            _index = (_index + 1) % _buffer.Length;
         }
     }
 }

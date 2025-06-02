@@ -27,4 +27,7 @@ public interface ISurgeConfig : IConfig
 
     [ConfigItem(Description = "Number of blocks to consider for computing the L1 average base fee.", DefaultValue = "200")]
     int FeeHistoryBlockCount { get; set; }
+
+    [ConfigItem(Description = "Number of recent L2 batches to consider for computing the moving average of gas usage.", DefaultValue = "20")]
+    int L2GasUsageWindowSize { get; set; }
 }

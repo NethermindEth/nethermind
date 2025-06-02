@@ -12,4 +12,5 @@ public class SurgeConfig : ISurgeConfig
     public ulong BatchPostingGasWithCallData { get; set; } = 260_000;
     public ulong ProofPostingGas { get; set; } = 750_000;
     public int FeeHistoryBlockCount { get; set; } = 200;
+    public int L2GasUsageWindowSize { get; set; } = 20;
 }
