@@ -24,7 +24,7 @@ public class InclusionListTxSource(
 
     public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec)
     {
-        _inclusionListTransactions = _inclusionListDecoder.Decode(inclusionListTransactions, spec);
+        _inclusionListTransactions = _inclusionListDecoder.DecodeAndRecover(inclusionListTransactions, spec);
     }
 
     public bool SupportsBlobs => false;

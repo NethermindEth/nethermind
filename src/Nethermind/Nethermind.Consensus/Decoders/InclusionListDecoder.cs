@@ -20,15 +20,17 @@ public class InclusionListDecoder(
     private readonly RecoverSignatures _recoverSignatures = new(ecdsa, txPool, specProvider, logManager);
 
 
-    public IEnumerable<Transaction> Decode(byte[][] txBytes, IReleaseSpec spec)
-    {
-        Transaction[] txs = txBytes
+    public static IEnumerable<Transaction> Decode(byte[][] txBytes)
+        => txBytes
             .AsParallel()
-            .Select((txBytes) => TxDecoder.Instance.Decode(txBytes, RlpBehaviors.SkipTypedWrapping))
-            .ToArray();
+            .Select((txBytes) => TxDecoder.Instance.Decode(txBytes, RlpBehaviors.SkipTypedWrapping));
 
-        _recoverSignatures.RecoverData(txs, spec, false);
-        return txs;
+
+    public IEnumerable<Transaction> DecodeAndRecover(byte[][] txBytes, IReleaseSpec spec)
+    {
+        Transaction[] transactions = [.. Decode(txBytes)];
+        _recoverSignatures.RecoverData(transactions, spec, false);
+        return transactions;
     }
 
     public static byte[] Encode(Transaction transaction)
