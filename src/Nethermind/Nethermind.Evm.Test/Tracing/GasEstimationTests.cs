@@ -387,9 +387,8 @@ namespace Nethermind.Evm.Test.Tracing
             public TestEnvironment()
             {
                 _specProvider = MainnetSpecProvider.Instance;
-                MemDb stateDb = new();
-                TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
-                _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+                IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+                _stateProvider = worldStateManager.GlobalWorldState;
                 _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);

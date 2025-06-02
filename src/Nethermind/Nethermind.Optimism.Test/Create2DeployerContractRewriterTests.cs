@@ -21,23 +21,31 @@ internal class Create2DeployerContractRewriterTests
     public void Test_Create2DeployerContractRewriter_Ensures_Preinstallation()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(2).TestObject;
-        BlockHeader canyonHeader = blockTree.FindHeader(1, BlockTreeLookupOptions.None)!;
+        BlockHeader? canyonHeader = blockTree.FindHeader(1, BlockTreeLookupOptions.None);
+        Assert.That(canyonHeader, Is.Not.Null, "Canyon header should not be null");
 
+        // Use a default timestamp if canyonHeader is null (which shouldn't happen due to the assertion)
+        ulong canyonTimestamp = canyonHeader != null ? canyonHeader.Timestamp : 0;
+        
         OptimismSpecHelper specHelper = new(new OptimismChainSpecEngineParameters
         {
-            CanyonTimestamp = canyonHeader.Timestamp,
+            CanyonTimestamp = canyonTimestamp,
         });
 
-        MemDb stateDb = new();
-        MemDb codeDb = new();
-        TrieStore ts = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
-        WorldState ws = new(ts, codeDb, LimboLogs.Instance);
+        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        IWorldState ws = worldStateManager.GlobalWorldState;
 
         Create2DeployerContractRewriter rewriter = new(specHelper, new TestSingleReleaseSpecProvider(Cancun.Instance), blockTree);
 
-        rewriter.RewriteContract(blockTree.FindHeader(1, BlockTreeLookupOptions.None)!, ws);
+        BlockHeader? header = blockTree.FindHeader(1, BlockTreeLookupOptions.None);
+        Assert.That(header, Is.Not.Null, "Header should not be null");
+        if (header != null)
+        {
+            rewriter.RewriteContract(header, ws);
+        }
 
-        byte[] setCode = ws.GetCode(PreInstalls.Create2Deployer);
-        Assert.That(setCode, Is.Not.Empty);
+        byte[]? setCode = ws.GetCode(PreInstalls.Create2Deployer);
+        Assert.That(setCode, Is.Not.Null, "Code should not be null");
+        Assert.That(setCode, Is.Not.Empty, "Code should not be empty");
     }
 }

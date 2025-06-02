@@ -879,7 +879,8 @@ public class ProofRpcModuleTests
 
     private WorldState CreateInitialState(byte[]? code)
     {
-        WorldState stateProvider = new(TestTrieStoreFactory.Build(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
+        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(_dbProvider, LimboLogs.Instance);
+        IWorldState stateProvider = worldStateManager.GlobalWorldState;
         AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
         AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 
@@ -895,16 +896,16 @@ public class ProofRpcModuleTests
 
         stateProvider.CommitTree(0);
 
-        return stateProvider;
+        return (WorldState)stateProvider;
     }
 
-    private void AddAccount(WorldState stateProvider, Address account, UInt256 initialBalance)
+    private void AddAccount(IWorldState stateProvider, Address account, UInt256 initialBalance)
     {
         stateProvider.CreateAccount(account, initialBalance);
         stateProvider.Commit(MuirGlacier.Instance, NullStateTracer.Instance);
     }
 
-    private void AddCode(WorldState stateProvider, Address account, byte[] code)
+    private void AddCode(IWorldState stateProvider, Address account, byte[] code)
     {
         stateProvider.InsertCode(account, code, MuirGlacier.Instance);
         stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);

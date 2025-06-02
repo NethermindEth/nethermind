@@ -611,10 +611,10 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Trie_store_multi_threaded_scenario()
         {
-            using TrieStore trieStore = TestTrieStoreFactory.Build(new BadDb(), _logManager);
-            StateTree tree = new(trieStore, _logManager);
-            tree.Set(TestItem.AddressA, Build.A.Account.WithBalance(1000).TestObject);
-            tree.Set(TestItem.AddressB, Build.A.Account.WithBalance(1000).TestObject);
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            IWorldState worldState = worldStateManager.GlobalWorldState;
+            worldState.CreateAccount(TestItem.AddressA, 1000);
+            worldState.CreateAccount(TestItem.AddressB, 1000);
         }
 
         [Test]
@@ -905,21 +905,22 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void After_commit_should_have_has_root()
         {
-            MemDb db = new();
-            TrieStore trieStore = TestTrieStoreFactory.Build(db, LimboLogs.Instance);
-            trieStore.HasRoot(Keccak.EmptyTreeHash).Should().BeTrue();
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            IWorldState worldState = worldStateManager.GlobalWorldState;
+            worldState.StateRoot.Should().Be(Keccak.EmptyTreeHash);
 
-            Account account = new(1);
-            StateTree stateTree = new(trieStore, LimboLogs.Instance);
-            stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit();
-            trieStore.HasRoot(stateTree.RootHash).Should().BeTrue();
+            worldState.CreateAccount(TestItem.AddressA, 1);
+            worldState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
+            worldState.CommitTree(0);
+            Hash256 stateRoot1 = worldState.StateRoot;
 
-            stateTree.Get(TestItem.AddressA);
-            account = account.WithChangedBalance(2);
-            stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit();
-            trieStore.HasRoot(stateTree.RootHash).Should().BeTrue();
+            worldState.AddToBalance(TestItem.AddressA, 2, MainnetSpecProvider.Instance.GenesisSpec);
+            worldState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
+            worldState.CommitTree(1);
+            Hash256 stateRoot2 = worldState.StateRoot;
+
+            stateRoot1.Should().NotBe(Keccak.EmptyTreeHash);
+            stateRoot2.Should().NotBe(stateRoot1);
         }
 
         [Test]
@@ -1098,10 +1099,8 @@ namespace Nethermind.Trie.Test.Pruning
                     TrackPastKeys = true
                 });
 
-            WorldState worldState = new WorldState(
-                fullTrieStore,
-                memDbProvider.CodeDb,
-                LimboLogs.Instance);
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(memDbProvider, LimboLogs.Instance);
+            IWorldState worldState = worldStateManager.GlobalWorldState;
 
             // Simulate some kind of cache access which causes unresolved node to remain.
             IScopedTrieStore storageTrieStore = fullTrieStore.GetTrieStore(address);
@@ -1119,7 +1118,8 @@ namespace Nethermind.Trie.Test.Pruning
 
             (Hash256, ValueHash256) SetupStartingState()
             {
-                WorldState worldState = new WorldState(TestTrieStoreFactory.Build(nodeStorage, LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
+                WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(memDbProvider, LimboLogs.Instance);
+                IWorldState worldState = worldStateManager.GlobalWorldState;
                 worldState.StateRoot = Keccak.EmptyTreeHash;
                 worldState.CreateAccountIfNotExists(address, UInt256.One);
                 worldState.Set(new StorageCell(address, slot), TestItem.KeccakB.BytesToArray());

@@ -13,15 +13,16 @@ public static class TestTrieStoreFactory
 {
     private static IPruningConfig _testPruningConfig = new PruningConfig()
     {
-        Mode = PruningMode.Full
+        Mode = PruningMode.Full,
+        DirtyNodeShardBit = 1,
     };
 
-    public static TrieStore Build(INodeStorage nodeStorage, ILogManager logManager)
+    public static TestRawTrieStore Build(INodeStorage nodeStorage, ILogManager logManager)
     {
-        return new TrieStore(nodeStorage, No.Pruning, Persist.EveryBlock, _testPruningConfig, logManager);
+        return new TestRawTrieStore(nodeStorage);
     }
 
-    public static TrieStore Build(IKeyValueStoreWithBatching keyValueStore, ILogManager logManager)
+    public static TestRawTrieStore Build(IKeyValueStoreWithBatching keyValueStore, ILogManager logManager)
     {
         return Build(new NodeStorage(keyValueStore), logManager);
     }
