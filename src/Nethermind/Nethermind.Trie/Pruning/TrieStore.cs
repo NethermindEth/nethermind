@@ -495,7 +495,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             long memoryUsedByDirtyCache = DirtyMemoryUsedByDirtyCache;
             SaveSnapshot();
 
-            PruneCache(dontRemoveNodes: !_deleteOldNodes);
+            // Full pruning may set delete obsolete keys to false
+            PruneCache(dontRemoveNodes: !_pruningStrategy.DeleteObsoleteKeys);
 
             TimeSpan sw = Stopwatch.GetElapsedTime(start);
             long ms = (long)sw.TotalMilliseconds;
@@ -523,12 +524,22 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             // Its disabled
             _pastKeyTrackingEnabled &&
             // Full pruning need to visit all node, so can't delete anything.
-            !_persistenceStrategy.IsFullPruning &&
             (_deleteOldNodes
                 // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
                 ? candidateSets.Count == 1
                 // For archice node, it is safe to remove canon key from cache as it will just get re-loaded.
                 : true);
+
+        if (shouldTrackPastKey)
+        {
+            for (int i = 0; i < _shardedDirtyNodeCount; i++)
+            {
+                if (!_persistedHashes[i].IsEmpty)
+                {
+                    _logger.Error($"Shard {i} is not empty and contain {_persistedHashes[i].Count} item");
+                }
+            }
+        }
 
         Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder = shouldTrackPastKey ? _persistedNodeRecorder : null;
 
@@ -878,7 +889,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
 
             using ArrayPoolList<Task> persistNodeStartingFromTasks = parallelStartNodes.Select(
-                entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, persistedNodeRecorder, writeFlags, disposeQueue)))
+                    entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, persistedNodeRecorder, writeFlags, disposeQueue)))
                 .ToPooledList(parallelStartNodes.Count);
 
             Task.WaitAll(persistNodeStartingFromTasks.AsSpan());
@@ -1032,8 +1043,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         lock (_dirtyNodesLock)
         {
-            int commitSetCount = 0;
             long start = Stopwatch.GetTimestamp();
+            int commitSetCount = 0;
             // We persist all sealed Commitset causing PruneCache to almost completely clear the cache. Any new block that
             // need existing node will have to read back from db causing copy-on-read mechanism to copy the node.
             ConcurrentQueue<BlockCommitSet> commitSetQueue = _commitSetQueue;

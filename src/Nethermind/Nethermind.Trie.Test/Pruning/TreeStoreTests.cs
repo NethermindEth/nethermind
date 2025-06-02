@@ -1001,44 +1001,6 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public Task Will_Not_RemovePastKeys_OnSnapshot_DuringFullPruning()
-        {
-            MemDb memDb = new();
-
-            IPersistenceStrategy isPruningPersistenceStrategy = Substitute.For<IPersistenceStrategy>();
-            isPruningPersistenceStrategy.IsFullPruning.Returns(true);
-
-            using TrieStore fullTrieStore = CreateTrieStore(
-                kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true),
-                persistenceStrategy: isPruningPersistenceStrategy,
-                pruningConfig: new PruningConfig()
-                {
-                    TrackPastKeys = true,
-                    PruningBoundary = 3
-                });
-
-            TreePath emptyPath = TreePath.Empty;
-
-            for (int i = 0; i < 64; i++)
-            {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
-                using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
-                {
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
-                }
-
-                // Pruning is done in background
-                fullTrieStore.WaitForPruning();
-            }
-
-            memDb.Count.Should().Be(61);
-            fullTrieStore.Prune();
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 880 : 1088);
-            return Task.CompletedTask;
-        }
-
-        [Test]
         public async Task Will_NotRemove_ReCommittedNode()
         {
             MemDb memDb = new();

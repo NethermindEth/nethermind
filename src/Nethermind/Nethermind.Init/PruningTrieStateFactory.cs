@@ -110,7 +110,8 @@ public class PruningTrieStateFactory(
             mainNodeStorage,
             nodeStorageFactory,
             trieStore,
-            compositePruningTrigger
+            compositePruningTrigger,
+            preBlockCaches
         );
 
         var verifyTrieStarter = new VerifyTrieStarter(stateManager, processExit!, logManager);
@@ -156,13 +157,13 @@ public class PruningTrieStateFactory(
         }
     }
 
-    private void InitializeFullPruning(
-        IDb stateDb,
+    private void InitializeFullPruning(IDb stateDb,
         IStateReader stateReader,
         INodeStorage mainNodeStorage,
         INodeStorageFactory nodeStorageFactory,
         IPruningTrieStore trieStore,
-        CompositePruningTrigger compositePruningTrigger)
+        CompositePruningTrigger compositePruningTrigger,
+        PreBlockCaches? preBlockCaches)
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
@@ -262,9 +263,9 @@ public class MainPruningTrieStoreFactory
 
         if (stateDb is IFullPruningDb fullPruningDb)
         {
-            PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(fullPruningDb, blockTree!, logManager);
-            disposeStack.Push(triggerPersistenceStrategy);
-            persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
+            // PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(fullPruningDb, logManager);
+            // disposeStack.Push(triggerPersistenceStrategy);
+            // persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
             pruningStrategy = new PruningTriggerPruningStrategy(fullPruningDb, pruningStrategy);
         }
 

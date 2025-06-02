@@ -34,19 +34,22 @@ public class PruningTriggerPruningStrategy : IPruningStrategy, IDisposable
         Interlocked.CompareExchange(ref _inPruning, 0, 1);
     }
 
-    public bool DeleteObsoleteKeys => _basePruningStrategy.DeleteObsoleteKeys;
+    public bool DeleteObsoleteKeys
+    {
+        get
+        {
+            bool inPruning = _inPruning != 0;
+            return !inPruning && _basePruningStrategy.DeleteObsoleteKeys;
+        }
+    }
 
     public bool ShouldPruneDirtyNode(TrieStoreState state)
     {
         bool inPruning = _inPruning != 0;
         if (inPruning)
         {
-            // `ShouldPersist` in `PruningTriggerPersistenceStrategy` would cause all block to be persisted which is
-            // good, but we also need to trigger snapshot also, which normally only happens quite rarely.
-            if (state.LatestCommittedBlock % 8 == 0)
-            {
-                return true;
-            }
+            // Make it take snapshot regularly as full pruning need the best persisted state to change.
+            if (state.LatestCommittedBlock - state.LastPersistedBlock > 32) return true;
         }
         return _basePruningStrategy.ShouldPruneDirtyNode(state);
     }
