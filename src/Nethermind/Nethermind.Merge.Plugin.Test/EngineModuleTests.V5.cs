@@ -305,22 +305,14 @@ public partial class EngineModuleTests
         };
 
         string payloadId = payloadPreparationService.StartPreparingPayload(parentHeader, payloadAttributes)!;
-        var payloadStore = payloadPreparationService.GetPayloadStore(payloadId);
+        uint? buildCount = payloadPreparationService.GetPayloadBuildCount(payloadId);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(payloadStore, Is.Not.Null, "Initial payload context should not be null");
-            Assert.That(payloadStore!.BuildCount, Is.EqualTo(1));
-        }
+        Assert.That(buildCount, Is.EqualTo(1));
 
         payloadPreparationService.ForceRebuildPayload(payloadId);
-        payloadStore = payloadPreparationService.GetPayloadStore(payloadId);
+        buildCount = payloadPreparationService.GetPayloadBuildCount(payloadId);
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(payloadStore, Is.Not.Null, "Should be able to get the payload after rebuilding");
-            Assert.That(payloadStore!.BuildCount, Is.EqualTo(2), "Block improvement should be triggered after forcing rebuild");
-        });
+        Assert.That(buildCount, Is.EqualTo(2));
     }
 
     private string?[] InitForkchoiceParams(MergeTestBlockchain chain, byte[][] inclusionListTransactions, Withdrawal[]? withdrawals = null)

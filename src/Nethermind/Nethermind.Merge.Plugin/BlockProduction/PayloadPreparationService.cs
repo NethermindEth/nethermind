@@ -122,7 +122,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         => _payloadStorage.AddOrUpdate(payloadId,
             id =>
             {
-                // CancellationTokenSource cancellationTokenSource = new();
                 PayloadStore store = new()
                 {
                     Id = id,
@@ -134,7 +133,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     CurrentBestBlockFees = currentBlockFees,
                     BuildCount = 1,
                     CancellationTokenSource = cts
-                    // CancellationTokenSource = cancellationTokenSource
                 };
                 return store;
             },
@@ -452,8 +450,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         => _payloadStorage.GetValueOrDefault(payloadId)?.Header;
 
     // for testing
-    internal PayloadStore? GetPayloadStore(string payloadId)
-        => _payloadStorage.GetValueOrDefault(payloadId);
+    internal uint? GetPayloadBuildCount(string payloadId)
+        => _payloadStorage.GetValueOrDefault(payloadId)?.BuildCount;
 
     protected internal class PayloadStore : IEquatable<PayloadStore>
     {
