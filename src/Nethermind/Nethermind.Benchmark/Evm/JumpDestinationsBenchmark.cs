@@ -50,17 +50,17 @@ public class JumpDestinationsBenchmark
     private long[] _bitmap;
 
     [Params(
-        //x0000_48KiB,
-        //x5b00_48KiB,
-        //x005b_256KiB,
-        //x5b5b_512KiB,
-        //x6500_48KiB,
-        //x6060_48KiB,
-        //x5b71_48KiB,
-        //x7f5b_256KiB,
-        //x5b7f_512KiB,
-        //SmallContract,
-        //MediumContract,
+        x0000_48KiB,
+        x5b00_48KiB,
+        x005b_256KiB,
+        x5b5b_512KiB,
+        x6500_48KiB,
+        x6060_48KiB,
+        x5b71_48KiB,
+        x7f5b_256KiB,
+        x5b7f_512KiB,
+        SmallContract,
+        MediumContract,
         UniSwapV4
     )]
     public string Scenario { get; set; }
