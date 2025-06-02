@@ -35,6 +35,13 @@ using static System.Runtime.CompilerServices.Unsafe;
 using System.Reflection.Emit;
 using System.IO;
 using System.Runtime.Loader;
+using System.Net.Http;
+using System.Text.Json;
+using System.Text;
+using System.Threading.Tasks;
+using System.Net;
+using Microsoft.AspNetCore.Mvc.ApplicationParts;
+using Org.BouncyCastle.Asn1.X509;
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
     internal class TestBlockChain : VirtualMachineTestsBase
@@ -2116,6 +2123,99 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var attributes = iledCode.Method.DeclaringType.GetCustomAttributes(typeof(NethermindPrecompileAttribute), false);
 
             Assert.That(attributes.Length, Is.EqualTo(1), "ILVM AOT code does not have NethermindPrecompileAttribute");
+        }
+
+        // just examples
+        // fill in the addresses here and the Playground test will fetch and compile and bundle all of them in one DLL
+        // we can modify the config in the test to control bundle sizes 
+        public static IEnumerable<string> GetTargetAddress()
+        {
+            yield return "0xBB9bc244D798123fDe783fCc1C72d3Bb8C189413";
+            yield return "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2";
+            yield return "0x43506849d7c04f9138d1a2050bbf3a0c054402dd";
+            yield return "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
+            yield return "0xdac17f958d2ee523a2206206994597c13d831ec7";
+            yield return "0x5418226af9c8d5d287a78fbbbcd337b86ec07d61";
+            yield return "0x000000000004444c5dc75cb358380d2e3de08a90";
+        }
+
+
+        [Test]
+        public async Task ILVM_PLAYGROUND()
+        {
+            string[] targets = GetTargetAddress().ToArray();
+
+            String path = Path.Combine(Directory.GetCurrentDirectory(), "GeneratedContractsTests");
+            if (!Directory.Exists(path))
+            {
+                Directory.CreateDirectory(path);
+            }
+
+            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            {
+                IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
+                IlEvmAnalysisThreshold = 1,
+                IlEvmAnalysisQueueMaxSize = 1,
+                IlEvmContractsPerDllCount = GetTargetAddress().Count(),
+                IsIlEvmAggressiveModeEnabled = true,
+                IlEvmPersistPrecompiledContractsOnDisk = true,
+                IlEvmPrecompiledContractsPath = path,
+            }, Prague.Instance);
+
+
+            string fileName = Precompiler.GetTargetFileName();
+            var assemblyPath = Path.Combine(path, fileName);
+
+            foreach (var target in targets)
+            {
+                Address.TryParse(target, out Address targetAddress);
+
+                var rpcUrl = "[rpc endpoint]"; // or your own node
+                var address = target;
+
+                var requestBody = new
+                {
+                    jsonrpc = "2.0",
+                    method = "eth_getCode",
+                    @params = new[] { address, "latest" },
+                    id = 1
+                };
+
+                var json = JsonSerializer.Serialize(requestBody);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                using var httpClient = new HttpClient();
+                var response = await httpClient.PostAsync(rpcUrl, content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                if(response.StatusCode is HttpStatusCode.OK)
+                {
+                    using var doc = JsonDocument.Parse(responseContent);
+                    var code = doc.RootElement.GetProperty("result").GetString();
+
+                    byte[] bytecode = Bytes.FromHexString(code);
+                    var addressFromCode = enhancedChain.InsertCode(bytecode);
+
+                    enhancedChain.ForceRunAnalysis(addressFromCode, ILMode.FULL_AOT_MODE);
+                }
+            }
+
+
+            Assembly assembly = Assembly.LoadFile(assemblyPath);
+
+            var emittedTypes = assembly
+                .GetTypes()
+                .Where(type => type.CustomAttributes.Any(attr => attr.AttributeType == typeof(NethermindPrecompileAttribute)));
+
+            Assert.That(emittedTypes.Count(), Is.EqualTo(targets.Length), fileName);
+
+            foreach (var type in emittedTypes)
+            {
+                var method = type.GetMethod(nameof(ILExecutionStep));
+                Assert.That(method, Is.Not.Null, $"Method {nameof(ILExecutionStep)} should be present in the precompiled contract {type.Name}");
+                var attributes = type.GetCustomAttributes(typeof(NethermindPrecompileAttribute), false);
+                Assert.That(attributes.Length, Is.EqualTo(1), $"Type {type.Name} should have exactly one NethermindPrecompileAttribute");
+            }
         }
     }
 }
