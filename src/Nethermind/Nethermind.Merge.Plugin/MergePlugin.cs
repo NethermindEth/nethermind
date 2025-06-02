@@ -239,7 +239,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             }
             else
             {
-                // TODO: use Debug level
                 if (_logger.IsDebug) _logger.Debug("Delayed adding eth/69 capability until terminal block reached");
                 _poSSwitcher.TerminalBlockReached += (_, _) => AddEth69();
             }
