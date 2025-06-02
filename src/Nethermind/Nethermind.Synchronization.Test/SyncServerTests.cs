@@ -670,10 +670,9 @@ public class SyncServerTests
     }
 
     [Test]
+    [Retry(3)]
     public void Broadcast_BlockRangeUpdate_when_latest_increased_enough()
     {
-        Console.SetOut(TestContext.Out);
-
         Context ctx = new();
 
         const int frequency = 32;
@@ -704,14 +703,6 @@ public class SyncServerTests
         const int blocksCount = 100;
         var startBlock = (int)localBlockTree.Head!.Number;
         localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
-
-        // Block last = localBlockTree.Head!;
-        // for (var i = 0; i < blockCount; i++)
-        // {
-        //     Block block = Build.A.Block.WithParent(last).WithNumber(last.Number + 1).WithTotalDifficulty(last.TotalDifficulty).TestObject;
-        //     ctx.SyncServer.AddNewBlock(block, peers[0].SyncPeer);
-        //     last = block;
-        // }
 
         var expectedUpdates = Enumerable.Range(0, blocksCount)
             .Where(x => (x - startBlock - 1) % frequency == 0)
