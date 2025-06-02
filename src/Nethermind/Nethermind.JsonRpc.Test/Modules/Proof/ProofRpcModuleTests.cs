@@ -246,7 +246,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call()
     {
-        WorldState stateProvider = CreateInitialState(null);
+        IWorldState stateProvider = CreateInitialState(null);
 
         Hash256 root = stateProvider.StateRoot;
         Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).TestObject;
@@ -270,7 +270,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_by_hash()
     {
-        WorldState stateProvider = CreateInitialState(null);
+        IWorldState stateProvider = CreateInitialState(null);
 
         Hash256 root = stateProvider.StateRoot;
         Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).TestObject;
@@ -770,7 +770,7 @@ public class ProofRpcModuleTests
 
     private async Task<CallResultWithProof> TestCallWithCode(byte[] code, Address? from = null)
     {
-        WorldState stateProvider = CreateInitialState(code);
+        IWorldState stateProvider = CreateInitialState(code);
 
         Hash256 root = stateProvider.StateRoot;
         Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
@@ -807,7 +807,7 @@ public class ProofRpcModuleTests
 
     private async Task TestCallWithStorageAndCode(byte[] code, UInt256 gasPrice, Address? from = null)
     {
-        WorldState stateProvider = CreateInitialState(code);
+        IWorldState stateProvider = CreateInitialState(code);
 
         for (int i = 0; i < 10000; i++)
         {
@@ -877,7 +877,7 @@ public class ProofRpcModuleTests
         Assert.That(response.Contains("\"result\""), Is.True);
     }
 
-    private WorldState CreateInitialState(byte[]? code)
+    private IWorldState CreateInitialState(byte[]? code)
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(_dbProvider, LimboLogs.Instance);
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
@@ -896,7 +896,7 @@ public class ProofRpcModuleTests
 
         stateProvider.CommitTree(0);
 
-        return (WorldState)stateProvider;
+        return stateProvider;
     }
 
     private void AddAccount(IWorldState stateProvider, Address account, UInt256 initialBalance)
