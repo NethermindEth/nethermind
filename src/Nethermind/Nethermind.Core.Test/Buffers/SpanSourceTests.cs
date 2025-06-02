@@ -18,6 +18,7 @@ public class SpanSourceTests
         source.IsNull.Should().Be(true);
         source.IsNotNull.Should().Be(false);
         source.IsNotNullOrEmpty.Should().Be(false);
+        source.Span.IsEmpty.Should().Be(true, "Should follow semantics of ((byte[])null).AsSpan()");
     }
 
     [Test]
@@ -28,6 +29,7 @@ public class SpanSourceTests
         source.IsNull.Should().Be(false);
         source.IsNotNull.Should().Be(true);
         source.IsNotNullOrEmpty.Should().Be(false);
+        source.Span.IsEmpty.Should().Be(true);
     }
 
     [Test]

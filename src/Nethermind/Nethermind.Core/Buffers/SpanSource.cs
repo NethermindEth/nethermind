@@ -101,6 +101,10 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
         get
         {
             var obj = _obj;
+
+            if (obj is null)
+                return Span<byte>.Empty;
+
             if (obj is byte[] array)
                 return array.AsSpan();
 
