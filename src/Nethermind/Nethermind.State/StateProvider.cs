@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
@@ -42,6 +43,7 @@ namespace Nethermind.State
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
         private readonly IKeyValueStoreWithBatching _codeDb;
+        private readonly Func<IWriteBatch> _startCodeWriteBatch;
         private Dictionary<Hash256AsKey, byte[]> _codeBatch;
         private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
 
@@ -62,6 +64,7 @@ namespace Nethermind.State
             _populatePreBlockCache = populatePreBlockCache;
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+            _startCodeWriteBatch = _codeDb is IAsyncDb asyncDb ? asyncDb.StartAsyncWriteBatch : _codeDb.StartWriteBatch;
             _tree = stateTree ?? new StateTree(trieStore, logManager);
             _getStateFromTrie = address =>
             {
@@ -611,9 +614,8 @@ namespace Nethermind.State
 
                 return Task.Run(() =>
                 {
-                    using (IWriteBatch? batch = _codeDb.StartWriteBatch())
+                    using (IWriteBatch batch = _startCodeWriteBatch())
                     {
-                        // Insert ordered for improved performance
                         foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in dict)
                         {
                             batch.Set(kvp.Key.Value.Bytes, kvp.Value);

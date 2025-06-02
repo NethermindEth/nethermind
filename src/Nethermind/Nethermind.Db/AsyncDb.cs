@@ -7,19 +7,42 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
-using ConcurrentCollections;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db;
 
-public class AsyncDb(IDb db) : IDb
+public class AsyncDb : IAsyncDb
 {
     private readonly ConcurrentDictionary<Dictionary<byte[], byte[]?>, Dictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>>> _asyncBatches = new();
-    private readonly ConcurrentHashSet<Task> _writeTasks = new();
+    private readonly Channel<Dictionary<byte[], byte[]?>> _channel = Channel.CreateBounded<Dictionary<byte[], byte[]?>>(new BoundedChannelOptions(1024) { SingleReader = true });
+    private readonly Task _asyncTask;
     private int _asyncBatchesCount = 0;
-    private readonly IDb _db = db;
+    private readonly IDb _db;
+
+    public AsyncDb(IDb db)
+    {
+        _db = db;
+        _asyncTask = WriteAsync(_channel.Reader);
+    }
+
+    private async Task WriteAsync(ChannelReader<Dictionary<byte[], byte[]>> channelReader)
+    {
+        await foreach (Dictionary<byte[], byte[]> data in channelReader.ReadAllAsync())
+        {
+            using IWriteBatch batch = _db.StartWriteBatch();
+            // Insert ordered for improved performance
+            foreach (KeyValuePair<byte[], byte[]> kv in data.OrderBy(static kvp => kvp.Key))
+            {
+                batch.Set(kv.Key, kv.Value);
+            }
+
+            _asyncBatches.TryRemove(data, out _);
+            Interlocked.Decrement(ref _asyncBatchesCount);
+        }
+    }
 
     public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
@@ -42,17 +65,19 @@ public class AsyncDb(IDb db) : IDb
         _db.Set(key, value, flags);
     }
 
-    public IWriteBatch StartWriteBatch() => new AsyncBatch(this);
+    public IWriteBatch StartWriteBatch() => _db.StartWriteBatch();
+
+    public IWriteBatch StartAsyncWriteBatch() => new AsyncBatch(this);
 
     public void Flush(bool onlyWal = false)
     {
-        Task.WaitAll(_writeTasks);
         _db.Flush(onlyWal);
     }
 
     public void Dispose()
     {
-        Task.WaitAll(_writeTasks);
+        _channel.Writer.Complete();
+        _asyncTask.GetAwaiter().GetResult();
         _db.Dispose();
     }
 
@@ -164,33 +189,17 @@ public class AsyncDb(IDb db) : IDb
     private class AsyncBatch(AsyncDb asyncDb) : IWriteBatch
     {
         private readonly Dictionary<byte[], byte[]?> _dictionary = new(Bytes.EqualityComparer);
-        private WriteFlags _flags = WriteFlags.None;
 
         public void Dispose()
         {
             Interlocked.Increment(ref asyncDb._asyncBatchesCount);
             asyncDb._asyncBatches.TryAdd(_dictionary, _dictionary.GetAlternateLookup<ReadOnlySpan<byte>>());
-            Task task = Task.Run(() =>
-            {
-                using IWriteBatch batch = asyncDb._db.StartWriteBatch();
-                WriteFlags flags = _flags;
-                foreach (KeyValuePair<byte[], byte[]> kv in _dictionary.OrderBy(static kvp => kvp.Key))
-                {
-                    batch.Set(kv.Key, kv.Value, flags);
-                }
-
-                asyncDb._asyncBatches.TryRemove(_dictionary, out _);
-                Interlocked.Decrement(ref asyncDb._asyncBatchesCount);
-            });
-
-            task.ContinueWith(_ => asyncDb._writeTasks.TryRemove(task));
-            asyncDb._writeTasks.Add(task);
+            asyncDb._channel.Writer.WriteAsync(_dictionary).GetAwaiter().GetResult();
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             _dictionary[key.ToArray()] = value;
-            _flags = flags;
         }
 
         public bool PreferWriteByArray => true;
