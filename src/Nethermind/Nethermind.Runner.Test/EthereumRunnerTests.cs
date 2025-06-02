@@ -8,6 +8,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Runtime.Loader;
@@ -16,6 +17,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using FluentAssertions;
+using Microsoft.ClearScript.JavaScript;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
@@ -75,9 +77,13 @@ public class EthereumRunnerTests
         // we need this to discover ChainSpecEngineParameters
         _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters) };
 
+        // Resolve all chain spec files, except arbitrum ones as their plugin lives in a separate repo
+        IEnumerable<string> configFiles = Directory.GetFiles("configs")
+            .Where(configFile => !configFile.Contains("arbitrum", StringComparison.OrdinalIgnoreCase));
+
         // by pre-caching configs providers we make the tests do lot less work
         ConcurrentQueue<(string, ConfigProvider)> result = new();
-        Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
+        Parallel.ForEach(configFiles, configFile =>
         {
             var configProvider = new ConfigProvider();
             configProvider.AddSource(new JsonConfigSource(configFile));
