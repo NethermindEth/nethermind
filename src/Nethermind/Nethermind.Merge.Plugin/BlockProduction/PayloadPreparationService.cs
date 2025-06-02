@@ -122,7 +122,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         => _payloadStorage.AddOrUpdate(payloadId,
             id =>
             {
-                CancellationTokenSource cancellationTokenSource = new();
+                // CancellationTokenSource cancellationTokenSource = new();
                 PayloadStore store = new()
                 {
                     Id = id,
@@ -133,13 +133,22 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     CurrentBestBlock = currentBestBlock,
                     CurrentBestBlockFees = currentBlockFees,
                     BuildCount = 1,
-                    CancellationTokenSource = cancellationTokenSource
+                    CancellationTokenSource = cts
+                    // CancellationTokenSource = cancellationTokenSource
                 };
                 return store;
             },
             (id, store) =>
             {
-                var currentContext = store.ImprovementContext;
+                if (cts.IsCancellationRequested)
+                {
+                    // If cancelled, return previous
+                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, improvement has been cancelled");
+                    return store;
+                }
+
+                IBlockImprovementContext currentContext = store.ImprovementContext;
+
                 if (!currentContext.ImprovementTask.IsCompleted)
                 {
                     if (force)
@@ -149,15 +158,20 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     }
                     else
                     {
-                        // if there is payload improvement and its not yet finished leave it be
+                        // If there is payload improvement and its not yet finished leave it be
                         if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, previous improvement hasn't finished");
                         return store;
                     }
                 }
 
-                store.ImprovementContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees, store.CancellationTokenSource ?? cts);
                 store.BuildCount++;
-                currentContext.Dispose();
+
+                if (!cts.IsCancellationRequested)
+                {
+                    currentContext.Dispose();
+                    store.ImprovementContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees, store.CancellationTokenSource ?? cts);
+                }
+
                 return store;
             });
 
