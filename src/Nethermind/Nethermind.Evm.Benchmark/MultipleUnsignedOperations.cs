@@ -30,7 +30,7 @@ public class MultipleUnsignedOperations
     private readonly BlockHeader _header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.MuirGlacierBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
     private readonly IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
     private EvmState _evmState;
-    private WorldState _stateProvider;
+    private IWorldState _stateProvider;
 
     private readonly byte[] _bytecode = Prepare.EvmCode
         .PushData(2)
