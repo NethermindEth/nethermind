@@ -225,6 +225,7 @@ public class SyncDispatcherTests
         }
 
         public override bool IsFinished => false;
+        public override string FeedName => nameof(TestSyncFeed);
 
         private int _pendingRequests;
 
