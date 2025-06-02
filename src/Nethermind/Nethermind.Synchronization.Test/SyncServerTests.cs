@@ -711,7 +711,7 @@ public class SyncServerTests
         foreach (PeerInfo peerInfo in peers)
         {
             var receivedCalls = peerInfo.SyncPeer.ReceivedCalls()
-                .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfBlockRangeUpdate))
+                .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
                 .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
                 .ToArray();
 
