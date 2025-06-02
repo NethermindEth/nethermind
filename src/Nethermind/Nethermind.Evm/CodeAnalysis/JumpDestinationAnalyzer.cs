@@ -261,9 +261,9 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
         {
             // Set default programCounter increment to 1 for default case when don't vectorize or read a PUSH.
             int move = 1;
-            // We use Sse rather than Avx or Avx-512 as is optimization for stretch of code without PUSHes.
+            // We use 128bit rather than Avx or Avx-512 as is optimization for stretch of code without PUSHes.
             // As the vector size increases the chance of there being a PUSH increases which will disable this optimization.
-            if (Sse2.IsSupported &&
+            if (Vector128<sbyte>.IsSupported &&
                 // Check not going to read passed end of code.
                 programCounter <= code.Length - Vector128<sbyte>.Count &&
                 // Are we on an short stride, one quarter of the long flags?
@@ -272,13 +272,13 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
                 Vector128<sbyte> data = Unsafe.As<byte, Vector128<sbyte>>(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(code), programCounter));
                 // Pushes are 0x60 to 0x7f; converting to signed bytes any instruction higher than PUSH32
                 // becomes negative so we can just do a single greater than test to see if any present.
-                Vector128<sbyte> compare = Sse2.CompareGreaterThan(data, Vector128.Create((sbyte)PUSHx));
+                Vector128<sbyte> compare = Vector128.GreaterThan(data, Vector128.Create((sbyte)PUSHx));
                 if (compare == default)
                 {
                     // Check the bytes for any JUMPDESTs.
-                    Vector128<sbyte> dest = Sse2.CompareEqual(data, Vector128.Create((sbyte)JUMPDEST));
+                    Vector128<sbyte> dest = Vector128.Equals(data, Vector128.Create((sbyte)JUMPDEST));
                     // Extract the checks as a set of int flags.
-                    int flags = Sse2.MoveMask(dest);
+                    uint flags = Vector128.ExtractMostSignificantBits(dest);
                     // Shift up flags by depending which side of long we are on, and merge to current set.
                     currentFlags |= (long)flags << (programCounter & (32 + 16));
                     // Forward programCounter by Vector128 stride.
