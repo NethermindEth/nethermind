@@ -98,7 +98,7 @@ public class JumpDestinationsBenchmark
         return array;
     }
 
-    
+
 
     private static readonly SearchValues<byte> JumpAndPushes = SearchValues.Create(
     [
