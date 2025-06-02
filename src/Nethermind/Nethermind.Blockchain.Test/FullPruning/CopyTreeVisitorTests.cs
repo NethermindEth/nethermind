@@ -84,12 +84,12 @@ public class CopyTreeVisitorTests
     {
         LimboLogs logManager = LimboLogs.Instance;
         PatriciaTree trie = Build.A.Trie(new NodeStorage(trieDb, _keyScheme)).WithAccountsByIndex(0, 100).TestObject;
-        
+
         // Create a custom DbProvider that uses the trieDb from the test
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.StateDb.Returns(trieDb);
         dbProvider.CodeDb.Returns(new MemDb());
-        
+
         // Use TestWorldStateFactory.CreateForTest() with the custom DbProvider
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, logManager);
         IStateReader stateReader = worldStateManager.GlobalStateReader;
