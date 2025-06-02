@@ -60,10 +60,7 @@ public class P2PBlockValidator : IP2PBlockValidator
 
     private bool IsTopicValid(P2PTopic topic)
     {
-        // TODO:
-        // Reject everything except V3 for now
-        // We assume later that we receive only V3 messages
-        if (topic != P2PTopic.BlocksV3)
+        if (topic != P2PTopic.BlocksV2 && topic != P2PTopic.BlocksV3)
         {
             if (_logger.IsError) _logger.Error($"Invalid topic: {topic}");
             return false;

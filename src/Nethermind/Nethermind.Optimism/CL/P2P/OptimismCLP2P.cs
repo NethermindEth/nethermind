@@ -42,6 +42,7 @@ public class OptimismCLP2P : IDisposable
     private readonly Multiaddress[] _staticPeerList;
     private readonly IOptimismConfig _config;
     private readonly string _blocksV2TopicId;
+    private readonly string _blocksV3TopicId;
     private readonly Channel<OptimismExecutionPayloadV3> _blocksP2PMessageChannel = Channel.CreateBounded<OptimismExecutionPayloadV3>(10); // for safety add capacity
     private readonly IPAddress _externalIp;
     private readonly Random _random = new();
@@ -49,6 +50,7 @@ public class OptimismCLP2P : IDisposable
     private PubsubRouter? _router;
     private LocalPeer? _localPeer;
     private ITopic? _blocksV2Topic;
+    private ITopic? _blocksV3Topic;
     private PeerStore? _peerStore;
 
     private ulong? _headNumber = null;
@@ -70,10 +72,8 @@ public class OptimismCLP2P : IDisposable
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, logManager);
         _externalIp = externalIp;
 
-        // TODO:
-        // Isthmus blocks are broadcasted on v3: https://specs.optimism.io/protocol/rollup-node-p2p.html?highlight=Isthmus#blocksv4
-        // We should have two topics: v2 for pre and v3 for post Isthmus
-        _blocksV2TopicId = $"/optimism/{chainId}/3/blocks";
+        _blocksV2TopicId = $"/optimism/{chainId}/2/blocks";
+        _blocksV3TopicId = $"/optimism/{chainId}/3/blocks";
 
         _serviceProvider = new ServiceCollection()
             .AddSingleton<PeerStore>()
@@ -97,11 +97,11 @@ public class OptimismCLP2P : IDisposable
             .BuildServiceProvider();
     }
 
-    private void OnMessage(byte[] msg, CancellationToken token)
+    private void OnMessage(byte[] msg, P2PTopic topic, CancellationToken token)
     {
         try
         {
-            if (TryValidateAndDecodePayload(msg, out var payload))
+            if (TryValidateAndDecodePayload(msg, topic, out var payload))
             {
                 if (_logger.IsTrace) _logger.Trace($"Received payload prom p2p: {payload}");
                 if ((ulong)payload.BlockNumber <= _headNumber)
@@ -259,7 +259,7 @@ public class OptimismCLP2P : IDisposable
         return null;
     }
 
-    private bool TryValidateAndDecodePayload(byte[] msg, [MaybeNullWhen(false)] out OptimismExecutionPayloadV3 payload)
+    private bool TryValidateAndDecodePayload(byte[] msg, P2PTopic topic, [MaybeNullWhen(false)] out OptimismExecutionPayloadV3 payload)
     {
         int length = Snappy.GetUncompressedLength(msg);
         if (length is < 65 or > MaxGossipSize)
@@ -282,7 +282,13 @@ public class OptimismCLP2P : IDisposable
 
         try
         {
-            payload = PayloadDecoder.Instance.DecodePayload(payloadData);
+            var version = topic switch
+            {
+                P2PTopic.BlocksV2 => PayloadVersion.Ecotone,
+                P2PTopic.BlocksV3 => PayloadVersion.Isthmus,
+                _ => throw new ArgumentOutOfRangeException(nameof(topic))
+            };
+            payload = PayloadDecoder.Instance.DecodePayload(payloadData, version);
         }
         catch (ArgumentException e)
         {
@@ -292,8 +298,7 @@ public class OptimismCLP2P : IDisposable
             return false;
         }
 
-        // TODO: Use `P2PTopic.BlocksV4` for Isthmus
-        ValidityStatus validationResult = _blockValidator.Validate(payload, P2PTopic.BlocksV3);
+        ValidityStatus validationResult = _blockValidator.Validate(payload, topic);
 
         if (validationResult == ValidityStatus.Reject)
         {
@@ -314,7 +319,10 @@ public class OptimismCLP2P : IDisposable
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
         _blocksV2Topic = _router.GetTopic(_blocksV2TopicId);
-        _blocksV2Topic.OnMessage += msg => OnMessage(msg, token);
+        _blocksV3Topic = _router.GetTopic(_blocksV3TopicId);
+        _blocksV2Topic.OnMessage += msg => OnMessage(msg, P2PTopic.BlocksV2, token);
+        _blocksV3Topic.OnMessage += msg => OnMessage(msg, P2PTopic.BlocksV3, token);
+
         try
         {
             await _localPeer.StartListenAsync([address], token);
