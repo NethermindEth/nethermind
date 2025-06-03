@@ -154,7 +154,7 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
     public byte[]? ToArray()
     {
         var obj = _obj;
-        if(obj is null)
+        if (obj is null)
             return null;
 
         if (obj is byte[] array)

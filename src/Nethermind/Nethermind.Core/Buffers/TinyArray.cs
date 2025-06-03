@@ -163,7 +163,7 @@ public static class TinyArray
                 result = differentBits == 0;
             }
 
-            Return:
+        Return:
             return result;
         }
 

@@ -1239,34 +1239,34 @@ namespace Nethermind.Trie
                     {
                         case 0:
                         case 128:
-                        {
-                            data = childOrRef = _nullNode;
-                            break;
-                        }
-                        case 160:
-                        {
-                            rlpStream.Position--;
-                            Hash256 keccak = rlpStream.DecodeKeccak();
-
-                            TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                            data = childOrRef = child;
-
-                            if (IsPersisted && !child.IsPersisted)
                             {
-                                child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
-                                    NullLogger.Instance);
+                                data = childOrRef = _nullNode;
+                                break;
                             }
+                        case 160:
+                            {
+                                rlpStream.Position--;
+                                Hash256 keccak = rlpStream.DecodeKeccak();
 
-                            break;
-                        }
+                                TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
+                                data = childOrRef = child;
+
+                                if (IsPersisted && !child.IsPersisted)
+                                {
+                                    child.CallRecursively(_markPersisted, null, ref childPath, tree, false,
+                                        NullLogger.Instance);
+                                }
+
+                                break;
+                            }
                         default:
-                        {
-                            rlpStream.Position--;
-                            ReadOnlySpan<byte> fullRlp = rlpStream.PeekNextItem();
-                            TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
-                            data = childOrRef = child;
-                            break;
-                        }
+                            {
+                                rlpStream.Position--;
+                                ReadOnlySpan<byte> fullRlp = rlpStream.PeekNextItem();
+                                TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
+                                data = childOrRef = child;
+                                break;
+                            }
                     }
                 }
                 else
@@ -1317,30 +1317,30 @@ namespace Nethermind.Trie
                 {
                     case 0:
                     case 128:
-                    {
-                        rlpStream.Position++;
-                        output[i] = null;
-                        break;
-                    }
+                        {
+                            rlpStream.Position++;
+                            output[i] = null;
+                            break;
+                        }
                     case 160:
-                    {
-                        path.SetLast(i);
-                        Hash256 keccak = rlpStream.DecodeKeccak();
-                        TrieNode child = tree.FindCachedOrUnknown(path, keccak);
-                        chCount++;
-                        output[i] = child;
+                        {
+                            path.SetLast(i);
+                            Hash256 keccak = rlpStream.DecodeKeccak();
+                            TrieNode child = tree.FindCachedOrUnknown(path, keccak);
+                            chCount++;
+                            output[i] = child;
 
-                        break;
-                    }
+                            break;
+                        }
                     default:
-                    {
-                        ReadOnlySpan<byte> fullRlp = rlpStream.PeekNextItem();
-                        TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
-                        rlpStream.SkipItem();
-                        chCount++;
-                        output[i] = child;
-                        break;
-                    }
+                        {
+                            ReadOnlySpan<byte> fullRlp = rlpStream.PeekNextItem();
+                            TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
+                            rlpStream.SkipItem();
+                            chCount++;
+                            output[i] = child;
+                            break;
+                        }
                 }
             }
 
