@@ -216,9 +216,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 ReadOnlySpan<byte> code = codeInput.AsSpan(0, i);
 
-                long[] scalar = JumpDestinationAnalyzer.CreateJumpDestinationBitmap_Scalar(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
-                long[] vector512 = JumpDestinationAnalyzer.CreateJumpDestinationBitmap_Vector512(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
-                long[] vector128 = JumpDestinationAnalyzer.CreateJumpDestinationBitmap_Vector128(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
+                long[] scalar = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Scalar(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
+                long[] vector512 = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Vector512(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
+                long[] vector128 = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Vector128(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
 
                 Assert.That(vector512, Is.EquivalentTo(scalar));
                 Assert.That(vector128, Is.EquivalentTo(scalar));

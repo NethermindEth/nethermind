@@ -74,19 +74,19 @@ public class JumpDestinationsBenchmark
 
     [Benchmark(Baseline = true)]
     public long[] Scalar()
-        => JumpDestinationAnalyzer.CreateJumpDestinationBitmap_Scalar(_bitmap, _code);
+        => JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Scalar(_bitmap, _code);
 
     //[Benchmark]
     //public long[] IndexOfAny()
-    //    => CreateJumpDestinationBitmap_IndexOfAny(_bitmap, _code);
+    //    => PopulateJumpDestinationBitmap_IndexOfAny(_bitmap, _code);
 
     [Benchmark]
     public long[] Vector128()
-        => JumpDestinationAnalyzer.CreateJumpDestinationBitmap_Vector128(_bitmap, _code);
+        => JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Vector128(_bitmap, _code);
 
     [Benchmark]
     public long[] Vector512()
-        => JumpDestinationAnalyzer.CreateJumpDestinationBitmap_Vector512(_bitmap, _code);
+        => JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Vector512(_bitmap, _code);
 
     private static byte[] CreateCode(int size, byte byte0, byte byte1)
     {
@@ -138,7 +138,7 @@ public class JumpDestinationsBenchmark
     ]);
 
     [SkipLocalsInit]
-    internal static long[] CreateJumpDestinationBitmap_IndexOfAny(long[] bitmap, ReadOnlySpan<byte> code)
+    internal static long[] PopulateJumpDestinationBitmap_IndexOfAny(long[] bitmap, ReadOnlySpan<byte> code)
     {
         const int PUSH1 = (int)Instruction.PUSH1;
         const int JUMPDEST = (int)Instruction.JUMPDEST;

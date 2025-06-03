@@ -111,24 +111,24 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
         long[] bitmap = CreateBitmap(code.Length);
 
         return Vector512<sbyte>.IsSupported && code.Length >= Vector512<sbyte>.Count ?
-            CreateJumpDestinationBitmap_Vector512(bitmap, code) :
+            PopulateJumpDestinationBitmap_Vector512(bitmap, code) :
             Vector128<sbyte>.IsSupported && code.Length >= Vector128<sbyte>.Count ?
-            CreateJumpDestinationBitmap_Vector128(bitmap, code) :
-            CreateJumpDestinationBitmap_Scalar(bitmap, code);
+            PopulateJumpDestinationBitmap_Vector128(bitmap, code) :
+            PopulateJumpDestinationBitmap_Scalar(bitmap, code);
     }
 
     internal static long[] CreateBitmap(int codeLength)
         => new long[GetInt64ArrayLengthFromBitLength(codeLength)];
 
     [SkipLocalsInit]
-    internal static long[] CreateJumpDestinationBitmap_Scalar(long[] bitmap, ReadOnlySpan<byte> code)
+    internal static long[] PopulateJumpDestinationBitmap_Scalar(long[] bitmap, ReadOnlySpan<byte> code)
     {
-        JumpDestinationBitmap_Scalar(programCounter: 0, bitmap, code);
+        ProcessJumpDestinationBitmap_Scalar(programCounter: 0, bitmap, code);
         return bitmap;
     }
 
     [SkipLocalsInit]
-    private static void JumpDestinationBitmap_Scalar(nuint programCounter, Span<long> bitmap, ReadOnlySpan<byte> code)
+    private static void ProcessJumpDestinationBitmap_Scalar(nuint programCounter, Span<long> bitmap, ReadOnlySpan<byte> code)
     {
         // We accumulate each array segment to a register and then flush to memory when we move to next.
         long currentFlags = 0;
@@ -173,7 +173,7 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
     }
 
     [SkipLocalsInit]
-    internal static long[] CreateJumpDestinationBitmap_Vector512(long[] bitmap, ReadOnlySpan<byte> code)
+    internal static long[] PopulateJumpDestinationBitmap_Vector512(long[] bitmap, ReadOnlySpan<byte> code)
     {
         Debug.Assert(code.Length > 0);
 
@@ -246,13 +246,13 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
         if (programCounter + skip < (nuint)code.Length)
         {
             // Scalar tail for the final (length % 64) bytes
-            JumpDestinationBitmap_Scalar(skip, bitmap.AsSpan((int)programCounter >> BitShiftPerInt64), code.Slice((int)programCounter));
+            ProcessJumpDestinationBitmap_Scalar(skip, bitmap.AsSpan((int)programCounter >> BitShiftPerInt64), code.Slice((int)programCounter));
         }
 
         return bitmap;
     }
 
-    internal static long[] CreateJumpDestinationBitmap_Vector128(long[] bitmap, ReadOnlySpan<byte> code)
+    internal static long[] PopulateJumpDestinationBitmap_Vector128(long[] bitmap, ReadOnlySpan<byte> code)
     {
         int programCounter = 0;
         // We accumulate each array segment to a register and then flush to memory when we move to next.
