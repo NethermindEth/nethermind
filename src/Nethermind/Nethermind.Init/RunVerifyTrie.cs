@@ -10,15 +10,14 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
-using Nethermind.JsonRpc.Converters;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.State;
 
 namespace Nethermind.Init;
 
-[RunnerStepDependencies(typeof(InitializePlugins), typeof(InitializeBlockTree), typeof(SetupKeyStore))]
-public class InitializeStateDb : IStep
+[RunnerStepDependencies(typeof(InitializeBlockTree))]
+[RunnerStepDependents(typeof(InitializeBlockchain))]
+public class RunVerifyTrie : IStep
 {
     private readonly IBlockTree _blockTree;
     private readonly IWorldStateManager _worldStateManager;
@@ -26,7 +25,7 @@ public class InitializeStateDb : IStep
     private readonly IProcessExitSource _processExit;
     private ILogger _logger;
 
-    public InitializeStateDb(
+    public RunVerifyTrie(
         IWorldStateManager worldStateManager,
         IBlockTree blockTree,
         IInitConfig initConfig,
@@ -38,13 +37,11 @@ public class InitializeStateDb : IStep
         _initConfig = initConfig;
         _processExit = processExitSource;
 
-        _logger = logManager.GetClassLogger<InitializeStateDb>();
+        _logger = logManager.GetClassLogger<RunVerifyTrie>();
     }
 
     public Task Execute(CancellationToken cancellationToken)
     {
-        InitBlockTraceDumper();
-
         if (_initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)
         {
             _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
@@ -57,11 +54,5 @@ public class InitializeStateDb : IStep
         }
 
         return Task.CompletedTask;
-    }
-
-    private static void InitBlockTraceDumper()
-    {
-        // TODO: What is this? Why is this here? What does it have anything to do with state? Why is it doing something global?
-        EthereumJsonSerializer.AddConverter(new TxReceiptConverter());
     }
 }

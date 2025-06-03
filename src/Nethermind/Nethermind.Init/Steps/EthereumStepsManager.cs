@@ -6,11 +6,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.ExceptionServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Logging;
 

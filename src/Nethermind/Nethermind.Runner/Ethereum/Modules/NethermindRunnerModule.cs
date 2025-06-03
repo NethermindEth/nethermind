@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
+using Nethermind.JsonRpc.Converters;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -88,6 +89,11 @@ public class NethermindRunnerModule(
             }
             builder.AddSingleton<INethermindPlugin>(plugin);
         }
+
+        builder.OnBuild((ctx) =>
+        {
+            EthereumJsonSerializer.AddConverter(new TxReceiptConverter());
+        });
 
     }
 }

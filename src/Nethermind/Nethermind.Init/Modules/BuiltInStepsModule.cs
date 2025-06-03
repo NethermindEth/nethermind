@@ -12,7 +12,7 @@ public class BuiltInStepsModule : Module
 {
     public static readonly StepInfo[] BuiltInSteps =
     [
-        typeof(InitializeStateDb),
+        typeof(RunVerifyTrie),
         typeof(ApplyMemoryHint),
         typeof(DatabaseMigrations),
         typeof(EraStep),
