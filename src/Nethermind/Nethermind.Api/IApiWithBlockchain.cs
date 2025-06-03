@@ -34,7 +34,7 @@ namespace Nethermind.Api
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
         IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         IBlockProducer? BlockProducer { get; set; }
-        IBlockProducerRunner? BlockProducerRunner { get; set; }
+        IBlockProducerRunner BlockProducerRunner { get; set; }
 
         [SkipServiceCollection]
         IBlockValidator BlockValidator { get; }

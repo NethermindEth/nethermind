@@ -23,5 +23,5 @@ public class NoBlockProducerRunner : IBlockProducerRunner
         return false;
     }
 
-    public event EventHandler<BlockEventArgs>? BlockProduced { add { } remove { } };
+    public event EventHandler<BlockEventArgs>? BlockProduced { add { } remove { } }
 }
