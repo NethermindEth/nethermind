@@ -23,7 +23,5 @@ public class NoBlockProducerRunner : IBlockProducerRunner
         return false;
     }
 
-#pragma warning disable CS0067
-    public event EventHandler<BlockEventArgs>? BlockProduced;
-#pragma warning restore CS0067
+    public event EventHandler<BlockEventArgs>? BlockProduced { add { } remove { } };
 }
