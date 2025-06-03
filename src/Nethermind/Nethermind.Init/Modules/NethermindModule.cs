@@ -45,12 +45,13 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
             .Bind<IBlockFinder, IBlockTree>()
-            .Bind<IEcdsa, IEthereumEcdsa>()
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
             .AddSingleton<IAbiEncoder>(Nethermind.Abi.AbiEncoder.Instance)
             .AddSingleton<IEciesCipher, EciesCipher>()
             .AddSingleton<ICryptoRandom, CryptoRandom>()
+            .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
+            .Bind<IEcdsa, IEthereumEcdsa>()
             .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
             ;
     }
