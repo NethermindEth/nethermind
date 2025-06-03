@@ -10,17 +10,10 @@ namespace Nethermind.Init.Steps;
 
 [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(LoadGenesisBlock))]
 [RunnerStepDependents(typeof(InitializeNetwork))]
-public class EraStep : IStep
+public class EraStep(EraCliRunner eraCliRunner) : IStep
 {
-    private readonly EraCliRunner _eraCliRunner;
-
-    public EraStep(EraCliRunner eraCliRunner)
-    {
-        _eraCliRunner = eraCliRunner;
-    }
-
     public async Task Execute(CancellationToken cancellationToken)
     {
-        await _eraCliRunner.Run(cancellationToken);
+        await eraCliRunner.Run(cancellationToken);
     }
 }

@@ -65,7 +65,10 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .AddDecorator<INetworkConfig>((ctx, networkConfig) =>
             {
                 ChainSpec chainSpec = ctx.Resolve<ChainSpec>();
+                IProtectedPrivateKey nodeKey = ctx.ResolveKeyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey);
                 IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
+
+                chainSpec.Bootnodes = chainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(nodeKey.PublicKey) ?? false).ToArray() ?? [];
 
                 // Was in `UpdateDiscoveryConfig` step.
                 if (discoveryConfig.Bootnodes != string.Empty)
