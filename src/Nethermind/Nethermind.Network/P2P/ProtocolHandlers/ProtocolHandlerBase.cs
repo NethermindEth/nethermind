@@ -49,7 +49,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
             catch (RlpException e)
             {
-                if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
+                if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name} [{Convert.ToHexString(data)}], with exception {e}");
                 ReportIn($"{typeof(T).Name} - Deserialization exception", data.Length);
                 throw;
             }
@@ -58,9 +58,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected T Deserialize<T>(IByteBuffer data) where T : P2PMessage
         {
             int size = data.ReadableBytes;
+            int originalReaderIndex = data.ReaderIndex;
             try
             {
-                int originalReaderIndex = data.ReaderIndex;
                 T result = _serializer.Deserialize<T>(data);
                 if (data.IsReadable())
                 {
@@ -71,7 +71,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
             catch (RlpException e)
             {
-                if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
+                if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name} [{ByteBufferUtil.HexDump(data, originalReaderIndex, size - originalReaderIndex)}], with exception {e}");
                 ReportIn($"{typeof(T).Name} - Deserialization exception", size);
                 throw;
             }
