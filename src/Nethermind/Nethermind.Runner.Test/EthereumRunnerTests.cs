@@ -180,6 +180,7 @@ public class EthereumRunnerTests
 
         ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), testCase.configProvider, LimboLogs.Instance);
         IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(testCase.configProvider, builder.ChainSpec);
+        plugins.Add(new RunnerTestPlugin());
         EthereumRunner runner = builder.CreateEthereumRunner(plugins);
 
         INethermindApi api = runner.Api;
@@ -189,9 +190,6 @@ public class EthereumRunnerTests
 
         api.Config<INetworkConfig>().LocalIp = "127.0.0.1";
         api.Config<INetworkConfig>().ExternalIp = "127.0.0.1";
-        var ipResolver = Substitute.For<IIPResolver>();
-        ipResolver.ExternalIp.Returns(IPAddress.Parse("127.0.0.1"));
-        api.IpResolver = ipResolver;
 
         api.NodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyA);
         api.FileSystem = Substitute.For<IFileSystem>();
@@ -397,6 +395,31 @@ public class EthereumRunnerTests
                 {
                     throw;
                 }
+            }
+        }
+    }
+
+    private class RunnerTestPlugin : INethermindPlugin
+    {
+        public string Name { get; } = "Runner test plugin";
+        public string Description { get; } = "A plugin to pass runner test";
+        public string Author { get; } = "";
+        public bool Enabled { get; } = true;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        public IModule Module => new RunnerTestModule();
+
+        private class RunnerTestModule : Autofac.Module
+        {
+            protected override void Load(ContainerBuilder builder)
+            {
+                base.Load(builder);
+
+                var ipResolver = Substitute.For<IIPResolver>();
+                ipResolver.ExternalIp.Returns(IPAddress.Parse("127.0.0.1"));
+
+                builder.AddSingleton(ipResolver);
             }
         }
     }
