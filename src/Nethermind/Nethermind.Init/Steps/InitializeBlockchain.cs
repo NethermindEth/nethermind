@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+// #define ILVM_TESTING
+
 using System;
 using System.Collections.Generic;
 using System.Text.Unicode;
@@ -83,7 +85,24 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-            InitializeIlEvmProcesses(getApi.VMConfig);
+#if ILVM_TESTING
+            var vmConfig = new VMConfig
+            {
+                IsILEvmEnabled = true,
+                IsIlEvmAggressiveModeEnabled = true,
+                IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
+                IlEvmBytecodeMinLength = 4,
+                IlEvmBytecodeMaxLength = (int)24.KB(),
+                IlEvmPersistPrecompiledContractsOnDisk = true,
+                IlEvmContractsPerDllCount = 16,
+                IlEvmAnalysisThreshold = 2,
+                IlEvmAnalysisQueueMaxSize = 1,
+                IlEvmAnalysisCoreUsage = 0.75f
+            };
+#else
+            var vmConfig = getApi.VMConfig;
+#endif
+            InitializeIlEvmProcesses(vmConfig );
 
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState, getApi.VMConfig);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
