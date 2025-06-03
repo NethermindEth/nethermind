@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -35,32 +36,23 @@ public class InclusionListValidator(
             return true;
         }
 
-        // parallelise and prewarm state access
-        foreach (Transaction tx in block.InclusionListTransactions)
+        bool couldIncludeTx = block.InclusionListTransactions
+            .AsParallel()
+            .Any(tx => !isTransactionInBlock(tx) && CouldIncludeTx(tx, block));
+
+        return !couldIncludeTx;
+    }
+
+    private bool CouldIncludeTx(Transaction tx, Block block)
+    {
+        if (block.GasUsed + tx.GasLimit > block.GasLimit)
         {
-            if (isTransactionInBlock(tx))
-            {
-                continue;
-            }
-
-            if (block.GasUsed + tx.GasLimit > block.GasLimit)
-            {
-                continue;
-            }
-
-            // todo: check conditions
-            UInt256 txCost = tx.Value + (UInt256)tx.GasLimit * tx.GasPrice;
-            bool couldIncludeTx =
-                tx.GasPrice >= block.BaseFeePerGas &&
-                worldState.GetBalance(tx.SenderAddress) >= txCost &&
-                worldState.GetNonce(tx.SenderAddress) == tx.Nonce;
-
-            if (couldIncludeTx)
-            {
-                return false;
-            }
+            return false;
         }
 
-        return true;
+        UInt256 txCost = tx.Value + (UInt256)tx.GasLimit * tx.GasPrice;
+        return tx.GasPrice >= block.BaseFeePerGas &&
+            worldState.GetBalance(tx.SenderAddress) >= txCost &&
+            worldState.GetNonce(tx.SenderAddress) == tx.Nonce;
     }
 }
