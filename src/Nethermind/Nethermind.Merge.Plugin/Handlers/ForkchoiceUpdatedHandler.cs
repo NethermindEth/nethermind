@@ -8,6 +8,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -64,6 +66,27 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         IPeerRefresher peerRefresher,
         ISpecProvider specProvider,
         ISyncPeerPool syncPeerPool,
+        IMergeConfig mergeConfig,
+        ILogManager logManager)
+        : this(blockTree, manualBlockFinalizationManager, poSSwitcher, payloadPreparationService, processingQueue,
+            blockCacheService, invalidChainTracker, mergeSyncController, beaconPivot, peerRefresher, specProvider,
+            syncPeerPool, logManager, mergeConfig.SimulateBlockProduction)
+    {
+    }
+
+    public ForkchoiceUpdatedHandler(
+        IBlockTree blockTree,
+        IManualBlockFinalizationManager manualBlockFinalizationManager,
+        IPoSSwitcher poSSwitcher,
+        IPayloadPreparationService payloadPreparationService,
+        IBlockProcessingQueue processingQueue,
+        IBlockCacheService blockCacheService,
+        IInvalidChainTracker invalidChainTracker,
+        IMergeSyncController mergeSyncController,
+        IBeaconPivot beaconPivot,
+        IPeerRefresher peerRefresher,
+        ISpecProvider specProvider,
+        ISyncPeerPool syncPeerPool,
         ILogManager logManager,
         bool simulateBlockProduction = false)
     {
@@ -87,12 +110,12 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     {
         Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
         return await ApplyForkchoiceUpdate(newHeadBlock, forkchoiceState, payloadAttributes)
-            ?? ValidateAttributes(payloadAttributes, version)
-            ?? StartBuildingPayload(newHeadBlock!, forkchoiceState, payloadAttributes);
+               ?? ValidateAttributes(payloadAttributes, version)
+               ?? StartBuildingPayload(newHeadBlock!, forkchoiceState, payloadAttributes);
     }
 
     protected virtual bool IsOnMainChainBehindHead(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
-       [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
+        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
         if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
         {

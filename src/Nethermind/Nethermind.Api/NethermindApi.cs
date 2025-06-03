@@ -141,7 +141,7 @@ namespace Nethermind.Api
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
-        public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
+        public IRpcCapabilitiesProvider RpcCapabilitiesProvider => Context.Resolve<IRpcCapabilitiesProvider>();
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
         public IBlockFinalizationManager? FinalizationManager { get; set; }
 

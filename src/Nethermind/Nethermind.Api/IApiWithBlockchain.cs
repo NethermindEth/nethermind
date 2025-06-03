@@ -59,7 +59,9 @@ namespace Nethermind.Api
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
         CompositeTxGossipPolicy TxGossipPolicy { get; }
-        IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
+
+        [SkipServiceCollection]
+        IRpcCapabilitiesProvider RpcCapabilitiesProvider { get; }
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
 
         [SkipServiceCollection]

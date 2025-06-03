@@ -61,7 +61,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
     private IBlockCacheService? _blockCacheService;
     private InvalidChainTracker? _invalidChainTracker;
     private ManualBlockFinalizationManager? _blockFinalizationManager;
-    private OptimismPayloadPreparationService? _payloadPreparationService;
 
     private OptimismCL? _cl;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
@@ -150,10 +149,12 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         // Single block shouldn't take a full slot to run
         // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
         double maxSingleImprovementTimePerSlot = _blocksConfig.SecondsPerSlot * _blocksConfig.SingleBlockImprovementOfSlot;
+        // TODO: Check why different from merge
         BlockImprovementContextFactory improvementContextFactory = new(
             _api.BlockProducer,
             TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot));
 
+        /*
         OptimismPayloadPreparationService payloadPreparationService = new(
             _api.SpecProvider,
             (PostMergeBlockProducer)_api.BlockProducer,
@@ -161,6 +162,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _api.TimerFactory,
             _api.LogManager,
             TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+        private OptimismPayloadPreparationService? _payloadPreparationService;
         _payloadPreparationService = payloadPreparationService;
 
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
@@ -226,6 +228,10 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                     ? NoGCStrategy.Instance
                     : new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
             _api.LogManager);
+            */
+        _api.BlockImprovementContextFactory = improvementContextFactory;
+
+        IEngineRpcModule engineRpcModule = _api.Context.Resolve<IEngineRpcModule>();
 
         IOptimismSignalSuperchainV1Handler signalHandler = new LoggingOptimismSignalSuperchainV1Handler(
             OptimismConstants.CurrentProtocolVersion,
@@ -309,7 +315,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     public ValueTask DisposeAsync()
     {
-        _payloadPreparationService?.Dispose();
         return ValueTask.CompletedTask;
     }
 
@@ -367,6 +372,8 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddSingleton<OptimismEthModuleFactory>()
                 .Bind<IRpcModuleFactory<IOptimismEthRpcModule>, OptimismEthModuleFactory>()
                 .Bind<IRpcModuleFactory<IEthRpcModule>, OptimismEthModuleFactory>()
+
+            .AddSingleton<IPayloadPreparationService, OptimismPayloadPreparationService>()
             ;
 
     }

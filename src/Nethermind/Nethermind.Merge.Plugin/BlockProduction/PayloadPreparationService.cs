@@ -51,6 +51,16 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         PostMergeBlockProducer blockProducer,
         IBlockImprovementContextFactory blockImprovementContextFactory,
         ITimerFactory timerFactory,
+        IBlocksConfig blocksConfig,
+        ILogManager logManager) : this(blockProducer, blockImprovementContextFactory, timerFactory, logManager,
+        TimeSpan.FromSeconds(blocksConfig.SecondsPerSlot))
+    {
+    }
+
+    public PayloadPreparationService(
+        PostMergeBlockProducer blockProducer,
+        IBlockImprovementContextFactory blockImprovementContextFactory,
+        ITimerFactory timerFactory,
         ILogManager logManager,
         TimeSpan timePerSlot,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
@@ -208,12 +218,12 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
     private TimeSpan CalculateImprovementDelay(DateTimeOffset startDateTime, long startTimestamp)
     {
-        // We want to keep building better blocks throughout this slot so that when 
+        // We want to keep building better blocks throughout this slot so that when
         // the consensus client requests the block, we have the best version ready.
-        // However, building blocks repeatedly is expensive. We also expect more 
-        // transactions towards the end of the slot, when it's more likely we will 
-        // actually need to deliver the block. So we slow down improvements early in 
-        // the slot (to save resources) and gradually increase the improvement 
+        // However, building blocks repeatedly is expensive. We also expect more
+        // transactions towards the end of the slot, when it's more likely we will
+        // actually need to deliver the block. So we slow down improvements early in
+        // the slot (to save resources) and gradually increase the improvement
         // frequency toward the end of the slot.
         //
         // This is both to capture more transactions, and where the probability of
@@ -241,8 +251,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             // Clamp progress to [0, 1] just in case:
             progress = Math.Clamp(progress, 0.0, 1.0);
 
-            // We use a cubic curve (progress^3) so that improvement builds 
-            // start off quite spaced out (less frequent at the start) and 
+            // We use a cubic curve (progress^3) so that improvement builds
+            // start off quite spaced out (less frequent at the start) and
             // rapidly become more frequent as we near the end of the slot.
             progress *= progress * progress;
 
@@ -252,9 +262,9 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             const double fractionStart = 1.0 / 6.0;
             const double fractionEnd = 1.0 / 960.0;
             // Slot Timeline: 0% -------------------------- 100%
-            //                |        (long gap)         | 
+            //                |        (long gap)         |
             //    [Block Improvement #1]        <--- big delay here
-            // 
+            //
             //                                   (medium gap)
             //                                       [Block Improvement #2]
             //                                           (small gap)

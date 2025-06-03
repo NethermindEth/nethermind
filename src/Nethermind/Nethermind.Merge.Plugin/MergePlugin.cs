@@ -10,9 +10,7 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -21,7 +19,9 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
@@ -30,6 +30,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -52,7 +53,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
     private IBlockCacheService _blockCacheService = null!;
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
-    private PayloadPreparationService? _payloadPreparationService = null;
 
     protected ManualBlockFinalizationManager _blockFinalizationManager = null!;
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
@@ -279,15 +279,15 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 return new BoostBlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot), boostRelay, _api.StateReader);
             }
 
-            IBlockImprovementContextFactory improvementContextFactory = _api.BlockImprovementContextFactory ??= CreateBlockImprovementContextFactory();
+            _api.BlockImprovementContextFactory ??= CreateBlockImprovementContextFactory();
 
+                /*
             PayloadPreparationService payloadPreparationService = new(
                 _postMergeBlockProducer,
                 improvementContextFactory,
                 _api.TimerFactory,
                 _api.LogManager,
                 TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
-            _payloadPreparationService = payloadPreparationService;
 
             _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
@@ -350,22 +350,23 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 _api.LogManager);
 
             RegisterEngineRpcModule(engineRpcModule);
+            _api.RpcModuleProvider!.RegisterSingle(_api.Context.Resolve<IEngineRpcModule>());
+            */
 
+            bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
+            if (simulateBlockProduction)
+            {
+                // TODO: WTF is this? Pass in the PPS into the NPH la!
+                _api.Context.Resolve<NewPayloadHandler>().NewPayloadForParentReceived += _api.Context.Resolve<PayloadPreparationService>().CancelBlockProductionForParent;
+            }
             if (_logger.IsInfo) _logger.Info("Engine Module has been enabled");
         }
 
         return Task.CompletedTask;
     }
 
-    protected virtual void RegisterEngineRpcModule(IEngineRpcModule engineRpcModule)
-    {
-        ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
-        _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
-    }
-
     public ValueTask DisposeAsync()
     {
-        _payloadPreparationService?.Dispose();
         return ValueTask.CompletedTask;
     }
 
@@ -429,6 +430,46 @@ public class BaseMergePluginModule : Module
             .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
 
             .AddDecorator<IHealthHintService, MergeHealthHintService>()
+            .AddModule(new MergeRpcModule())
+            ;
+    }
+}
+
+public class MergeRpcModule : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        base.Load(builder);
+
+        builder
+            .AddSingleton<IAsyncHandler<byte[], ExecutionPayload?>, GetPayloadV1Handler>()
+            .AddSingleton<IAsyncHandler<byte[], GetPayloadV2Result?>, GetPayloadV2Handler>()
+            .AddSingleton<IAsyncHandler<byte[], GetPayloadV3Result?>, GetPayloadV3Handler>()
+            .AddSingleton<IAsyncHandler<byte[], GetPayloadV4Result?>, GetPayloadV4Handler>()
+            .AddSingleton<IAsyncHandler<byte[], GetPayloadV5Result?>, GetPayloadV5Handler>()
+            .AddSingleton<IAsyncHandler<ExecutionPayload, PayloadStatusV1>, NewPayloadHandler>()
+            .AddSingleton<IForkchoiceUpdatedHandler, ForkchoiceUpdatedHandler>()
+            .AddSingleton<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>, GetPayloadBodiesByHashV1Handler>()
+            .AddSingleton<IGetPayloadBodiesByRangeV1Handler, GetPayloadBodiesByRangeV1Handler>()
+            .AddSingleton<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>, ExchangeTransitionConfigurationV1Handler>()
+            .AddSingleton<IHandler<IEnumerable<string>, IEnumerable<string>>, ExchangeCapabilitiesHandler>()
+            .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>, GetBlobsHandler>()
+            .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?>, GetBlobsHandlerV2>()
+
+            .AddSingleton<IRpcCapabilitiesProvider, EngineRpcCapabilitiesProvider>()
+            .AddSingleton<NoSyncGcRegionStrategy>()
+            .AddSingleton<GCKeeper>((ctx) =>
+            {
+                IInitConfig initConfig = ctx.Resolve<IInitConfig>();
+                return new GCKeeper(
+                    initConfig.DisableGcOnNewPayload
+                        ? NoGCStrategy.Instance
+                        : ctx.Resolve<NoSyncGcRegionStrategy>(),
+                    ctx.Resolve<ILogManager>());
+            })
+            .AddSingleton<IPayloadPreparationService, PayloadPreparationService>()
+
+            .RegisterSingletonJsonRpcModule<IEngineRpcModule, EngineRpcModule>()
             ;
     }
 }

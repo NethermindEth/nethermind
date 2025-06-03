@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -47,6 +49,26 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
     private long _lastBlockNumber;
     private long _lastBlockGasLimit;
+
+    public NewPayloadHandler(
+        IBlockValidator blockValidator,
+        IBlockTree blockTree,
+        IPoSSwitcher poSSwitcher,
+        IBeaconSyncStrategy beaconSyncStrategy,
+        IBeaconPivot beaconPivot,
+        IBlockCacheService blockCacheService,
+        IBlockProcessingQueue processingQueue,
+        IInvalidChainTracker invalidChainTracker,
+        IMergeSyncController mergeSyncController,
+        IMergeConfig mergeConfig,
+        IReceiptConfig receiptConfig,
+        ILogManager logManager)
+        : this(blockValidator, blockTree, poSSwitcher, beaconSyncStrategy, beaconPivot, blockCacheService,
+            processingQueue, invalidChainTracker, mergeSyncController, logManager,
+            TimeSpan.FromSeconds(mergeConfig.NewPayloadTimeout),
+            receiptConfig.StoreReceipts)
+    {
+    }
 
     public NewPayloadHandler(
         IBlockValidator blockValidator,
