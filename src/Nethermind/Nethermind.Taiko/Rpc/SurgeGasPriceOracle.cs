@@ -75,13 +75,10 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         UInt256 proofPostingCost = _surgeConfig.ProofPostingGas * UInt256.Max(l1BaseFee, l1AverageBaseFee);
 
-        // Record the current block's gas usage and compute the average
-        _gasUsageBuffer.Add((ulong)headBlock.GasUsed);
-        UInt256 averageGasUsage = _gasUsageBuffer.Average;
-
+        UInt256 averageGasUsage = GetAverageGasUsage();
         if (averageGasUsage == UInt256.Zero)
         {
-            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Average gas usage is zero, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Failed to calculate average gas usage, using fallback gas price");
             return FallbackGasPrice();
         }
 
@@ -107,6 +104,114 @@ public class SurgeGasPriceOracle : GasPriceOracle
             return null;
         }
     }
+
+    /// <summary>
+    /// Get the average gas usage across L2GasUsageWindowSize batches. It uses the TaikoInbox contract to get the total number of blocks in the latest proposed batch.
+    /// </summary>
+    private UInt256 GetAverageGasUsage()
+    {
+        // Get the current batch information
+        Stats2? stats2 = GetStats2();
+        if (stats2 == null)
+        {
+            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Failed to get stats2, using fallback gas price");
+            return UInt256.Zero;
+        }
+
+        // Get the latest proposed batch
+        Batch? currentBatch = GetBatch(stats2.NumBatches - 1);
+        if (currentBatch == null)
+        {
+            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Failed to get current batch, using fallback gas price");
+            return UInt256.Zero;
+        }
+
+        // Get the previous batch to find the total number of blocks in the latest proposed batch
+        Batch? previousBatch = stats2.NumBatches > 1 ? GetBatch(stats2.NumBatches - 2) : null;
+        ulong startBlockId = (previousBatch?.LastBlockId ?? 0) + 1;
+        ulong endBlockId = currentBatch.LastBlockId;
+
+        // Calculate total gas used for the batch
+        UInt256 totalGasUsed = UInt256.Zero;
+        for (ulong blockId = startBlockId; blockId <= endBlockId; blockId++)
+        {
+            Block? block = _blockFinder.FindBlock((long)blockId, Blockchain.BlockTreeLookupOptions.RequireCanonical);
+            if (block != null)
+            {
+                totalGasUsed += (UInt256)block.GasUsed;
+            }
+        }
+
+        // Record the batch's gas usage and compute the average
+        _gasUsageBuffer.Add((ulong)totalGasUsed);
+        return _gasUsageBuffer.Average;
+    }
+
+    private Stats2? GetStats2()
+    {
+        try
+        {
+            return _l1RpcClient.Post<Stats2?>("eth_call", new
+            {
+                to = _surgeConfig.TaikoInboxAddress,
+                data = "0x26baca1c" // getStats2() function selector
+            }, "latest").GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Failed to get stats2: {ex.Message}");
+            return null;
+        }
+    }
+
+    private Batch? GetBatch(ulong batchId)
+    {
+        try
+        {
+            string batchIdHex = batchId.ToString("x64");
+            return _l1RpcClient.Post<Batch?>("eth_call", new
+            {
+                to = _surgeConfig.TaikoInboxAddress,
+                data = $"0x888775d9{batchIdHex}" // getBatch(uint64) function selector
+            }, "latest").GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Failed to get batch {batchId}: {ex.Message}");
+            return null;
+        }
+    }
+
+
+    /// <summary>
+    /// TaikoInbox contract response for getStats2()
+    /// </summary>
+    private sealed class Stats2
+    {
+        public ulong NumBatches { get; set; }
+        public ulong LastVerifiedBatchId { get; set; }
+        public bool Paused { get; set; }
+        public ulong LastProposedIn { get; set; }
+        public ulong LastUnpausedAt { get; set; }
+    }
+
+    /// <summary>
+    /// TaikoInbox contract response for getBatch(uint64)
+    /// </summary>
+    private sealed class Batch
+    {
+        public byte[] MetaHash { get; set; } = Array.Empty<byte>();
+        public ulong LastBlockId { get; set; }
+        public ulong Reserved3 { get; set; }
+        public ulong LivenessBond { get; set; }
+        public ulong BatchId { get; set; }
+        public ulong LastBlockTimestamp { get; set; }
+        public ulong AnchorBlockId { get; set; }
+        public uint NextTransitionId { get; set; }
+        public byte Reserved4 { get; set; }
+        public uint VerifiedTransitionId { get; set; }
+    }
+
 
     /// <summary>
     /// A fixed-size ring buffer for tracking gas usage and computing moving averages.
