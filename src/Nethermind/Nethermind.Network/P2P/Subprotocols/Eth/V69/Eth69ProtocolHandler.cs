@@ -153,7 +153,7 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler, ISyncPeer
         Send(statusMessage);
     }
 
-    public void NotifyOfBlockRangeUpdate(BlockHeader earliest, BlockHeader latest)
+    public void NotifyOfNewRange(BlockHeader earliest, BlockHeader latest)
     {
         if (earliest.Number > latest.Number)
             throw new ArgumentException($"Earliest block ({earliest.Number}) greater than latest ({latest.Number}) in BlockRangeUpdate.");

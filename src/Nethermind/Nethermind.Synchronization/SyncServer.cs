@@ -88,7 +88,7 @@ namespace Nethermind.Synchronization
             _pivotHash = new Hash256(config.PivotHash ?? Keccak.Zero.ToString());
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
-            _blockTree.NewHeadBlock += OnBlockRangeUpdate;
+            _blockTree.NewHeadBlock += OnNewRange;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
         }
 
@@ -427,9 +427,12 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private void OnBlockRangeUpdate(object? sender, BlockEventArgs latestBlockEventArgs)
+        private void OnNewRange(object? sender, BlockEventArgs latestBlockEventArgs)
         {
             if (Genesis is null)
+                return;
+
+            if (!_pool.AllPeers.Any())
                 return;
 
             Block latestBlock = latestBlockEventArgs.Block;
@@ -449,7 +452,7 @@ namespace Nethermind.Synchronization
 
                     foreach (PeerInfo peerInfo in _pool.AllPeers)
                     {
-                        NotifyOfBlockRangeUpdate(peerInfo, earliest, latest);
+                        NotifyOfNewRange(peerInfo, earliest, latest);
                         counter++;
                     }
 
@@ -473,11 +476,11 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private void NotifyOfBlockRangeUpdate(PeerInfo peerInfo, BlockHeader earliest, BlockHeader latest)
+        private void NotifyOfNewRange(PeerInfo peerInfo, BlockHeader earliest, BlockHeader latest)
         {
             try
             {
-                peerInfo.SyncPeer.NotifyOfBlockRangeUpdate(earliest, latest);
+                peerInfo.SyncPeer.NotifyOfNewRange(earliest, latest);
             }
             catch (Exception e)
             {
@@ -499,7 +502,7 @@ namespace Nethermind.Synchronization
 
         private void StopNotifyingPeersAboutBlockRangeUpdates()
         {
-            _blockTree.NewHeadBlock -= OnBlockRangeUpdate;
+            _blockTree.NewHeadBlock -= OnNewRange;
         }
 
         public void Dispose()

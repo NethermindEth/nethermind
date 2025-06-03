@@ -196,7 +196,7 @@ public class Eth69ProtocolHandlerTests
     public void Should_send_BlockRangeUpdate()
     {
         var (earliest, latest) = (Build.A.BlockHeader.WithNumber(0).TestObject, Build.A.BlockHeader.WithNumber(42).TestObject);
-        _handler.NotifyOfBlockRangeUpdate(earliest, latest);
+        _handler.NotifyOfNewRange(earliest, latest);
 
         _session.Received(1).DeliverMessage(Arg.Is<BlockRangeUpdateMessage>(m =>
             m.EarliestBlock == earliest.Number && m.LatestBlock == latest.Number && m.LatestBlockHash == latest.Hash)
@@ -208,7 +208,7 @@ public class Eth69ProtocolHandlerTests
     {
         var (earliest, latest) = (Build.A.BlockHeader.WithNumber(42).TestObject, Build.A.BlockHeader.WithNumber(0).TestObject);
 
-        Assert.Catch<Exception>(() => _handler.NotifyOfBlockRangeUpdate(earliest, latest));
+        Assert.Catch<Exception>(() => _handler.NotifyOfNewRange(earliest, latest));
 
         _session.DidNotReceive().DeliverMessage(Arg.Any<BlockRangeUpdateMessage>());
     }
