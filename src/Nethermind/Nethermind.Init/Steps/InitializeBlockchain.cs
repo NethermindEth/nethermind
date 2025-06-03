@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+// #define ILVM_TESTING
+
 using System;
 using System.Collections.Generic;
 using System.Text.Unicode;
@@ -83,6 +85,7 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
+#if ILVM_TESTING
             var vmConfig = new VMConfig
             {
                 IsILEvmEnabled = true,
@@ -96,7 +99,9 @@ namespace Nethermind.Init.Steps
                 IlEvmAnalysisQueueMaxSize = 1,
                 IlEvmAnalysisCoreUsage = 0.75f
             };
-
+#else
+            var vmConfig = getApi.VMConfig;
+#endif
             InitializeIlEvmProcesses(vmConfig );
 
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState, vmConfig );
