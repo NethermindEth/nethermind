@@ -104,13 +104,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 _api.DisposeStack.Push(processedTransactionsDbCleaner);
             }
 
-            _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
-               _api.RewardCalculatorSource ?? NoBlockRewards.Instance, _poSSwitcher);
-            _api.SealValidator = new InvalidHeaderSealInterceptor(
-                new MergeSealValidator(_poSSwitcher, _api.SealValidator),
-                _invalidChainTracker,
-                _api.LogManager);
-
             _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _blockCacheService);
 
             _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_poSSwitcher));
@@ -381,7 +374,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
     public virtual IEnumerable<StepInfo> GetSteps() => [];
 
-    public IModule Module => new MergePluginModule();
+    public virtual IModule Module => new MergePluginModule();
 }
 
 public class MergePluginModule : Module
@@ -425,9 +418,14 @@ public class BaseMergePluginModule : Module
             .AddSingleton<StartingSyncPivotUpdater>()
             .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
 
-            // Validators
+            .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
+            .AddDecorator<ISealValidator, MergeSealValidator>()
+            .AddDecorator<ISealer, MergeSealer>()
+
+            // Invalid chain tracker wrapper should be after other validator.
             .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
             .AddDecorator<IBlockValidator, InvalidBlockInterceptor>()
+            .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
             ;
     }
 }

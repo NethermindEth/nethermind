@@ -7,7 +7,6 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -22,7 +21,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -34,8 +32,6 @@ public class TestBlockProcessingModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
-            .AddSingleton<ISealValidator>(NullSealEngine.Instance)
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
             // NOTE: The ordering of block preprocessor is not guarenteed
             .AddComposite<IBlockPreprocessorStep, CompositeBlockPreprocessorStep>()
@@ -86,7 +82,6 @@ public class TestBlockProcessingModule : Module
             .AddScoped<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
             .AddScoped<ITxSource, TxPoolTxSource>()
             .AddScoped<ITxFilterPipeline, ILogManager, ISpecProvider, IBlocksConfig>(TxFilterPipelineBuilder.CreateStandardFilteringPipeline)
-            .AddScoped<ISealEngine, SealEngine>()
             .AddScoped<IComparer<Transaction>, ITransactionComparerProvider>(txComparer => txComparer.GetDefaultComparer())
             .AddScoped<BlockProducerEnvFactory>()
 
@@ -103,13 +98,6 @@ public class TestBlockProcessingModule : Module
             .ResolveOnServiceActivation<ProducedBlockSuggester, IBlockProducerRunner>()
 
             .AddSingleton<ISigner>(NullSigner.Instance)
-            .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>
-                new GasPriceOracle(
-                    blockTree,
-                    specProvider,
-                    logManager,
-                    blocksConfig.MinGasPrice
-                ))
 
             ;
     }

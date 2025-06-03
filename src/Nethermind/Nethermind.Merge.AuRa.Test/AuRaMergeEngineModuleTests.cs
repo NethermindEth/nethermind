@@ -169,6 +169,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                     .AddModule(new AuraModule(ChainSpec))
                     .AddSingleton<NethermindApi.Dependencies>()
                     .AddSingleton<IReportingValidator>(NullReportingValidator.Instance)
+                    .AddSingleton<ISealer>(NullSealEngine.Instance) // Test not originally made with aura sealer
 
                     .AddSingleton<IBlockProducerEnvFactory>((ctx) => _blockProducerEnvFactory)
                     .AddDecorator<AuRaNethermindApi>((ctx, api) =>
@@ -190,7 +191,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             baseChainSpec.EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
                 new AuRaChainSpecEngineParameters
                 {
-                    WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
+                    WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003"),
+                    StepDuration = { { 0, 3 } }
                 });
             baseChainSpec.Parameters = new ChainParameters();
             return baseChainSpec;
