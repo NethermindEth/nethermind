@@ -60,7 +60,11 @@ public class PayloadDecoder : IPayloadDecoder
         payload.ExtraData = data[(int)extraDataOffset..(int)transactionsOffset].ToArray();
         payload.Transactions = DecodeTransactions(data[(int)transactionsOffset..(int)withdrawalsOffset]);
         payload.Withdrawals = [];
-        payload.ExecutionRequests = [];
+
+        if (version == PayloadVersion.Isthmus)
+        {
+            payload.ExecutionRequests = [];
+        }
 
         return payload;
     }
