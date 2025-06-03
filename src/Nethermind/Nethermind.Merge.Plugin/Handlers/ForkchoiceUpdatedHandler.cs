@@ -12,6 +12,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -51,6 +52,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private readonly bool _simulateBlockProduction;
     private readonly ISyncPeerPool _syncPeerPool;
 
+    [UseConstructorForDependencyInjection]
     public ForkchoiceUpdatedHandler(
         IBlockTree blockTree,
         IManualBlockFinalizationManager manualBlockFinalizationManager,
@@ -87,12 +89,12 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     {
         Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
         return await ApplyForkchoiceUpdate(newHeadBlock, forkchoiceState, payloadAttributes)
-            ?? ValidateAttributes(payloadAttributes, version)
-            ?? StartBuildingPayload(newHeadBlock!, forkchoiceState, payloadAttributes);
+               ?? ValidateAttributes(payloadAttributes, version)
+               ?? StartBuildingPayload(newHeadBlock!, forkchoiceState, payloadAttributes);
     }
 
     protected virtual bool IsOnMainChainBehindHead(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
-       [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
+        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
         if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
         {

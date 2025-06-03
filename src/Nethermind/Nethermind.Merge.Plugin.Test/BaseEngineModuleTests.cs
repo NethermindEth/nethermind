@@ -106,16 +106,10 @@ public abstract partial class BaseEngineModuleTests
             LongConverter.FromString(synchronizationConfig.PivotNumber),
             synchronizationConfig.PivotHash is null ? Keccak.Zero : new Hash256(Bytes.FromHexString(synchronizationConfig.PivotHash))
         );
-        chain.BeaconPivot = new BeaconPivot(synchronizationConfig, new MemDb(), chain.BlockTree, chain.PoSSwitcher, chain.LogManager);
-        BlockCacheService blockCacheService = new();
-        InvalidChainTracker.InvalidChainTracker invalidChainTracker = new(
-            chain.PoSSwitcher,
-            chain.BlockTree,
-            blockCacheService,
-            chain.LogManager);
+        InvalidChainTracker.InvalidChainTracker invalidChainTracker = chain.Container.Resolve<InvalidChainTracker.InvalidChainTracker>();
         invalidChainTracker.SetupBlockchainProcessorInterceptor(chain.BlockchainProcessor);
-        chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, synchronizationConfig, blockCacheService, chain.PoSSwitcher, chain.LogManager);
         chain.BeaconSync.AllowBeaconHeaderSync();
+        /*
         EngineRpcCapabilitiesProvider capabilitiesProvider = new(chain.SpecProvider);
         return new EngineRpcModule(
             new GetPayloadV1Handler(
@@ -178,6 +172,9 @@ public abstract partial class BaseEngineModuleTests
             chain.SpecProvider,
             new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);
+            */
+
+        return chain.Container.Resolve<IEngineRpcModule>();
     }
 
     protected async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV1(IEngineRpcModule rpc,
@@ -264,15 +261,17 @@ public abstract partial class BaseEngineModuleTests
             return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, b => b.Header.ParentHash == parentHash);
         }
 
-        public IBeaconPivot? BeaconPivot { get; set; }
+        public IBeaconPivot BeaconPivot => Container.Resolve<IBeaconPivot>();
 
-        public BeaconSync? BeaconSync { get; set; }
+        public BeaconSync BeaconSync => Container.Resolve<BeaconSync>();
 
         public IWithdrawalProcessor WithdrawalProcessor => ((MainBlockProcessingContext)MainProcessingContext).LifetimeScope.Resolve<IWithdrawalProcessor>();
 
         public ISyncPeerPool SyncPeerPool { get; set; }
 
         protected int _blockProcessingThrottle = 0;
+
+        public IPayloadPreparationService? OverridePayloadPreparationService { get; set; }
 
         public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
         {
@@ -380,8 +379,12 @@ public abstract partial class BaseEngineModuleTests
         public IBlockImprovementContextFactory BlockImprovementContextFactory =>
             Container.Resolve<IBlockImprovementContextFactory>();
 
-        public async Task<MergeTestBlockchain> Build(ISpecProvider specProvider) =>
-            (MergeTestBlockchain)await Build(configurer: (builder) => builder.AddSingleton<ISpecProvider>(specProvider));
+        public async Task<MergeTestBlockchain> Build(ISpecProvider specProvider, Action<ContainerBuilder>? configurer = null) =>
+            (MergeTestBlockchain)await Build(configurer: (builder) =>
+            {
+                builder.AddSingleton<ISpecProvider>(specProvider);
+                configurer?.Invoke(builder);
+            });
 
         public async Task<MergeTestBlockchain> BuildMergeTestBlockchain(Action<ContainerBuilder> configurer) =>
             (MergeTestBlockchain)await Build(configurer: configurer);

@@ -3,8 +3,6 @@
 
 using System;
 using System.Threading.Tasks;
-using Autofac;
-using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
@@ -21,10 +19,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.HealthChecks;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -32,9 +28,12 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Serialization.Rlp;
+using Autofac;
+using Autofac.Core;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.Serialization.Json;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Taiko.Config;
 using Nethermind.Taiko.Rpc;
@@ -104,7 +103,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
         IRlpStreamDecoder<Transaction> txDecoder = Rlp.GetStreamDecoder<Transaction>() ?? throw new ArgumentNullException(nameof(IRlpStreamDecoder<Transaction>));
         IPayloadPreparationService payloadPreparationService = _api.Context.Resolve<IPayloadPreparationService>();
-        _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
         IPoSSwitcher poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
         IInvalidChainTracker invalidChainTracker = _api.Context.Resolve<IInvalidChainTracker>();
@@ -281,6 +279,7 @@ public class TaikoModule : Module
 
             // Rpc
             .RegisterSingletonJsonRpcModule<ITaikoExtendedEthRpcModule, TaikoExtendedEthModule>()
+            .AddSingleton<IPayloadPreparationService, IBlockProducerEnvFactory, L1OriginStore, IRlpStreamDecoder<Transaction>, ILogManager>(CreatePayloadPreparationService)
 
             // Need to set the rlp globally
             .OnBuild(ctx =>

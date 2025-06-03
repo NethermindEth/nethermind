@@ -142,7 +142,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_invalidChainTracker);
         ArgumentNullException.ThrowIfNull(_blockFinalizationManager);
 
-        IPayloadPreparationService payloadPreparationService = _api.Context.Resolve<IPayloadPreparationService>();
+        /*
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
         var posSwitcher = _api.Context.Resolve<IPoSSwitcher>();
@@ -202,6 +202,9 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                     ? NoGCStrategy.Instance
                     : new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
             _api.LogManager);
+            */
+
+        IEngineRpcModule engineRpcModule = _api.Context.Resolve<IEngineRpcModule>();
 
         IOptimismSignalSuperchainV1Handler signalHandler = new LoggingOptimismSignalSuperchainV1Handler(
             OptimismConstants.CurrentProtocolVersion,

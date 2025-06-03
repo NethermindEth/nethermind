@@ -135,7 +135,7 @@ namespace Nethermind.Api
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
-        public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
+        public IRpcCapabilitiesProvider RpcCapabilitiesProvider => Context.Resolve<IRpcCapabilitiesProvider>();
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
         public IBlockFinalizationManager? FinalizationManager { get; set; }
 
@@ -143,7 +143,7 @@ namespace Nethermind.Api
         public IGasPriceOracle GasPriceOracle => Context.Resolve<IGasPriceOracle>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
-        public CensorshipDetector CensorshipDetector { get; set; } = null!;
+        public ICensorshipDetector CensorshipDetector { get; set; } = new NoopCensorshipDetector();
         public IWallet? Wallet { get; set; }
         public IBadBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }

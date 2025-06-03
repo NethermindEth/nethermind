@@ -37,6 +37,7 @@ using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using ILogManager = Nethermind.Logging.ILogManager;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -380,7 +381,6 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             ctx => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>()!, TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot))),
             timePerSlot, delay: delay);
-        StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.BlockImprovementContextFactory;
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
@@ -427,7 +427,6 @@ public partial class EngineModuleTests
         {
             state.CreateAccount(new Address("0xBC2Fd1637C49839aDB7Bb57F9851EAE3194A90f7"), (UInt256)1200482917041833040, 1);
         };
-
 
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 1000 * delay;

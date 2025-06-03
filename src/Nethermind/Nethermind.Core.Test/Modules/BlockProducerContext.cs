@@ -10,6 +10,7 @@ namespace Nethermind.Core.Test.Modules;
 
 public record BlockProducerContext(
     ILifetimeScope LifetimeScope,
+    IBlockProducer BlockProducer,
     IBlockProducerRunner BlockProducerRunner
 ) : IAsyncDisposable
 {
