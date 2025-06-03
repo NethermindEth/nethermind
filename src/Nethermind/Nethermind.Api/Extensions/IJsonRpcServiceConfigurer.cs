@@ -5,9 +5,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Nethermind.Api.Extensions
 {
-    /// <summary>
-    /// This is specifically used for JsonRpc services
-    /// </summary>
     public interface IJsonRpcServiceConfigurer
     {
         void Configure(IServiceCollection service);

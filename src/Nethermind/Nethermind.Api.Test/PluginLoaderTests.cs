@@ -134,7 +134,7 @@ public class PluginLoaderTests
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
-            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(HealthChecks.HealthChecksPlugin), typeof(MergePlugin));
+            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(HealthChecksPlugin), typeof(MergePlugin));
         loader.Load();
         IPluginConfig pluginConfig =
             new PluginConfig();
@@ -145,7 +145,7 @@ public class PluginLoaderTests
             typeof(EthashPlugin),
             typeof(NethDevPlugin),
             typeof(MergePlugin),
-            typeof(HealthChecks.HealthChecksPlugin),
+            typeof(HealthChecksPlugin),
             typeof(HivePlugin)
         };
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);

@@ -122,8 +122,8 @@ public static class TypeDiscovery
         static bool Filter(Dictionary<string, Assembly> considered, AssemblyName an)
         {
             return an.Name is not null
-                   && !considered.ContainsKey(an.Name)
-                   && an.Name.StartsWith("Nethermind");
+                    && !considered.ContainsKey(an.Name)
+                    && an.Name.StartsWith("Nethermind");
         }
     }
 
