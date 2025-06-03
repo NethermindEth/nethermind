@@ -118,8 +118,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             => _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
     }
 
-	protected virtual void ImproveBlock(PayloadStore store, bool force = false)
-		=> ImproveBlock(store.Id, store.Header, store.PayloadAttributes, store.CurrentBestBlock, store.StartDateTime, store.CurrentBestBlockFees, store.CancellationTokenSource!, false);
+    protected virtual void ImproveBlock(PayloadStore store, bool force = false)
+        => ImproveBlock(store.Id, store.Header, store.PayloadAttributes, store.CurrentBestBlock, store.StartDateTime, store.CurrentBestBlockFees, store.CancellationTokenSource!, false);
 
     protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts, bool force = false)
         => _payloadStorage.AddOrUpdate(payloadId,

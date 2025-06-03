@@ -185,21 +185,21 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected Transaction[]? _transactions = null;
 
-	/// <summary>
-	/// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
-	/// </summary>
-	/// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
-	public TransactionDecodingResult TryGetTransactions()
-	{
-		if (_transactions is not null)
-		{
-			return new TransactionDecodingResult(_transactions);
-		}
+    /// <summary>
+    /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
+    /// </summary>
+    /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
+    public TransactionDecodingResult TryGetTransactions()
+    {
+        if (_transactions is not null)
+        {
+            return new TransactionDecodingResult(_transactions);
+        }
 
-		TransactionDecodingResult res = TxsDecoder.DecodeTxs(Transactions);
-		_transactions = res.Transactions;
-		return res;
-	}
+        TransactionDecodingResult res = TxsDecoder.DecodeTxs(Transactions);
+        _transactions = res.Transactions;
+        return res;
+    }
 
     /// <summary>
     /// RLP-encodes and sets the transactions specified to <see cref="Transactions"/>.

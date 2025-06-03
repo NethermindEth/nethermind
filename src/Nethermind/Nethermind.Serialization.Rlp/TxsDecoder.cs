@@ -18,9 +18,9 @@ public static class TxsDecoder
         try
         {
             Transaction[] decodedTransactions = txData.AsParallel()
-				.Select(tx => Rlp.Decode(tx.AsRlpStream(), rlpDecoder, RlpBehaviors.SkipTypedWrapping))
-				.AsOrdered()
-				.ToArray();
+                .Select(tx => Rlp.Decode(tx.AsRlpStream(), rlpDecoder, RlpBehaviors.SkipTypedWrapping))
+                .AsOrdered()
+                .ToArray();
 
             return new TransactionDecodingResult(decodedTransactions);
         }
