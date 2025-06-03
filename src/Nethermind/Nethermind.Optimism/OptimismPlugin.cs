@@ -124,7 +124,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             producerEnv.BlockTree,
             producerEnv.ReadOnlyStateProvider,
             gasLimitCalculator,
-            NullSealEngine.Instance, // Should this be `_api.SealEngine` instead, which default to `NullSealEngine`.
+            _api.SealEngine,
             new ManualTimestamper(),
             _api.SpecProvider,
             _api.SpecHelper,
