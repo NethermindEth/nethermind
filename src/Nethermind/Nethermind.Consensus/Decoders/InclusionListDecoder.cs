@@ -21,7 +21,7 @@ public class InclusionListDecoder(
 
     public IEnumerable<Transaction> DecodeAndRecover(byte[][] txBytes, IReleaseSpec spec)
     {
-        Transaction[] transactions = TxsDecoder.DecodeTxs(txBytes).Transactions;
+        Transaction[] transactions = TxsDecoder.DecodeTxs(txBytes, true).Transactions;
         _recoverSignatures.RecoverData(transactions, spec, false);
         return transactions;
     }

@@ -9,30 +9,41 @@ namespace Nethermind.Serialization.Rlp;
 
 public static class TxsDecoder
 {
-    public static TransactionDecodingResult DecodeTxs(byte[][] txData)
+    public static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors)
     {
         IRlpStreamDecoder<Transaction>? rlpDecoder = Rlp.GetStreamDecoder<Transaction>();
         if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
 
-        int i = 0;
-        try
-        {
-            Transaction[] decodedTransactions = txData
-                // .AsParallel()
-                // .AsOrdered()
-                .Select(tx => Rlp.Decode(tx.AsRlpStream(), rlpDecoder, RlpBehaviors.SkipTypedWrapping))
-                .ToArray();
+        var transactions = new Transaction[txData.Length];
 
-            return new TransactionDecodingResult(decodedTransactions);
-        }
-        catch (RlpException e)
+        int added = 0;
+        for (int i = 0; i < transactions.Length; i++)
         {
-            return new TransactionDecodingResult($"Transaction {i} is not valid: {e.Message}");
+            try
+            {
+                transactions[added++] = Rlp.Decode(txData[i].AsRlpStream(), rlpDecoder, RlpBehaviors.SkipTypedWrapping);
+            }
+            catch (RlpException e)
+            {
+                if (skipErrors)
+                {
+                    continue;
+                }
+
+                return new TransactionDecodingResult($"Transaction {i} is not valid: {e.Message}");
+            }
+            catch (ArgumentException)
+            {
+                if (skipErrors)
+                {
+                    continue;
+                }
+
+                return new TransactionDecodingResult($"Transaction {i} is not valid");
+            }
         }
-        catch (ArgumentException)
-        {
-            return new TransactionDecodingResult($"Transaction {i} is not valid");
-        }
+
+        return new TransactionDecodingResult(transactions);
     }
 }
 

@@ -196,8 +196,12 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             return new TransactionDecodingResult(_transactions);
         }
 
-        TransactionDecodingResult res = TxsDecoder.DecodeTxs(Transactions);
-        _transactions = res.Transactions;
+        TransactionDecodingResult res = TxsDecoder.DecodeTxs(Transactions, false);
+        if (res.Error is null)
+        {
+            _transactions = res.Transactions;
+        }
+
         return res;
     }
 
