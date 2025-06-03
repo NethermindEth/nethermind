@@ -44,6 +44,6 @@ namespace Nethermind.Api
         ISyncServer? SyncServer { get; }
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory? SubscriptionFactory { get; set; }
-        IEngineRequestsTracker? EngineRequestsTracker { get; set; }
+        IEngineRequestsTracker EngineRequestsTracker { get; }
     }
 }

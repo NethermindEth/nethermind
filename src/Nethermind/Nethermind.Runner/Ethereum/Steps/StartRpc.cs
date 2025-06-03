@@ -6,7 +6,9 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
@@ -83,7 +85,7 @@ public class StartRpc(INethermindApi api) : IStep
                 _api.ConfigProvider,
                 auth,
                 _api.LogManager,
-                _api);
+                _api.Context.Resolve<IJsonRpcServiceConfigurer[]>());
 
             await jsonRpcRunner.Start(cancellationToken).ContinueWith(x =>
             {

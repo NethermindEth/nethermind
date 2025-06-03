@@ -35,7 +35,7 @@ namespace Nethermind.Runner.Ethereum
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private IWebHost? _webHost;
         private readonly IInitConfig _initConfig;
-        private readonly INethermindApi _api;
+        private readonly IJsonRpcServiceConfigurer[] _jsonRpcServices;
 
         public JsonRpcRunner(
             IJsonRpcProcessor jsonRpcProcessor,
@@ -44,7 +44,7 @@ namespace Nethermind.Runner.Ethereum
             IConfigProvider configurationProvider,
             IRpcAuthentication rpcAuthentication,
             ILogManager logManager,
-            INethermindApi api)
+            IJsonRpcServiceConfigurer[] jsonRpcServices)
         {
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
@@ -54,8 +54,8 @@ namespace Nethermind.Runner.Ethereum
             _logManager = logManager;
             _jsonRpcProcessor = jsonRpcProcessor;
             _webSocketsManager = webSocketsManager;
+            _jsonRpcServices = jsonRpcServices;
             _logger = logManager.GetClassLogger();
-            _api = api;
         }
 
         public async Task Start(CancellationToken cancellationToken)
@@ -76,9 +76,9 @@ namespace Nethermind.Runner.Ethereum
                     s.AddSingleton(_jsonRpcUrlCollection);
                     s.AddSingleton(_webSocketsManager);
                     s.AddSingleton(_rpcAuthentication);
-                    foreach (var plugin in _api.Plugins.OfType<INethermindServicesPlugin>())
+                    foreach (IJsonRpcServiceConfigurer jsonRpcServicese in _jsonRpcServices)
                     {
-                        plugin.AddServices(s);
+                        jsonRpcServicese.Configure(s);
                     }
                 })
                 .UseStartup<Startup>()
