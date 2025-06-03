@@ -329,6 +329,10 @@ public class TestCaseGenerator
             case TestCase.ModexpVulnerabilityGuido2Even:
             case TestCase.ModexpVulnerabilityGuido3Even:
             case TestCase.ModexpVulnerabilityGuido4Even:
+            case TestCase.ModexpVulnerabilityPawel1ExpHeavy:
+            case TestCase.ModexpVulnerabilityPawel2ExpHeavy:
+            case TestCase.ModexpVulnerabilityPawel3ExpHeavy:
+            case TestCase.ModexpVulnerabilityPawel4ExpHeavy:
             case TestCase.ModexpCommon1360n1:
             case TestCase.ModexpCommon1360n2:
             case TestCase.ModexpCommon1349n1:

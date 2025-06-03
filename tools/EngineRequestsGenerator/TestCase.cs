@@ -239,6 +239,18 @@ public enum TestCase
     [TestCaseMetadata("Modexp \"guido-4-even\"", "Modexp precompile test case \"guido-4-even\" reported as potential vulnerability")]
     ModexpVulnerabilityGuido4Even,
 
+    [TestCaseMetadata("Modexp \"pawel-1-exp-heavy\"", "Modexp precompile test case \"pawel-1-exp-heavy\" reported as potential vulnerability")]
+    ModexpVulnerabilityPawel1ExpHeavy,
+
+    [TestCaseMetadata("Modexp \"pawel-2-exp-heavy\"", "Modexp precompile test case \"pawel-2-exp-heavy\" reported as potential vulnerability")]
+    ModexpVulnerabilityPawel2ExpHeavy,
+
+    [TestCaseMetadata("Modexp \"pawel-3-exp-heavy\"", "Modexp precompile test case \"pawel-3-exp-heavy\" reported as potential vulnerability")]
+    ModexpVulnerabilityPawel3ExpHeavy,
+
+    [TestCaseMetadata("Modexp \"pawel-4-exp-heavy\"", "Modexp precompile test case \"pawel-4-exp-heavy\" reported as potential vulnerability")]
+    ModexpVulnerabilityPawel4ExpHeavy,
+
     [TestCaseMetadata("Modexp common 1360 1", "Modexp precompile test case collected from Mainnet, consuming 1360 gas (base and modulo byte size 32 and exponent bit length 256)")]
     ModexpCommon1360n1,
 
