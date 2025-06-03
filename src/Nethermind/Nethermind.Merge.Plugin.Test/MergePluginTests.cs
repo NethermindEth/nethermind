@@ -13,6 +13,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
+using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -62,6 +63,7 @@ public class MergePluginTests
                 [_consensusPlugin!, _plugin],
                 LimboLogs.Instance))
             .AddSingleton<IRpcModuleProvider>(Substitute.For<IRpcModuleProvider>())
+            .AddModule(new HealthCheckPluginModule()) // The merge RPC require it.
             .OnBuild((ctx) =>
             {
                 INethermindApi api = ctx.Resolve<INethermindApi>();
