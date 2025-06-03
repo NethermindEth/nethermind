@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -32,9 +30,7 @@ namespace Nethermind.Runner.Ethereum
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
         private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
         private readonly IWebSocketsManager _webSocketsManager;
-        private readonly IJsonRpcConfig _jsonRpcConfig;
         private IWebHost? _webHost;
-        private readonly IInitConfig _initConfig;
         private readonly IJsonRpcServiceConfigurer[] _jsonRpcServices;
 
         public JsonRpcRunner(
@@ -46,8 +42,6 @@ namespace Nethermind.Runner.Ethereum
             ILogManager logManager,
             IJsonRpcServiceConfigurer[] jsonRpcServices)
         {
-            _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
-            _initConfig = configurationProvider.GetConfig<IInitConfig>();
             _configurationProvider = configurationProvider;
             _rpcAuthentication = rpcAuthentication;
             _jsonRpcUrlCollection = jsonRpcUrlCollection;
@@ -76,9 +70,9 @@ namespace Nethermind.Runner.Ethereum
                     s.AddSingleton(_jsonRpcUrlCollection);
                     s.AddSingleton(_webSocketsManager);
                     s.AddSingleton(_rpcAuthentication);
-                    foreach (IJsonRpcServiceConfigurer jsonRpcServicese in _jsonRpcServices)
+                    foreach (IJsonRpcServiceConfigurer configurer in _jsonRpcServices)
                     {
-                        jsonRpcServicese.Configure(s);
+                        configurer.Configure(s);
                     }
                 })
                 .UseStartup<Startup>()
