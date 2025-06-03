@@ -432,6 +432,9 @@ namespace Nethermind.Synchronization
             if (Genesis is null)
                 return;
 
+            if (!_pool.AllPeers.Any())
+                return;
+
             Block latestBlock = latestBlockEventArgs.Block;
             BlockHeader? latestUpdate = _lastBlockRangeUpdate?.latest;
 

@@ -716,7 +716,8 @@ public class SyncServerTests
                 .Select(a => (earliest: a[0], latest: a[1]))
                 .ToArray();
 
-            Assert.That(receivedCalls, Has.Length.GreaterThan(0));
+            // We can miss some updates or have duplicates due to notifications happening in the background
+            Assert.That(receivedCalls, Is.Not.Empty);
             Assert.That(receivedCalls.Distinct(), Is.SubsetOf(expectedUpdates));
         }
     }
