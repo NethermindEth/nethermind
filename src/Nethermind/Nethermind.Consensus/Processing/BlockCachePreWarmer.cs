@@ -275,57 +275,67 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
                     }
                 }
 
-                AddressWarmingState baseState = new(envPool, block, StateRoot);
-
-                ParallelUnbalancedWork.For(
-                    0,
-                    block.Transactions.Length,
-                    parallelOptions,
-                    baseState.InitThreadState,
-                static (i, state) =>
+                WarmupTransactionAddresses(envPool, block.Transactions, true);
+                if (block.InclusionListTransactions is not null)
                 {
-                    Transaction tx = state.Block.Transactions[i];
-                    Address? sender = tx.SenderAddress;
-
-                    try
-                    {
-                        if (sender is not null)
-                        {
-                            state.Scope.WorldState.WarmUp(sender);
-                        }
-
-                        Address to = tx.To;
-                        if (to is not null)
-                        {
-                            state.Scope.WorldState.WarmUp(to);
-                        }
-                    }
-                    catch (MissingTrieNodeException)
-                    {
-                    }
-
-                    return state;
-                },
-                AddressWarmingState.FinallyAction);
+                    WarmupTransactionAddresses(envPool, block.InclusionListTransactions, false);
+                }
             }
             catch (OperationCanceledException)
             {
                 // Ignore, block completed cancel
             }
         }
+
+        private void WarmupTransactionAddresses(ObjectPool<IReadOnlyTxProcessorSource> envPool, Transaction[] transactions, bool warmToAddress)
+        {
+            AddressWarmingState baseState = new(envPool, transactions, StateRoot, warmToAddress);
+
+            ParallelUnbalancedWork.For(
+                0,
+                transactions.Length,
+                parallelOptions,
+                baseState.InitThreadState,
+            static (i, state) =>
+            {
+                Transaction tx = state.Transactions[i];
+                Address? sender = tx.SenderAddress;
+
+                try
+                {
+                    if (sender is not null)
+                    {
+                        state.Scope.WorldState.WarmUp(sender);
+                    }
+
+                    Address? to = state.WarmToAddress ? null : tx.To;
+                    if (to is not null)
+                    {
+                        state.Scope.WorldState.WarmUp(to);
+                    }
+                }
+                catch (MissingTrieNodeException)
+                {
+                }
+
+                return state;
+            },
+            AddressWarmingState.FinallyAction);
+        }
     }
 
-    private readonly struct AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, Hash256 stateRoot) : IDisposable
+    private readonly struct AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Transaction[] transactions, Hash256 stateRoot, bool warmToAddress) : IDisposable
     {
         public static Action<AddressWarmingState> FinallyAction { get; } = DisposeThreadState;
 
         public readonly ObjectPool<IReadOnlyTxProcessorSource> EnvPool = envPool;
-        public readonly Block Block = block;
+        public readonly Transaction[] Transactions = transactions;
         public readonly Hash256 StateRoot = stateRoot;
+        public readonly bool WarmToAddress = warmToAddress;
         public readonly IReadOnlyTxProcessorSource? Env;
         public readonly IReadOnlyTxProcessingScope? Scope;
 
-        public AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Block block, Hash256 stateRoot, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope) : this(envPool, block, stateRoot)
+        public AddressWarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, Transaction[] transactions, Hash256 stateRoot, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope, bool warmToAddress) : this(envPool, transactions, stateRoot, warmToAddress)
         {
             Env = env;
             Scope = scope;
@@ -334,7 +344,8 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
         public AddressWarmingState InitThreadState()
         {
             IReadOnlyTxProcessorSource env = EnvPool.Get();
-            return new(EnvPool, Block, StateRoot, env, scope: env.Build(StateRoot));
+            IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
+            return new(EnvPool, Transactions, StateRoot, env, scope, WarmToAddress);
         }
 
         public void Dispose()
