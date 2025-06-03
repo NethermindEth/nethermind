@@ -6,6 +6,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -16,10 +17,19 @@ namespace Nethermind.Evm.Test;
 
 public class WrappedEthTests : VirtualMachineTestsBase
 {
+    // The WrappedEth address is considered the recipient. We don't care about being honest with address here.
     private static readonly Address WrappedEthAddress = SenderRecipientAndMiner.Default.Recipient;
+
+    // Represents the address
     private static readonly Address SenderAddress = SenderRecipientAndMiner.Default.Sender;
     private static readonly UInt256 SenderBalanceStorage = new(9055108917293287279, 16116806354556711235, 16080230447512486757, 16153194885772539840);
     private static readonly StorageCell SenderBalanceCell = new(WrappedEthAddress, SenderBalanceStorage);
+
+    // Represents some other address
+    private static readonly Address OtherAddress = TestItem.PrivateKeyD.Address;
+    private static readonly UInt256 OtherAddressStorage = new UInt256(6336954612432966780, 13641044163492443802,
+        12866168085374088197, 1518696171257252784);
+    private static readonly StorageCell OtherAddressBalanceCell = new(WrappedEthAddress, OtherAddressStorage);
 
     [Test]
     public void Deposit()
@@ -37,9 +47,7 @@ public class WrappedEthTests : VirtualMachineTestsBase
             NullTxTracer.Instance);
 
         // Assert value
-        ReadOnlySpan<byte> read = TestState.Get(SenderBalanceCell);
-        UInt256 after = new UInt256(read);
-        after.Should().Be(deposit, "The stored value should be equal to the deposited");
+        AssertBalance(SenderBalanceCell, deposit);
 
         // Assert status
         result.Success.Should().Be(true);
@@ -54,9 +62,30 @@ public class WrappedEthTests : VirtualMachineTestsBase
         // Arrange value to be equal to the transfer value.
         TestState.Set(SenderBalanceCell, value.ToBigEndian().WithoutLeadingZeros().ToArray());
 
-        // TBD
+        byte[] data = TransferSelector
+            .Concat(OtherAddress.Bytes.PadLeft(32))
+            .Concat(value.ToBigEndian().PadLeft(32))
+            .ToArray();
 
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, WrappedEthCode, data, 0);
 
+        // Execute
+        TransactionResult result = _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec),
+            NullTxTracer.Instance);
+
+        // Assert value
+        AssertBalance(SenderBalanceCell, 0);
+        AssertBalance(OtherAddressBalanceCell, value);
+
+        // Assert status
+        result.Success.Should().Be(true);
+    }
+
+    private void AssertBalance(StorageCell cell, UInt256 deposit)
+    {
+        ReadOnlySpan<byte> read = TestState.Get(cell);
+        UInt256 after = new UInt256(read);
+        after.Should().Be(deposit);
     }
 
     private static readonly byte[] WrappedEthCode = Bytes.FromHexString(
