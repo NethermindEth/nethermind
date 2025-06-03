@@ -66,6 +66,10 @@ public class NodeRecordSigner : INodeRecordSigner
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.EthU8):
                     _ = rlpStream.ReadSequenceLength();
+                    if (rlpStream.IsSequenceNext())
+                    {
+                        _ = rlpStream.ReadSequenceLength();
+                    }
                     byte[] forkHash = rlpStream.DecodeByteArray();
                     long nextBlock = rlpStream.DecodeLong();
                     nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
