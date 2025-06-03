@@ -2139,12 +2139,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             foreach (JsonElement item in valuesElement.EnumerateArray())
             {
                 if (item.TryGetProperty("address", out JsonElement addressElement) &&
-                    item.TryGetProperty("code_size", out JsonElement nameElement)){
-
-                    var codeSize = nameElement.GetInt32();
+                    item.TryGetProperty("code_size", out JsonElement sizeElement) &&
+                    item.TryGetProperty("count", out JsonElement countElement))
+                {
+                    var codeSize = sizeElement.GetInt32();
+                    var count = countElement.GetInt32();
 
                     if (codeSize == 0) continue;
- 
+
+                    if (count < 750) continue;
+
                     string address = addressElement.GetString();
                     yield return address;
                 }
@@ -2152,6 +2156,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             yield return "0xBB9bc244D798123fDe783fCc1C72d3Bb8C189413";
         }
+
 
 
         [Test]
@@ -2220,6 +2225,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 Precompiler.FlushToDisk(config);
             }
+
         }
     }
 }
