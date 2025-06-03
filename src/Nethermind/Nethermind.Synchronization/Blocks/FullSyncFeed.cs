@@ -29,6 +29,7 @@ namespace Nethermind.Synchronization.Blocks
 
         public override AllocationContexts Contexts => AllocationContexts.Blocks;
         public override bool IsFinished => false; // Check MultiSyncModeSelector
+        public override string FeedName => nameof(FullSyncFeed);
 
         public override void FallAsleep()
         {

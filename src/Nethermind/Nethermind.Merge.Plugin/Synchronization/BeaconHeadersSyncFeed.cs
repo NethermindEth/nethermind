@@ -50,6 +50,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     protected override long TotalBlocks => _pivotNumber - HeadersDestinationNumber + 1;
 
     protected override ProgressLogger HeadersSyncProgressLoggerReport => _syncReport.BeaconHeaders;
+    public override string FeedName => nameof(BeaconHeadersSyncFeed);
 
     public BeaconHeadersSyncFeed(
         IPoSSwitcher poSSwitcher,
