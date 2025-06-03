@@ -119,7 +119,7 @@ namespace Nethermind.Api
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         public IBlockProducer? BlockProducer { get; set; }
-        public IBlockProducerRunner? BlockProducerRunner { get; set; } = new NoBlockProducerRunner();
+        public IBlockProducerRunner BlockProducerRunner { get; set; } = new NoBlockProducerRunner();
         public IBlockTree? BlockTree { get; set; }
         public IBlockValidator BlockValidator => Context.Resolve<IBlockValidator>();
         public IBloomStorage? BloomStorage { get; set; }
