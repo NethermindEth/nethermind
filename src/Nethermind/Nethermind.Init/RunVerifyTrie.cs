@@ -17,39 +17,26 @@ namespace Nethermind.Init;
 
 [RunnerStepDependencies(typeof(InitializeBlockTree))]
 [RunnerStepDependents(typeof(InitializeBlockchain))]
-public class RunVerifyTrie : IStep
+public class RunVerifyTrie(
+    IWorldStateManager worldStateManager,
+    IBlockTree blockTree,
+    IInitConfig initConfig,
+    IProcessExitSource processExitSource,
+    ILogManager logManager)
+    : IStep
 {
-    private readonly IBlockTree _blockTree;
-    private readonly IWorldStateManager _worldStateManager;
-    private readonly IInitConfig _initConfig;
-    private readonly IProcessExitSource _processExit;
-    private ILogger _logger;
-
-    public RunVerifyTrie(
-        IWorldStateManager worldStateManager,
-        IBlockTree blockTree,
-        IInitConfig initConfig,
-        IProcessExitSource processExitSource,
-        ILogManager logManager)
-    {
-        _worldStateManager = worldStateManager;
-        _blockTree = blockTree;
-        _initConfig = initConfig;
-        _processExit = processExitSource;
-
-        _logger = logManager.GetClassLogger<RunVerifyTrie>();
-    }
+    private ILogger _logger = logManager.GetClassLogger<RunVerifyTrie>();
 
     public Task Execute(CancellationToken cancellationToken)
     {
-        if (_initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)
+        if (initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)
         {
             _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-            BlockHeader? head = _blockTree!.Head?.Header;
+            BlockHeader? head = blockTree!.Head?.Header;
             if (head is not null)
             {
                 _logger.Info($"Starting from {head.Number} {head.StateRoot}{Environment.NewLine}");
-                _worldStateManager.VerifyTrie(head, _processExit!.Token);
+                worldStateManager.VerifyTrie(head, processExitSource!.Token);
             }
         }
 
