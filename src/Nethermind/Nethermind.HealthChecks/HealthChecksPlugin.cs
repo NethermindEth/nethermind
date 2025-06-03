@@ -6,10 +6,13 @@ using System.IO.Abstractions;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Services;
+using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.JsonRpc;
@@ -139,8 +142,9 @@ namespace Nethermind.HealthChecks
                 }
             }
 
+            var healthHintService = _api.Context.Resolve<IHealthHintService>();
             _nodeHealthService = new NodeHealthService(_api.SyncServer,
-                _api.MainProcessingContext!.BlockchainProcessor, _api.BlockProducerRunner!, _healthChecksConfig, _api.HealthHintService!,
+                _api.MainProcessingContext!.BlockchainProcessor, _api.BlockProducerRunner!, _healthChecksConfig, healthHintService,
                 _api.EthSyncingInfo!, _engineRequestsTracker, _api.SpecProvider!.TerminalTotalDifficulty, drives, _initConfig.IsMining);
 
             if (_mergeConfig.Enabled)
@@ -174,4 +178,15 @@ namespace Nethermind.HealthChecks
             }
         }
     }
+
+    public class HealthCheckPluginModule : Module
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            base.Load(builder);
+
+            builder.AddSingleton<IHealthHintService, HealthHintService>();
+        }
+    }
+
 }

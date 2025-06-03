@@ -111,9 +111,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             preWarmer: preWarmer);
     }
 
-    protected override IHealthHintService CreateHealthHintService() =>
-        new AuraHealthHintService(_api.Context.Resolve<IAuRaStepCalculator>(), _api.ValidatorStore);
-
 
     protected IAuRaValidator CreateAuRaValidator(IWorldState worldState, ITransactionProcessor transactionProcessor)
     {

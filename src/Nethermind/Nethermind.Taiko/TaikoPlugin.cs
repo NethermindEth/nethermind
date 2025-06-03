@@ -35,6 +35,7 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
@@ -299,6 +300,9 @@ public class TaikoModule : Module
             .AddSingleton<IUnclesValidator>(Always.Valid)
 
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
+
+            .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>
+                new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))
             ;
     }
 }

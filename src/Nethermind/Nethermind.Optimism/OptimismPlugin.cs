@@ -23,7 +23,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -37,14 +36,10 @@ using Nethermind.Optimism.Rpc;
 using Nethermind.Optimism.ProtocolVersion;
 using Nethermind.Optimism.Cl.Rpc;
 using Nethermind.Optimism.CL.L1Bridge;
-using Nethermind.Core.Specs;
-using Nethermind.Serialization.Json;
-using Nethermind.Crypto;
-using System.Net;
+using Nethermind.Blockchain.Services;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
-using Nethermind.Optimism.CL.P2P;
 
 namespace Nethermind.Optimism;
 
@@ -389,6 +384,9 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
             // Block processing
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
+
+            .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>
+                new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))
             ;
 
     }

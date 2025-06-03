@@ -142,7 +142,6 @@ namespace Nethermind.Init.Steps
             IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
             IFilterStore filterStore = setApi.FilterStore = new FilterStore(getApi.TimerFactory, rpcConfig.FiltersTimeout);
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
-            setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
             _api.DisposeStack.Push(filterStore);
 
@@ -201,9 +200,6 @@ namespace Nethermind.Init.Steps
 
             return virtualMachine;
         }
-
-        protected virtual IHealthHintService CreateHealthHintService() =>
-            new HealthHintService(_api.ChainSpec!);
 
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
             new BlockProductionPolicy(_api.Config<IMiningConfig>());
