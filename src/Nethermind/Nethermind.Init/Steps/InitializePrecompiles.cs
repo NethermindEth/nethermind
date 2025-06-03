@@ -12,21 +12,13 @@ using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps;
 
-public class InitializePrecompiles : IStep
+public class InitializePrecompiles(ISpecProvider specProvider, IInitConfig initConfig, ILogManager logManager) : IStep
 {
-    private readonly INethermindApi _api;
-
-    public InitializePrecompiles(INethermindApi api)
-    {
-        _api = api;
-    }
-
     public async Task Execute(CancellationToken cancellationToken)
     {
-        if (_api.SpecProvider!.GetFinalSpec().IsEip4844Enabled)
+        if (specProvider!.GetFinalSpec().IsEip4844Enabled)
         {
-            ILogger logger = _api.LogManager.GetClassLogger<InitializePrecompiles>();
-            IInitConfig initConfig = _api.Config<IInitConfig>();
+            ILogger logger = logManager.GetClassLogger<InitializePrecompiles>();
 
             try
             {

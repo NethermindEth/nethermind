@@ -82,7 +82,6 @@ namespace Nethermind.Consensus.AuRa
             yield return typeof(InitializeBlockchainAuRa);
             yield return typeof(LoadGenesisBlockAuRa);
             yield return typeof(RegisterAuRaRpcModules);
-            yield return typeof(StartBlockProcessorAuRa);
         }
 
         public IModule Module => new AuraModule(chainSpec);

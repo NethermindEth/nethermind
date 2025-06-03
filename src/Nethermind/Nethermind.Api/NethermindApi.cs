@@ -145,7 +145,7 @@ namespace Nethermind.Api
         public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
             new BuildBlocksWhenRequested();
 
-        public IIPResolver? IpResolver { get; set; }
+        public IIPResolver IpResolver => Context.Resolve<IIPResolver>();
         public IJsonSerializer EthereumJsonSerializer => _dependencies.JsonSerializer;
         public IKeyStore? KeyStore { get; set; }
         public ILogFinder? LogFinder { get; set; }
