@@ -1,140 +1,36 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Config;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Nethermind.Core.Crypto;
-using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
-using Nethermind.Db;
-using Nethermind.Trie.Pruning;
-using System.Diagnostics;
-using Nethermind.Abi;
-using System.Runtime.CompilerServices;
-using Nethermind.Trie;
-
-using static System.Runtime.CompilerServices.Unsafe;
-using System.Reflection.Emit;
 using System.IO;
-using System.Runtime.Loader;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text;
 using System.Threading.Tasks;
 using System.Net;
-using Microsoft.AspNetCore.Mvc.ApplicationParts;
-using Org.BouncyCastle.Asn1.X509;
-namespace Nethermind.Evm.Test.CodeAnalysis
+
+namespace Nethermind.Evm.Test.ILEVM
 {
-    internal class TestBlockChain : VirtualMachineTestsBase
-    {
-        protected IVMConfig config;
-        public TestBlockChain(IVMConfig config, IReleaseSpec spec)
-        {
-            this.config = config;
-            SpecProvider = new TestSpecProvider(spec);
-            Setup();
-        }
-
-        public TestBlockChain()
-        {
-            config = new VMConfig();
-            Setup();
-        }
-        public override void Setup()
-        {
-            base.Setup();
-
-            IlAnalyzer.StartPrecompilerBackgroundThread(config, NullLogger.Instance);
-
-            ILogManager logManager = GetLogManager();
-
-            _blockhashProvider = new TestBlockhashProvider(SpecProvider);
-            Machine = new VirtualMachine(_blockhashProvider, SpecProvider, CodeInfoRepository, logManager, config);
-            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
-
-            var code = Prepare.EvmCode
-                .PushData(23)
-                .PushData(7)
-                .ADD()
-                .MSTORE(0, Enumerable.Range(0, 32).Select(i => (byte)i).ToArray())
-                .RETURN(0, 32)
-                .STOP().Done;
-            InsertCode(code, Address.FromNumber((int)Instruction.RETURN));
-
-            var returningCode = Prepare.EvmCode
-                        .PushData(UInt256.MaxValue)
-                        .PUSHx([0])
-                        .MSTORE()
-                        .Return(32, 0)
-                        .STOP()
-                        .Done;
-            InsertCode(returningCode, Address.FromNumber((int)Instruction.RETURNDATASIZE));
-        }
-
-        public void Execute<T>(byte[] bytecode, T tracer, ForkActivation? fork = null, long gasAvailable = 10_000_000, byte[][] blobVersionedHashes = null)
-            where T : ITxTracer
-        {
-            Execute<T>(tracer, bytecode, fork ?? MainnetSpecProvider.PragueActivation, gasAvailable, blobVersionedHashes);
-        }
-
-        public Address InsertCode(byte[] bytecode, Address? target = null)
-        {
-            var hashcode = Keccak.Compute(bytecode);
-            var address = target ?? new Address(hashcode);
-
-            TestState.CreateAccount(address, 1_000_000_000);
-            TestState.InsertCode(address, bytecode, Spec);
-            return address;
-        }
-        public void ForceRunAnalysis(Address address, int mode)
-        {
-            var codeinfo = CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance, out _);
-
-            if (mode.HasFlag(ILMode.FULL_AOT_MODE))
-            {
-                IlAnalyzer.Analyse(codeinfo, ILMode.FULL_AOT_MODE, config, NullLogger.Instance);
-            }
-
-            codeinfo.IlInfo.AnalysisPhase = AnalysisPhase.Completed;
-        }
-
-        public Hash256 StateRoot
-        {
-            get
-            {
-                TestState.Commit(Spec);
-                TestState.RecalculateStateRoot();
-                return TestState.StateRoot;
-            }
-        }
-
-    }
-
     [TestFixture]
     [NonParallelizable]
     internal class IlEvmTests
     {
         [SetUp]
-        public void Setup()
+        public void Init()
         {
             AotContractsRepository.ClearCache();
             Precompiler.ResetEnvironment(true);
@@ -142,7 +38,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Metrics.IlvmAotPrecompiledCalls = 0;
         }
 
-        private const string PatternField = "_patterns";
         private const int RepeatCount = 256;
         public static IEnumerable<(string, Instruction[], byte[], EvmExceptionType, bool, IReleaseSpec)> GetJitBytecodesSamples()
         {
@@ -778,13 +673,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, turnOnAggressiveMode);
 
                 yield return ([Instruction.MSIZE], Prepare.EvmCode
-                    .PushData(TestBlockChain.SampleHexData1.PadLeft(64, '0'))
+                    .PushData(IlVirtualMachineTestsBase.SampleHexData1.PadLeft(64, '0'))
                     .PushData(0)
                     .Op(Instruction.MSTORE)
                     .MSIZE()
                     .PushData(1)
                     .SSTORE()
-                    .PushData(TestBlockChain.SampleHexData1.PadLeft(64, '0'))
+                    .PushData(IlVirtualMachineTestsBase.SampleHexData1.PadLeft(64, '0'))
                     .PushData(32)
                     .Op(Instruction.MSTORE)
                     .MSIZE()
@@ -1270,14 +1165,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, turnOnAggressiveMode);
 
                 yield return ([Instruction.LOG0], Prepare.EvmCode
-                    .PushData(TestBlockChain.SampleHexData1.PadLeft(64, '0'))
+                    .PushData(IlVirtualMachineTestsBase.SampleHexData1.PadLeft(64, '0'))
                     .PushData(0)
                     .Op(Instruction.MSTORE)
                     .LOGx(0, 0, 64)
                     .Done, EvmExceptionType.None, turnOnAggressiveMode);
 
                 yield return ([Instruction.LOG1], Prepare.EvmCode
-                    .PushData(TestBlockChain.SampleHexData1.PadLeft(64, '0'))
+                    .PushData(IlVirtualMachineTestsBase.SampleHexData1.PadLeft(64, '0'))
                     .PushData(0)
                     .Op(Instruction.MSTORE)
                     .PushData(TestItem.KeccakA.Bytes.ToArray())
@@ -1285,7 +1180,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, turnOnAggressiveMode);
 
                 yield return ([Instruction.LOG2], Prepare.EvmCode
-                    .PushData(TestBlockChain.SampleHexData1.PadLeft(64, '0'))
+                    .PushData(IlVirtualMachineTestsBase.SampleHexData1.PadLeft(64, '0'))
                     .PushData(0)
                     .Op(Instruction.MSTORE)
                     .PushData(TestItem.KeccakA.Bytes.ToArray())
@@ -1294,7 +1189,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, turnOnAggressiveMode);
 
                 yield return ([Instruction.LOG3], Prepare.EvmCode
-                    .PushData(TestBlockChain.SampleHexData1.PadLeft(64, '0'))
+                    .PushData(IlVirtualMachineTestsBase.SampleHexData1.PadLeft(64, '0'))
                     .PushData(0)
                     .Op(Instruction.MSTORE)
                     .PushData(TestItem.KeccakA.Bytes.ToArray())
@@ -1304,7 +1199,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None, turnOnAggressiveMode);
 
                 yield return ([Instruction.LOG4], Prepare.EvmCode
-                    .PushData(TestBlockChain.SampleHexData1.PadLeft(64, '0'))
+                    .PushData(IlVirtualMachineTestsBase.SampleHexData1.PadLeft(64, '0'))
                     .PushData(0)
                     .Op(Instruction.MSTORE)
                     .PushData(TestItem.KeccakA.Bytes.ToArray())
@@ -1925,8 +1820,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Execution_Swap_Happens_When_Compilation_Occurs()
         {
-            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
             {
+                IsILEvmEnabled = true,
                 IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
@@ -1958,7 +1854,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             for (int i = 0; i < RepeatCount; i++)
             {
-                enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance);
+                enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, forceAnalysis: false);
             }
 
             Assert.That(AotContractsRepository.TryGetIledCode(codehash, out var iledCode), Is.True);
@@ -1978,12 +1874,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
         public void ILVM_AOT_Execution_Equivalence_Tests((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, bool enableAggressiveMode, IReleaseSpec spec) testcase)
         {
-            Console.WriteLine(testcase.msg);
-
-            TestBlockChain standardChain = new TestBlockChain(new VMConfig(), testcase.spec);
+            IlVirtualMachineTestsBase standardChain = new IlVirtualMachineTestsBase(new VMConfig(), testcase.spec);
             Path.Combine(Directory.GetCurrentDirectory(), "GeneratedContracts.dll");
 
-            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
             {
                 IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
                 IlEvmAnalysisThreshold = 256,
@@ -2050,7 +1944,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             standardChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes);
 
-            enhancedChain.ForceRunAnalysis(address, ILMode.FULL_AOT_MODE);
+            Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(0));
 
             enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes);
 
@@ -2070,7 +1964,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 Directory.CreateDirectory(path);
             }
 
-            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
             {
                 IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
                 IlEvmAnalysisThreshold = 1,
@@ -2101,7 +1995,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
         public void ILVM_Attribute_is_Correctly_Attached((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, bool enableAggressiveMode, IReleaseSpec spec) testcase)
         {
-            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
             {
                 IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
                 IlEvmAnalysisThreshold = 1,
@@ -2181,7 +2075,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IlEvmPrecompiledContractsPath = path,
             };
 
-            TestBlockChain enhancedChain = new TestBlockChain(config, Prague.Instance);
+            IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(config, Prague.Instance);
 
 
             string fileName = Precompiler.GetTargetFileName();

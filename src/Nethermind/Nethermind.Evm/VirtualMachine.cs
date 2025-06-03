@@ -2,6 +2,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+// #define ILVM_TESTING
+
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -76,7 +78,7 @@ public class VirtualMachine : IVirtualMachine
         IVMConfig vmConfig = null)
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-
+#if ILVM_TESTING
         _vmConfig = new VMConfig
         {
             IsILEvmEnabled = true,
@@ -90,6 +92,9 @@ public class VirtualMachine : IVirtualMachine
             IlEvmAnalysisQueueMaxSize = 1,
             IlEvmAnalysisCoreUsage = 0.75f
         };
+#else
+        _vmConfig = vmConfig ?? new VMConfig();
+#endif
 
         switch (_vmConfig.IlEvmEnabledMode)
         {
@@ -685,17 +690,17 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if (typeof(IsPrecompiling) == typeof(TOptimizing))
             {
-                // testing :
+#if ILVM_TESTING
                 if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed && vmState.Env.CodeInfo.Codehash is not null && vmState.Env.CodeInfo.MachineCode.Length < 24.KB())
                 {
                     IlAnalyzer.Analyse(env.CodeInfo, ILMode.FULL_AOT_MODE, _vmConfig, _logger);
                 }
-                /*
+#else
                 if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed)
                 {
                     env.CodeInfo.NoticeExecution(_vmConfig, _logger, spec);
                 }
-                */
+#endif
             }
 
         }
