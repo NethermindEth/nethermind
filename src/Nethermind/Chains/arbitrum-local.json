@@ -3,6 +3,7 @@
   "dataDir": "arbitrum-local",
   "engine": {
     "Arbitrum": {
+      "enabled": true,
       "initialArbOSVersion": 32,
       "initialChainOwner": "0x5E1497dD1f08C87b2d8FE23e9AAB6c1De833D927",
       "genesisBlockNum": 0,
