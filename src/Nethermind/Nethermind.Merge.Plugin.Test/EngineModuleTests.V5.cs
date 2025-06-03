@@ -310,6 +310,9 @@ public partial class EngineModuleTests
         Assert.That(buildCount, Is.EqualTo(1));
 
         payloadPreparationService.ForceRebuildPayload(payloadId);
+
+		await Task.Delay(500);
+
         buildCount = payloadPreparationService.GetPayloadBuildCount(payloadId);
 
         Assert.That(buildCount, Is.EqualTo(2));
