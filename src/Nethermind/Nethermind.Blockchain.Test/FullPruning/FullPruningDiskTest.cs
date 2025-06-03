@@ -78,7 +78,7 @@ public class FullPruningDiskTest
         {
             IDbProvider dbProvider = new DbProvider();
             RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
-            StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
+            StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, LimboLogs.Instance, fileSystem: new FileSystem());
             standardDbInitializer.InitStandardDbs(true);
 
             return base.ConfigureContainer(builder, configProvider)

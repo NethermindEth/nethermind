@@ -5,21 +5,19 @@ using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Db.FullPruning;
+using Nethermind.Logging;
 
 namespace Nethermind.Db
 {
-    public class StandardDbInitializer : RocksDbInitializer
+    public class StandardDbInitializer(
+        IDbProvider? dbProvider,
+        IDbFactory? rocksDbFactory,
+        ILogManager logManager,
+        IFileSystem? fileSystem = null)
+        : RocksDbInitializer(dbProvider, rocksDbFactory)
     {
-        private readonly IFileSystem _fileSystem;
-
-        public StandardDbInitializer(
-            IDbProvider? dbProvider,
-            IDbFactory? rocksDbFactory,
-            IFileSystem? fileSystem = null)
-            : base(dbProvider, rocksDbFactory)
-        {
-            _fileSystem = fileSystem ?? new FileSystem();
-        }
+        private readonly IFileSystem _fileSystem = fileSystem ?? new FileSystem();
+        private readonly ILogger _logger = logManager.GetClassLogger<StandardDbInitializer>();
 
         public void InitStandardDbs(bool useReceiptsDb, bool useBlobsDb = true)
         {
@@ -49,7 +47,7 @@ namespace Nethermind.Db
                     : DbFactory,
                 () => Interlocked.Increment(ref Metrics.StateDbInPruningWrites)));
 
-            RegisterDb(BuildDbSettings(DbNames.Code), db => new AsyncDb(db));
+            RegisterDb(BuildDbSettings(DbNames.Code), db => new AsyncDb(db, _logger));
             RegisterDb(BuildDbSettings(DbNames.Bloom));
             if (useReceiptsDb)
             {
