@@ -311,7 +311,7 @@ public partial class EngineModuleTests
 
         payloadPreparationService.ForceRebuildPayload(payloadId);
 
-		await Task.Delay(500);
+        await Task.Delay(500);
 
         buildCount = payloadPreparationService.GetPayloadBuildCount(payloadId);
 
