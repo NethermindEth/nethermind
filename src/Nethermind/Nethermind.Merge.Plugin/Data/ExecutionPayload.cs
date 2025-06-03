@@ -185,39 +185,21 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected Transaction[]? _transactions = null;
 
-    /// <summary>
-    /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
-    /// </summary>
-    /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
-    public TransactionDecodingResult TryGetTransactions()
-    {
-        if (_transactions is not null) return new TransactionDecodingResult(_transactions);
+	/// <summary>
+	/// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
+	/// </summary>
+	/// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
+	public TransactionDecodingResult TryGetTransactions()
+	{
+		if (_transactions is not null)
+		{
+			return new TransactionDecodingResult(_transactions);
+		}
 
-        IRlpStreamDecoder<Transaction>? rlpDecoder = Rlp.GetStreamDecoder<Transaction>();
-        if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
-
-        int i = 0;
-        try
-        {
-            byte[][] txData = Transactions;
-            Transaction[] transactions = new Transaction[txData.Length];
-
-            for (i = 0; i < transactions.Length; i++)
-            {
-                transactions[i] = Rlp.Decode(txData[i].AsRlpStream(), rlpDecoder, RlpBehaviors.SkipTypedWrapping);
-            }
-
-            return new TransactionDecodingResult(_transactions = transactions);
-        }
-        catch (RlpException e)
-        {
-            return new TransactionDecodingResult($"Transaction {i} is not valid: {e.Message}");
-        }
-        catch (ArgumentException)
-        {
-            return new TransactionDecodingResult($"Transaction {i} is not valid");
-        }
-    }
+		TransactionDecodingResult res = TxsDecoder.DecodeTxs(Transactions);
+		_transactions = res.Transactions;
+		return res;
+	}
 
     /// <summary>
     /// RLP-encodes and sets the transactions specified to <see cref="Transactions"/>.
@@ -267,23 +249,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 }
 
-public struct TransactionDecodingResult
-{
-    public readonly string? Error;
-    public readonly Transaction[] Transactions = [];
-
-    public TransactionDecodingResult(Transaction[] transactions)
-    {
-        Transactions = transactions;
-    }
-
-    public TransactionDecodingResult(string error)
-    {
-        Error = error;
-    }
-}
-
-public struct BlockDecodingResult
+public readonly struct BlockDecodingResult
 {
     public readonly string? Error;
     public readonly Block? Block;

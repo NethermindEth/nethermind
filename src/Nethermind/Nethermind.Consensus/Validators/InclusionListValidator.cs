@@ -35,6 +35,7 @@ public class InclusionListValidator(
             return true;
         }
 
+		// parallelise and prewarm state access
         foreach (Transaction tx in block.InclusionListTransactions)
         {
             if (isTransactionInBlock(tx))
