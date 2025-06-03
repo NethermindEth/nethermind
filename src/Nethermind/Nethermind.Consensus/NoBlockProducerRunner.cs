@@ -7,7 +7,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus;
 
-public class NoBlockProducerRunner: IBlockProducerRunner
+public class NoBlockProducerRunner : IBlockProducerRunner
 {
     public Task StopAsync()
     {
@@ -23,7 +23,7 @@ public class NoBlockProducerRunner: IBlockProducerRunner
         return false;
     }
 
-    #pragma warning disable CS0067
+#pragma warning disable CS0067
     public event EventHandler<BlockEventArgs>? BlockProduced;
-    #pragma warning restore CS0067
+#pragma warning restore CS0067
 }
