@@ -710,13 +710,13 @@ public class SyncServerTests
 
         foreach (PeerInfo peerInfo in peers)
         {
-            var receivedCalls = peerInfo.SyncPeer.ReceivedCalls()
-                .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
-                .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
-                .Select(a => (earliest: a[0], latest: a[1]))
-                .ToArray();
-
-            Assert.That(receivedCalls, Is.EquivalentTo(expectedUpdates));
+            Assert.That(
+                () => peerInfo.SyncPeer.ReceivedCalls()
+                    .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
+                    .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
+                    .Select(a => (earliest: a[0], latest: a[1])),
+                Is.EquivalentTo(expectedUpdates).After(5000, 100) // Wait for background notifications to finish
+            );
         }
     }
 
