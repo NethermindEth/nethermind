@@ -352,6 +352,7 @@ public abstract partial class BaseEngineModuleTests
                 TxPool,
                 transactionComparerProvider,
                 blocksConfig,
+                new TxPoolTxSourceFactory(TxPool, SpecProvider, transactionComparerProvider, blocksConfig, LogManager),
                 LogManager);
             blockProducerEnvFactory.ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
 

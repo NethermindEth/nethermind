@@ -225,6 +225,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 TxPool,
                 transactionComparerProvider,
                 blocksConfig,
+                Substitute.For<ITxPoolTxSourceFactory>(),
                 LogManager);
             blockProducerEnvFactory.ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
             this._blockProducerEnvFactory = blockProducerEnvFactory;

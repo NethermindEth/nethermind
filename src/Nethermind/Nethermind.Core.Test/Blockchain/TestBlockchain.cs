@@ -306,6 +306,7 @@ public class TestBlockchain : IDisposable
             TxPool,
             transactionComparerProvider,
             BlocksConfig,
+            new TxPoolTxSourceFactory(TxPool, SpecProvider, TransactionComparerProvider, BlocksConfig, LogManager),
             LogManager);
 
         BlockProducerEnv env = blockProducerEnvFactory.Create(txPoolTxSource);

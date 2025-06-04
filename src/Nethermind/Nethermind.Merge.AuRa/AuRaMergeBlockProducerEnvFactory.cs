@@ -46,6 +46,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITxPool txPool,
         ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
+        ITxPoolTxSourceFactory txPoolTxSourceFactory,
         ILogManager logManager) : base(
             worldStateManager,
             txProcessingEnvFactory,
@@ -58,6 +59,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             txPool,
             transactionComparerProvider,
             blocksConfig,
+            txPoolTxSourceFactory,
             logManager)
     {
         _chainSpec = chainSpec;
@@ -65,33 +67,26 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         _startBlockProducerFactory = startBlockProducerFactory;
     }
 
-    protected override BlockProcessor CreateBlockProcessor(
-        IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
-        ISpecProvider specProvider,
-        IBlockValidator blockValidator,
-        IRewardCalculatorSource rewardCalculatorSource,
-        IReceiptStorage receiptStorage,
-        ILogManager logManager,
-        IBlocksConfig blocksConfig)
+    protected override BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv)
     {
         var withdrawalContractFactory = new WithdrawalContractFactory(
             _chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>(), _abiEncoder);
 
         return new AuRaMergeBlockProcessor(
-            specProvider,
-            blockValidator,
-            rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
+            _specProvider,
+            _blockValidator,
+            _rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
             TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
             readOnlyTxProcessingEnv.WorldState,
-            receiptStorage,
+            _receiptStorage,
             new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor, readOnlyTxProcessingEnv.WorldState),
-            logManager,
+            _logManager,
             _blockTree,
             new Consensus.Withdrawals.BlockProductionWithdrawalProcessor(
                 new AuraWithdrawalProcessor(
                     withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
-                    logManager
+                    _logManager
                 )
             ),
             ExecutionRequestsProcessorOverride ?? new ExecutionRequestsProcessor(readOnlyTxProcessingEnv.TransactionProcessor),

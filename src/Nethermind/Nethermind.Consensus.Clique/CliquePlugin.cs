@@ -69,53 +69,18 @@ namespace Nethermind.Consensus.Clique
                 throw new InvalidOperationException("Request to start block producer while mining disabled.");
             }
 
-            ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree!.AsReadOnly();
-            IReadOnlyTxProcessingScope scope = getFromApi.ReadOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
+            BlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create(additionalTxSource);
 
-            BlockProcessor producerProcessor = new BlockProcessor(
-                getFromApi!.SpecProvider,
-                getFromApi!.BlockValidator,
-                NoBlockRewards.Instance,
-                getFromApi.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(scope),
-                scope.WorldState,
-                NullReceiptStorage.Instance,
-                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
-                new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
-                getFromApi.LogManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, getFromApi.LogManager)),
-                new ExecutionRequestsProcessor(scope.TransactionProcessor));
+            IBlockchainProcessor chainProcessor = env.ChainProcessor;
 
-            IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
-                readOnlyBlockTree,
-                producerProcessor,
-                getFromApi.BlockPreprocessor,
-                getFromApi.StateReader,
-                getFromApi.LogManager,
-                BlockchainProcessor.Options.NoReceipts);
-
-            OneTimeChainProcessor chainProcessor = new(
-                scope.WorldState,
-                producerChainProcessor);
-
-            ITxFilterPipeline txFilterPipeline =
-                TxFilterPipelineBuilder.CreateStandardFilteringPipeline(
-                    _nethermindApi.LogManager,
-                    getFromApi.SpecProvider,
-                    _blocksConfig);
-
-            TxPoolTxSource txPoolTxSource = new(
-                getFromApi.TxPool,
-                getFromApi.SpecProvider,
-                getFromApi.TransactionComparerProvider,
-                getFromApi.LogManager,
-                txFilterPipeline);
+            ITxSource txPoolTxSource = env.TxSource;
 
             IGasLimitCalculator gasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
 
             CliqueBlockProducer blockProducer = new(
-                additionalTxSource.Then(txPoolTxSource),
+                txPoolTxSource,
                 chainProcessor,
-                scope.WorldState,
+                env.ReadOnlyStateProvider,
                 getFromApi.Timestamper,
                 getFromApi.CryptoRandom,
                 _snapshotManager!,

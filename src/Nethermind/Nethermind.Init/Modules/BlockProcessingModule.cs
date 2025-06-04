@@ -47,6 +47,7 @@ public class BlockProcessingModule : Module
 
             // TODO: Double check if this is only used pre merege
             .AddSingleton<IBlockProducerEnvFactory, BlockProducerEnvFactory>()
+            .AddSingleton<ITxPoolTxSourceFactory, TxPoolTxSourceFactory>()
 
             .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>
                 new GasPriceOracle(
