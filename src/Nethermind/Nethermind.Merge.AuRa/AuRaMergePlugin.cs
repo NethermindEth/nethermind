@@ -91,7 +91,10 @@ namespace Nethermind.Merge.AuRa
             // Nothing right now, just making it clear it is using `MergePluginModule`
             builder
                 .AddModule(new MergePluginModule())
+
+                // Aura (non merge) use `BlockProducerStarter` directly.
                 .AddSingleton<IBlockProducerEnvFactory, AuRaMergeBlockProducerEnvFactory>()
+                .AddSingleton<ITxPoolTxSourceFactory, AuRaMergeTxPoolTxSourceFactory>()
                 ;
         }
     }

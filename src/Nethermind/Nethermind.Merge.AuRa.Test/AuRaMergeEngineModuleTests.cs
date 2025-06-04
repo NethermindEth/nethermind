@@ -213,7 +213,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
                 _api!.ChainSpec,
                 _api.AbiEncoder,
-                _api.CreateStartBlockProducer,
                 _api.ReadOnlyTxProcessingEnvFactory,
                 WorldStateManager,
                 BlockTree,
@@ -222,7 +221,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 NoBlockRewards.Instance,
                 BlockPreprocessorStep,
                 blocksConfig,
-                new TxPoolTxSourceFactory(TxPool, SpecProvider, TransactionComparerProvider, blocksConfig, LogManager),
+                new AuRaMergeTxPoolTxSourceFactory(_api.CreateStartBlockProducer),
                 LogManager);
             blockProducerEnvFactory.ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
             this._blockProducerEnvFactory = blockProducerEnvFactory;

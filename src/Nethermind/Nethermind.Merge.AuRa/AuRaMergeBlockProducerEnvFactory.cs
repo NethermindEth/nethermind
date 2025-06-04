@@ -26,12 +26,10 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
 {
     private readonly ChainSpec _chainSpec;
     private readonly IAbiEncoder _abiEncoder;
-    private readonly Func<StartBlockProducerAuRa> _startBlockProducerFactory;
 
     public AuRaMergeBlockProducerEnvFactory(
         ChainSpec chainSpec,
         IAbiEncoder abiEncoder,
-        Func<StartBlockProducerAuRa> startBlockProducerFactory,
         IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
         IWorldStateManager worldStateManager,
         IBlockTree blockTree,
@@ -55,7 +53,6 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
     {
         _chainSpec = chainSpec;
         _abiEncoder = abiEncoder;
-        _startBlockProducerFactory = startBlockProducerFactory;
     }
 
     protected override BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv)
@@ -82,9 +79,5 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             ),
             ExecutionRequestsProcessorOverride ?? new ExecutionRequestsProcessor(readOnlyTxProcessingEnv.TransactionProcessor),
             null);
-    }
-
-    protected override TxPoolTxSource CreateTxPoolTxSource() {
-        return _startBlockProducerFactory().CreateTxPoolTxSource();
     }
 }

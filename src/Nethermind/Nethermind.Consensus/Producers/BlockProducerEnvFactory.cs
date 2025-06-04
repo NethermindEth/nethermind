@@ -102,11 +102,9 @@ namespace Nethermind.Consensus.Producers
 
         protected virtual ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource)
         {
-            TxPoolTxSource txPoolSource = CreateTxPoolTxSource();
+            TxPoolTxSource txPoolSource = _txPoolTxSourceFactory.Create();
             return additionalTxSource.Then(txPoolSource);
         }
-
-        protected virtual TxPoolTxSource CreateTxPoolTxSource() => _txPoolTxSourceFactory.Create();
 
         protected virtual BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv) =>
             new BlockProcessor(
