@@ -38,6 +38,20 @@ public static class AbiType
         Write = (w, v) => UInt256.Write(w, v),
     };
 
+    public static readonly IAbi<UInt16> UInt16 = new()
+    {
+        Name = "uint16",
+        Read = r => (UInt16)UInt256.Read(r),
+        Write = (w, v) => UInt256.Write(w, v),
+    };
+
+    public static readonly IAbi<Byte> UInt8 = new()
+    {
+        Name = "uint8",
+        Read = r => (Byte)UInt256.Read(r),
+        Write = (w, v) => UInt256.Write(w, v),
+    };
+
     public static readonly IAbi<Boolean> Bool = new()
     {
         Name = "bool",
