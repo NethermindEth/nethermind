@@ -162,7 +162,10 @@ public static class Modexp
         {
             byte[] offsetInternal = offset.ToBigEndianByteArrayWithoutLeadingZeros();
             codeToDeploy.Add((byte)Instruction.PUSH32);                                 // base
-            codeToDeploy.AddRange(Keccak.Compute(i.ToByteArray()).Bytes);            // kind of random value
+            for (int j = 0; j < 32; j++)                                       // preparing worst case (0xFF..FF)
+            {
+                codeToDeploy.Add(0xFF);
+            }
             codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)offsetInternal.Length - 1));
             codeToDeploy.AddRange(offsetInternal);
             codeToDeploy.Add((byte)Instruction.MSTORE);
@@ -202,18 +205,20 @@ public static class Modexp
         }
 
         // modulo
-        long initialModuloOffset = offset;
         for (int i = 0; i < baseSize / 32; i++)
         {
             byte[] offsetInternal = offset.ToBigEndianByteArrayWithoutLeadingZeros();
-            codeToDeploy.Add((byte)Instruction.PUSH32);                                 // modulo
-            codeToDeploy.AddRange(Keccak.Compute((i + 100).ToByteArray()).Bytes);    // kind of random value
+            codeToDeploy.Add((byte)Instruction.PUSH31);                         // modulo
+            for (int j = 0; j < 31; j++)                                       // preparing worst case (0xFF..FF00)
+            {
+                codeToDeploy.Add(0xFF);
+            }
             codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)offsetInternal.Length - 1));
             codeToDeploy.AddRange(offsetInternal);
             codeToDeploy.Add((byte)Instruction.MSTORE);
             offset += 32;
         }
-        for (int i = 0; i < baseSize % 32; i++)                                             // single bytes
+        for (int i = 0; i + 1 < baseSize % 32; i++)                                             // single bytes
         {
             byte[] offsetInternal = offset.ToBigEndianByteArrayWithoutLeadingZeros();
             codeToDeploy.Add((byte)Instruction.PUSH1);                                  // modulo
@@ -224,7 +229,7 @@ public static class Modexp
             offset += 1;
         }
 
-        // push modulo (iterator)
+        // push iterator
         codeToDeploy.Add((byte)Instruction.PUSH0);
 
         long jumpDestPosition = codeToDeploy.Count;
@@ -232,7 +237,7 @@ public static class Modexp
         codeToDeploy.Add((byte)Instruction.JUMPDEST);
         Console.WriteLine($"jumpdest: {jumpDestPosition}");
 
-        byte[] argsSize = ((long)(32 + 32 + 32 + baseSize + exponentAsBytes.Length + baseSize)).ToBigEndianByteArrayWithoutLeadingZeros();
+        byte[] argsSize = ((long)(32 + 32 + 32 + baseSize + exponentAsBytes.Length + baseSize - 1)).ToBigEndianByteArrayWithoutLeadingZeros();
 
         for (int i = 0; i < 1000; i++)
         {
@@ -267,9 +272,9 @@ public static class Modexp
         // Stack: [..., i_new]
 
         // reset base
-        for (int i = 0; i < baseSize % 32; i++)                                             // single bytes
+        for (int i = 0; i < 4; i++)                                             // single bytes
         {
-            byte[] offsetInternal = initialBaseOffset.ToBigEndianByteArrayWithoutLeadingZeros();
+            byte[] offsetInternal = (initialBaseOffset + i).ToBigEndianByteArrayWithoutLeadingZeros();
             codeToDeploy.Add((byte)Instruction.PUSH1);                                  // base
             codeToDeploy.Add(0xFF);
             codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)offsetInternal.Length - 1));
@@ -277,23 +282,16 @@ public static class Modexp
             codeToDeploy.Add((byte)Instruction.MSTORE8);
         }
 
-        // override modulo (one least significant byte)
-        byte[] offsetInternalModulo = initialModuloOffset.ToBigEndianByteArrayWithoutLeadingZeros();
-        codeToDeploy.Add((byte)Instruction.DUP1);                               // Stack: [..., i, i] it is our modulo
-        codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)offsetInternalModulo.Length - 1));
-        codeToDeploy.AddRange(offsetInternalModulo);
-        codeToDeploy.Add((byte)Instruction.MSTORE8);
-
-        // override modulo (all the remaining bytes)
-        for (int i = 1; i < baseSize % 32; i++)
+        // override base bytes 4-6 (to have iterator)
+        for (int i = 0; i < 3; i++)
         {
-            offsetInternalModulo = (initialModuloOffset + i).ToBigEndianByteArrayWithoutLeadingZeros();
-            codeToDeploy.Add((byte)Instruction.DUP1);                           // Stack: [..., i, i] it is our modulo
+            byte[] offsetInternal = (initialBaseOffset + i + 4).ToBigEndianByteArrayWithoutLeadingZeros();
+            codeToDeploy.Add((byte)Instruction.DUP1);                           // Stack: [..., i, i] it is our iterator
             codeToDeploy.Add((byte)Instruction.PUSH1);
             codeToDeploy.Add((byte)(i * 8));                                    // one byte has 8 bits
             codeToDeploy.Add((byte)Instruction.SHR);                            // shifting i last bytes
-            codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)offsetInternalModulo.Length - 1));
-            codeToDeploy.AddRange(offsetInternalModulo);
+            codeToDeploy.Add((byte)(Instruction.PUSH1 + (byte)offsetInternal.Length - 1));
+            codeToDeploy.AddRange(offsetInternal);
             codeToDeploy.Add((byte)Instruction.MSTORE8);
         }
 
