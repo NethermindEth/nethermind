@@ -56,8 +56,7 @@ public class WrappedEthTests(bool useIlEvm) : IlVirtualMachineTestsBase(useIlEvm
         before.IsZero().Should().Be(true, "The balance of the sender should be zero before execution");
 
         // Execute
-        TransactionResult result = _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec),
-            NullTxTracer.Instance);
+        Execute(transaction, NullTxTracer.Instance, Activation, 100000, null, true);
 
         // Assert value
         AssertBalance(SenderBalanceCell, deposit);
@@ -82,8 +81,7 @@ public class WrappedEthTests(bool useIlEvm) : IlVirtualMachineTestsBase(useIlEvm
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000, Bytecode, data, 0);
 
         // Execute
-        TransactionResult result = _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec),
-            NullTxTracer.Instance);
+        Execute(transaction, NullTxTracer.Instance, Activation, 100000, null, true);
 
         // Assert value
         AssertBalance(SenderBalanceCell, 0);
