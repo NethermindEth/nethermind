@@ -703,8 +703,8 @@ public class SyncServerTests
         var startBlock = (int)localBlockTree.Head!.Number;
         localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
 
-        var expectedUpdates = Enumerable.Range(0, blocksCount)
-            .Where(x => (x - startBlock - 1) % frequency == 0)
+        var expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
+            .Where(x => x % frequency == 0)
             .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: x))
             .ToArray();
 
@@ -716,9 +716,7 @@ public class SyncServerTests
                 .Select(a => (earliest: a[0], latest: a[1]))
                 .ToArray();
 
-            // We can miss some updates or have duplicates due to notifications happening in the background
-            Assert.That(receivedCalls, Is.Not.Empty);
-            Assert.That(receivedCalls.Distinct(), Is.SubsetOf(expectedUpdates));
+            Assert.That(receivedCalls, Is.EquivalentTo(expectedUpdates));
         }
     }
 

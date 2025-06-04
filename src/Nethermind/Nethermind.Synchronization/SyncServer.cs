@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -56,7 +55,6 @@ namespace Nethermind.Synchronization
         private BlockHeader? _pivotHeader;
 
         private const int BlockRangeUpdateFrequency = 32;
-        private (BlockHeader earliest, BlockHeader latest)? _lastBlockRangeUpdate;
 
         public SyncServer(
             IWorldStateManager worldStateManager,
@@ -436,28 +434,25 @@ namespace Nethermind.Synchronization
                 return;
 
             Block latestBlock = latestBlockEventArgs.Block;
-            BlockHeader? latestUpdate = _lastBlockRangeUpdate?.latest;
 
-            // Notify at most once per 32 blocks
-            if (latestUpdate is not null && latestBlock.Number - latestUpdate.Number < BlockRangeUpdateFrequency)
+            // Notify every 32 blocks
+            if (latestBlock.Number % BlockRangeUpdateFrequency != 0)
                 return;
-
-            // TODO: use actual earliest available block - once history expiry is implemented
-            _lastBlockRangeUpdate = (Genesis, latestBlock.Header);
 
             Task.Run(() =>
                 {
                     var counter = 0;
-                    (BlockHeader earliest, BlockHeader latest) = _lastBlockRangeUpdate.Value;
+                    (BlockHeader earliest, BlockHeader latest) = (Genesis, latestBlock.Header);
 
                     foreach (PeerInfo peerInfo in _pool.AllPeers)
                     {
-                        NotifyOfNewRange(peerInfo, earliest, latest);
+                        // TODO: use actual earliest available block - once history expiry is implemented
+                        NotifyOfNewRange(peerInfo, Genesis, latest);
                         counter++;
                     }
 
                     if (counter > 0 && _logger.IsDebug)
-                        _logger.Debug($"Broadcasting range update {earliest}-{latest} to {counter} peers.");
+                        _logger.Debug($"Broadcasting range update {earliest.Number}-{latest.Number} to {counter} peers.");
                 }
             );
         }
