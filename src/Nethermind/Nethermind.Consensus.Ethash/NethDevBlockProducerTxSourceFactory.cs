@@ -26,7 +26,7 @@ public class NethDevBlockProducerTxSourceFactory(
             .WithMinGasPriceFilter(blocksConfig, specProvider)
             .Build;
 
-        return new TxPoolTxSource (
+        return new TxPoolTxSource(
             txPool,
             specProvider,
             transactionComparerProvider!,
