@@ -11,11 +11,13 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.AuRa.Rewards;
+using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
@@ -120,6 +122,8 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<AuRaSealValidator>()
                 .Bind<ISealValidator, AuRaSealValidator>()
                 .AddSingleton<ISealer, AuRaSealer>()
+
+                .AddSingleton<IHealthHintService, AuraHealthHintService>()
                 ;
 
             if (specParam.BlockGasLimitContractTransitions?.Any() == true)

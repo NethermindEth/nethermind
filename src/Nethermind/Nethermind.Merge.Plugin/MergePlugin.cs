@@ -14,6 +14,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -215,8 +216,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             if (_api.BlockProductionPolicy is null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
             if (_api.SealValidator is null) throw new ArgumentException(nameof(_api.SealValidator));
 
-            _api.HealthHintService =
-                new MergeHealthHintService(_api.HealthHintService, _poSSwitcher, _blocksConfig);
             _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
             _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
             _api.FinalizationManager = InitializeMergeFinilizationManager();
@@ -416,6 +415,8 @@ public class BaseMergePluginModule : Module
             .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
             .AddDecorator<IBlockValidator, InvalidBlockInterceptor>()
             .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
+
+            .AddDecorator<IHealthHintService, MergeHealthHintService>()
             ;
     }
 }

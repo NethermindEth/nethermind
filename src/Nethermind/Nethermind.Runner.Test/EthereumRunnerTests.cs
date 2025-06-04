@@ -42,6 +42,7 @@ using Nethermind.Era1;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Flashbots;
+using Nethermind.HealthChecks;
 using Nethermind.Hive;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Modules;
@@ -189,6 +190,7 @@ public class EthereumRunnerTests
 
         api.Config<INetworkConfig>().LocalIp = "127.0.0.1";
         api.Config<INetworkConfig>().ExternalIp = "127.0.0.1";
+        _ = api.Config<IHealthChecksConfig>(); // Randomly fail type disccovery if not resolved early.
         var ipResolver = Substitute.For<IIPResolver>();
         ipResolver.ExternalIp.Returns(IPAddress.Parse("127.0.0.1"));
         api.IpResolver = ipResolver;
@@ -200,6 +202,7 @@ public class EthereumRunnerTests
         api.ReceiptFinder = Substitute.For<IReceiptFinder>();
         api.DbProvider = await TestMemDbProvider.InitAsync();
         api.EthereumEcdsa = new EthereumEcdsa(runner.LifetimeScope.Resolve<ISpecProvider>());
+        api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
 
         try
         {

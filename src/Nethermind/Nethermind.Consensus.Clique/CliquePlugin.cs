@@ -11,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
@@ -45,9 +46,6 @@ namespace Nethermind.Consensus.Clique
 
             _snapshotManager = nethermindApi.Context.Resolve<ISnapshotManager>();
             _cliqueConfig = nethermindApi.Context.Resolve<ICliqueConfig>();
-            setInApi.HealthHintService = new CliqueHealthHintService(_snapshotManager,
-                getFromApi.ChainSpec.EngineChainSpecParametersProvider
-                    .GetChainSpecParameters<CliqueChainSpecEngineParameters>());
 
             setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager));
 
@@ -202,6 +200,8 @@ namespace Nethermind.Consensus.Clique
                 .AddSingleton<ISnapshotManager, SnapshotManager>()
                 .AddSingleton<ISealValidator, CliqueSealValidator>()
                 .AddSingleton<ISealer, CliqueSealer>()
+
+                .AddSingleton<IHealthHintService, CliqueHealthHintService>()
                 ;
         }
     }

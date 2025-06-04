@@ -34,7 +34,7 @@ namespace Nethermind.Api
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
         IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         IBlockProducer? BlockProducer { get; set; }
-        IBlockProducerRunner? BlockProducerRunner { get; set; }
+        IBlockProducerRunner BlockProducerRunner { get; set; }
 
         [SkipServiceCollection]
         IBlockValidator BlockValidator { get; }
@@ -62,7 +62,6 @@ namespace Nethermind.Api
         ITxPool? TxPool { get; set; }
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         CompositeTxGossipPolicy TxGossipPolicy { get; }
-        IHealthHintService? HealthHintService { get; set; }
         IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
 
