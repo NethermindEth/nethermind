@@ -259,7 +259,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         throw new NotSupportedException();
     }
 
-    public IBlockProducer InitBlockProducer(ITxSource? _ = null)
+    public IBlockProducer InitBlockProducer()
     {
         throw new NotSupportedException();
     }

@@ -11,7 +11,6 @@ using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.GC;
@@ -74,12 +73,8 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     public IBlockProductionTrigger DefaultBlockProductionTrigger => NeverProduceTrigger.Instance;
 
-    public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+    public IBlockProducer InitBlockProducer()
     {
-        if (additionalTxSource is not null)
-            throw new ArgumentException(
-                "Optimism does not support additional tx source");
-
         StepDependencyException.ThrowIfNull(_api);
 
         OptimismGasLimitCalculator gasLimitCalculator = new OptimismGasLimitCalculator();

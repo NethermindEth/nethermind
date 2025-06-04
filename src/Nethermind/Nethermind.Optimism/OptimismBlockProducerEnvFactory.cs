@@ -53,9 +53,9 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, blocksConfig.BlockProductionMaxTxKilobytes, logManager);
     }
 
-    protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource)
+    protected override ITxSource CreateTxSourceForProducer()
     {
-        ITxSource baseTxSource = base.CreateTxSourceForProducer(additionalTxSource);
+        ITxSource baseTxSource = base.CreateTxSourceForProducer();
         return new OptimismTxPoolTxSource(baseTxSource);
     }
 

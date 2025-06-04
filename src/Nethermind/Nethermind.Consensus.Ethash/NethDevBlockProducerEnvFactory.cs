@@ -29,8 +29,8 @@ public class NethDevBlockProducerEnvFactory(
         blockValidator, rewardCalculatorSource, blockPreprocessorStep, blocksConfig, blockProducerTxSourceFactory,
         logManager)
 {
-    protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource)
+    protected override ITxSource CreateTxSourceForProducer()
     {
-        return base.CreateTxSourceForProducer(additionalTxSource).ServeTxsOneByOne();
+        return base.CreateTxSourceForProducer().ServeTxsOneByOne();
     }
 }

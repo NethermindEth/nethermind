@@ -8,9 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
-using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.ServiceStopper;
 
@@ -69,9 +67,9 @@ namespace Nethermind.Init.Steps
             IConsensusWrapperPlugin consensusWrapperPlugin,
             IBlockProducerFactory baseBlockProducerFactory) : IBlockProducerFactory
         {
-            public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+            public IBlockProducer InitBlockProducer()
             {
-                return consensusWrapperPlugin.InitBlockProducer(baseBlockProducerFactory, additionalTxSource);
+                return consensusWrapperPlugin.InitBlockProducer(baseBlockProducerFactory);
             }
         }
 

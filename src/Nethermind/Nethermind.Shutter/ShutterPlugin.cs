@@ -54,7 +54,7 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
         return Task.CompletedTask;
     }
 
-    public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
+    public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin)
     {
         if (_api!.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
         if (_api.EthereumEcdsa is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
@@ -108,8 +108,10 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
         );
 
         _ = _shutterApi.StartP2P(bootnodeP2PAddresses, _cts);
+        // TODO: Dont forget to add this
+        // _shutterApi is null ? txSource : _shutterApi.TxSource.Then(txSource)
 
-        return consensusPlugin.InitBlockProducer(_shutterApi is null ? txSource : _shutterApi.TxSource.Then(txSource));
+        return consensusPlugin.InitBlockProducer();
     }
 
     public async ValueTask DisposeAsync()

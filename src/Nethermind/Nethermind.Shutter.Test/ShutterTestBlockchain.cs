@@ -24,10 +24,12 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
     protected virtual ShutterApiSimulator CreateShutterApi()
         => ShutterTestsCommon.InitApi(_rnd, this, _timestamper, eventSimulator);
 
-    protected override IBlockProducer CreateTestBlockProducer(ITxSource? additionalTxSource)
+    protected override IBlockProducer CreateTestBlockProducer()
     {
         _api = CreateShutterApi();
-        return base.CreateTestBlockProducer(_api.TxSource);
+        // TODO: This
+        // _api.TxSource
+        return base.CreateTestBlockProducer();
     }
 
     protected override IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IBlockProducer blockProducer)

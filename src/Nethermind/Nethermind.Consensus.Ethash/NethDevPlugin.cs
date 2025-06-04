@@ -37,14 +37,14 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
-        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+        public IBlockProducer InitBlockProducer()
         {
             var (getFromApi, _) = _nethermindApi!.ForProducer;
 
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
-            BlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create(additionalTxSource);
+            BlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create();
             IBlockProducer blockProducer = new DevBlockProducer(
                 env.TxSource,
                 env.ChainProcessor,
