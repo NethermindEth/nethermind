@@ -31,9 +31,10 @@ public class InitializePrecompiles : IStep
 
             try
             {
-                if (_wasSetup) return;
-                await KzgPolynomialCommitments.InitializeAsync(logger, initConfig.KzgSetupPath);
-                _wasSetup = true;
+                if (!Interlocked.CompareExchange(ref _wasSetup, true, false))
+                {
+                    await KzgPolynomialCommitments.InitializeAsync(logger, initConfig.KzgSetupPath);
+                }
             }
             catch (Exception e)
             {
