@@ -438,8 +438,8 @@ namespace Nethermind.Network
             int highestVersion = 0;
             foreach (Capability capability in _capabilities)
             {
-                if (capability.ProtocolCode == protocol && highestVersion < capability.Version)
-                    highestVersion = capability.Version;
+                if (capability.ProtocolCode == protocol)
+                    highestVersion = Math.Max(highestVersion, capability.Version);
             }
 
             return highestVersion;
