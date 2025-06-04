@@ -7,12 +7,6 @@ public static class SpanSourcePoolExtensions
 {
     public static SpanSource SafeRentBuffer(this ICappedArrayPool? pool, int size)
     {
-        // TODO: decide what to do with tiny arrays
-        // if (size <= TinyArray.MaxLength)
-        // {
-        //     return new SpanSource(TinyArray.Create(size));
-        // }
-
         if (pool is null)
         {
             return new SpanSource(new byte[size]);

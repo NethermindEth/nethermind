@@ -45,11 +45,9 @@ public class SpanSourceTests
         const bool equality = true;
 
         source.Span.SequenceEqual(array).Should().Be(equality);
-        source.SequenceEqual(array).Should().Be(equality);
 
         int commonPrefixLength = array.Length;
 
         source.Span.CommonPrefixLength(array).Should().Be(commonPrefixLength);
-        source.CommonPrefixLength(array).Should().Be(commonPrefixLength);
     }
 }

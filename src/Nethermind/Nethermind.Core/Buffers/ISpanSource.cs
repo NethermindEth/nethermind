@@ -16,16 +16,6 @@ public interface ISpanSource
     int Length { get; }
 
     /// <summary>
-    /// Like <see cref="MemoryExtensions.SequenceEqual{T}(System.ReadOnlySpan{T},System.ReadOnlySpan{T})"/>
-    /// </summary>
-    bool SequenceEqual(ReadOnlySpan<byte> other);
-
-    /// <summary>
-    /// Like <see cref="MemoryExtensions.CommonPrefixLength{T}(System.ReadOnlySpan{T},System.ReadOnlySpan{T})"/>
-    /// </summary>
-    int CommonPrefixLength(ReadOnlySpan<byte> other);
-
-    /// <summary>
     /// The span accessor.
     /// </summary>
     Span<byte> Span { get; }
