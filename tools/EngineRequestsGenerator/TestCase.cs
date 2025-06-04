@@ -158,7 +158,7 @@ public enum TestCase
     [TestCaseMetadata("Modexp min gas, balanced", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 40 and exponent equal 2^25 - 1 (25x 1s in binary)")]
     ModexpMinGasBalanced,
 
-    [TestCaseMetadata("Modexp 208 gas, balanced", "Modexp precompile consuming 208 gas, with base and modulo byte size equal 32 and exponent equal 2^25 - 1 (25x 1s in binary)")]
+    [TestCaseMetadata("Modexp 208 gas, balanced", "Modexp precompile consuming 208 gas, with base and modulo byte size equal 32 and exponent equal 2^40 - 1 (40x 1s in binary)")]
     Modexp208GasBalanced,
 
     [TestCaseMetadata("Modexp 215 gas, exp heavy", "Modexp precompile consuming 215 gas, with base and modulo byte size equal 8 and exponent equal 2^648 - 1 (648x 1s in binary)")]
@@ -173,7 +173,7 @@ public enum TestCase
     [TestCaseMetadata("Modexp Pawel 3", "Modexp precompile consuming 318 gas, with base and modulo byte size equal 16 and exponent equal 2^240 - 1 (240x 1s in binary)")]
     ModexpPawel3,
 
-    [TestCaseMetadata("Modexp Pawel 4", "Modexp precompile consuming 318 gas, with base and modulo byte size equal 16 and exponent equal 2^240 - 1 (240x 1s in binary)")]
+    [TestCaseMetadata("Modexp Pawel 4", "Modexp precompile consuming 506 gas, with base and modulo byte size equal 32 and exponent equal 2^96 - 1 (96x 1s in binary)")]
     ModexpPawel4,
 
     [TestCaseMetadata("Modexp 408 gas, base heavy", "Modexp precompile consuming 408 gas, with base and modulo byte size equal 280 and exponent equal 3 (0b11 - 2x 1s in binary)")]
