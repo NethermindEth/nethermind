@@ -151,8 +151,8 @@ public class EthereumRunnerTests
             return;
         }
 
-        if (testCase.file.Contains("none.json")) return; // Not sure which network is this. Engine port missing.
-        if (testCase.file.Contains("radius_testnet-sepolia.json")) return; // Sequencer url is missing
+        if (testCase.file.Contains("none.json")) Assert.Ignore("engine port missing");
+        if (testCase.file.Contains("radius_testnet-sepolia.json")) Assert.Ignore("sequencer url not specified");
 
         await SmokeTest(testCase.configProvider, testIndex, 30330);
     }
@@ -326,10 +326,8 @@ public class EthereumRunnerTests
         // An ugly hack to keep unused types
         Console.WriteLine(typeof(IHiveConfig));
 
-        Stopwatch sw = Stopwatch.StartNew();
         Rlp.ResetDecoders(); // One day this will be fix. But that day is not today, because it is seriously difficult.
         configProvider.GetConfig<IInitConfig>().DiagnosticMode = DiagnosticMode.MemDb;
-        Console.Error.WriteLine($"Sw {sw.ElapsedMilliseconds}");
         var tempPath = TempPath.GetTempDirectory();
         Directory.CreateDirectory(tempPath.Path);
 
@@ -355,36 +353,28 @@ public class EthereumRunnerTests
             );
             pluginLoader.Load();
 
-            Console.Error.WriteLine($"Sw 1 {sw.ElapsedMilliseconds}");
             ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
-            Console.Error.WriteLine($"Sw 1.1 {sw.ElapsedMilliseconds}");
             IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
-            Console.Error.WriteLine($"Sw 1.2 {sw.ElapsedMilliseconds}");
             plugins.Add(new RunnerTestPlugin());
             EthereumRunner runner = builder.CreateEthereumRunner(plugins);
 
-            Console.Error.WriteLine($"Sw 2 {sw.ElapsedMilliseconds}");
             using CancellationTokenSource cts = new();
 
             try
             {
                 Task task = runner.Start(cts.Token);
-                Console.Error.WriteLine($"Sw 3 {sw.ElapsedMilliseconds}");
                 if (cancel)
                 {
                     cts.Cancel();
                 }
 
                 await task;
-                Console.Error.WriteLine($"Sw 3.5 {sw.ElapsedMilliseconds}");
             }
             finally
             {
-                Console.Error.WriteLine($"Sw 4 {sw.ElapsedMilliseconds}");
                 try
                 {
                     await runner.StopAsync();
-                    Console.Error.WriteLine($"Sw 5 {sw.ElapsedMilliseconds}");
                 }
                 catch (Exception e)
                 {
