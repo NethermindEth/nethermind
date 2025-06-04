@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
+using System.Collections.Generic;
 
 namespace Nethermind.Consensus.Producers;
 
@@ -25,6 +26,8 @@ public class PayloadAttributes
     public Withdrawal[]? Withdrawals { get; set; }
 
     public Hash256? ParentBeaconBlockRoot { get; set; }
+
+    public byte[][]? InclusionListTransactions { get; set; }
 
     public virtual long? GetGasLimit() => null;
 

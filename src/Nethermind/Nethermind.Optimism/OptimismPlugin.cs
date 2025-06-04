@@ -222,8 +222,10 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 _invalidChainTracker,
                 beaconSync,
                 _api.LogManager,
+                _api.SpecProvider.ChainId,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
                 _api.Config<IReceiptConfig>().StoreReceipts);
+
         bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
         if (simulateBlockProduction)
         {
@@ -257,6 +259,8 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new ExchangeTransitionConfigurationV1Handler(posSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
+            new GetInclusionListTransactionsHandler(null),
+            new UpdatePayloadWithInclusionListHandler(payloadPreparationService, null, _api.SpecProvider),
             new GetBlobsHandlerV2(_api.TxPool),
             _api.EngineRequestsTracker,
             _api.SpecProvider,

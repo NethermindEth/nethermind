@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain;
@@ -156,6 +155,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 invalidChainTracker,
                 beaconSync,
                 _api.LogManager,
+                _api.SpecProvider.ChainId,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
                 _api.Config<IReceiptConfig>().StoreReceipts),
             new TaikoForkchoiceUpdatedHandler(
@@ -178,6 +178,8 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new ExchangeTransitionConfigurationV1Handler(poSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
+            new GetInclusionListTransactionsHandler(_api.TxPool),
+            new UpdatePayloadWithInclusionListHandler(payloadPreparationService, null, _api.SpecProvider),
             new GetBlobsHandlerV2(_api.TxPool),
             _api.EngineRequestsTracker,
             _api.SpecProvider,

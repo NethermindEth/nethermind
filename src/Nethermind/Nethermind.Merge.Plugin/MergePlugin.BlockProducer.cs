@@ -43,7 +43,7 @@ namespace Nethermind.Merge.Plugin
                     : null;
                 _manualTimestamper ??= new ManualTimestamper();
 
-                BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create(txSource);
+                BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create(txSource.Then(_inclusionListTxSource));
 
                 _postMergeBlockProducer = CreateBlockProducerFactory().Create(blockProducerEnv);
                 _api.BlockProducer = new MergeBlockProducer(blockProducer, _postMergeBlockProducer, _poSSwitcher);

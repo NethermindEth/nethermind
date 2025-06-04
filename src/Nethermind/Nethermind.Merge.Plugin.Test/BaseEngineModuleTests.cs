@@ -117,6 +117,7 @@ public abstract partial class BaseEngineModuleTests
         chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, synchronizationConfig, blockCacheService, chain.PoSSwitcher, chain.LogManager);
         chain.BeaconSync.AllowBeaconHeaderSync();
         EngineRpcCapabilitiesProvider capabilitiesProvider = new(chain.SpecProvider);
+
         return new EngineRpcModule(
             new GetPayloadV1Handler(
                 chain.PayloadPreparationService!,
@@ -149,6 +150,7 @@ public abstract partial class BaseEngineModuleTests
                 invalidChainTracker,
                 chain.BeaconSync,
                 chain.LogManager,
+                chain.SpecProvider.ChainId,
                 newPayloadTimeout,
                 storeReceipts: true,
                 newPayloadCacheSize),
@@ -171,6 +173,8 @@ public abstract partial class BaseEngineModuleTests
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
             new GetBlobsHandler(chain.TxPool),
+            new GetInclusionListTransactionsHandler(chain.TxPool),
+            new UpdatePayloadWithInclusionListHandler(chain.PayloadPreparationService!, chain.InclusionListTxSource, chain.SpecProvider),
             new GetBlobsHandlerV2(chain.TxPool),
             Substitute.For<IEngineRequestsTracker>(),
             chain.SpecProvider,
@@ -308,6 +312,7 @@ public abstract partial class BaseEngineModuleTests
         public sealed override ILogManager LogManager { get; set; } = LimboLogs.Instance;
 
         public IEthSyncingInfo? EthSyncingInfo { get; protected set; }
+        public InclusionListTxSource? InclusionListTxSource { get; set; }
 
         protected override ChainSpec CreateChainSpec()
         {
@@ -355,7 +360,8 @@ public abstract partial class BaseEngineModuleTests
                 LogManager);
             blockProducerEnvFactory.ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
 
-            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
+            InclusionListTxSource = new InclusionListTxSource(EthereumEcdsa, TxPool, SpecProvider, LogManager);
+            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(InclusionListTxSource);
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
             BlockImprovementContextFactory ??= new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
