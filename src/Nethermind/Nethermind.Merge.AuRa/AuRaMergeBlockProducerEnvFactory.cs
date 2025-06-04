@@ -5,11 +5,9 @@ using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -21,7 +19,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Merge.AuRa;
 
@@ -41,10 +38,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculatorSource rewardCalculatorSource,
-        IReceiptStorage receiptStorage,
         IBlockPreprocessorStep blockPreprocessorStep,
-        ITxPool txPool,
-        ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
         ITxPoolTxSourceFactory txPoolTxSourceFactory,
         ILogManager logManager) : base(
@@ -54,10 +48,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             specProvider,
             blockValidator,
             rewardCalculatorSource,
-            receiptStorage,
             blockPreprocessorStep,
-            txPool,
-            transactionComparerProvider,
             blocksConfig,
             txPoolTxSourceFactory,
             logManager)

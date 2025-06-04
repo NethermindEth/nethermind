@@ -347,10 +347,7 @@ public abstract partial class BaseEngineModuleTests
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                ReceiptStorage,
                 BlockPreprocessorStep,
-                TxPool,
-                transactionComparerProvider,
                 blocksConfig,
                 new TxPoolTxSourceFactory(TxPool, SpecProvider, transactionComparerProvider, blocksConfig, LogManager),
                 LogManager);

@@ -18,6 +18,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Producers
@@ -31,8 +32,6 @@ namespace Nethermind.Consensus.Producers
         protected readonly IRewardCalculatorSource _rewardCalculatorSource;
         protected readonly IReceiptStorage _receiptStorage;
         protected readonly IBlockPreprocessorStep _blockPreprocessorStep;
-        protected readonly ITxPool _txPool;
-        protected readonly ITransactionComparerProvider _transactionComparerProvider;
         protected readonly IBlocksConfig _blocksConfig;
         protected readonly ILogManager _logManager;
         private readonly IReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
@@ -48,10 +47,7 @@ namespace Nethermind.Consensus.Producers
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculatorSource rewardCalculatorSource,
-            IReceiptStorage receiptStorage,
             IBlockPreprocessorStep blockPreprocessorStep,
-            ITxPool txPool,
-            ITransactionComparerProvider transactionComparerProvider,
             IBlocksConfig blocksConfig,
             ITxPoolTxSourceFactory txPoolTxSourceFactory,
             ILogManager logManager)
@@ -62,11 +58,8 @@ namespace Nethermind.Consensus.Producers
             _specProvider = specProvider;
             _blockValidator = blockValidator;
             _rewardCalculatorSource = rewardCalculatorSource;
-            // TODO: Should this be `NullReceiptStorage.Instance`?
-            _receiptStorage = receiptStorage;
+            _receiptStorage = NullReceiptStorage.Instance;
             _blockPreprocessorStep = blockPreprocessorStep;
-            _txPool = txPool;
-            _transactionComparerProvider = transactionComparerProvider;
             _blocksConfig = blocksConfig;
             _txPoolTxSourceFactory = txPoolTxSourceFactory;
             _logManager = logManager;

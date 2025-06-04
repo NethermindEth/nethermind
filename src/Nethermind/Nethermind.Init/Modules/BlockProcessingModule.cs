@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -45,7 +46,6 @@ public class BlockProcessingModule : Module
             .AddSingleton<ISealer>(NullSealEngine.Instance)
             .AddSingleton<ISealEngine, SealEngine>()
 
-            // TODO: Double check if this is only used pre merege
             .AddSingleton<IBlockProducerEnvFactory, BlockProducerEnvFactory>()
             .AddSingleton<ITxPoolTxSourceFactory, TxPoolTxSourceFactory>()
 

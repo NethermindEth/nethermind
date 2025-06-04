@@ -301,10 +301,7 @@ public class TestBlockchain : IDisposable
             SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,
-            ReceiptStorage,
             BlockPreprocessorStep,
-            TxPool,
-            transactionComparerProvider,
             BlocksConfig,
             new TxPoolTxSourceFactory(TxPool, SpecProvider, TransactionComparerProvider, BlocksConfig, LogManager),
             LogManager);

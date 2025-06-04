@@ -21,7 +21,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -128,7 +127,7 @@ namespace Nethermind.Consensus.Ethash
 
     public class NethDevBlockProducerEnvFactory : BlockProducerEnvFactory
     {
-        public NethDevBlockProducerEnvFactory(IWorldStateManager worldStateManager, IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IBlockTree blockTree, ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculatorSource rewardCalculatorSource, IReceiptStorage receiptStorage, IBlockPreprocessorStep blockPreprocessorStep, ITxPool txPool, ITransactionComparerProvider transactionComparerProvider, IBlocksConfig blocksConfig, ITxPoolTxSourceFactory txPoolTxSourceFactory, ILogManager logManager) : base(worldStateManager, readOnlyTxProcessingEnvFactory, blockTree, specProvider, blockValidator, rewardCalculatorSource, receiptStorage, blockPreprocessorStep, txPool, transactionComparerProvider, blocksConfig, txPoolTxSourceFactory, logManager)
+        public NethDevBlockProducerEnvFactory(IWorldStateManager worldStateManager, IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IBlockTree blockTree, ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculatorSource rewardCalculatorSource, IBlockPreprocessorStep blockPreprocessorStep, IBlocksConfig blocksConfig, ITxPoolTxSourceFactory txPoolTxSourceFactory, ILogManager logManager) : base(worldStateManager, readOnlyTxProcessingEnvFactory, blockTree, specProvider, blockValidator, rewardCalculatorSource, blockPreprocessorStep, blocksConfig, txPoolTxSourceFactory, logManager)
         {
         }
 
