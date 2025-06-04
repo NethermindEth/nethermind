@@ -39,7 +39,7 @@ public class AsyncDb : IAsyncDb
             {
                 using IWriteBatch batch = _db.StartWriteBatch();
                 // Insert ordered for improved performance
-                foreach (KeyValuePair<byte[], byte[]> kv in data.OrderBy(static kvp => kvp.Key))
+                foreach (KeyValuePair<byte[], byte[]> kv in data.OrderBy(static kvp => kvp.Key, Bytes.Comparer))
                 {
                     batch.Set(kv.Key, kv.Value);
                 }

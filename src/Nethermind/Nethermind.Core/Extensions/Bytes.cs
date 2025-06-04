@@ -32,8 +32,8 @@ namespace Nethermind.Core.Extensions
         public static ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
         public static ReadOnlyMemory<byte> TwoByte = new byte[] { 2 };
         // The Jit converts a ReadOnlySpan<byte> => new byte[] to a data section load, no allocation.
-        public static ReadOnlySpan<byte> ZeroByteSpan => new byte[] { 0 };
-        public static ReadOnlySpan<byte> OneByteSpan => new byte[] { 1 };
+        public static ReadOnlySpan<byte> ZeroByteSpan => [0];
+        public static ReadOnlySpan<byte> OneByteSpan => [1];
 
         public const string ZeroHexValue = "0x0";
         public const string ZeroValue = "0";
