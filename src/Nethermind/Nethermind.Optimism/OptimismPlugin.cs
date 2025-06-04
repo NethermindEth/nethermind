@@ -81,32 +81,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 "Optimism does not support additional tx source");
 
         StepDependencyException.ThrowIfNull(_api);
-        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        StepDependencyException.ThrowIfNull(_api.BlockValidator);
-        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.TxPool);
-        StepDependencyException.ThrowIfNull(_api.TransactionComparerProvider);
-        StepDependencyException.ThrowIfNull(_api.SpecHelper);
-        StepDependencyException.ThrowIfNull(_api.L1CostHelper);
-
-        _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
-            _api.WorldStateManager,
-            _api.ReadOnlyTxProcessingEnvFactory,
-            _api.BlockTree,
-            _api.SpecProvider,
-            _api.BlockValidator,
-            _api.RewardCalculatorSource,
-            _api.ReceiptStorage,
-            _api.BlockPreprocessor,
-            _api.TxPool,
-            _api.TransactionComparerProvider,
-            _api.Config<IBlocksConfig>(),
-            _api.SpecHelper,
-            _api.L1CostHelper,
-            _api.LogManager);
 
         OptimismGasLimitCalculator gasLimitCalculator = new OptimismGasLimitCalculator();
 
@@ -206,18 +180,18 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
         NewPayloadHandler newPayloadHandler = new(
-                _api.BlockValidator,
-                _api.BlockTree,
-                posSwitcher,
-                beaconSync,
-                beaconPivot,
-                _blockCacheService,
-                _api.BlockProcessingQueue,
-                _invalidChainTracker,
-                beaconSync,
-                _api.LogManager,
-                TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
-                _api.Config<IReceiptConfig>().StoreReceipts);
+            _api.BlockValidator,
+            _api.BlockTree,
+            posSwitcher,
+            beaconSync,
+            beaconPivot,
+            _blockCacheService,
+            _api.BlockProcessingQueue,
+            _invalidChainTracker,
+            beaconSync,
+            _api.LogManager,
+            TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
+            _api.Config<IReceiptConfig>().StoreReceipts);
         bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
         if (simulateBlockProduction)
         {
@@ -379,6 +353,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
             // Block processing
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
+            .AddSingleton<IBlockProducerEnvFactory, OptimismBlockProducerEnvFactory>()
 
             .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>
                 new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))

@@ -119,6 +119,9 @@ public class TestBlockchain : IDisposable
     public IExecutionRequestsProcessor MainExecutionRequestsProcessor => ((MainBlockProcessingContext)_fromContainer.MainProcessingContext).LifetimeScope.Resolve<IExecutionRequestsProcessor>();
     public IChainLevelInfoRepository ChainLevelInfoRepository => _fromContainer.ChainLevelInfoRepository;
 
+    protected IBlockProducerEnvFactory BlockProducerEnvFactory => _fromContainer.BlockProducerEnvFactory;
+    protected ISealer Sealer => _fromContainer.Sealer;
+
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
     public IContainer Container { get; set; } = null!;
@@ -149,9 +152,12 @@ public class TestBlockchain : IDisposable
         IChainLevelInfoRepository ChainLevelInfoRepository,
         IMainProcessingContext MainProcessingContext,
         IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory,
+        IBlockProducerEnvFactory BlockProducerEnvFactory,
         Configuration Configuration,
         ISealer Sealer
-    );
+    )
+    {
+    }
 
     public class Configuration
     {
@@ -228,9 +234,7 @@ public class TestBlockchain : IDisposable
         BlockProcessingQueue = chainProcessor;
         chainProcessor.Start();
 
-        ITxSource txPoolTxSource = Container.Resolve<ITxSource>();
-        ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
-        BlockProducer = CreateTestBlockProducer(txPoolTxSource, _fromContainer.Sealer, transactionComparerProvider);
+        BlockProducer = CreateTestBlockProducer();
         BlockProducerRunner ??= CreateBlockProducerRunner();
         BlockProducerRunner.Start();
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
@@ -293,28 +297,14 @@ public class TestBlockchain : IDisposable
             : new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
     }
 
-    protected virtual IBlockProducer CreateTestBlockProducer(ITxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+    protected virtual IBlockProducer CreateTestBlockProducer(ITxSource? additionalTxSource = null)
     {
-        BlockProducerEnvFactory blockProducerEnvFactory = new(
-            WorldStateManager,
-            ReadOnlyTxProcessingEnvFactory,
-            BlockTree,
-            SpecProvider,
-            BlockValidator,
-            NoBlockRewards.Instance,
-            ReceiptStorage,
-            BlockPreprocessorStep,
-            TxPool,
-            transactionComparerProvider,
-            BlocksConfig,
-            LogManager);
-
-        BlockProducerEnv env = blockProducerEnvFactory.Create(txPoolTxSource);
+        BlockProducerEnv env = BlockProducerEnvFactory.Create(additionalTxSource);
         return new TestBlockProducer(
             env.TxSource,
             env.ChainProcessor,
             env.ReadOnlyStateProvider,
-            sealer,
+            Sealer,
             BlockTree,
             Timestamper,
             SpecProvider,

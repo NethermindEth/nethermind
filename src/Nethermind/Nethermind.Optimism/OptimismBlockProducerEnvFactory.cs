@@ -4,9 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -18,7 +16,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
@@ -34,13 +31,11 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculatorSource rewardCalculatorSource,
-        IReceiptStorage receiptStorage,
         IBlockPreprocessorStep blockPreprocessorStep,
-        ITxPool txPool,
-        ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
         IOptimismSpecHelper specHelper,
         ICostHelper l1CostHelper,
+        IBlockProducerTxSourceFactory blockProducerTxSourceFactory,
         ILogManager logManager) : base(
             worldStateManager,
             txProcessingEnvFactory,
@@ -48,11 +43,9 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             specProvider,
             blockValidator,
             rewardCalculatorSource,
-            receiptStorage,
             blockPreprocessorStep,
-            txPool,
-            transactionComparerProvider,
             blocksConfig,
+            blockProducerTxSourceFactory,
             logManager)
     {
         _specHelper = specHelper;
@@ -60,38 +53,27 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, blocksConfig.BlockProductionMaxTxKilobytes, logManager);
     }
 
-    protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource,
-        IReadOnlyTxProcessorSource processingEnv,
-        ITxPool txPool, IBlocksConfig blocksConfig, ITransactionComparerProvider transactionComparerProvider,
-        ILogManager logManager)
+    protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource)
     {
-        ITxSource baseTxSource = base.CreateTxSourceForProducer(additionalTxSource, processingEnv, txPool, blocksConfig,
-            transactionComparerProvider, logManager);
-
+        ITxSource baseTxSource = base.CreateTxSourceForProducer(additionalTxSource);
         return new OptimismTxPoolTxSource(baseTxSource);
     }
 
-    protected override BlockProcessor CreateBlockProcessor(
-        IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
-        ISpecProvider specProvider,
-        IBlockValidator blockValidator,
-        IRewardCalculatorSource rewardCalculatorSource,
-        IReceiptStorage receiptStorage,
-        ILogManager logManager,
-        IBlocksConfig blocksConfig)
+    protected override BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv)
     {
-        return new OptimismBlockProcessor(specProvider,
-            blockValidator,
-            rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
+        return new OptimismBlockProcessor(
+            _specProvider,
+            _blockValidator,
+            _rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
             TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
             readOnlyTxProcessingEnv.WorldState,
-            receiptStorage,
-            new BlockhashStore(specProvider, readOnlyTxProcessingEnv.WorldState),
+            _receiptStorage,
+            new BlockhashStore(_specProvider, readOnlyTxProcessingEnv.WorldState),
             new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor, readOnlyTxProcessingEnv.WorldState),
-            logManager,
+            _logManager,
             _specHelper,
             new Create2DeployerContractRewriter(_specHelper, _specProvider, _blockTree),
-            new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)),
+            new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, _logManager)),
             new ExecutionRequestsProcessor(readOnlyTxProcessingEnv.TransactionProcessor));
     }
 }

@@ -21,7 +21,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
 
@@ -80,10 +79,7 @@ public class TestBlockProcessingModule : Module
 
             // Seems to be only used by block producer.
             .AddScoped<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
-            .AddScoped<ITxSource, TxPoolTxSource>()
-            .AddScoped<ITxFilterPipeline, ILogManager, ISpecProvider, IBlocksConfig>(TxFilterPipelineBuilder.CreateStandardFilteringPipeline)
             .AddScoped<IComparer<Transaction>, ITransactionComparerProvider>(txComparer => txComparer.GetDefaultComparer())
-            .AddScoped<BlockProducerEnvFactory>()
 
             // Much like block validation, anything that require the use of IWorldState in block producer, is wrapped in
             // a `BlockProducerContext`.
@@ -147,19 +143,15 @@ public class TestBlockProcessingModule : Module
     private BlockProducerContext ConfigureBlockProducerContext(ILifetimeScope ctx)
     {
         // Note: This is modelled after TestBlockchain, not prod
-        IWorldState thisBlockProducerWorldState = ctx.Resolve<IWorldStateManager>().CreateResettableWorldState();
+        BlockProducerEnv env = ctx.Resolve<IBlockProducerEnvFactory>().Create();
         ILifetimeScope innerScope = ctx.BeginLifetimeScope((producerCtx) =>
         {
             producerCtx
-                .AddScoped<IWorldState>(thisBlockProducerWorldState)
-
-                // Block producer specific
-                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-                .AddScoped(BlockchainProcessor.Options.NoReceipts)
-                .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
-                .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
-
-                .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
+                // Block producer specific things is in `IBlockProducerEnvFactory`.
+                // Yea, it can be added as `AddScoped` too and then mapped out, but its clearer this way.
+                .AddScoped<IWorldState>(env.ReadOnlyStateProvider)
+                .AddScoped<IBlockchainProcessor>(env.ChainProcessor)
+                .AddScoped<ITxSource>(env.TxSource)
 
                 // TODO: What is this suppose to be?
                 .AddScoped<IBlockProducer, TestBlockProducer>()
