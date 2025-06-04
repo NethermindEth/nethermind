@@ -144,8 +144,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     private static void DecodeShardBlobNetworkWrapper(Transaction transaction, RlpStream rlpStream)
     {
         ProofVersion version = ProofVersion.V0;
-        var startingRlp = rlpStream.PeekNextItem();
-        if (startingRlp.Length is 1 && startingRlp[0] < 192)
+        if (rlpStream.PeekPrefixAndContentLength() is (0, 1))
         {
             version = (ProofVersion)rlpStream.ReadByte();
             if (version > ProofVersion.V1)
@@ -164,8 +163,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
     {
         ProofVersion version = ProofVersion.V0;
-        var startingRlp = decoderContext.PeekNextItem();
-        if (startingRlp.Length is 1 && startingRlp[0] < 192)
+        if (decoderContext.PeekPrefixAndContentLength() is (0, 1))
         {
             version = (ProofVersion)decoderContext.ReadByte();
             if (version != ProofVersion.V1)
