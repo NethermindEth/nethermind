@@ -42,6 +42,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
@@ -490,7 +491,8 @@ public static class ContainerBuilderExtensions
         return builder
             // Need to manually create the WorldStateManager to expose the triestore which is normally hidden by PruningTrieStateFactory
             // This means it does not use pruning triestore by default though which is potential edge case.
-            .AddSingleton<TrieStore>(ctx => TestTrieStoreFactory.Build(ctx.Resolve<IDbProvider>().StateDb, LimboLogs.Instance))
+            .AddSingleton<TrieStore>(ctx =>
+                new TrieStore(new NodeStorage(ctx.Resolve<IDbProvider>().StateDb), No.Pruning, Persist.EveryBlock, ctx.Resolve<IPruningConfig>(), LimboLogs.Instance))
             .Bind<IPruningTrieStore, TrieStore>()
             .AddSingleton<IWorldStateManager>(ctx =>
             {

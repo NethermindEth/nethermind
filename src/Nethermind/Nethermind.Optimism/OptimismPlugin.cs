@@ -135,10 +135,10 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         return Task.CompletedTask;
     }
 
-    public async Task InitRpcModules()
+    public Task InitRpcModules()
     {
         if (_api is null)
-            return;
+            return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
@@ -153,12 +153,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_invalidChainTracker);
         ArgumentNullException.ThrowIfNull(_blockFinalizationManager);
-
-        // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
-        // Then we will wait 5s more to ensure everything is processed
-        while (!_api.BlockProcessingQueue.IsEmpty)
-            await Task.Delay(100);
-        await Task.Delay(5000);
 
         // Single block shouldn't take a full slot to run
         // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
@@ -310,6 +304,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         }
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
+        return Task.CompletedTask;
     }
 
     public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)

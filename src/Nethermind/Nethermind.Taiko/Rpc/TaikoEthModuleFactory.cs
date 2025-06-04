@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Facade.Eth;
 using Nethermind.Blockchain.Find;
+using Nethermind.Network;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -31,6 +32,7 @@ class TaikoEthModuleFactory(IJsonRpcConfig jsonRpcConfig,
     IGasPriceOracle gasPriceOracle,
     IEthSyncingInfo ethSyncingInfo,
     IFeeHistoryOracle feeHistoryOracle,
+    IProtocolsManager protocolsManager,
     ulong? secondsPerSlot,
 
     ISyncConfig syncConfig,
@@ -53,6 +55,7 @@ class TaikoEthModuleFactory(IJsonRpcConfig jsonRpcConfig,
             gasPriceOracle,
             ethSyncingInfo,
             feeHistoryOracle,
+            protocolsManager,
             secondsPerSlot,
             syncConfig,
             l1OriginStore
