@@ -28,8 +28,7 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
     protected override IBlockProducer CreateTestBlockProducer(ITxSource? additionalTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
     {
         _api = CreateShutterApi();
-        _additionalTxSource = _api.TxSource;
-        return base.CreateTestBlockProducer(additionalTxSource, sealer, transactionComparerProvider);
+        return base.CreateTestBlockProducer(_api.TxSource, sealer, transactionComparerProvider);
     }
 
     protected override IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IBlockProducer blockProducer)
