@@ -47,7 +47,7 @@ public class BlockProcessingModule : Module
             .AddSingleton<ISealEngine, SealEngine>()
 
             .AddSingleton<IBlockProducerEnvFactory, BlockProducerEnvFactory>()
-            .AddSingleton<ITxPoolTxSourceFactory, TxPoolTxSourceFactory>()
+            .AddSingleton<IBlockProducerTxSourceFactory, TxPoolTxSourceFactory>()
 
             .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>
                 new GasPriceOracle(

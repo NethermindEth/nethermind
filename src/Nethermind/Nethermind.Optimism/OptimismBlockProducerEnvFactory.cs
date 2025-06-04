@@ -38,7 +38,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         IBlocksConfig blocksConfig,
         IOptimismSpecHelper specHelper,
         ICostHelper l1CostHelper,
-        ITxPoolTxSourceFactory txPoolTxSourceFactory,
+        IBlockProducerTxSourceFactory blockProducerTxSourceFactory,
         ILogManager logManager) : base(
             worldStateManager,
             txProcessingEnvFactory,
@@ -48,7 +48,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             rewardCalculatorSource,
             blockPreprocessorStep,
             blocksConfig,
-            txPoolTxSourceFactory,
+            blockProducerTxSourceFactory,
             logManager)
     {
         _specHelper = specHelper;

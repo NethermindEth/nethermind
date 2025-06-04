@@ -12,7 +12,6 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -26,7 +25,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Ethash
 {
@@ -94,40 +92,16 @@ namespace Nethermind.Consensus.Ethash
                 base.Load(builder);
 
                 builder
-                    .AddSingleton<ITxPoolTxSourceFactory, NethDevTxPoolTxSourceFactory>()
+                    .AddSingleton<IBlockProducerTxSourceFactory, NethDevBlockProducerTxSourceFactory>()
                     .AddSingleton<IBlockProducerEnvFactory, NethDevBlockProducerEnvFactory>()
                     ;
             }
         }
     }
 
-    public class NethDevTxPoolTxSourceFactory(
-        ISpecProvider specProvider,
-        ITxPool txPool,
-        ITransactionComparerProvider transactionComparerProvider,
-        IBlocksConfig blocksConfig,
-        ILogManager logManager) : ITxPoolTxSourceFactory
-    {
-        public TxPoolTxSource Create()
-        {
-            ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(logManager)
-                .WithBaseFeeFilter(specProvider)
-                .WithNullTxFilter()
-                .WithMinGasPriceFilter(blocksConfig, specProvider)
-                .Build;
-
-            return new TxPoolTxSource (
-                txPool,
-                specProvider,
-                transactionComparerProvider!,
-                logManager,
-                txFilterPipeline);
-        }
-    }
-
     public class NethDevBlockProducerEnvFactory : BlockProducerEnvFactory
     {
-        public NethDevBlockProducerEnvFactory(IWorldStateManager worldStateManager, IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IBlockTree blockTree, ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculatorSource rewardCalculatorSource, IBlockPreprocessorStep blockPreprocessorStep, IBlocksConfig blocksConfig, ITxPoolTxSourceFactory txPoolTxSourceFactory, ILogManager logManager) : base(worldStateManager, readOnlyTxProcessingEnvFactory, blockTree, specProvider, blockValidator, rewardCalculatorSource, blockPreprocessorStep, blocksConfig, txPoolTxSourceFactory, logManager)
+        public NethDevBlockProducerEnvFactory(IWorldStateManager worldStateManager, IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IBlockTree blockTree, ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculatorSource rewardCalculatorSource, IBlockPreprocessorStep blockPreprocessorStep, IBlocksConfig blocksConfig, IBlockProducerTxSourceFactory blockProducerTxSourceFactory, ILogManager logManager) : base(worldStateManager, readOnlyTxProcessingEnvFactory, blockTree, specProvider, blockValidator, rewardCalculatorSource, blockPreprocessorStep, blocksConfig, blockProducerTxSourceFactory, logManager)
         {
         }
 

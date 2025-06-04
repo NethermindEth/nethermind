@@ -4,12 +4,13 @@
 using System;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Transactions;
 
 namespace Nethermind.Merge.AuRa;
 
-public class AuRaMergeTxPoolTxSourceFactory(Func<StartBlockProducerAuRa> startBlockProducerFactory) : ITxPoolTxSourceFactory
+public class AuRaMergeBlockProducerTxSourceFactory(Func<StartBlockProducerAuRa> startBlockProducerFactory) : IBlockProducerTxSourceFactory
 {
-    public TxPoolTxSource Create()
+    public ITxSource Create()
     {
         return startBlockProducerFactory().CreateTxPoolTxSource();
     }

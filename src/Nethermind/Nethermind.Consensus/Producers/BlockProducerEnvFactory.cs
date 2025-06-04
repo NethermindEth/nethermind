@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.Producers
         protected readonly IBlocksConfig _blocksConfig;
         protected readonly ILogManager _logManager;
         private readonly IReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
-        private readonly ITxPoolTxSourceFactory _txPoolTxSourceFactory;
+        private readonly IBlockProducerTxSourceFactory _blockProducerTxSourceFactory;
 
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
         public IExecutionRequestsProcessor? ExecutionRequestsProcessorOverride { get; set; }
@@ -49,7 +49,7 @@ namespace Nethermind.Consensus.Producers
             IRewardCalculatorSource rewardCalculatorSource,
             IBlockPreprocessorStep blockPreprocessorStep,
             IBlocksConfig blocksConfig,
-            ITxPoolTxSourceFactory txPoolTxSourceFactory,
+            IBlockProducerTxSourceFactory blockProducerTxSourceFactory,
             ILogManager logManager)
         {
             _worldStateManager = worldStateManager;
@@ -61,7 +61,7 @@ namespace Nethermind.Consensus.Producers
             _receiptStorage = NullReceiptStorage.Instance;
             _blockPreprocessorStep = blockPreprocessorStep;
             _blocksConfig = blocksConfig;
-            _txPoolTxSourceFactory = txPoolTxSourceFactory;
+            _blockProducerTxSourceFactory = blockProducerTxSourceFactory;
             _logManager = logManager;
 
             TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, _blocksConfig.BlockProductionMaxTxKilobytes, logManager);
@@ -101,7 +101,7 @@ namespace Nethermind.Consensus.Producers
 
         protected virtual ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource)
         {
-            TxPoolTxSource txPoolSource = _txPoolTxSourceFactory.Create();
+            ITxSource txPoolSource = _blockProducerTxSourceFactory.Create();
             return additionalTxSource.Then(txPoolSource);
         }
 

@@ -10,19 +10,14 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Producers
 {
-    public interface ITxPoolTxSourceFactory
-    {
-        TxPoolTxSource Create();
-    }
-
     public class TxPoolTxSourceFactory(
         ITxPool txPool,
         ISpecProvider specProvider,
         ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
-        ILogManager logManager) : ITxPoolTxSourceFactory
+        ILogManager logManager) : IBlockProducerTxSourceFactory
     {
-        public virtual TxPoolTxSource Create()
+        public virtual ITxSource Create()
         {
             ITxFilterPipeline txSourceFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(logManager, specProvider, blocksConfig);
             return new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, logManager, txSourceFilterPipeline);

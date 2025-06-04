@@ -38,7 +38,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         IRewardCalculatorSource rewardCalculatorSource,
         IBlockPreprocessorStep blockPreprocessorStep,
         IBlocksConfig blocksConfig,
-        ITxPoolTxSourceFactory txPoolTxSourceFactory,
+        IBlockProducerTxSourceFactory blockProducerTxSourceFactory,
         ILogManager logManager) : base(
             worldStateManager,
             txProcessingEnvFactory,
@@ -48,7 +48,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             rewardCalculatorSource,
             blockPreprocessorStep,
             blocksConfig,
-            txPoolTxSourceFactory,
+            blockProducerTxSourceFactory,
             logManager)
     {
         _chainSpec = chainSpec;
