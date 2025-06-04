@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
@@ -25,7 +26,7 @@ namespace Nethermind.Consensus.Transactions
             _filters.Add(txFilter);
         }
 
-        public bool Execute(Transaction tx, BlockHeader parentHeader)
+        public bool Execute(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
         {
             if (_filters.Count == 0)
             {
@@ -34,7 +35,7 @@ namespace Nethermind.Consensus.Transactions
 
             foreach (ITxFilter filter in _filters)
             {
-                AcceptTxResult isAllowed = filter.IsAllowed(tx, parentHeader);
+                AcceptTxResult isAllowed = filter.IsAllowed(tx, parentHeader, spec);
                 if (!isAllowed)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Rejected tx ({isAllowed}) {tx.ToShortString()}");

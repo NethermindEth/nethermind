@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Transactions
             _blocksConfig = blocksConfig;
         }
 
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
         {
             return IsAllowed(tx, parentHeader, _blocksConfig.MinGasPrice);
         }

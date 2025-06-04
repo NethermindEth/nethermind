@@ -6,6 +6,7 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
@@ -22,9 +23,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
         }
 
 
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
         {
-            AcceptTxResult isAllowed = _minGasPriceFilter.IsAllowed(tx, parentHeader);
+            AcceptTxResult isAllowed = _minGasPriceFilter.IsAllowed(tx, parentHeader, spec);
             if (!isAllowed)
             {
                 return isAllowed;

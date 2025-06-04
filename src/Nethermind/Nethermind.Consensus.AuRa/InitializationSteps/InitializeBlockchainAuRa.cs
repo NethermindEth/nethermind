@@ -5,16 +5,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Data;
-using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
-using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
@@ -231,7 +228,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
             _api.TxGossipPolicy,
-            new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager),
+            new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager, _api.SpecProvider),
             txPriorityContract is not null || localDataSource is not null);
     }
 

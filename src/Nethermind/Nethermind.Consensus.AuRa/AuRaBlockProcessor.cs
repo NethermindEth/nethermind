@@ -19,7 +19,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -148,18 +147,18 @@ namespace Nethermind.Consensus.AuRa
 
         private AddingTxEventArgs CheckTxPosdaoRules(AddingTxEventArgs args)
         {
+            IReleaseSpec spec = _specProvider.GetSpec(args.Block.Header);
             AcceptTxResult? TryRecoverSenderAddress(Transaction tx, BlockHeader header)
             {
                 if (tx.Signature is not null)
                 {
-                    IReleaseSpec spec = _specProvider.GetSpec(args.Block.Header);
                     EthereumEcdsa ecdsa = new(_specProvider.ChainId);
                     Address txSenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
                     if (tx.SenderAddress != txSenderAddress)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Transaction {tx.ToShortString()} in block {args.Block.ToString(Block.Format.FullHashAndNumber)} had recovered sender address on validation.");
                         tx.SenderAddress = txSenderAddress;
-                        return _txFilter.IsAllowed(tx, header);
+                        return _txFilter.IsAllowed(tx, header, spec);
                     }
                 }
 
@@ -167,7 +166,7 @@ namespace Nethermind.Consensus.AuRa
             }
 
             BlockHeader parentHeader = GetParentHeader(args.Block);
-            AcceptTxResult isAllowed = _txFilter.IsAllowed(args.Transaction, parentHeader);
+            AcceptTxResult isAllowed = _txFilter.IsAllowed(args.Transaction, parentHeader, spec);
             if (!isAllowed)
             {
                 isAllowed = TryRecoverSenderAddress(args.Transaction, parentHeader) ?? isAllowed;

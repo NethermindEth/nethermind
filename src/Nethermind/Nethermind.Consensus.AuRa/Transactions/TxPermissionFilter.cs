@@ -1,15 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
+using System;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -29,7 +30,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<PermissionBasedTxFilter>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
         {
             if (parentHeader.Number + 1 < _contract.Activation)
             {

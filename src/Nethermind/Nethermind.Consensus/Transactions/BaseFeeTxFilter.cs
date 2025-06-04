@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Transactions
             _specProvider = specProvider;
         }
 
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
         {
             long blockNumber = parentHeader.Number + 1;
             IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(blockNumber);

@@ -22,6 +22,7 @@ namespace Nethermind.Consensus.Transactions
             return new TxFilterPipelineBuilder(logManager)
                 .WithMinGasPriceFilter(blocksConfig, specProvider)
                 .WithBaseFeeFilter(specProvider)
+                .WithTxGasLimitFilter()
                 .Build;
         }
 
@@ -39,6 +40,12 @@ namespace Nethermind.Consensus.Transactions
         public TxFilterPipelineBuilder WithBaseFeeFilter(ISpecProvider specProvider)
         {
             _filterPipeline.AddTxFilter(new BaseFeeTxFilter(specProvider));
+            return this;
+        }
+
+        public TxFilterPipelineBuilder WithTxGasLimitFilter()
+        {
+            _filterPipeline.AddTxFilter(new TxGasLimitTxFilter());
             return this;
         }
 
