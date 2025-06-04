@@ -6,7 +6,6 @@ using Autofac;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -25,10 +24,10 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
     protected virtual ShutterApiSimulator CreateShutterApi()
         => ShutterTestsCommon.InitApi(_rnd, this, _timestamper, eventSimulator);
 
-    protected override IBlockProducer CreateTestBlockProducer(ITxSource? additionalTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+    protected override IBlockProducer CreateTestBlockProducer(ITxSource? additionalTxSource)
     {
         _api = CreateShutterApi();
-        return base.CreateTestBlockProducer(_api.TxSource, sealer, transactionComparerProvider);
+        return base.CreateTestBlockProducer(_api.TxSource);
     }
 
     protected override IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IBlockProducer blockProducer)

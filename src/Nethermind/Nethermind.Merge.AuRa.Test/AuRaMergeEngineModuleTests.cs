@@ -192,7 +192,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         }
 
 
-        protected override IBlockProducer CreateTestBlockProducer(ITxSource? additionalTxPoolSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+        protected override IBlockProducer CreateTestBlockProducer(ITxSource? additionalTxPoolSource)
         {
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             ISyncConfig syncConfig = new SyncConfig();
@@ -232,7 +232,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 env.TxSource,
                 env.ChainProcessor,
                 env.ReadOnlyStateProvider,
-                sealer,
+                Sealer,
                 BlockTree,
                 Timestamper,
                 auraStepCalculator,

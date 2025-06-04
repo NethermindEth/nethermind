@@ -323,10 +323,9 @@ public abstract partial class BaseEngineModuleTests
             base.ConfigureContainer(builder, configProvider)
                 .AddModule(new MergeModule(configProvider));
 
-        protected override IBlockProducer CreateTestBlockProducer(ITxSource? additionalTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+        protected override IBlockProducer CreateTestBlockProducer(ITxSource? additionalTxSource)
         {
-            IBlockProducer preMergeBlockProducer =
-                base.CreateTestBlockProducer(additionalTxSource, sealer, transactionComparerProvider);
+            IBlockProducer preMergeBlockProducer = base.CreateTestBlockProducer(additionalTxSource);
 
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
