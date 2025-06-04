@@ -17,7 +17,7 @@ public static class SpanSourcePoolExtensions
 
     public static void SafeReturnBuffer(this ICappedArrayPool? pool, SpanSource buffer)
     {
-        if (pool != null && buffer.TryGetCappedArray(out CappedArray<byte> capped))
+        if (pool is not null && buffer.TryGetCappedArray(out CappedArray<byte> capped))
         {
             pool.Return(capped);
         }
