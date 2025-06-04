@@ -120,11 +120,14 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
 
-        // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
-        // Then we will wait 5s more to ensure everything is processed
-        while (!_api.BlockProcessingQueue.IsEmpty)
-            await Task.Delay(100);
-        await Task.Delay(5000);
+        if (!_api.Config<IInitConfig>().InRunnerTest)
+        {
+            // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
+            // Then we will wait 5s more to ensure everything is processed
+            while (!_api.BlockProcessingQueue.IsEmpty)
+                await Task.Delay(100);
+            await Task.Delay(5000);
+        }
 
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
