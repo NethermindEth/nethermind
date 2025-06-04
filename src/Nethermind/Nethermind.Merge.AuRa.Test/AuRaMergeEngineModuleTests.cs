@@ -106,8 +106,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public class MergeAuRaTestBlockchain : MergeTestBlockchain
     {
         private AuRaNethermindApi? _api;
-        protected ITxSource? _additionalTxSource;
-        private AuRaMergeBlockProducerEnvFactory _blockProducerEnvFactory = null!;
+        protected ITxSource? _additionalTxSource; // TODO: CCheck again
 
         public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ITxSource? additionalTxSource = null, ILogManager? logManager = null)
             : base(mergeConfig, mockedPayloadPreparationService, logManager)
@@ -135,11 +134,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                     // as normally, test blockchain don't use INethermindApi at all. Note: This test does not
                     // seems to use aura block processor which means a lot of aura things is not available here.
                     .AddModule(new AuraModule(ChainSpec))
+                    .AddModule(new AuraMergeModule())
                     .AddSingleton<NethermindApi.Dependencies>()
                     .AddSingleton<IReportingValidator>(NullReportingValidator.Instance)
                     .AddSingleton<ISealer>(NullSealEngine.Instance) // Test not originally made with aura sealer
 
-                    .AddSingleton<IBlockProducerEnvFactory>((ctx) => _blockProducerEnvFactory)
                     .AddDecorator<AuRaNethermindApi>((ctx, api) =>
                     {
                         // Yes getting from `TestBlockchain` itself, since steps are not run
@@ -195,7 +194,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         }
 
 
-        protected override IBlockProducer CreateTestBlockProducer(ITxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+        protected override IBlockProducer CreateTestBlockProducer(ITxSource? additionalTxPoolSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             ISyncConfig syncConfig = new SyncConfig();
@@ -210,6 +209,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
+            /*
             AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
                 _api!.ChainSpec,
                 _api.AbiEncoder,
@@ -224,9 +224,14 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 new AuRaMergeTxPoolTxSourceFactory(_api.CreateStartBlockProducer),
                 LogManager);
             blockProducerEnvFactory.ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
-            this._blockProducerEnvFactory = blockProducerEnvFactory;
+            */
 
-            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(_additionalTxSource);
+            if (ExecutionRequestsProcessorOverride is not null)
+            {
+                ((BlockProducerEnvFactory)BlockProducerEnvFactory).ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
+            }
+
+            BlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create(_additionalTxSource);
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(
@@ -240,10 +245,10 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
             IAuRaStepCalculator auraStepCalculator = Substitute.For<IAuRaStepCalculator>();
             auraStepCalculator.TimeToNextStep.Returns(TimeSpan.FromMilliseconds(0));
-            var env = blockProducerEnvFactory.Create();
+            var env = BlockProducerEnvFactory.Create(_additionalTxSource);
             FollowOtherMiners gasLimitCalculator = new(MainnetSpecProvider.Instance);
             AuRaBlockProducer preMergeBlockProducer = new(
-                txPoolTxSource,
+                env.TxSource,
                 env.ChainProcessor,
                 env.ReadOnlyStateProvider,
                 sealer,

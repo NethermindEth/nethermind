@@ -96,7 +96,6 @@ namespace Nethermind.Consensus.Producers
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = scope.WorldState,
                 TxSource = CreateTxSourceForProducer(additionalTxSource),
-                ReadOnlyTxProcessingEnv = txProcessingEnv
             };
         }
 
