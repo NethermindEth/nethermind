@@ -135,7 +135,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.EngineSignerStore = Substitute.For<ISignerStore>();
             api.WebSocketsManager = Substitute.For<IWebSocketsManager>();
             api.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
-            api.BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
             api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();
             api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
             api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();

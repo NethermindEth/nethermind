@@ -76,7 +76,7 @@ namespace Nethermind.Api
         /// </remarks>
         IBlockFinalizationManager? FinalizationManager { get; set; }
 
-        IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
+        IBlockProducerEnvFactory BlockProducerEnvFactory { get; }
         IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
         IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory { get; }
 

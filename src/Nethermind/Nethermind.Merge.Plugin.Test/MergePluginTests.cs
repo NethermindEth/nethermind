@@ -71,19 +71,6 @@ public class MergePluginTests
 
                 api.BlockProcessingQueue?.IsEmpty.Returns(true);
                 api.DbFactory = new MemDbFactory();
-                api.BlockProducerEnvFactory = new BlockProducerEnvFactory(
-                    api.WorldStateManager!,
-                    api.ReadOnlyTxProcessingEnvFactory,
-                    api.BlockTree!,
-                    api.SpecProvider!,
-                    api.BlockValidator!,
-                    api.RewardCalculatorSource!,
-                    api.ReceiptStorage!,
-                    api.BlockPreprocessor!,
-                    api.TxPool!,
-                    api.TransactionComparerProvider!,
-                    ctx.Resolve<IBlocksConfig>(),
-                    api.LogManager!);
             })
             .Build();
     }

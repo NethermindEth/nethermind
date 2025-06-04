@@ -9,10 +9,10 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
-using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Merge.AuRa.InitializationSteps;
@@ -53,23 +53,6 @@ namespace Nethermind.Merge.AuRa
 
         public override IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
         {
-            _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
-                _auraApi!.ChainSpec,
-                _auraApi.AbiEncoder,
-                _auraApi.CreateStartBlockProducer,
-                _api.ReadOnlyTxProcessingEnvFactory,
-                _api.WorldStateManager!,
-                _api.BlockTree!,
-                _api.SpecProvider!,
-                _api.BlockValidator!,
-                _api.RewardCalculatorSource!,
-                _api.ReceiptStorage!,
-                _api.BlockPreprocessor!,
-                _api.TxPool!,
-                _api.TransactionComparerProvider!,
-                _api.Config<IBlocksConfig>(),
-                _api.LogManager);
-
             return base.InitBlockProducer(consensusPlugin, txSource);
         }
 
@@ -106,7 +89,10 @@ namespace Nethermind.Merge.AuRa
             base.Load(builder);
 
             // Nothing right now, just making it clear it is using `MergePluginModule`
-            builder.AddModule(new MergePluginModule());
+            builder
+                .AddModule(new MergePluginModule())
+                .AddSingleton<IBlockProducerEnvFactory, AuRaMergeBlockProducerEnvFactory>()
+                ;
         }
     }
 }

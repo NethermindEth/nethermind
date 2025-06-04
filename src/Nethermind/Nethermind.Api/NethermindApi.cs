@@ -189,7 +189,7 @@ namespace Nethermind.Api
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
         public IBlockFinalizationManager? FinalizationManager { get; set; }
 
-        public IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
+        public IBlockProducerEnvFactory BlockProducerEnvFactory => Context.Resolve<IBlockProducerEnvFactory>();
         public IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
         public IGasPriceOracle GasPriceOracle => Context.Resolve<IGasPriceOracle>();
 

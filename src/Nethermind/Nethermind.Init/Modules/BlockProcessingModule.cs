@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -44,7 +45,8 @@ public class BlockProcessingModule : Module
             .AddSingleton<ISealer>(NullSealEngine.Instance)
             .AddSingleton<ISealEngine, SealEngine>()
 
-
+            // TODO: Double check if this is only used pre merege
+            .AddSingleton<IBlockProducerEnvFactory, BlockProducerEnvFactory>()
 
             .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>
                 new GasPriceOracle(
