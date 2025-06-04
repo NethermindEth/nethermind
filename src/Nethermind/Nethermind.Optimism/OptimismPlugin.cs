@@ -186,18 +186,18 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
         NewPayloadHandler newPayloadHandler = new(
-                _api.BlockValidator,
-                _api.BlockTree,
-                posSwitcher,
-                beaconSync,
-                beaconPivot,
-                _blockCacheService,
-                _api.BlockProcessingQueue,
-                _invalidChainTracker,
-                beaconSync,
-                _api.LogManager,
-                TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
-                _api.Config<IReceiptConfig>().StoreReceipts);
+            _api.BlockValidator,
+            _api.BlockTree,
+            posSwitcher,
+            beaconSync,
+            beaconPivot,
+            _blockCacheService,
+            _api.BlockProcessingQueue,
+            _invalidChainTracker,
+            beaconSync,
+            _api.LogManager,
+            TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
+            _api.Config<IReceiptConfig>().StoreReceipts);
         bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
         if (simulateBlockProduction)
         {

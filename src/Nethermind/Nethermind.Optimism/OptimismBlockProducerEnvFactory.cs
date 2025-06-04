@@ -4,9 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -18,7 +16,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
@@ -58,9 +55,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
 
     protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource)
     {
-        // TODO: Override `ITxPoolTxSourceFactory` instead
         ITxSource baseTxSource = base.CreateTxSourceForProducer(additionalTxSource);
-
         return new OptimismTxPoolTxSource(baseTxSource);
     }
 
