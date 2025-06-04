@@ -142,7 +142,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void ThrowSpanSourceNotCappedArray() => throw new Exception("Encode to SpanSource failed to get a CappedArray.");
+        private static void ThrowSpanSourceNotCappedArray() => throw new InvalidOperationException("Encode to SpanSource failed to get a CappedArray.");
 
         public static Rlp Encode<T>(this IRlpObjectDecoder<T> decoder, IReadOnlyCollection<T?>? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
