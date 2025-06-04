@@ -52,7 +52,8 @@ public class L1BlockInfo
 
 public class L1BlockInfoBuilder
 {
-    public const UInt32 L1InfoTransactionMethodId = 1141530144;
+    public const UInt32 L1InfoTransactionMethodIdEcotone = 1141530144;
+    public const UInt32 L1InfoTransactionMethodIdIsthmus = 0x098999BE;
 
     private const int SystemTxDataLengthEcotone = 164;
     private const int SystemTxDataLengthIsthmus = 176;
@@ -65,10 +66,11 @@ public class L1BlockInfoBuilder
         }
 
         uint methodId = BinaryPrimitives.ReadUInt32BigEndian(depositTxData.TakeAndMove(4));
-        if (methodId != L1InfoTransactionMethodId)
+        if (methodId != L1InfoTransactionMethodIdEcotone && methodId != L1InfoTransactionMethodIdIsthmus)
         {
             throw new ArgumentException($"MethodId is incorrect. {methodId}");
         }
+
         uint baseFeeScalar = BinaryPrimitives.ReadUInt32BigEndian(depositTxData.TakeAndMove(4));
         uint blobBaseFeeScalar = BinaryPrimitives.ReadUInt32BigEndian(depositTxData.TakeAndMove(4));
         ulong sequenceNumber = BinaryPrimitives.ReadUInt64BigEndian(depositTxData.TakeAndMove(8));
@@ -87,10 +89,10 @@ public class L1BlockInfoBuilder
 
         UInt64? operatorFeeConstant = null;
         UInt32? operatorFeeScalar = null;
-        if (!depositTxData.IsEmpty)
+        if (methodId == L1InfoTransactionMethodIdIsthmus)
         {
-            operatorFeeScalar = BinaryPrimitives.ReadUInt32BigEndian(depositTxData.TakeAndMove(8));
-            operatorFeeConstant = BinaryPrimitives.ReadUInt64BigEndian(depositTxData.TakeAndMove(4));
+            operatorFeeScalar = BinaryPrimitives.ReadUInt32BigEndian(depositTxData.TakeAndMove(4));
+            operatorFeeConstant = BinaryPrimitives.ReadUInt64BigEndian(depositTxData.TakeAndMove(8));
         }
 
         return new()
