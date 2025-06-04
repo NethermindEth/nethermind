@@ -190,7 +190,7 @@ public class SnapProviderTests
     private static (SnapServer, Hash256) BuildSnapServerFromEntries((Hash256, Account)[] entries)
     {
         TestMemDb stateDb = new TestMemDb();
-        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
+        TestRawTrieStore trieStore = new TestRawTrieStore(stateDb);
         StateTree st = new StateTree(trieStore, LimboLogs.Instance);
         foreach (var entry in entries)
         {
