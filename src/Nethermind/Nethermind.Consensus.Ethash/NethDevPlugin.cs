@@ -7,24 +7,12 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.ExecutionRequests;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Ethash
 {
@@ -96,36 +84,6 @@ namespace Nethermind.Consensus.Ethash
                     .AddSingleton<IBlockProducerEnvFactory, NethDevBlockProducerEnvFactory>()
                     ;
             }
-        }
-    }
-
-    public class NethDevBlockProducerEnvFactory : BlockProducerEnvFactory
-    {
-        public NethDevBlockProducerEnvFactory(IWorldStateManager worldStateManager, IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IBlockTree blockTree, ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculatorSource rewardCalculatorSource, IBlockPreprocessorStep blockPreprocessorStep, IBlocksConfig blocksConfig, IBlockProducerTxSourceFactory blockProducerTxSourceFactory, ILogManager logManager) : base(worldStateManager, readOnlyTxProcessingEnvFactory, blockTree, specProvider, blockValidator, rewardCalculatorSource, blockPreprocessorStep, blocksConfig, blockProducerTxSourceFactory, logManager)
-        {
-        }
-
-        protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource)
-        {
-            return base.CreateTxSourceForProducer(additionalTxSource).ServeTxsOneByOne();
-        }
-
-        protected override BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope scope)
-        {
-            return new BlockProcessor(
-                _specProvider,
-                _blockValidator,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockProductionTransactionsExecutor(scope, _specProvider, _logManager),
-                scope.WorldState,
-                NullReceiptStorage.Instance,
-                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
-                new BlockhashStore(_specProvider, scope.WorldState),
-                _logManager,
-                // TODO: Parent use `BlockProductionWithdrawalProcessor`. Should this be the same also?
-                new WithdrawalProcessor(scope.WorldState, _logManager),
-                new ExecutionRequestsProcessor(scope.TransactionProcessor)
-            );
         }
     }
 }
