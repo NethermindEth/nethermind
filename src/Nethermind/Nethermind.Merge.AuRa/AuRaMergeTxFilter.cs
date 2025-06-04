@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.TxPool;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -21,9 +22,9 @@ namespace Nethermind.Merge.AuRa
             _postMergeTxFilter = postMergeTxFilter ?? NullTxFilter.Instance;
         }
 
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader) =>
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec) =>
             _poSSwitcher.IsPostMerge(parentHeader)
-                ? _postMergeTxFilter.IsAllowed(tx, parentHeader)
-                : _preMergeTxFilter.IsAllowed(tx, parentHeader);
+                ? _postMergeTxFilter.IsAllowed(tx, parentHeader, spec)
+                : _preMergeTxFilter.IsAllowed(tx, parentHeader, spec);
     }
 }

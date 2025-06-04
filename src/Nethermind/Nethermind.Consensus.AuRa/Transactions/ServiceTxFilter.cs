@@ -17,7 +17,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _specProvider = specProvider;
         }
 
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
         {
             if (tx.IsZeroGasPrice(parentHeader, _specProvider))
             {

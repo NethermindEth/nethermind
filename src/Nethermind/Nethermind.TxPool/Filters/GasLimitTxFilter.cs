@@ -27,13 +27,18 @@ namespace Nethermind.TxPool.Filters
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             long gasLimit = Math.Min(_chainHeadInfoProvider.BlockGasLimit ?? long.MaxValue, _configuredGasLimit);
+            if (_chainHeadInfoProvider.Spec.IsEip7825Enabled)
+            {
+                gasLimit = Math.Min(gasLimit, Eip7825Constants.DefaultTxGasLimitCap);
+            }
+
             if (tx.GasLimit > gasLimit)
             {
                 Metrics.PendingTransactionsGasLimitTooHigh++;
 
-                if (_logger.IsTrace)
+                if (_logger.IsInfo)
                 {
-                    _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, gas limit exceeded.");
+                    _logger.Info($"Skipped adding transaction {tx.ToString("  ")}, gas limit exceeded.");
                 }
 
                 bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
