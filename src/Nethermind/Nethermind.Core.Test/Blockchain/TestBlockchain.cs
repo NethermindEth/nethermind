@@ -233,7 +233,7 @@ public class TestBlockchain : IDisposable
         BlockProcessingQueue = chainProcessor;
         chainProcessor.Start();
 
-        BlockProducer = CreateTestBlockProducer(null);
+        BlockProducer = CreateTestBlockProducer();
         BlockProducerRunner ??= CreateBlockProducerRunner();
         BlockProducerRunner.Start();
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
