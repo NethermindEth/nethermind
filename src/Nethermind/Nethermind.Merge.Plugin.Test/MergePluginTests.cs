@@ -209,7 +209,7 @@ public class MergePluginTests
 
         if (!downloadBody && downloadReceipt)
         {
-            syncConfig.DownloadBodiesInFastSync.Should().BeTrue(); // Modified by PruningTrieStateFactory
+            syncConfig.DownloadBodiesInFastSync.Should().BeTrue(); // Modified by Synchronizer
         }
     }
 }
