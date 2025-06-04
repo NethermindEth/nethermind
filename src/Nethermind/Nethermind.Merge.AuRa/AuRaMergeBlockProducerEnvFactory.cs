@@ -98,13 +98,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             null);
     }
 
-    protected override TxPoolTxSource CreateTxPoolTxSource(
-        IReadOnlyTxProcessorSource processingEnv,
-        ITxPool txPool,
-        IBlocksConfig blocksConfig,
-        ITransactionComparerProvider transactionComparerProvider,
-        ILogManager logManager)
-    {
+    protected override TxPoolTxSource CreateTxPoolTxSource() {
         return _startBlockProducerFactory().CreateTxPoolTxSource();
     }
 }

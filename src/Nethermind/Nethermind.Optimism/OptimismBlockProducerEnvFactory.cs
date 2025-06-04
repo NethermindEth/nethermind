@@ -60,13 +60,9 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, blocksConfig.BlockProductionMaxTxKilobytes, logManager);
     }
 
-    protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource,
-        IReadOnlyTxProcessorSource processingEnv,
-        ITxPool txPool, IBlocksConfig blocksConfig, ITransactionComparerProvider transactionComparerProvider,
-        ILogManager logManager)
+    protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource)
     {
-        ITxSource baseTxSource = base.CreateTxSourceForProducer(additionalTxSource, processingEnv, txPool, blocksConfig,
-            transactionComparerProvider, logManager);
+        ITxSource baseTxSource = base.CreateTxSourceForProducer(additionalTxSource);
 
         return new OptimismTxPoolTxSource(baseTxSource);
     }

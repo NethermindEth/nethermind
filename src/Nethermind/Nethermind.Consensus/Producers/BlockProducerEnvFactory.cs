@@ -106,30 +106,19 @@ namespace Nethermind.Consensus.Producers
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = scope.WorldState,
-                TxSource = CreateTxSourceForProducer(additionalTxSource, txProcessingEnv, _txPool, _blocksConfig, _transactionComparerProvider, _logManager),
+                TxSource = CreateTxSourceForProducer(additionalTxSource),
                 ReadOnlyTxProcessingEnv = txProcessingEnv
             };
         }
 
-        protected virtual ITxSource CreateTxSourceForProducer(
-            ITxSource? additionalTxSource,
-            IReadOnlyTxProcessorSource processingEnv,
-            ITxPool txPool,
-            IBlocksConfig blocksConfig,
-            ITransactionComparerProvider transactionComparerProvider,
-            ILogManager logManager)
+        protected virtual ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource)
         {
-            TxPoolTxSource txPoolSource = CreateTxPoolTxSource(processingEnv, txPool, blocksConfig, transactionComparerProvider, logManager);
+            TxPoolTxSource txPoolSource = CreateTxPoolTxSource();
             return additionalTxSource.Then(txPoolSource);
         }
 
-        protected virtual TxPoolTxSource CreateTxPoolTxSource(
-            IReadOnlyTxProcessorSource processingEnv,
-            ITxPool txPool,
-            IBlocksConfig blocksConfig,
-            ITransactionComparerProvider transactionComparerProvider,
-            ILogManager logManager)
-            => new TxPoolTxSourceFactory(txPool, _specProvider, transactionComparerProvider, blocksConfig, logManager).Create();
+        protected virtual TxPoolTxSource CreateTxPoolTxSource()
+            => new TxPoolTxSourceFactory(_txPool, _specProvider, _transactionComparerProvider, _blocksConfig, _logManager).Create();
 
         protected virtual BlockProcessor CreateBlockProcessor(
             IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,

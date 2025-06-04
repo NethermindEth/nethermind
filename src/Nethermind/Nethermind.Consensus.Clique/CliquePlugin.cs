@@ -70,7 +70,6 @@ namespace Nethermind.Consensus.Clique
             }
 
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree!.AsReadOnly();
-            ITransactionComparerProvider transactionComparerProvider = getFromApi.TransactionComparerProvider;
             IReadOnlyTxProcessingScope scope = getFromApi.ReadOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
 
             BlockProcessor producerProcessor = new BlockProcessor(
@@ -107,7 +106,7 @@ namespace Nethermind.Consensus.Clique
             TxPoolTxSource txPoolTxSource = new(
                 getFromApi.TxPool,
                 getFromApi.SpecProvider,
-                transactionComparerProvider,
+                getFromApi.TransactionComparerProvider,
                 getFromApi.LogManager,
                 txFilterPipeline);
 
