@@ -24,6 +24,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 
@@ -130,6 +131,8 @@ namespace Nethermind.Consensus.AuRa
             {
                 builder.AddSingleton<IHeaderValidator, AuRaHeaderValidator>();
             }
+
+            if (Rlp.GetStreamDecoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
         }
     }
 }

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
-using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
@@ -264,13 +263,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             ArgumentNullException.ThrowIfNull(_api.StateReader);
             ArgumentNullException.ThrowIfNull(_api.EngineRequestsTracker);
             ArgumentNullException.ThrowIfNull(_postMergeBlockProducer);
-
-            // ToDo: ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart. Then we will wait 5s more to ensure everything is processed
-            while (!_api.BlockProcessingQueue.IsEmpty)
-            {
-                Thread.Sleep(100);
-            }
-            Thread.Sleep(5000);
 
             // Single block shouldn't take a full slot to run
             // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
