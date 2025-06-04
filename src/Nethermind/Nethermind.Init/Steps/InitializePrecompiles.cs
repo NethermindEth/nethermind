@@ -15,6 +15,7 @@ namespace Nethermind.Init.Steps;
 public class InitializePrecompiles : IStep
 {
     private readonly INethermindApi _api;
+    private static SemaphoreSlim _setupLock = new(1);
     private static bool _wasSetup = false;
 
     public InitializePrecompiles(INethermindApi api)
@@ -29,17 +30,24 @@ public class InitializePrecompiles : IStep
             ILogger logger = _api.LogManager.GetClassLogger<InitializePrecompiles>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
 
+            await _setupLock.WaitAsync(cancellationToken);
             try
             {
-                if (!Interlocked.CompareExchange(ref _wasSetup, true, false))
+                if (!_wasSetup)
                 {
                     await KzgPolynomialCommitments.InitializeAsync(logger, initConfig.KzgSetupPath);
+                    _wasSetup = true;
                 }
             }
             catch (Exception e)
             {
-                if (logger.IsError) logger.Error($"Couldn't initialize {nameof(KzgPolynomialCommitments)} precompile", e);
+                if (logger.IsError)
+                    logger.Error($"Couldn't initialize {nameof(KzgPolynomialCommitments)} precompile", e);
                 throw;
+            }
+            finally
+            {
+                _setupLock.Release();
             }
         }
     }
