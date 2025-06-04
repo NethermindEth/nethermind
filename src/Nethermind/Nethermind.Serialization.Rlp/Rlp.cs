@@ -1179,9 +1179,7 @@ namespace Nethermind.Serialization.Rlp
             public ReadOnlySpan<byte> PeekNextItem()
             {
                 int length = PeekNextRlpLength();
-                ReadOnlySpan<byte> item = Read(length);
-                Position -= item.Length;
-                return item;
+                return Peek(length);
             }
 
             public readonly bool IsNextItemNull()
