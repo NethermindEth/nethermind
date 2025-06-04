@@ -19,6 +19,7 @@ namespace Nethermind.Evm;
 /// </summary>
 internal static partial class EvmInstructions
 {
+    private static readonly ReadOnlyMemory<byte> _emptyMemory = default;
     /// <summary>
     /// Interface for CREATE opcode types.
     /// Implementations must specify the <see cref="ExecutionType"/> to distinguish between CREATE and CREATE2.
@@ -227,15 +228,15 @@ internal static partial class EvmInstructions
         // This environment sets up the call frame for executing the contract's initialization code.
         ExecutionEnvironment callEnv = new
         (
-            txExecutionContext: in env.TxExecutionContext,
-            callDepth: env.CallDepth + 1,
-            caller: env.ExecutingAccount,
-            executingAccount: contractAddress,
-            codeSource: null,
             codeInfo: codeinfo,
-            inputData: default,
-            transferValue: value,
-            value: value
+            executingAccount: contractAddress,
+            caller: env.ExecutingAccount,
+            codeSource: null,
+            txExecutionContext: in env.TxExecutionContext,
+            transferValue: in value,
+            value: in value,
+            inputData: in _emptyMemory,
+            callDepth: env.CallDepth + 1
         );
 
         // Rent a new frame to run the initialization code in the new execution environment.

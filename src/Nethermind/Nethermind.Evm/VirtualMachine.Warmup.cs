@@ -52,7 +52,7 @@ public unsafe partial class VirtualMachine
             codeInfo: new CodeInfo(bytecode),
             value: 0,
             transferValue: 0,
-            txExecutionContext: new TxExecutionContext(new BlockExecutionContext(_header, spec), addressOne, 0, null, codeInfoRepository),
+            txExecutionContext: new TxExecutionContext(addressOne, codeInfoRepository, null, new BlockExecutionContext(_header, spec), 0),
             inputData: default
         );
 

@@ -167,17 +167,11 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
             if (!(result = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessTracker, out ExecutionEnvironment env))) return result;
-            GasConsumed spentGas;
-            byte statusCode;
-            TransactionSubstate? substate;
-            if (!tracer.IsTracingInstructions)
-            {
-                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas, out statusCode);
-            }
-            else
-            {
-                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas, out statusCode);
-            }
+
+            int statusCode = !tracer.IsTracingInstructions ?
+                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate? substate, out GasConsumed spentGas) :
+                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
+
             PayFees(tx, header, spec, tracer, substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
             tx.SpentGas = spentGas.SpentGas;
 
@@ -469,7 +463,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
 
                 UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
-                if (UInt256.SubtractUnderflow(senderBalance, tx.Value, out UInt256 balanceLeft))
+                if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out UInt256 balanceLeft))
                 {
                     TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
                     return TransactionResult.InsufficientSenderBalance;
@@ -535,6 +529,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.DecrementNonce(tx.SenderAddress!);
         }
 
+        [SkipLocalsInit]
         private TransactionResult BuildExecutionEnvironment(
             Transaction tx,
             in BlockExecutionContext blCtx,
@@ -547,12 +542,12 @@ namespace Nethermind.Evm.TransactionProcessing
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
 
-            TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, codeInfoRepository);
+            TxExecutionContext executionContext = new(tx.SenderAddress, codeInfoRepository, tx.BlobVersionedHashes, in blCtx, in effectiveGasPrice);
             ICodeInfo? codeInfo;
-            ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data ?? default : default;
+            ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data : default;
             if (tx.IsContractCreation)
             {
-                if (CodeInfoFactory.CreateInitCodeInfo(tx.Data ?? default, spec, out codeInfo, out Memory<byte> trailingData))
+                if (CodeInfoFactory.CreateInitCodeInfo(tx.Data, spec, out codeInfo, out ReadOnlyMemory<byte> trailingData))
                 {
                     inputData = trailingData;
                 }
@@ -580,14 +575,15 @@ namespace Nethermind.Evm.TransactionProcessing
 
             env = new ExecutionEnvironment
             (
-                txExecutionContext: in executionContext,
-                value: tx.Value,
-                transferValue: tx.Value,
+                codeInfo: codeInfo,
+                executingAccount: recipient,
                 caller: tx.SenderAddress,
                 codeSource: recipient,
-                executingAccount: recipient,
-                inputData: inputData,
-                codeInfo: codeInfo
+                txExecutionContext: in executionContext,
+                transferValue: in tx.ValueRef,
+                value: in tx.ValueRef,
+                inputData: in inputData,
+                callDepth: 0
             );
 
             return TransactionResult.Ok;
@@ -595,7 +591,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual bool ShouldValidate(ExecutionOptions opts) => !opts.HasFlag(ExecutionOptions.SkipValidation);
 
-        protected virtual void ExecuteEvmCall<TTracingInst>(
+        private int ExecuteEvmCall<TTracingInst>(
             Transaction tx,
             BlockHeader header,
             IReleaseSpec spec,
@@ -604,20 +600,17 @@ namespace Nethermind.Evm.TransactionProcessing
             int delegationRefunds,
             IntrinsicGas gas,
             in StackAccessTracker accessedItems,
-            in long gasAvailable,
+            long gasAvailable,
             in ExecutionEnvironment env,
             out TransactionSubstate? substate,
-            out GasConsumed gasConsumed,
-            out byte statusCode)
+            out GasConsumed gasConsumed)
             where TTracingInst : struct, IFlag
         {
             _ = ShouldValidate(opts);
 
             substate = null;
             gasConsumed = tx.GasLimit;
-            statusCode = StatusCode.Failure;
-
-            long unspentGas = gasAvailable;
+            byte statusCode = StatusCode.Failure;
 
             Snapshot snapshot = WorldState.TakeSnapshot();
 
@@ -647,11 +640,11 @@ namespace Nethermind.Evm.TransactionProcessing
 
             ExecutionType executionType = tx.IsContractCreation ? (tx.IsEofContractCreation ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
 
-            using (EvmState state = EvmState.RentTopLevel(unspentGas, executionType, snapshot, env, accessedItems))
+            using (EvmState state = EvmState.RentTopLevel(gasAvailable, executionType, snapshot, env, accessedItems))
             {
                 substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
 
-                unspentGas = state.GasAvailable;
+                gasAvailable = state.GasAvailable;
 
                 if (tracer.IsTracingAccess)
                 {
@@ -670,14 +663,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     if (tx.IsLegacyContractCreation)
                     {
-                        if (!DeployLegacyContract(spec, env.ExecutingAccount, substate, ref unspentGas))
+                        if (!DeployLegacyContract(spec, env.ExecutingAccount, substate, ref gasAvailable))
                         {
                             goto FailContractCreate;
                         }
                     }
                     else
                     {
-                        if (!DeployEofContract(spec, env.ExecutingAccount, substate, ref unspentGas))
+                        if (!DeployEofContract(spec, env.ExecutingAccount, substate, ref gasAvailable))
                         {
                             goto FailContractCreate;
                         }
@@ -699,7 +692,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 statusCode = StatusCode.Success;
             }
 
-            gasConsumed = Refund(tx, header, spec, opts, substate, unspentGas,
+            gasConsumed = Refund(tx, header, spec, opts, substate, gasAvailable,
                 env.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
             goto Complete;
         FailContractCreate:
@@ -709,6 +702,8 @@ namespace Nethermind.Evm.TransactionProcessing
         Complete:
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
                 header.GasUsed += gasConsumed.SpentGas;
+
+            return statusCode;
         }
 
         private bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, TransactionSubstate substate, ref long unspentGas)
@@ -787,10 +782,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
         {
-            WorldState.SubtractFromBalance(tx.SenderAddress!, tx.Value, spec);
+            WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
         }
 
-        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
+        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
         {
             UInt256 fees = (UInt256)spentGas * premiumPerGas;
 

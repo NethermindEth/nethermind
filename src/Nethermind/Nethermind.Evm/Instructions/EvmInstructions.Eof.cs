@@ -674,9 +674,6 @@ internal static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        // 8. Prepare the callData from the caller’s memory slice.
-        Span<byte> callData = vm.EvmState.Memory.LoadSpan(dataOffset, dataSize);
-
         // 9. Determine gas available for the new contract execution, applying the 63/64 rule if enabled.
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
         if (!UpdateGas(callGas, ref gasAvailable))
@@ -729,18 +726,21 @@ internal static partial class EvmInstructions
         // Create new code info for the init code.
         ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, ValidationStrategy.ExtractHeader);
 
+        // 8. Prepare the callData from the caller’s memory slice.
+        ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(dataOffset, dataSize);
+
         // Set up the execution environment for the new contract.
         ExecutionEnvironment callEnv = new
         (
-            txExecutionContext: in env.TxExecutionContext,
-            callDepth: env.CallDepth + 1,
-            caller: env.ExecutingAccount,
-            executingAccount: contractAddress,
-            codeSource: null,
             codeInfo: codeInfo,
-            inputData: callData.ToArray(),
-            transferValue: value,
-            value: value
+            executingAccount: contractAddress,
+            caller: env.ExecutingAccount,
+            codeSource: null,
+            txExecutionContext: in env.TxExecutionContext,
+            transferValue: in value,
+            value: in value,
+            inputData: in callData,
+            callDepth: env.CallDepth + 1
         );
         vm.ReturnData = EvmState.RentFrame(
             callGas,
@@ -989,15 +989,15 @@ internal static partial class EvmInstructions
         // Set up the new execution environment for the call.
         ExecutionEnvironment callEnv = new
         (
-            txExecutionContext: in env.TxExecutionContext,
-            callDepth: env.CallDepth + 1,
+            codeInfo: targetCodeInfo,
+            executingAccount: target,
             caller: caller,
             codeSource: codeSource,
-            executingAccount: target,
-            transferValue: transferValue,
-            value: callValue,
-            inputData: callData,
-            codeInfo: targetCodeInfo
+            txExecutionContext: in env.TxExecutionContext,
+            transferValue: in transferValue,
+            value: in callValue,
+            inputData: in callData,
+            callDepth: env.CallDepth + 1
         );
         vm.ReturnData = EvmState.RentFrame(
             callGas,

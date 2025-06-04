@@ -40,12 +40,9 @@ namespace Nethermind.Evm
         public readonly Address? CodeSource = codeSource;
 
         /// <summary>
-        /// Parameters / arguments of the current call.
+        /// Transaction context
         /// </summary>
-        public readonly ReadOnlyMemory<byte> InputData = inputData;
-
-        /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
-        public readonly int CallDepth = callDepth;
+        public readonly TxExecutionContext TxExecutionContext = txExecutionContext;
 
         /// <summary>
         /// ETH value transferred in this call.
@@ -60,8 +57,11 @@ namespace Nethermind.Evm
         public readonly UInt256 Value = value;
 
         /// <summary>
-        /// Transaction context
+        /// Parameters / arguments of the current call.
         /// </summary>
-        public readonly TxExecutionContext TxExecutionContext = txExecutionContext;
+        public readonly ReadOnlyMemory<byte> InputData = inputData;
+
+        /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
+        public readonly int CallDepth = callDepth;
     }
 }
