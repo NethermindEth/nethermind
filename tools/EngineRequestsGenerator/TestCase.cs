@@ -149,6 +149,189 @@ public enum TestCase
     [TestCaseMetadata("Identity precompile from 16k bytes", "Identity precompile call based on 16_384-byte source data")]
     IdentityFrom16KBytes,
 
+    [TestCaseMetadata("Modexp min gas, base heavy", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 192 and exponent equal 3 (0b11 - 2x 1s in binary)")]
+    ModexpMinGasBaseHeavy,
+
+    [TestCaseMetadata("Modexp min gas, exp heavy", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 8 and exponent equal 2^603 - 1 (603x 1s in binary)")]
+    ModexpMinGasExpHeavy,
+
+    [TestCaseMetadata("Modexp min gas, balanced", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 40 and exponent equal 2^25 - 1 (25x 1s in binary)")]
+    ModexpMinGasBalanced,
+
+    [TestCaseMetadata("Modexp 208 gas, balanced", "Modexp precompile consuming 208 gas, with base and modulo byte size equal 32 and exponent equal 2^40 - 1 (40x 1s in binary)")]
+    Modexp208GasBalanced,
+
+    [TestCaseMetadata("Modexp 215 gas, exp heavy", "Modexp precompile consuming 215 gas, with base and modulo byte size equal 8 and exponent equal 2^648 - 1 (648x 1s in binary)")]
+    Modexp215GasExpHeavy,
+
+    [TestCaseMetadata("Modexp 298 gas, exp heavy", "Modexp precompile consuming 298 gas, with base and modulo byte size equal 8 and exponent equal 2^896 - 1 (896x 1s in binary)")]
+    Modexp298GasExpHeavy,
+
+    [TestCaseMetadata("Modexp Pawel 2", "Modexp precompile consuming 425 gas, with base and modulo byte size equal 16 and exponent equal 2^320 - 1 (320x 1s in binary)")]
+    ModexpPawel2,
+
+    [TestCaseMetadata("Modexp Pawel 3", "Modexp precompile consuming 318 gas, with base and modulo byte size equal 16 and exponent equal 2^240 - 1 (240x 1s in binary)")]
+    ModexpPawel3,
+
+    [TestCaseMetadata("Modexp Pawel 4", "Modexp precompile consuming 506 gas, with base and modulo byte size equal 32 and exponent equal 2^96 - 1 (96x 1s in binary)")]
+    ModexpPawel4,
+
+    [TestCaseMetadata("Modexp 408 gas, base heavy", "Modexp precompile consuming 408 gas, with base and modulo byte size equal 280 and exponent equal 3 (0b11 - 2x 1s in binary)")]
+    Modexp408GasBaseHeavy,
+
+    [TestCaseMetadata("Modexp 400 gas, exp heavy", "Modexp precompile consuming 400 gas, with base and modulo byte size equal 16 and exponent equal 2^301 - 1 (301x 1s in binary)")]
+    Modexp400GasExpHeavy,
+
+    [TestCaseMetadata("Modexp 408 gas, balanced", "Modexp precompile consuming 408 gas, with base and modulo byte size equal 48 and exponent equal 2^35 - 1 (35x 1s in binary)")]
+    Modexp408GasBalanced,
+
+    [TestCaseMetadata("Modexp 616 gas, base heavy", "Modexp precompile consuming 616 gas, with base and modulo byte size equal 344 and exponent equal 3 (0b11 - 2x 1s in binary)")]
+    Modexp616GasBaseHeavy,
+
+    [TestCaseMetadata("Modexp 600 gas, exp heavy", "Modexp precompile consuming 600 gas, with base and modulo byte size equal 16 and exponent equal 2^451 - 1 (451x 1s in binary)")]
+    Modexp600GasExpHeavy,
+
+    [TestCaseMetadata("Modexp 600 gas, balanced", "Modexp precompile consuming 600 gas, with base and modulo byte size equal 48 and exponent equal 2^51 - 1 (51x 1s in binary)")]
+    Modexp600GasBalanced,
+
+    [TestCaseMetadata("Modexp 800 gas, base heavy", "Modexp precompile consuming 800 gas, with base and modulo byte size equal 392 and exponent equal 3 (0b11 - 2x 1s in binary)")]
+    Modexp800GasBaseHeavy,
+
+    [TestCaseMetadata("Modexp 800 gas, exp heavy", "Modexp precompile consuming 800 gas, with base and modulo byte size equal 16 and exponent equal 2^601 - 1 (601x 1s in binary)")]
+    Modexp800GasExpHeavy,
+
+    [TestCaseMetadata("Modexp 767 gas, balanced", "Modexp precompile consuming 767 gas, with base and modulo byte size equal 56 and exponent equal 2^48 - 1 (48x 1s in binary)")]
+    Modexp767GasBalanced,
+
+    [TestCaseMetadata("Modexp 852 gas, exp heavy", "Modexp precompile consuming 852 gas, with base and modulo byte size equal 16 and exponent equal 2^640 - 1 (640x 1s in binary)")]
+    Modexp852GasExpHeavy,
+
+    [TestCaseMetadata("Modexp 867 gas, base heavy", "Modexp precompile consuming 867 gas, with base and modulo byte size equal 408 and exponent equal 3 (0b11 - 2x 1s in binary)")]
+    Modexp867GasBaseHeavy,
+
+    [TestCaseMetadata("Modexp 996 gas, balanced", "Modexp precompile consuming 996 gas, with base and modulo byte size equal 56 and exponent equal 2^63 - 1 (63x 1s in binary)")]
+    Modexp996GasBalanced,
+
+    [TestCaseMetadata("Modexp 1045 gas, base heavy", "Modexp precompile consuming 1045 gas, with base and modulo byte size equal 448 and exponent equal 3 (0b11 - 2x 1s in binary)")]
+    Modexp1045GasBaseHeavy,
+
+    [TestCaseMetadata("Modexp 677 gas, balanced", "Modexp precompile consuming 677 gas, with base and modulo byte size equal 32 and exponent equal 2^128 - 1 (128x 1s in binary)")]
+    Modexp677GasBaseHeavy,
+
+    [TestCaseMetadata("Modexp 765 gas, balanced", "Modexp precompile consuming 765 gas, with base and modulo byte size equal 24 and exponent equal 2^256 - 1 (256x 1s in binary)")]
+    Modexp765GasExpHeavy,
+
+    [TestCaseMetadata("Modexp 1360 gas, balanced", "Modexp precompile consuming 1360 gas, with base and modulo byte size equal 32 and exponent equal 2^256 - 1 (256x 1s in binary)")]
+    Modexp1360GasBalanced,
+
+    [TestCaseMetadata("Modexp \"eip_example1\"", "Modexp precompile test case \"eip_example1\" reported as potential vulnerability")]
+    ModexpVulnerabilityExample1,
+
+    [TestCaseMetadata("Modexp \"eip_example2\"", "Modexp precompile test case \"eip_example2\" reported as potential vulnerability")]
+    ModexpVulnerabilityExample2,
+
+    [TestCaseMetadata("Modexp \"nagydani-1-square\"", "Modexp precompile test case \"nagydani-1-square\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani1Square,
+
+    [TestCaseMetadata("Modexp \"nagydani-1-qube\"", "Modexp precompile test case \"nagydani-1-qube\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani1Qube,
+
+    [TestCaseMetadata("Modexp \"nagydani-1-pow0x10001\"", "Modexp precompile test case \"nagydani-1-pow0x10001\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani1Pow0x10001,
+
+    [TestCaseMetadata("Modexp \"nagydani-2-square\"", "Modexp precompile test case \"nagydani-2-square\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani2Square,
+
+    [TestCaseMetadata("Modexp \"nagydani-2-qube\"", "Modexp precompile test case \"nagydani-2-qube\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani2Qube,
+
+    [TestCaseMetadata("Modexp \"nagydani-2-pow0x10001\"", "Modexp precompile test case \"nagydani-2-pow0x10001\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani2Pow0x10001,
+
+    [TestCaseMetadata("Modexp \"nagydani-3-square\"", "Modexp precompile test case \"nagydani-3-square\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani3Square,
+
+    [TestCaseMetadata("Modexp \"nagydani-3-qube\"", "Modexp precompile test case \"nagydani-3-qube\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani3Qube,
+
+    [TestCaseMetadata("Modexp \"nagydani-3-pow0x10001\"", "Modexp precompile test case \"nagydani-3-pow0x10001\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani3Pow0x10001,
+
+    [TestCaseMetadata("Modexp \"nagydani-4-square\"", "Modexp precompile test case \"nagydani-4-square\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani4Square,
+
+    [TestCaseMetadata("Modexp \"nagydani-4-qube\"", "Modexp precompile test case \"nagydani-4-qube\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani4Qube,
+
+    [TestCaseMetadata("Modexp \"nagydani-4-pow0x10001\"", "Modexp precompile test case \"nagydani-4-pow0x10001\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani4Pow0x10001,
+
+    [TestCaseMetadata("Modexp \"nagydani-5-square\"", "Modexp precompile test case \"nagydani-5-square\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani5Square,
+
+    [TestCaseMetadata("Modexp \"nagydani-5-qube\"", "Modexp precompile test case \"nagydani-5-qube\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani5Qube,
+
+    [TestCaseMetadata("Modexp \"nagydani-5-pow0x10001\"", "Modexp precompile test case \"nagydani-5-pow0x10001\" reported as potential vulnerability")]
+    ModexpVulnerabilityNagydani5Pow0x10001,
+
+    [TestCaseMetadata("Modexp \"marius-1-even\"", "Modexp precompile test case \"marius-1-even\" reported as potential vulnerability")]
+    ModexpVulnerabilityMarius1Even,
+
+    [TestCaseMetadata("Modexp \"guido-1-even\"", "Modexp precompile test case \"guido-1-even\" reported as potential vulnerability")]
+    ModexpVulnerabilityGuido1Even,
+
+    [TestCaseMetadata("Modexp \"guido-2-even\"", "Modexp precompile test case \"guido-2-even\" reported as potential vulnerability")]
+    ModexpVulnerabilityGuido2Even,
+
+    [TestCaseMetadata("Modexp \"guido-3-even\"", "Modexp precompile test case \"guido-3-even\" reported as potential vulnerability")]
+    ModexpVulnerabilityGuido3Even,
+
+    [TestCaseMetadata("Modexp \"guido-4-even\"", "Modexp precompile test case \"guido-4-even\" reported as potential vulnerability")]
+    ModexpVulnerabilityGuido4Even,
+
+    [TestCaseMetadata("Modexp \"pawel-1-exp-heavy\"", "Modexp precompile test case \"pawel-1-exp-heavy\" reported as potential vulnerability")]
+    ModexpVulnerabilityPawel1ExpHeavy,
+
+    [TestCaseMetadata("Modexp \"pawel-2-exp-heavy\"", "Modexp precompile test case \"pawel-2-exp-heavy\" reported as potential vulnerability")]
+    ModexpVulnerabilityPawel2ExpHeavy,
+
+    [TestCaseMetadata("Modexp \"pawel-3-exp-heavy\"", "Modexp precompile test case \"pawel-3-exp-heavy\" reported as potential vulnerability")]
+    ModexpVulnerabilityPawel3ExpHeavy,
+
+    [TestCaseMetadata("Modexp \"pawel-4-exp-heavy\"", "Modexp precompile test case \"pawel-4-exp-heavy\" reported as potential vulnerability")]
+    ModexpVulnerabilityPawel4ExpHeavy,
+
+    [TestCaseMetadata("Modexp common 1360 1", "Modexp precompile test case collected from Mainnet, consuming 1360 gas (base and modulo byte size 32 and exponent bit length 256)")]
+    ModexpCommon1360n1,
+
+    [TestCaseMetadata("Modexp common 1360 2", "Modexp precompile test case collected from Mainnet, consuming 1360 gas (base and modulo byte size 32 and exponent bit length 256)")]
+    ModexpCommon1360n2,
+
+    [TestCaseMetadata("Modexp common 1349 1", "Modexp precompile test case collected from Mainnet, consuming 200 gas (base and modulo byte size 32 and exponent bit length 254)")]
+    ModexpCommon1349n1,
+
+    [TestCaseMetadata("Modexp common 1152 1", "Modexp precompile test case collected from Mainnet, consuming 200 gas (base and modulo byte size 32 and exponent bit length 217)")]
+    ModexpCommon1152n1,
+
+    [TestCaseMetadata("Modexp common 200 1", "Modexp precompile test case collected from Mainnet, consuming 200 gas (base and modulo byte size 32 and exponent bit length 25)")]
+    ModexpCommon200n1,
+
+    [TestCaseMetadata("Modexp common 200 2", "Modexp precompile test case collected from Mainnet, consuming 200 gas (base and modulo byte size 32 and exponent bit length 25)")]
+    ModexpCommon200n2,
+
+    [TestCaseMetadata("Modexp common 200 3", "Modexp precompile test case collected from Mainnet, consuming 200 gas (base and modulo byte size 32 and exponent bit length 25)")]
+    ModexpCommon200n3,
+
+    [TestCaseMetadata("EcAdd with (0, 0)", "EcAdd precompile with both initial points with x = 0 and y = 0")]
+    EcAddInfinities,
+
+    [TestCaseMetadata("EcAdd with (1, 2)", "EcAdd precompile with both initial points with x = 1 and y = 2")]
+    EcAdd12,
+
+    [TestCaseMetadata("EcAdd with 32-byte coordinates", "EcAdd precompile with both initial points with x and y as 32-byte values")]
+    EcAdd32ByteCoordinates,
+
     [TestCaseMetadata("EcMul with (0, 0) and scalar 2", "EcMul precompile with initial point with x = 0 and y = 0 and scalar equal 2")]
     EcMulInfinities2Scalar,
 
@@ -166,6 +349,12 @@ public enum TestCase
 
     [TestCaseMetadata("EcMul with 32-byte coordinates and 32-byte scalar", "EcMul precompile with initial point with x, y and scalar as 32-byte values")]
     EcMul32ByteCoordinates32ByteScalar,
+
+    [TestCaseMetadata("EcPairing with empty input", "EcPairing precompile with empty input")]
+    EcPairing0Input,
+
+    [TestCaseMetadata("EcPairing with 2 sets of data", "EcPairing precompile with 2 sets of valid input data (6x 32-byte value)")]
+    EcPairing2Sets,
 
     [TestCaseMetadata("Blake2f 1 round", "Blake2f precompile with 1 round of computations")]
     Blake1Round,

@@ -302,6 +302,70 @@ public class TestCaseGenerator
             case TestCase.Blake1MRounds:
             case TestCase.Blake10MRounds:
                 return Blake2.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.ModexpMinGasBaseHeavy:
+            case TestCase.ModexpMinGasExpHeavy:
+            case TestCase.ModexpMinGasBalanced:
+            case TestCase.Modexp208GasBalanced:
+            case TestCase.Modexp215GasExpHeavy:
+            case TestCase.Modexp298GasExpHeavy:
+            case TestCase.ModexpPawel2:
+            case TestCase.ModexpPawel3:
+            case TestCase.ModexpPawel4:
+            case TestCase.Modexp408GasBaseHeavy:
+            case TestCase.Modexp400GasExpHeavy:
+            case TestCase.Modexp408GasBalanced:
+            case TestCase.Modexp616GasBaseHeavy:
+            case TestCase.Modexp600GasExpHeavy:
+            case TestCase.Modexp600GasBalanced:
+            case TestCase.Modexp800GasBaseHeavy:
+            case TestCase.Modexp800GasExpHeavy:
+            case TestCase.Modexp767GasBalanced:
+            case TestCase.Modexp852GasExpHeavy:
+            case TestCase.Modexp867GasBaseHeavy:
+            case TestCase.Modexp996GasBalanced:
+            case TestCase.Modexp1045GasBaseHeavy:
+            case TestCase.Modexp677GasBaseHeavy:
+            case TestCase.Modexp765GasExpHeavy:
+            case TestCase.Modexp1360GasBalanced:
+                return Modexp.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.ModexpVulnerabilityExample1:
+            case TestCase.ModexpVulnerabilityExample2:
+            case TestCase.ModexpVulnerabilityNagydani1Square:
+            case TestCase.ModexpVulnerabilityNagydani1Qube:
+            case TestCase.ModexpVulnerabilityNagydani1Pow0x10001:
+            case TestCase.ModexpVulnerabilityNagydani2Square:
+            case TestCase.ModexpVulnerabilityNagydani2Qube:
+            case TestCase.ModexpVulnerabilityNagydani2Pow0x10001:
+            case TestCase.ModexpVulnerabilityNagydani3Square:
+            case TestCase.ModexpVulnerabilityNagydani3Qube:
+            case TestCase.ModexpVulnerabilityNagydani3Pow0x10001:
+            case TestCase.ModexpVulnerabilityNagydani4Square:
+            case TestCase.ModexpVulnerabilityNagydani4Qube:
+            case TestCase.ModexpVulnerabilityNagydani4Pow0x10001:
+            case TestCase.ModexpVulnerabilityNagydani5Square:
+            case TestCase.ModexpVulnerabilityNagydani5Qube:
+            case TestCase.ModexpVulnerabilityNagydani5Pow0x10001:
+            case TestCase.ModexpVulnerabilityMarius1Even:
+            case TestCase.ModexpVulnerabilityGuido1Even:
+            case TestCase.ModexpVulnerabilityGuido2Even:
+            case TestCase.ModexpVulnerabilityGuido3Even:
+            case TestCase.ModexpVulnerabilityGuido4Even:
+            case TestCase.ModexpVulnerabilityPawel1ExpHeavy:
+            case TestCase.ModexpVulnerabilityPawel2ExpHeavy:
+            case TestCase.ModexpVulnerabilityPawel3ExpHeavy:
+            case TestCase.ModexpVulnerabilityPawel4ExpHeavy:
+            case TestCase.ModexpCommon1360n1:
+            case TestCase.ModexpCommon1360n2:
+            case TestCase.ModexpCommon1349n1:
+            case TestCase.ModexpCommon1152n1:
+            case TestCase.ModexpCommon200n1:
+            case TestCase.ModexpCommon200n2:
+            case TestCase.ModexpCommon200n3:
+                return ModexpVulnerability.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.EcAddInfinities:
+            case TestCase.EcAdd12:
+            case TestCase.EcAdd32ByteCoordinates:
+                return EcAdd.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.EcMulInfinities2Scalar:
             case TestCase.EcMulInfinities32ByteScalar:
             case TestCase.EcMul122:
@@ -309,6 +373,9 @@ public class TestCaseGenerator
             case TestCase.EcMul32ByteCoordinates2Scalar:
             case TestCase.EcMul32ByteCoordinates32ByteScalar:
                 return EcMul.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.EcPairing0Input:
+            case TestCase.EcPairing2Sets:
+                return EcPairing.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.PointEvaluationOneData:
                 return PointEvaluation.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.SStoreManyAccountsConsecutiveKeysRandomValue:
