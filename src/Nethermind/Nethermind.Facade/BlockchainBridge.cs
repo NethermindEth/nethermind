@@ -104,15 +104,56 @@ namespace Nethermind.Facade
             [NotNullWhen(true)] out Block? block,
             [NotNullWhen(true)] out TxReceipt[]? receipts)
         {
-            Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
+            Hash256 blockHash;
+            try
+            {
+                blockHash = _receiptFinder.FindBlockHash(txHash);
+            }
+            catch (NullReferenceException e)
+            {
+                throw new NullReferenceException("_receiptFinder.FindBlockHash", e);
+            }
+
             if (blockHash is not null)
             {
-                block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
+                try
+                {
+                    block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
+                }
+                catch (NullReferenceException e)
+                {
+                    throw new NullReferenceException("_blockTree.FindBlock", e);
+                }
+
                 if (block is not null)
                 {
-                    receipts = _receiptFinder.Get(block);
-                    receipt = receipts.ForTransaction(txHash);
-                    transaction = block.Transactions[receipt.Index];
+                    try
+                    {
+                        receipts = _receiptFinder.Get(block);
+                    }
+                    catch (NullReferenceException e)
+                    {
+                        throw new NullReferenceException("_receiptFinder.Get", e);
+                    }
+
+                    try
+                    {
+                        receipt = receipts.ForTransaction(txHash);
+                    }
+                    catch (NullReferenceException e)
+                    {
+                        throw new NullReferenceException("receipts.ForTransaction", e);
+                    }
+
+                    try
+                    {
+                        transaction = block.Transactions[receipt.Index];
+                    }
+                    catch (NullReferenceException e)
+                    {
+                        throw new NullReferenceException("block.Transactions[receipt.Index]", e);
+                    }
+
                     return true;
                 }
             }
@@ -141,13 +182,31 @@ namespace Nethermind.Facade
         {
             try
             {
-                return TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt,
-                    out Block? block,
-                    out TxReceipt[]? _)
-                    ? (txReceipt, tx, block.BaseFeePerGas)
-                    : checkTxnPool && _txPool.TryGetPendingTransaction(txHash, out Transaction? transaction)
-                        ? (null, transaction, null)
-                        : (null, null, null);
+                bool tryGetCanonicalTransaction;
+                try
+                {
+                    tryGetCanonicalTransaction = TryGetCanonicalTransaction(txHash, out Transaction? tx,
+                        out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? _);
+                    if (tryGetCanonicalTransaction)
+                        return (txReceipt, tx, block?.BaseFeePerGas);
+                }
+                catch (NullReferenceException e)
+                {
+                    throw new NullReferenceException("TryGetCanonicalTransaction", e);
+                }
+
+
+                try
+                {
+                    if (checkTxnPool && _txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
+                        return (null, transaction, null);
+                }
+                catch (NullReferenceException e)
+                {
+                    throw new NullReferenceException("TryGetPendingTransaction", e);
+                }
+
+                return (null, null, null);
             }
             catch (NullReferenceException ex)
             {
