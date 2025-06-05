@@ -56,11 +56,6 @@ namespace Nethermind.Evm.Test
             }
         }
 
-        protected override void VerifyOutput(byte[]? output, TestCase testCase)
-        {
-            Assert.That(output, Is.EquivalentTo(testCase.Expected ?? []));
-        }
-
         public static IEnumerable<TestCaseData> RandomECDsaInputs()
         {
             var rng = RandomNumberGenerator.Create();
