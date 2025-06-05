@@ -44,11 +44,8 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
             foreach (Transaction tx in blockBody.Transactions)
             {
                 Hash256? _ = tx.Hash; // Just need to trigger hash calculation
-                if (MemoryMarshal.TryGetMemoryManager<byte, MemoryManager<byte>>(tx.Data, out MemoryManager<byte> _))
-                {
-                    // Disconnect from any backing
-                    tx.Data = tx.Data.ToArray();
-                }
+                // Disconnect from any backing
+                tx.Data = tx.Data.ToArray();
             }
         }
 
