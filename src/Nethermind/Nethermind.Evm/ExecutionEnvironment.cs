@@ -13,7 +13,7 @@ namespace Nethermind.Evm
         Address executingAccount,
         Address caller,
         Address? codeSource,
-        ReadOnlyMemory<byte> inputData,
+        in ReadOnlyMemory<byte> inputData,
         in TxExecutionContext txExecutionContext,
         in UInt256 transferValue,
         in UInt256 value,
