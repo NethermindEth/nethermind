@@ -81,7 +81,6 @@ namespace Nethermind.Consensus.Ethash
 
                 builder
                     .AddSingleton<IBlockProducerTxSourceFactory, NethDevBlockProducerTxSourceFactory>()
-                    .AddSingleton<IBlockProducerEnvFactory, NethDevBlockProducerEnvFactory>()
                     ;
             }
         }

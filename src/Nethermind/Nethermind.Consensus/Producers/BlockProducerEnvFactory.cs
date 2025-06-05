@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Producers
         protected readonly ISpecProvider _specProvider;
         protected readonly IBlockValidator _blockValidator;
         protected readonly IRewardCalculatorSource _rewardCalculatorSource;
-        protected readonly IReceiptStorage _receiptStorage;
+        protected readonly IReceiptStorage _receiptStorage = NullReceiptStorage.Instance;
         protected readonly IBlockPreprocessorStep _blockPreprocessorStep;
         protected readonly IBlocksConfig _blocksConfig;
         protected readonly ILogManager _logManager;
@@ -55,12 +55,10 @@ namespace Nethermind.Consensus.Producers
             _specProvider = specProvider;
             _blockValidator = blockValidator;
             _rewardCalculatorSource = rewardCalculatorSource;
-            _receiptStorage = NullReceiptStorage.Instance;
             _blockPreprocessorStep = blockPreprocessorStep;
             _blocksConfig = blocksConfig;
             _blockProducerTxSourceFactory = blockProducerTxSourceFactory;
             _logManager = logManager;
-
             TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, _blocksConfig.BlockProductionMaxTxKilobytes, logManager);
         }
 
@@ -92,13 +90,8 @@ namespace Nethermind.Consensus.Producers
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = scope.WorldState,
-                TxSource = CreateTxSourceForProducer(),
+                TxSource = _blockProducerTxSourceFactory.Create()
             };
-        }
-
-        protected virtual ITxSource CreateTxSourceForProducer()
-        {
-            return _blockProducerTxSourceFactory.Create();
         }
 
         protected virtual BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv) =>

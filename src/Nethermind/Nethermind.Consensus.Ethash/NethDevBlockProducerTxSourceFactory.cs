@@ -31,6 +31,6 @@ public class NethDevBlockProducerTxSourceFactory(
             specProvider,
             transactionComparerProvider!,
             logManager,
-            txFilterPipeline);
+            txFilterPipeline).ServeTxsOneByOne();
     }
 }
