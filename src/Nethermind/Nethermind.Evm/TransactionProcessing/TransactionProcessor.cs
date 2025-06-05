@@ -18,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Tracing;
+
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
 namespace Nethermind.Evm.TransactionProcessing
@@ -97,44 +98,47 @@ namespace Nethermind.Evm.TransactionProcessing
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
             _logManager = logManager;
         }
+        
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+            => VirtualMachine.SetBlockExecutionContext(in blockExecutionContext);
 
-        public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.CommitAndRestore);
+        public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer) =>
+            ExecuteCore(transaction, txTracer, ExecutionOptions.CommitAndRestore);
 
-        public TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer)
+        public TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer)
         {
             // we need to treat the result of previous transaction as the original value of next transaction
             // when we do not commit
             WorldState.TakeSnapshot(true);
-            return ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.None);
+            return ExecuteCore(transaction, txTracer, ExecutionOptions.None);
         }
 
-        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.Commit);
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
+            ExecuteCore(transaction, txTracer, ExecutionOptions.Commit);
 
-        public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.SkipValidationAndCommit);
+        public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
+            ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
 
-        public TransactionResult Warmup(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.SkipValidation);
+        public TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
+            ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidation);
 
-        private TransactionResult ExecuteCore(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+        private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor(SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
-                return _systemTransactionProcessor.Execute(tx, in blCtx, tracer, opts);
+                return _systemTransactionProcessor.Execute(tx, tracer, opts);
             }
 
-            TransactionResult result = Execute(tx, in blCtx, tracer, opts);
+            TransactionResult result = Execute(tx, tracer, opts);
             if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
             return result;
         }
 
-        protected virtual TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+        protected virtual TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
-            BlockHeader header = blCtx.Header;
+            BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
             IReleaseSpec spec = GetSpec(tx, header);
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
@@ -150,12 +154,14 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
+            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice));
+
             UpdateMetrics(opts, effectiveGasPrice);
 
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
             if (!(result = ValidateSender(tx, header, spec, tracer, opts))) return result;
-            if (!(result = BuyGas(tx, blCtx, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee))) return result;
+            if (!(result = BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee))) return result;
             if (!(result = IncrementNonce(tx, header, spec, tracer, opts))) return result;
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
@@ -166,7 +172,7 @@ namespace Nethermind.Evm.TransactionProcessing
             int delegationRefunds = ProcessDelegations(tx, spec, accessTracker);
 
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
-            if (!(result = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessTracker, out ExecutionEnvironment env))) return result;
+            if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment env))) return result;
 
             int statusCode = !tracer.IsTracingInstructions ?
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate? substate, out GasConsumed spentGas) :
@@ -446,7 +452,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        protected virtual TransactionResult BuyGas(Transaction tx, in BlockExecutionContext blkContext, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+        protected virtual TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
                 in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
         {
             premiumPerGas = UInt256.Zero;
@@ -456,7 +462,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (validate)
             {
-                if (!tx.TryCalculatePremiumPerGas(blkContext.Header.BaseFeePerGas, out premiumPerGas))
+                BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
+                if (!tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
                 {
                     TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
                     return TransactionResult.MinerPremiumNegative;
@@ -493,7 +500,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
                 if (!overflows && tx.SupportsBlobs)
                 {
-                    overflows = !BlobGasCalculator.TryCalculateBlobBaseFee(blkContext.Header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
+                    overflows = !BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
                     if (!overflows)
                     {
                         overflows = UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment);
@@ -532,9 +539,7 @@ namespace Nethermind.Evm.TransactionProcessing
         [SkipLocalsInit]
         private TransactionResult BuildExecutionEnvironment(
             Transaction tx,
-            in BlockExecutionContext blCtx,
             IReleaseSpec spec,
-            in UInt256 effectiveGasPrice,
             ICodeInfoRepository codeInfoRepository,
             in StackAccessTracker accessTracker,
             out ExecutionEnvironment env)
@@ -542,7 +547,6 @@ namespace Nethermind.Evm.TransactionProcessing
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
 
-            TxExecutionContext executionContext = new(tx.SenderAddress, codeInfoRepository, tx.BlobVersionedHashes, in blCtx, in effectiveGasPrice);
             ICodeInfo? codeInfo;
             ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data : default;
             if (tx.IsContractCreation)
@@ -567,7 +571,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     accessTracker.WarmUp(tx.AccessList); // eip-2930
 
                 if (spec.AddCoinbaseToTxAccessList)
-                    accessTracker.WarmUp(blCtx.Header.GasBeneficiary!);
+                    accessTracker.WarmUp(VirtualMachine.BlockExecutionContext.Header.GasBeneficiary!);
 
                 accessTracker.WarmUp(recipient);
                 accessTracker.WarmUp(tx.SenderAddress!);
@@ -579,7 +583,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 executingAccount: recipient,
                 caller: tx.SenderAddress,
                 codeSource: recipient,
-                txExecutionContext: in executionContext,
                 transferValue: in tx.ValueRef,
                 value: in tx.ValueRef,
                 inputData: in inputData,
@@ -634,7 +637,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 gasConsumed = gas.MinimalGas;
                 // If noValidation we didn't charge for gas, so do not refund; otherwise return unspent gas
                 if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - gas.MinimalGas) * env.TxExecutionContext.GasPrice, spec);
+                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - gas.MinimalGas) * VirtualMachine.TxExecutionContext.GasPrice, spec);
                 goto Complete;
             }
 
@@ -693,7 +696,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             gasConsumed = Refund(tx, header, spec, opts, substate, gasAvailable,
-                env.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
+                VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");

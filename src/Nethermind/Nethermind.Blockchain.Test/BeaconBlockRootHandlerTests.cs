@@ -124,7 +124,7 @@ public class BeaconBlockRootHandlerTests
         Block block = Build.A.Block.WithHeader(header).TestObject;
         var blkCtx = new BlockExecutionContext(header, Cancun.Instance);
 
-        _beaconBlockRootHandler.StoreBeaconRoot(block, in blkCtx, Cancun.Instance, NullTxTracer.Instance);
+        _beaconBlockRootHandler.StoreBeaconRoot(block, Cancun.Instance, NullTxTracer.Instance);
 
         _transactionProcessor.DidNotReceive().Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>());
     }
@@ -138,7 +138,7 @@ public class BeaconBlockRootHandlerTests
 
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
 
-        _beaconBlockRootHandler.StoreBeaconRoot(block, in blkCtx, Cancun.Instance, NullTxTracer.Instance);
+        _beaconBlockRootHandler.StoreBeaconRoot(block, Cancun.Instance, NullTxTracer.Instance);
 
         Transaction transaction = new()
         {

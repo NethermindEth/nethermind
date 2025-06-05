@@ -174,15 +174,16 @@ namespace Nethermind.Blockchain.Contracts
 
             CallOutputTracer tracer = new();
 
+            transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, 0));
             try
             {
                 if (callAndRestore)
                 {
-                    transactionProcessor.CallAndRestore(transaction, new BlockExecutionContext(header, 0), tracer);
+                    transactionProcessor.CallAndRestore(transaction, tracer);
                 }
                 else
                 {
-                    transactionProcessor.Execute(transaction, new BlockExecutionContext(header, 0), tracer);
+                    transactionProcessor.Execute(transaction, tracer);
                 }
 
                 failure = tracer.StatusCode != StatusCode.Success;

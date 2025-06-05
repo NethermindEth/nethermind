@@ -24,7 +24,7 @@ public class OptimismTransactionProcessor(
 {
     private UInt256? _currentTxL1Cost;
 
-    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (tx.SupportsBlobs)
         {
@@ -32,7 +32,8 @@ public class OptimismTransactionProcessor(
             return TransactionResult.MalformedTransaction;
         }
 
-        IReleaseSpec spec = SpecProvider.GetSpec(blCtx.Header);
+        BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
+        IReleaseSpec spec = SpecProvider.GetSpec(header);
         _currentTxL1Cost = null;
         if (tx.IsDeposit())
         {
@@ -41,7 +42,7 @@ public class OptimismTransactionProcessor(
 
         Snapshot snapshot = WorldState.TakeSnapshot();
 
-        TransactionResult result = base.Execute(tx, blCtx, tracer, opts);
+        TransactionResult result = base.Execute(tx, tracer, opts);
 
         if (!result && tx.IsDeposit() && result.Error != "block gas limit exceeded")
         {
@@ -55,7 +56,7 @@ public class OptimismTransactionProcessor(
             {
                 WorldState.IncrementNonce(tx.SenderAddress!);
             }
-            blCtx.Header.GasUsed += tx.GasLimit;
+            header.GasUsed += tx.GasLimit;
             tracer.MarkAsFailed(tx.To!, tx.GasLimit, [], $"failed deposit: {result.Error}");
             result = TransactionResult.Ok;
         }
@@ -63,7 +64,7 @@ public class OptimismTransactionProcessor(
         return result;
     }
 
-    protected override TransactionResult BuyGas(Transaction tx, in BlockExecutionContext blkContext, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+    protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
     {
         premiumPerGas = UInt256.Zero;
@@ -81,7 +82,8 @@ public class OptimismTransactionProcessor(
 
         if (validate && !tx.IsDeposit())
         {
-            if (!tx.TryCalculatePremiumPerGas(blkContext.Header.BaseFeePerGas, out premiumPerGas))
+            BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
+            if (!tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
                 return TransactionResult.MinerPremiumNegative;
@@ -93,8 +95,8 @@ public class OptimismTransactionProcessor(
                 return TransactionResult.InsufficientSenderBalance;
             }
 
-            UInt256 l1Cost = _currentTxL1Cost ??= costHelper.ComputeL1Cost(tx, blkContext.Header, WorldState);
-            UInt256 maxOperatorCost = costHelper.ComputeOperatorCost(tx.GasLimit, blkContext.Header, WorldState);
+            UInt256 l1Cost = _currentTxL1Cost ??= costHelper.ComputeL1Cost(tx, header, WorldState);
+            UInt256 maxOperatorCost = costHelper.ComputeOperatorCost(tx.GasLimit, header, WorldState);
 
             if (UInt256.SubtractUnderflow(balanceLeft, l1Cost + maxOperatorCost, out balanceLeft))
             {

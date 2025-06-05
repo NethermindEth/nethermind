@@ -165,7 +165,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             batch.Dispose();
         }
 
-        BlockExecutionContext blkCtx = new(blockHeader, _specProvider.GetSpec(blockHeader));
+        txProcessor.SetBlockExecutionContext(new(blockHeader, _specProvider.GetSpec(blockHeader)));
         worldState.StateRoot = blockHeader.StateRoot;
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
@@ -179,7 +179,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
                 try
                 {
-                    TransactionResult executionResult = txProcessor.Execute(tx, in blkCtx, NullTxTracer.Instance);
+                    TransactionResult executionResult = txProcessor.Execute(tx, NullTxTracer.Instance);
 
                     if (!executionResult)
                     {

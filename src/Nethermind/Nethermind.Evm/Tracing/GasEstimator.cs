@@ -126,8 +126,8 @@ namespace Nethermind.Evm.Tracing
             transaction.CopyTo(txClone);
             txClone.GasLimit = gasLimit;
 
-            BlockExecutionContext blCtx = new(block, _specProvider.GetSpec(block));
-            _transactionProcessor.CallAndRestore(txClone, in blCtx, tracer.WithCancellation(token));
+            _transactionProcessor.SetBlockExecutionContext(new(block, _specProvider.GetSpec(block)));
+            _transactionProcessor.CallAndRestore(txClone, tracer.WithCancellation(token));
 
             return !tracer.OutOfGas;
         }

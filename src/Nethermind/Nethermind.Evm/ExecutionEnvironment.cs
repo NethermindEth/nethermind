@@ -14,7 +14,6 @@ namespace Nethermind.Evm
         Address caller,
         Address? codeSource,
         in ReadOnlyMemory<byte> inputData,
-        in TxExecutionContext txExecutionContext,
         in UInt256 transferValue,
         in UInt256 value,
         int callDepth = 0)
@@ -38,11 +37,6 @@ namespace Nethermind.Evm
         /// Bytecode source (account address).
         /// </summary>
         public readonly Address? CodeSource = codeSource;
-
-        /// <summary>
-        /// Transaction context
-        /// </summary>
-        public readonly TxExecutionContext TxExecutionContext = txExecutionContext;
 
         /// <summary>
         /// ETH value transferred in this call.

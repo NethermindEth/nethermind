@@ -293,7 +293,8 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader, releaseSpec.BlobBaseFeeUpdateFraction), tracer);
+            scope.TransactionProcessor.SetBlockExecutionContext(new(callHeader, releaseSpec.BlobBaseFeeUpdateFraction));
+            return scope.TransactionProcessor.CallAndRestore(transaction, tracer);
         }
 
         public ulong GetChainId()

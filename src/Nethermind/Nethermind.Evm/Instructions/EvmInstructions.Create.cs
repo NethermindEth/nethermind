@@ -232,7 +232,6 @@ internal static partial class EvmInstructions
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
             codeSource: null,
-            txExecutionContext: in env.TxExecutionContext,
             transferValue: in value,
             value: in value,
             inputData: in _emptyMemory,

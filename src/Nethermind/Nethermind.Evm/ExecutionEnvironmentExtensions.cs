@@ -6,6 +6,4 @@ namespace Nethermind.Evm;
 public static class ExecutionEnvironmentExtensions
 {
     public static int GetGethTraceDepth(in this ExecutionEnvironment env) => env.CallDepth + 1;
-
-    public static bool IsPostMerge(in this ExecutionEnvironment env) => env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge;
 }

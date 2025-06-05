@@ -252,7 +252,6 @@ internal static partial class EvmInstructions
             executingAccount: target,
             caller: caller,
             codeSource: codeSource,
-            txExecutionContext: in env.TxExecutionContext,
             transferValue: in transferValue,
             value: in callValue,
             inputData: in callData,

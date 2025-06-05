@@ -44,6 +44,10 @@ public unsafe partial class VirtualMachine
         state.Commit(spec);
         CodeInfoRepository codeInfoRepository = new();
         BlockHeader _header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, MainnetSpecProvider.PragueActivation.BlockNumber, Int64.MaxValue, 1UL, Bytes.Empty, 0, 0);
+
+        vm.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
+        vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0));
+
         ExecutionEnvironment env = new
         (
             executingAccount: addressOne,
@@ -52,7 +56,6 @@ public unsafe partial class VirtualMachine
             codeInfo: new CodeInfo(bytecode),
             value: 0,
             transferValue: 0,
-            txExecutionContext: new TxExecutionContext(addressOne, codeInfoRepository, null, new BlockExecutionContext(_header, spec), 0),
             inputData: default
         );
 
