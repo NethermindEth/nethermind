@@ -137,9 +137,11 @@ public static class AbiType
         },
         Write = (w, bytes) =>
         {
+            if (bytes.Length != length) throw new AbiException();
+
             w.Write(bytes);
 
-            var padding = PadTo32(length) - bytes.Length;
+            var padding = PadTo32(length) - length;
             if (padding > 0)
             {
                 w.Write(stackalloc byte[padding]);
