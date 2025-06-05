@@ -207,7 +207,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     {
         if (!_isDisposed)
         {
-            throw new InvalidOperationException($"{nameof(EvmState)} hasn't been disposed. Created {_creationStackTrace}");
+            //throw new InvalidOperationException($"{nameof(EvmState)} hasn't been disposed. Created {_creationStackTrace}");
         }
     }
 #endif
