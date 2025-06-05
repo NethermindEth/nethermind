@@ -132,13 +132,6 @@ internal static partial class EvmInstructions
 
         // For non-delegate calls, the transfer value is the call value.
         UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
-        // Pop additional parameters: data offset, data length, output offset, and output length.
-        if (!stack.PopUInt256(out UInt256 dataOffset) ||
-            !stack.PopUInt256(out UInt256 dataLength) ||
-            !stack.PopUInt256(out UInt256 outputOffset) ||
-            !stack.PopUInt256(out UInt256 outputLength))
-            goto StackUnderflow;
-
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
         if (vm.EvmState.IsStatic && !transferValue.IsZero && typeof(TOpCall) != typeof(OpCallCode))
             return EvmExceptionType.StaticCallViolation;
@@ -168,6 +161,13 @@ internal static partial class EvmInstructions
         {
             gasExtra += GasCostOf.NewAccount;
         }
+
+        // Pop additional parameters: data offset, data length, output offset, and output length.
+        if (!stack.PopUInt256(out UInt256 dataOffset) ||
+            !stack.PopUInt256(out UInt256 dataLength) ||
+            !stack.PopUInt256(out UInt256 outputOffset) ||
+            !stack.PopUInt256(out UInt256 outputLength))
+            goto StackUnderflow;
 
         // Update gas: call cost, memory expansion for input and output, and extra gas.
         if (!UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
