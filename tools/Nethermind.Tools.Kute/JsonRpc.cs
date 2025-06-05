@@ -7,20 +7,29 @@ namespace Nethermind.Tools.Kute;
 
 public abstract record JsonRpc
 {
-    public JsonDocument Document;
+    private readonly JsonDocument _document;
 
     private JsonRpc(JsonDocument document)
     {
-        Document = document;
+        _document = document;
     }
 
-    public string ToJsonString() => Document.RootElement.ToString();
+    public string ToJsonString() => _document.RootElement.ToString();
 
     public record BatchJsonRpc : JsonRpc
     {
         public BatchJsonRpc(JsonDocument document) : base(document) { }
 
         public override string ToString() => $"{nameof(BatchJsonRpc)} {ToJsonString()}";
+
+        public IEnumerable<SingleJsonRpc?> Items()
+        {
+            foreach (var element in _document.RootElement.EnumerateArray())
+            {
+                var document = JsonSerializer.Deserialize<JsonDocument>(element);
+                yield return document is null ? null : new SingleJsonRpc(document);
+            }
+        }
     }
 
     public record SingleJsonRpc : JsonRpc
@@ -31,11 +40,11 @@ public abstract record JsonRpc
         public SingleJsonRpc(JsonDocument document) : base(document)
         {
             _isResponse = new(() =>
-                Document.RootElement.TryGetProperty("response", out _)
+                _document.RootElement.TryGetProperty("response", out _)
             );
             _methodName = new(() =>
             {
-                if (Document.RootElement.TryGetProperty("method", out var jsonMethodField))
+                if (_document.RootElement.TryGetProperty("method", out var jsonMethodField))
                 {
                     return jsonMethodField.GetString();
                 }

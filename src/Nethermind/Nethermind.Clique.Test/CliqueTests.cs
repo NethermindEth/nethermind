@@ -60,7 +60,7 @@ namespace Nethermind.Clique.Test
             MemDb db = new();
             CliqueConfig config = new();
 
-            _ecdsa = new EthereumEcdsa(BlockchainIds.Goerli, LimboLogs.Instance);
+            _ecdsa = new EthereumEcdsa(BlockchainIds.Goerli);
             _snapshotManager = new SnapshotManager(config, db, _blockTree, _ecdsa, LimboLogs.Instance);
             _clique = new CliqueSealer(new Signer(BlockchainIds.Goerli, key, LimboLogs.Instance), config, _snapshotManager, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);

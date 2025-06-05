@@ -8,15 +8,11 @@ namespace Nethermind.Tools.Kute.MessageProvider;
 public class JsonRpcMessageProvider : IMessageProvider<JsonRpc?>
 {
     private readonly IMessageProvider<string> _provider;
-    private readonly bool _unwrapBatches;
 
-
-    public JsonRpcMessageProvider(IMessageProvider<string> provider, bool unwrapBatches)
+    public JsonRpcMessageProvider(IMessageProvider<string> provider)
     {
         _provider = provider;
-        _unwrapBatches = unwrapBatches;
     }
-
 
     public IAsyncEnumerable<JsonRpc?> Messages { get => MessagesImpl(); }
 
@@ -26,26 +22,12 @@ public class JsonRpcMessageProvider : IMessageProvider<JsonRpc?>
         {
             var jsonDoc = JsonSerializer.Deserialize<JsonDocument>(msg);
 
-            switch (jsonDoc?.RootElement.ValueKind)
+            yield return jsonDoc?.RootElement.ValueKind switch
             {
-                case JsonValueKind.Object:
-                    yield return new JsonRpc.SingleJsonRpc(jsonDoc);
-                    break;
-                case JsonValueKind.Array:
-                    if (_unwrapBatches)
-                    {
-                        foreach (JsonElement single in jsonDoc.RootElement.EnumerateArray())
-                        {
-                            yield return new JsonRpc.SingleJsonRpc(JsonDocument.Parse(single.ToString()));
-                        }
-                    }
-                    yield return new JsonRpc.BatchJsonRpc(jsonDoc);
-                    break;
-                default:
-                    yield return null;
-                    break;
-
-            }
+                JsonValueKind.Object => new JsonRpc.SingleJsonRpc(jsonDoc),
+                JsonValueKind.Array => new JsonRpc.BatchJsonRpc(jsonDoc),
+                _ => null
+            };
         }
     }
 }

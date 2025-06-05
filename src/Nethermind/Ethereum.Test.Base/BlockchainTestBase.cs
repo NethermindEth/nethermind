@@ -131,7 +131,7 @@ namespace Ethereum.Test.Base
                 specProvider.UpdateMergeTransitionInfo(0, 0);
             }
 
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId);
 
             TrieStore trieStore = new(stateDb, _logManager);
             IWorldState stateProvider = new WorldState(trieStore, codeDb, _logManager);

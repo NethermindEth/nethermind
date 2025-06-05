@@ -332,6 +332,40 @@ public class TestCaseGenerator
             case TestCase.EcAdd12:
             case TestCase.EcAdd32ByteCoordinates:
                 return EcAdd.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.ModexpVulnerabilityExample1:
+            case TestCase.ModexpVulnerabilityExample2:
+            case TestCase.ModexpVulnerabilityNagydani1Square:
+            case TestCase.ModexpVulnerabilityNagydani1Qube:
+            case TestCase.ModexpVulnerabilityNagydani1Pow0x10001:
+            case TestCase.ModexpVulnerabilityNagydani2Square:
+            case TestCase.ModexpVulnerabilityNagydani2Qube:
+            case TestCase.ModexpVulnerabilityNagydani2Pow0x10001:
+            case TestCase.ModexpVulnerabilityNagydani3Square:
+            case TestCase.ModexpVulnerabilityNagydani3Qube:
+            case TestCase.ModexpVulnerabilityNagydani3Pow0x10001:
+            case TestCase.ModexpVulnerabilityNagydani4Square:
+            case TestCase.ModexpVulnerabilityNagydani4Qube:
+            case TestCase.ModexpVulnerabilityNagydani4Pow0x10001:
+            case TestCase.ModexpVulnerabilityNagydani5Square:
+            case TestCase.ModexpVulnerabilityNagydani5Qube:
+            case TestCase.ModexpVulnerabilityNagydani5Pow0x10001:
+            case TestCase.ModexpVulnerabilityMarius1Even:
+            case TestCase.ModexpVulnerabilityGuido1Even:
+            case TestCase.ModexpVulnerabilityGuido2Even:
+            case TestCase.ModexpVulnerabilityGuido3Even:
+            case TestCase.ModexpVulnerabilityGuido4Even:
+            case TestCase.ModexpVulnerabilityPawel1ExpHeavy:
+            case TestCase.ModexpVulnerabilityPawel2ExpHeavy:
+            case TestCase.ModexpVulnerabilityPawel3ExpHeavy:
+            case TestCase.ModexpVulnerabilityPawel4ExpHeavy:
+            case TestCase.ModexpCommon1360n1:
+            case TestCase.ModexpCommon1360n2:
+            case TestCase.ModexpCommon1349n1:
+            case TestCase.ModexpCommon1152n1:
+            case TestCase.ModexpCommon200n1:
+            case TestCase.ModexpCommon200n2:
+            case TestCase.ModexpCommon200n3:
+                return ModexpVulnerability.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.EcMulInfinities2Scalar:
             case TestCase.EcMulInfinities32ByteScalar:
             case TestCase.EcMul122:
@@ -361,8 +395,6 @@ public class TestCaseGenerator
                 return Secp256r1.GetTxsWithValidSig(privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Secp256r1InvalidSignature:
                 return Secp256r1.GetTxsWithInvalidSig(privateKey, nonce, blockGasConsumptionTarget);
-            case TestCase.VulnerabilityGuido1:
-                return Vulnerabilities.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }

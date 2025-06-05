@@ -236,7 +236,7 @@ jobs:
           WORKFLOW_ID: "publish-docker.yml"
           MAX_WAIT_MINUTES: "5"
           INTERVAL: "5"
-          TIMEOUT: "10"
+          TIMEOUT: '20'
           ORG_NAME: ${{ env.ORG_NAME }}
           REPO_NAME: ${{ env.REPO_NAME }}
           REF: ${{ inputs.nethermind_repo_ref || github.ref }}

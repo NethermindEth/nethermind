@@ -51,7 +51,7 @@ namespace Nethermind.Clique.Test
             private readonly ILogger _logger;
             private static readonly ITimestamper _timestamper = Timestamper.Default;
             private readonly CliqueConfig _cliqueConfig;
-            private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Goerli, LimboLogs.Instance);
+            private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Goerli);
             private readonly Dictionary<PrivateKey, ILogManager> _logManagers = new();
             private readonly Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
             private readonly Dictionary<PrivateKey, BlockTree> _blockTrees = new();

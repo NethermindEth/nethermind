@@ -6,6 +6,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -20,6 +21,8 @@ public class SimulateTransactionProcessor(
     bool validate)
     : TransactionProcessor(specProvider, worldState, virtualMachine, codeInfoRepository, logManager), ITransactionProcessor
 {
+    protected override bool ShouldValidate(ExecutionOptions opts) => true;
+
     protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (!validate)

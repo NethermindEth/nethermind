@@ -130,13 +130,15 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
     {
         if (_sequencerRpcClient is null)
         {
-            return ResultWrapper<Hash256>.Fail("No sequencer url in the config");
+            return await base.eth_sendRawTransaction(transaction);
         }
+
         Hash256? result = await _sequencerRpcClient.Post<Hash256>(nameof(eth_sendRawTransaction), transaction);
         if (result is null)
         {
             return ResultWrapper<Hash256>.Fail("Failed to forward transaction");
         }
+
         return ResultWrapper<Hash256>.Success(result);
     }
 

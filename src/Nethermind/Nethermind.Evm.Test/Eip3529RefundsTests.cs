@@ -146,7 +146,7 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 1000000;
 
-            EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(1);
             // deploy create 2
             Transaction tx0 = Build.A.Transaction.WithCode(initOfCreate2Code).WithGasLimit(gasLimit).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             // invoke create 2 to deploy contract

@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -46,14 +47,6 @@ public class SimulateBlockTracer(bool isTracingLogs, bool includeFullTxData, ISp
         {
             Calls = _txTracers.Select(t => t.TraceResult).ToList(),
         };
-        if (_currentBlock.Header.ExcessBlobGas is not null)
-        {
-            if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(_currentBlock.Header.ExcessBlobGas.Value,
-                    out UInt256 blobGasPricePerUnit))
-            {
-                result.BlobBaseFee = blobGasPricePerUnit;
-            }
-        }
 
         Results.Add(result);
     }

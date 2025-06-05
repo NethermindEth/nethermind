@@ -107,7 +107,7 @@ public class ReceiptsIteratorTests
         Span<byte> span = stream.AsSpan();
         TestMemDb blockDb = new TestMemDb();
         ReceiptsRecovery recovery = new ReceiptsRecovery(
-            new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId, LimboLogs.Instance),
+            new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             MainnetSpecProvider.Instance,
             false
         );
