@@ -8,12 +8,6 @@ namespace Nethermind.Experimental.Abi.V2;
 // NOTE: Make `partial` to allow for extension
 public static class AbiType
 {
-    private static int PadTo32(int length)
-    {
-        int rem = length % 32;
-        return rem == 0 ? length : length + (32 - rem);
-    }
-
     public static readonly IAbi<UInt256> UInt256 = new()
     {
         Name = "uint256",
@@ -94,15 +88,7 @@ public static class AbiType
         Read = r =>
         {
             int length = (int)UInt256.Read(r); // TODO: Use `UInt256` when dealing with lengths
-            var bytes = r.ReadBytes(length);
-
-            var padding = PadTo32(length) - length;
-            if (padding > 0)
-            {
-                r.ReadBytes(padding); // Skip padding bytes
-            }
-
-            return bytes;
+            return r.ReadBytesPadded(length);
 
         },
         Write = (w, bytes) =>
@@ -110,42 +96,18 @@ public static class AbiType
             int length = bytes.Length;
 
             UInt256.Write(w, (UInt256)length);
-            w.Write(bytes);
-
-            var padding = PadTo32(length) - length;
-            if (padding > 0)
-            {
-                w.Write(stackalloc byte[padding]);
-            }
+            w.WritePadded(bytes);
         }
     };
 
     public static IAbi<byte[]> BytesM(int length) => new()
     {
         Name = $"bytes{length}",
-        Read = r =>
-        {
-            var bytes = r.ReadBytes(length);
-
-            var padding = PadTo32(length) - length;
-            if (padding > 0)
-            {
-                r.ReadBytes(padding); // Skip padding bytes
-            }
-
-            return bytes;
-        },
+        Read = r => r.ReadBytesPadded(length),
         Write = (w, bytes) =>
         {
             if (bytes.Length != length) throw new AbiException();
-
-            w.Write(bytes);
-
-            var padding = PadTo32(length) - length;
-            if (padding > 0)
-            {
-                w.Write(stackalloc byte[padding]);
-            }
+            w.WritePadded(bytes);
         }
     };
 
@@ -162,4 +124,39 @@ public static class AbiType
 
     // Synonyms
     public static readonly IAbi<UInt256> UInt = UInt256;
+}
+
+internal static class BinaryReadWriterExtensions
+{
+    // TODO: Use `UInt256` when dealing with lengths
+    private static int PadTo32(int length)
+    {
+        int rem = length % 32;
+        return rem == 0 ? length : length + (32 - rem);
+    }
+
+    internal static void WritePadded(this BinaryWriter writer, byte[] bytes)
+    {
+        int length = bytes.Length;
+        writer.Write(bytes);
+
+        var padding = PadTo32(length) - length;
+        if (padding > 0)
+        {
+            writer.Write(stackalloc byte[padding]);
+        }
+    }
+
+    internal static byte[] ReadBytesPadded(this BinaryReader reader, int length)
+    {
+        var bytes = reader.ReadBytes(length);
+
+        var padding = PadTo32(length) - length;
+        if (padding > 0)
+        {
+            reader.ReadBytes(padding); // Skip padding bytes
+        }
+
+        return bytes;
+    }
 }
