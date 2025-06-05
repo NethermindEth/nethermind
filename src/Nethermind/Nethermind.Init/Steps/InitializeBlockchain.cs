@@ -30,7 +30,6 @@ using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -38,7 +37,6 @@ using Nethermind.Wallet;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(
-        typeof(InitializeStateDb),
         typeof(InitializePlugins),
         typeof(InitializeBlockTree),
         typeof(SetupKeyStore),
@@ -142,7 +140,6 @@ namespace Nethermind.Init.Steps
             IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
             IFilterStore filterStore = setApi.FilterStore = new FilterStore(getApi.TimerFactory, rpcConfig.FiltersTimeout);
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
-            setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
             _api.DisposeStack.Push(filterStore);
 
@@ -201,9 +198,6 @@ namespace Nethermind.Init.Steps
 
             return virtualMachine;
         }
-
-        protected virtual IHealthHintService CreateHealthHintService() =>
-            new HealthHintService(_api.ChainSpec!);
 
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
             new BlockProductionPolicy(_api.Config<IMiningConfig>());

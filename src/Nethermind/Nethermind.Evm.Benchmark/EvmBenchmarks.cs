@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Benchmark
         private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
         private EvmState _evmState;
-        private WorldState _stateProvider;
+        private IWorldState _stateProvider;
 
         [GlobalSetup]
         public void GlobalSetup()
@@ -39,9 +39,8 @@ namespace Nethermind.Evm.Benchmark
             ByteCode = Bytes.FromHexString(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE") ?? string.Empty);
             Console.WriteLine($"Running benchmark for bytecode {ByteCode?.ToHexString()}");
 
-            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
-            IKeyValueStoreWithBatching codeDb = new MemDb();
-            _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            _stateProvider = worldStateManager.GlobalWorldState;
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
             CodeInfoRepository codeInfoRepository = new();

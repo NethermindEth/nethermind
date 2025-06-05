@@ -11,17 +11,20 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.AuRa.Rewards;
+using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 
@@ -59,14 +62,9 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+        public IBlockProducer InitBlockProducer()
         {
-            if (_nethermindApi is not null)
-            {
-                return BlockProducerStarter!.BuildProducer(additionalTxSource);
-            }
-
-            return null;
+            return BlockProducerStarter!.BuildProducer();
         }
 
         public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
@@ -82,7 +80,6 @@ namespace Nethermind.Consensus.AuRa
             yield return typeof(InitializeBlockchainAuRa);
             yield return typeof(LoadGenesisBlockAuRa);
             yield return typeof(RegisterAuRaRpcModules);
-            yield return typeof(StartBlockProcessorAuRa);
         }
 
         public IModule Module => new AuraModule(chainSpec);
@@ -120,12 +117,16 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<AuRaSealValidator>()
                 .Bind<ISealValidator, AuRaSealValidator>()
                 .AddSingleton<ISealer, AuRaSealer>()
+
+                .AddSingleton<IHealthHintService, AuraHealthHintService>()
                 ;
 
             if (specParam.BlockGasLimitContractTransitions?.Any() == true)
             {
                 builder.AddSingleton<IHeaderValidator, AuRaHeaderValidator>();
             }
+
+            if (Rlp.GetStreamDecoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
         }
     }
 }

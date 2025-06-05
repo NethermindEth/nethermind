@@ -20,7 +20,7 @@ public class OverlayTrieStoreTests
     public void TrieStore_OverlayExistingStore()
     {
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        TrieStore existingStore = TestTrieStoreFactory.Build(dbProvider.StateDb, LimboLogs.Instance);
+        TestRawTrieStore existingStore = new TestRawTrieStore(dbProvider.StateDb);
 
         PatriciaTree patriciaTree = new PatriciaTree(existingStore, LimboLogs.Instance);
         patriciaTree.Set(TestItem.Keccaks[0].Bytes, TestItem.Keccaks[0].BytesToArray());

@@ -612,10 +612,10 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Trie_store_multi_threaded_scenario()
         {
-            using TrieStore trieStore = TestTrieStoreFactory.Build(new BadDb(), _logManager);
-            StateTree tree = new(trieStore, _logManager);
-            tree.Set(TestItem.AddressA, Build.A.Account.WithBalance(1000).TestObject);
-            tree.Set(TestItem.AddressB, Build.A.Account.WithBalance(1000).TestObject);
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            IWorldState worldState = worldStateManager.GlobalWorldState;
+            worldState.CreateAccount(TestItem.AddressA, 1000);
+            worldState.CreateAccount(TestItem.AddressB, 1000);
         }
 
         [Test]
@@ -907,7 +907,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void After_commit_should_have_has_root()
         {
             MemDb db = new();
-            TrieStore trieStore = TestTrieStoreFactory.Build(db, LimboLogs.Instance);
+            TrieStore trieStore = CreateTrieStore(kvStore: db);
             trieStore.HasRoot(Keccak.EmptyTreeHash).Should().BeTrue();
 
             Account account = new(1);

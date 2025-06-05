@@ -260,10 +260,8 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(EIP3860TestCases))]
         public void Proper_transactions_selected(TransactionSelectorTests.ProperTransactionsSelectedTestCase testCase)
         {
-            MemDb stateDb = new();
-            MemDb codeDb = new();
-            TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
-            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            IWorldState stateProvider = worldStateManager.GlobalWorldState;
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             IReleaseSpec spec = testCase.ReleaseSpec;

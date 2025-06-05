@@ -113,7 +113,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.Wallet = Substitute.For<IWallet>();
             api.BlockTree = Substitute.For<IBlockTree>();
             api.DbProvider = TestMemDbProvider.Init();
-            api.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
             api.ReceiptStorage = Substitute.For<IReceiptStorage>();
             api.ReceiptFinder = Substitute.For<IReceiptFinder>();
             api.TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
@@ -124,7 +123,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.FilterManager = Substitute.For<IFilterManager>();
             api.FilterStore = Substitute.For<IFilterStore>();
             api.GrpcServer = Substitute.For<IGrpcServer>();
-            api.IpResolver = Substitute.For<IIPResolver>();
             api.KeyStore = Substitute.For<IKeyStore>();
             api.LogFinder = Substitute.For<ILogFinder>();
             api.ProtocolsManager = Substitute.For<IProtocolsManager>();
@@ -135,9 +133,7 @@ namespace Nethermind.Runner.Test.Ethereum
             api.EngineSignerStore = Substitute.For<ISignerStore>();
             api.WebSocketsManager = Substitute.For<IWebSocketsManager>();
             api.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
-            api.BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
             api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();
-            api.HealthHintService = Substitute.For<IHealthHintService>();
             api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
             api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();
             api.BadBlocksStore = Substitute.For<IBadBlockStore>();
