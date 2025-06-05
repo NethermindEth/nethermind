@@ -159,4 +159,7 @@ public static class AbiType
             abi2.Write(w, tuple.Item2);
         }
     };
+
+    // Synonyms
+    public static readonly IAbi<UInt256> UInt = UInt256;
 }
