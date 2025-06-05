@@ -16,8 +16,8 @@ using System.Threading;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Config;
-using Multiformats.Address;
 using Nethermind.Abi;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -42,7 +42,6 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
     private INethermindApi? _api;
     private ShutterApi ShutterApi => _api!.Context.Resolve<ShutterApi>();
     private ILogger _logger;
-    private readonly CancellationTokenSource _cts = new();
 
     public class ShutterLoadingException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -66,26 +65,14 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
     public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin)
     {
         if (_logger.IsInfo) _logger.Info("Initializing Shutter block producer.");
-
-        // TODO: Need a better place to start the P2P.
-        IEnumerable<Multiaddress> bootnodeP2PAddresses;
-        try
-        {
-            shutterConfig!.Validate(out bootnodeP2PAddresses);
-        }
-        catch (ArgumentException e)
-        {
-            throw new ShutterLoadingException("Invalid Shutter config", e);
-        }
-        _ = ShutterApi.StartP2P(bootnodeP2PAddresses, _cts);
-
         return consensusPlugin.InitBlockProducer();
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    public IEnumerable<StepInfo> GetSteps()
     {
-        _cts.Dispose();
-        await (ShutterApi?.DisposeAsync() ?? default);
+        yield return typeof(RunShutterP2PStep);
     }
 
     public IModule? Module => new ShutterPluginModule();
@@ -97,7 +84,8 @@ public class ShutterPluginModule : Module
     {
         builder
             .AddSingleton(CreateShutterApi)
-            .AddDecorator<IBlockProducerTxSourceFactory, ShutterAdditionalBlockProductionTxSource>();
+            .AddDecorator<IBlockProducerTxSourceFactory, ShutterAdditionalBlockProductionTxSource>()
+            ;
     }
 
     private ShutterApi CreateShutterApi(IComponentContext ctx)
