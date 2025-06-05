@@ -28,6 +28,9 @@ public class SurgeGasPriceOracleTests
     private SurgeGasPriceOracle _gasPriceOracle = null!;
     private static readonly UInt256 MinGasPrice = UInt256.Parse("1000000000"); // 1 Gwei
 
+    private static string CreatePaddedHex(UInt256 value, int padding = 64) =>
+        value.ToString("x64").PadLeft(padding, '0');
+
     [SetUp]
     public void Setup()
     {
@@ -61,7 +64,7 @@ public class SurgeGasPriceOracleTests
     {
         Block headBlock = Build.A.Block.WithNumber(1).WithGasUsed(1000000).TestObject;
         _blockFinder.Head.Returns(headBlock);
-        _l1RpcClient.Post<L1FeeHistoryResults?>(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<BlockParameter>(), Arg.Any<object>())
+        _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", _surgeConfig.FeeHistoryBlockCount, BlockParameter.Latest, null)
             .Returns(Task.FromResult<L1FeeHistoryResults?>(null));
 
         UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
@@ -81,7 +84,7 @@ public class SurgeGasPriceOracleTests
             BaseFeePerBlobGas = []
         };
 
-        _l1RpcClient.Post<L1FeeHistoryResults?>(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<BlockParameter>(), Arg.Any<object>())
+        _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", _surgeConfig.FeeHistoryBlockCount, BlockParameter.Latest, null)
             .Returns(Task.FromResult<L1FeeHistoryResults?>(feeHistory));
 
         UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
@@ -112,8 +115,24 @@ public class SurgeGasPriceOracleTests
         };
 
         // Set up the mock to match the exact parameters that will be passed
-        _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", 200, BlockParameter.Latest, null)
+        _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", _surgeConfig.FeeHistoryBlockCount, BlockParameter.Latest, null)
             .Returns(Task.FromResult<L1FeeHistoryResults?>(feeHistory));
+
+        // Mock Stats2 returned by getStats2() call to have 2 batches (numBatches=2)
+        var stats2Response = "0x" + CreatePaddedHex(2) + CreatePaddedHex(0, 192);
+        _l1RpcClient.Post<string>("eth_call", Arg.Is<object>(o =>
+            o.ToString()!.Contains("0x26baca1c")), "latest")
+            .Returns(stats2Response);
+
+        // Mock Batch returned by getBatch(1) call to have lastBlockId=1
+        var batchResponse = "0x" + CreatePaddedHex(0) + CreatePaddedHex(1) + CreatePaddedHex(0, 576);
+        _l1RpcClient.Post<string>("eth_call", Arg.Is<object>(o =>
+            o.ToString()!.Contains("0x888775d9")), "latest")
+            .Returns(batchResponse);
+
+        // Mock block finder to return block with gas usage
+        _blockFinder.FindBlock(1, Arg.Any<Blockchain.BlockTreeLookupOptions>())
+            .Returns(Build.A.Block.WithNumber(1).WithGasUsed(1000000).TestObject);
 
         UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
 
@@ -141,7 +160,7 @@ public class SurgeGasPriceOracleTests
             ]
         };
 
-        _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", 200, BlockParameter.Latest, null)
+        _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", _surgeConfig.FeeHistoryBlockCount, BlockParameter.Latest, null)
             .Returns(Task.FromResult<L1FeeHistoryResults?>(feeHistory));
 
         UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
@@ -167,7 +186,7 @@ public class SurgeGasPriceOracleTests
             ]
         };
 
-        _l1RpcClient.Post<L1FeeHistoryResults?>(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<BlockParameter>(), Arg.Any<object>())
+        _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", _surgeConfig.FeeHistoryBlockCount, BlockParameter.Latest, null)
             .Returns(Task.FromResult<L1FeeHistoryResults?>(feeHistory));
 
         UInt256 firstGasPrice = _gasPriceOracle.GetGasPriceEstimate();

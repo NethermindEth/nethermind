@@ -18,6 +18,7 @@ namespace Nethermind.Taiko.Rpc;
 
 public class SurgeGasPriceOracle : GasPriceOracle
 {
+    private static readonly string _className = nameof(SurgeGasPriceOracle);
     private readonly IJsonRpcClient _l1RpcClient;
     private readonly ISurgeConfig _surgeConfig;
     private readonly GasUsageRingBuffer _gasUsageBuffer;
@@ -44,14 +45,14 @@ public class SurgeGasPriceOracle : GasPriceOracle
         Block? headBlock = _blockFinder.Head;
         if (headBlock is null)
         {
-            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] No head block available, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace($"[{_className}] No head block available, using fallback gas price");
             return FallbackGasPrice();
         }
 
         Hash256 headBlockHash = headBlock.Hash!;
         if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price))
         {
-            if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Using cached gas price estimate: {price}");
+            if (_logger.IsTrace) _logger.Trace($"[{_className}] Using cached gas price estimate: {price}");
             return price!.Value;
         }
 
@@ -59,7 +60,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
         L1FeeHistoryResults? feeHistory = GetL1FeeHistory().GetAwaiter().GetResult();
         if (feeHistory == null || feeHistory.BaseFeePerGas.Length == 0)
         {
-            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Failed to get fee history, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to get fee history, using fallback gas price");
             return FallbackGasPrice();
         }
 
@@ -78,14 +79,14 @@ public class SurgeGasPriceOracle : GasPriceOracle
         UInt256 averageGasUsage = GetAverageGasUsageAcrossBatches();
         if (averageGasUsage == UInt256.Zero)
         {
-            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Failed to calculate average gas usage, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to calculate average gas usage, using fallback gas price");
             return FallbackGasPrice();
         }
 
         UInt256 gasPriceEstimate = (minProposingCost + proofPostingCost + _surgeConfig.ProvingCostPerL2Batch) / averageGasUsage;
         _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
 
-        if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Calculated new gas price estimate: {gasPriceEstimate}, " +
+        if (_logger.IsTrace) _logger.Trace($"[{_className}] Calculated new gas price estimate: {gasPriceEstimate}, " +
             $"L1 Base Fee: {l1BaseFee}, L1 Blob Base Fee: {l1BlobBaseFee}, L1 Average Base Fee: {l1AverageBaseFee}, " +
             $"Average Gas Usage: {averageGasUsage}");
 
@@ -96,11 +97,14 @@ public class SurgeGasPriceOracle : GasPriceOracle
     {
         try
         {
-            return await _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", _surgeConfig.FeeHistoryBlockCount, BlockParameter.Latest, null);
+            return await _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory",
+                _surgeConfig.FeeHistoryBlockCount,
+                BlockParameter.Latest,
+                null);
         }
         catch (Exception ex)
         {
-            if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Failed to get fee history: {ex.Message}");
+            if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to get fee history: {ex.Message}");
             return null;
         }
     }
@@ -115,7 +119,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
         ulong? numBatches = GetNumBatches();
         if (numBatches is null or <= 1)
         {
-            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Failed to get numBatches, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to get numBatches, using fallback gas price");
             return UInt256.Zero;
         }
 
@@ -123,7 +127,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
         ulong? currentBatchLastBlockId = GetLastBlockId(numBatches.Value - 1);
         if (currentBatchLastBlockId == null)
         {
-            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Failed to get current batch lastBlockId, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to get current batch lastBlockId, using fallback gas price");
             return UInt256.Zero;
         }
 
@@ -167,7 +171,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
         }
         catch (Exception ex)
         {
-            if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Failed to get numBatches: {ex.Message}");
+            if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to get numBatches: {ex.Message}");
             return null;
         }
     }
@@ -193,7 +197,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
         }
         catch (Exception ex)
         {
-            if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Failed to get lastBlockId for batch {batchId}: {ex.Message}");
+            if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to get lastBlockId for batch {batchId}: {ex.Message}");
             return null;
         }
     }
