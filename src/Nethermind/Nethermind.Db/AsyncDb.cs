@@ -18,8 +18,7 @@ namespace Nethermind.Db;
 public class AsyncDb : IAsyncDb
 {
     private readonly ConcurrentDictionary<Dictionary<byte[], byte[]?>, Dictionary<byte[], byte[]?>.AlternateLookup<ReadOnlySpan<byte>>> _asyncBatches = new();
-    private readonly Channel<Dictionary<byte[], byte[]?>> _channel = Channel.CreateBounded<Dictionary<byte[], byte[]?>>(new BoundedChannelOptions(1024) { SingleReader = true });
-    private readonly Task _asyncTask;
+    private readonly Channel<Dictionary<byte[], byte[]?>> _channel = Channel.CreateBounded<Dictionary<byte[], byte[]?>>(new BoundedChannelOptions((int)Reorganization.MaxDepth / 2) { SingleReader = true });
     private int _asyncBatchesCount = 0;
     private readonly IDb _db;
     private readonly ILogger _logger;
@@ -28,28 +27,31 @@ public class AsyncDb : IAsyncDb
     {
         _db = db;
         _logger = logger;
-        _asyncTask = WriteAsync(_channel);
+        _ = WriteAsync(_channel);
     }
 
     private async Task WriteAsync(Channel<Dictionary<byte[], byte[]>> channel)
     {
         await foreach (Dictionary<byte[], byte[]> data in channel.Reader.ReadAllAsync())
         {
-            try
+            bool saved = false;
+            while (!saved)
             {
-                if (_logger.IsInfo) _logger.Info($"Start saving batch with count {data.Count}, channel count {channel.Reader.Count}, batch count {_asyncBatchesCount}");
-                SaveBatch(data);
-
-                _asyncBatches.TryRemove(data, out _);
-                Interlocked.Decrement(ref _asyncBatchesCount);
-                if (_logger.IsInfo) _logger.Info($"Saved batch with count {data.Count}, channel count {channel.Reader.Count}, batch count {_asyncBatchesCount}");
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error($"Failed to save batch with count {data.Count}, channel count {channel.Reader.Count}, batch count {_asyncBatchesCount}", e);
-                if (!channel.Writer.TryWrite(data))
+                try
                 {
-                    if (_logger.IsError) _logger.Error($"Failed to re-add batch with count {data.Count}, channel count {channel.Reader.Count}, batch count {_asyncBatchesCount}");
+                    if (_logger.IsInfo) _logger.Info($"Db {Name}: Start saving batch with count {data.Count}, channel count {channel.Reader.Count}, batch count {_asyncBatchesCount}");
+                    SaveBatch(data);
+                    saved = true;
+                    if (!_asyncBatches.TryRemove(data, out _))
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Db {Name}: Couldn't remove batch with count {data.Count}, channel count {channel.Reader.Count}, batch count {_asyncBatchesCount}");
+                    }
+                    Interlocked.Decrement(ref _asyncBatchesCount);
+                    if (_logger.IsInfo) _logger.Info($"Db {Name}: Saved batch with count {data.Count}, channel count {channel.Reader.Count}, batch count {_asyncBatchesCount}");
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error($"Db {Name}: Failed to save batch with count {data.Count}, channel count {channel.Reader.Count}, batch count {_asyncBatchesCount}", e);
                 }
             }
         }
@@ -98,7 +100,13 @@ public class AsyncDb : IAsyncDb
     public void Dispose()
     {
         _channel.Writer.Complete();
-        Parallel.ForEach(_asyncBatches, batch => SaveBatch(batch.Key));
+        int count = _asyncBatches.Count;
+        if (count > 0)
+        {
+            if (_logger.IsInfo) _logger.Info($"Db {Name}: Saving {count} batches.");
+            Parallel.ForEach(_asyncBatches, batch => SaveBatch(batch.Key));
+        }
+
         _db.Dispose();
     }
 
@@ -213,11 +221,19 @@ public class AsyncDb : IAsyncDb
 
         public void Dispose()
         {
-            Interlocked.Increment(ref asyncDb._asyncBatchesCount);
-            asyncDb._asyncBatches.TryAdd(_dictionary, _dictionary.GetAlternateLookup<ReadOnlySpan<byte>>());
-            if (!asyncDb._channel.Writer.TryWrite(_dictionary))
+            if (_dictionary.Count > 0)
             {
-                if (asyncDb._logger.IsError) asyncDb._logger.Error($"Failed to add batch with count {_dictionary.Count}, channel count {asyncDb._channel.Reader.Count}, batch count {asyncDb._asyncBatchesCount}");
+                Interlocked.Increment(ref asyncDb._asyncBatchesCount);
+                asyncDb._asyncBatches.TryAdd(_dictionary, _dictionary.GetAlternateLookup<ReadOnlySpan<byte>>());
+                if (!asyncDb._channel.Writer.TryWrite(_dictionary))
+                {
+                    if (asyncDb._logger.IsError) asyncDb._logger.Error($"Db {asyncDb.Name}: Failed to add batch with count {_dictionary.Count}, channel count {asyncDb._channel.Reader.Count}, batch count {asyncDb._asyncBatchesCount}");
+                    asyncDb.SaveBatch(_dictionary);
+                }
+            }
+            else
+            {
+                if (asyncDb._logger.IsInfo) asyncDb._logger.Info($"Db {asyncDb.Name}: Skipping empty batch, channel count {asyncDb._channel.Reader.Count}, batch count {asyncDb._asyncBatchesCount}");
             }
         }
 
