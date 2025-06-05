@@ -15,8 +15,8 @@ namespace Nethermind.Evm
         Address? codeSource,
         ReadOnlyMemory<byte> inputData,
         in TxExecutionContext txExecutionContext,
-        UInt256 transferValue,
-        UInt256 value,
+        in UInt256 transferValue,
+        in UInt256 value,
         int callDepth = 0)
     {
         /// <summary>
