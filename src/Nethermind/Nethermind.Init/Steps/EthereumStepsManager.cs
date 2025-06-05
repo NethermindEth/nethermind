@@ -11,6 +11,9 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Logging;
+using OpenTelemetry;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 namespace Nethermind.Init.Steps
 {
@@ -53,6 +56,14 @@ namespace Nethermind.Init.Steps
 
         private List<Task> CreateAndExecuteSteps(CancellationToken cancellationToken)
         {
+            ActivitySource activitySource = new("nethermind");
+            var tracerProvider = Sdk.CreateTracerProviderBuilder()
+                       .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName: "nethermind"))
+                       .AddSource(activitySource.Name)
+                       .AddOtlpExporter()
+                       .Build();
+            var root = activitySource.StartActivity("root", ActivityKind.Internal)!;
+
             Dictionary<Type, StepWrapper> stepInfoMap = [];
 
             foreach (StepInfo stepInfo in _loader.ResolveStepsImplementations().ToList())
@@ -69,7 +80,7 @@ namespace Nethermind.Init.Steps
                 };
 
                 Debug.Assert(!stepInfoMap.ContainsKey(stepInfo.StepBaseType), "Resolve steps implementations should have deduplicated step by base type");
-                stepInfoMap.Add(stepInfo.StepBaseType, new StepWrapper(stepFactory, stepInfo));
+                stepInfoMap.Add(stepInfo.StepBaseType, new StepWrapper(stepFactory, stepInfo, activitySource, root));
             }
 
             foreach (var kv in stepInfoMap)
@@ -97,6 +108,14 @@ namespace Nethermind.Init.Steps
                 if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
                 allRequiredSteps.Add(task);
             }
+
+            Task.WhenAll(allRequiredSteps).ContinueWith(t =>
+            {
+                root.Dispose();
+                tracerProvider.ForceFlush();
+                tracerProvider.Dispose();
+            });
+
             return allRequiredSteps;
         }
 
@@ -162,7 +181,7 @@ namespace Nethermind.Init.Steps
                 ExceptionDispatchInfo.Capture(task.Exception.GetBaseException()).Throw();
         }
 
-        private class StepWrapper(Func<IStep> stepFactory, StepInfo stepInfo)
+        private class StepWrapper(Func<IStep> stepFactory, StepInfo stepInfo, ActivitySource activitySource, Activity root)
         {
             public StepInfo StepInfo => stepInfo;
 
@@ -171,13 +190,14 @@ namespace Nethermind.Init.Steps
             public Task StepTask => _taskCompletedSource.Task;
             public List<Type> Dependencies = new(stepInfo.Dependencies);
 
-            private TaskCompletionSource _taskCompletedSource = new TaskCompletionSource();
+            private readonly TaskCompletionSource _taskCompletedSource = new TaskCompletionSource();
 
             public async Task StartExecute(IEnumerable<StepWrapper> dependentSteps, CancellationToken cancellationToken)
             {
                 cancellationToken.Register(() => _taskCompletedSource.TrySetCanceled());
 
                 await Task.WhenAll(dependentSteps.Select(s => s.StepTask));
+                using var _ = activitySource.StartActivity(stepInfo.ToString(), ActivityKind.Internal, root.Context);
                 try
                 {
                     await Step.Execute(cancellationToken);

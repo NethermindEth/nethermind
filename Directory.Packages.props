@@ -68,6 +68,8 @@
     <PackageVersion Include="NUnit.Analyzers" Version="4.8.0" />
     <PackageVersion Include="NUnit3TestAdapter" Version="5.0.0" />
     <PackageVersion Include="Open.NAT.Core" Version="2.1.0.5" />
+    <PackageVersion Include="OpenTelemetry" Version="1.12.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.12.0" />
     <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.4" />
     <PackageVersion Include="Polly" Version="8.5.2" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
