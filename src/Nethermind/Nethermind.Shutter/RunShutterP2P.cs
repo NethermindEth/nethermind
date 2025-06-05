@@ -24,7 +24,7 @@ public class RunShutterP2P(IShutterConfig shutterConfig, IShutterApi shutterApi,
         IEnumerable<Multiaddress> bootnodeP2PAddresses;
         try
         {
-            shutterConfig!.Validate(out bootnodeP2PAddresses);
+            shutterConfig.Validate(out bootnodeP2PAddresses);
         }
         catch (ArgumentException e)
         {
