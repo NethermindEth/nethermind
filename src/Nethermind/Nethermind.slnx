@@ -138,6 +138,7 @@
   <Project Path="Nethermind.Evm.Fody/Nethermind.Evm.Fody.csproj" />
   <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
   <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
+  <Project Path="Nethermind.Experimental.Abi\Nethermind.Experimental.Abi.csproj" Type="Classic C#" />
   <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
   <Project Path="Nethermind.HealthChecks/Nethermind.HealthChecks.csproj" />
   <Project Path="Nethermind.History/Nethermind.History.csproj" />
