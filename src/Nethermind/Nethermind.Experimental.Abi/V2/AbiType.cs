@@ -11,12 +11,12 @@ public static class AbiType
     public static readonly IAbi<UInt256> UInt256 = new()
     {
         Name = "uint256",
-        Read = r =>
+        Read = (ref BinarySpanReader r) =>
         {
             var bytes = r.ReadBytes(32);
             return new UInt256(bytes, isBigEndian: true);
         },
-        Write = (w, v) =>
+        Write = (ref BinarySpanWriter w, UInt256 v) =>
         {
             Span<byte> bytes = stackalloc byte[32];
             v.ToBigEndian(bytes);
@@ -27,64 +27,64 @@ public static class AbiType
     public static readonly IAbi<UInt64> UInt64 = new()
     {
         Name = "uint64",
-        Read = r => (UInt64)UInt256.Read(r),
-        Write = (w, v) => UInt256.Write(w, v),
+        Read = (ref BinarySpanReader r) => (UInt64)UInt256.Read(ref r),
+        Write = (ref BinarySpanWriter w, UInt64 v) => UInt256.Write(ref w, v),
     };
 
     public static readonly IAbi<UInt32> UInt32 = new()
     {
         Name = "uint32",
-        Read = r => (UInt32)UInt256.Read(r),
-        Write = (w, v) => UInt256.Write(w, v),
+        Read = (ref BinarySpanReader r) => (UInt32)UInt256.Read(ref r),
+        Write = (ref BinarySpanWriter w, UInt32 v) => UInt256.Write(ref w, v),
     };
 
     public static readonly IAbi<UInt16> UInt16 = new()
     {
         Name = "uint16",
-        Read = r => (UInt16)UInt256.Read(r),
-        Write = (w, v) => UInt256.Write(w, v),
+        Read = (ref BinarySpanReader r) => (UInt16)UInt256.Read(ref r),
+        Write = (ref BinarySpanWriter w, UInt16 v) => UInt256.Write(ref w, v),
     };
 
     public static readonly IAbi<Byte> UInt8 = new()
     {
         Name = "uint8",
-        Read = r => (Byte)UInt256.Read(r),
-        Write = (w, v) => UInt256.Write(w, v),
+        Read = (ref BinarySpanReader r) => (Byte)UInt256.Read(ref r),
+        Write = (ref BinarySpanWriter w, Byte v) => UInt256.Write(ref w, v),
     };
 
     public static readonly IAbi<Boolean> Bool = new()
     {
         Name = "bool",
-        Read = r => UInt256.Read(r) != 0,
-        Write = (w, v) => UInt256.Write(w, v ? 1u : 0u)
+        Read = (ref BinarySpanReader r) => UInt256.Read(ref r) != 0,
+        Write = (ref BinarySpanWriter w, Boolean v) => UInt256.Write(ref w, v ? 1u : 0u)
     };
 
     public static IAbi<T[]> Array<T>(IAbi<T> elements) => new()
     {
         Name = $"{elements.Name}[]",
-        Read = r => throw new NotImplementedException(),
-        Write = (w, array) => throw new NotImplementedException()
+        Read = (ref BinarySpanReader r) => throw new NotImplementedException(),
+        Write = (ref BinarySpanWriter w, T[] array) => throw new NotImplementedException()
     };
 
     public static IAbi<T[]> Array<T>(IAbi<T> elements, int length) => new()
     {
         Name = $"{elements.Name}[{length}]",
-        Read = r =>
+        Read = (ref BinarySpanReader r) =>
         {
             var array = new T[length];
             for (int i = 0; i < length; i++)
             {
-                array[i] = elements.Read(r);
+                array[i] = elements.Read(ref r);
             }
             return array;
         },
-        Write = (w, array) =>
+        Write = (ref BinarySpanWriter w, T[] array) =>
         {
             if (array.Length != length) throw new AbiException();
 
             foreach (var item in array)
             {
-                elements.Write(w, item);
+                elements.Write(ref w, item);
             }
         }
     };
@@ -92,17 +92,16 @@ public static class AbiType
     public static IAbi<byte[]> Bytes => new()
     {
         Name = $"bytes",
-        Read = r =>
+        Read = (ref BinarySpanReader r) =>
         {
-            int length = (int)UInt256.Read(r); // TODO: Use `UInt256` when dealing with lengths
-            return r.ReadBytesPadded(length);
-
+            int length = (int)UInt256.Read(ref r); // TODO: Use `UInt256` when dealing with lengths
+            return r.ReadBytesPadded(length).ToArray();
         },
-        Write = (w, bytes) =>
+        Write = (ref BinarySpanWriter w, byte[] bytes) =>
         {
             int length = bytes.Length;
 
-            UInt256.Write(w, (UInt256)length);
+            UInt256.Write(ref w, (UInt256)length);
             w.WritePadded(bytes);
         }
     };
@@ -110,8 +109,8 @@ public static class AbiType
     public static IAbi<byte[]> BytesM(int length) => new()
     {
         Name = $"bytes{length}",
-        Read = r => r.ReadBytesPadded(length),
-        Write = (w, bytes) =>
+        Read = (ref BinarySpanReader r) => r.ReadBytesPadded(length).ToArray(),
+        Write = (ref BinarySpanWriter w, byte[] bytes) =>
         {
             if (bytes.Length != length) throw new AbiException();
             w.WritePadded(bytes);
