@@ -108,6 +108,7 @@ public static class EcRecover
         codeToDeploy.Add((byte)Instruction.JUMP);
 
         List<byte> byteCode = ContractFactory.GenerateCodeToDeployContract(codeToDeploy);
+        string code = byteCode.ToArray().ToHexString();
         return byteCode.ToArray();
     }
 }
