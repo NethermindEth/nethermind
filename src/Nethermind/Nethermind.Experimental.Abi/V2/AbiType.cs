@@ -120,38 +120,3 @@ public static class AbiType
     // Synonyms
     public static readonly IAbi<UInt256> UInt = UInt256;
 }
-
-internal static class BinaryReadWriterExtensions
-{
-    // TODO: Use `UInt256` when dealing with lengths
-    private static int PadTo32(int length)
-    {
-        int rem = length % 32;
-        return rem == 0 ? length : length + (32 - rem);
-    }
-
-    internal static void WritePadded(this BinaryWriter writer, byte[] bytes)
-    {
-        int length = bytes.Length;
-        writer.Write(bytes);
-
-        var padding = PadTo32(length) - length;
-        if (padding > 0)
-        {
-            writer.Write(stackalloc byte[padding]);
-        }
-    }
-
-    internal static byte[] ReadBytesPadded(this BinaryReader reader, int length)
-    {
-        var bytes = reader.ReadBytes(length);
-
-        var padding = PadTo32(length) - length;
-        if (padding > 0)
-        {
-            reader.ReadBytes(padding); // Skip padding bytes
-        }
-
-        return bytes;
-    }
-}
