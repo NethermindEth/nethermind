@@ -98,7 +98,7 @@ namespace Nethermind.Evm.TransactionProcessing
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
             _logManager = logManager;
         }
-        
+
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             => VirtualMachine.SetBlockExecutionContext(in blockExecutionContext);
 

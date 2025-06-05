@@ -99,7 +99,7 @@ public sealed unsafe partial class VirtualMachine(
     private BlockExecutionContext _blockExecutionContext;
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
-    
+
     private TxExecutionContext _txExecutionContext;
     public ref readonly TxExecutionContext TxExecutionContext => ref _txExecutionContext;
     /// <summary>
