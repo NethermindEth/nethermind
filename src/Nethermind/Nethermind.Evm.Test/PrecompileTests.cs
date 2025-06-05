@@ -37,21 +37,30 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
 
         IPrecompile precompile = T.Precompile();
         long gas = precompile.BaseGasCost(Prague.Instance) + precompile.DataGasCost(testCase.Input, Prague.Instance);
-        (byte[] output, bool success) = precompile.Run(testCase.Input, Prague.Instance);
+        (byte[]? output, bool success) = precompile.Run(testCase.Input, Prague.Instance);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(success, Is.EqualTo(testCase.ExpectedError is null));
 
-            if (testCase.Expected is not null)
-            {
-                Assert.That(output, Is.EquivalentTo(testCase.Expected));
-            }
+            VerifyOutput(output, testCase);
+            VerifyGas(gas, testCase);
+        }
+    }
 
-            if (testCase.Gas is not null)
-            {
-                Assert.That(gas, Is.EqualTo(testCase.Gas));
-            }
+    protected virtual void VerifyOutput(byte[]? output, TestCase testCase)
+    {
+        if (testCase.Expected is not null)
+        {
+            Assert.That(output, Is.EquivalentTo(testCase.Expected));
+        }
+    }
+
+    protected virtual void VerifyGas(long gas, TestCase testCase)
+    {
+        if (testCase.Gas is not null)
+        {
+            Assert.That(gas, Is.EqualTo(testCase.Gas));
         }
     }
 
