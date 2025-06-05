@@ -58,10 +58,7 @@ namespace Nethermind.Evm.Test
 
         protected override void VerifyOutput(byte[]? output, TestCase testCase)
         {
-            if (testCase.Expected is not null)
-                Assert.That(output, Is.EquivalentTo(testCase.Expected));
-            else
-                Assert.That(output, Is.Null);
+            Assert.That(output, Is.EquivalentTo(testCase.Expected ?? []));
         }
 
         public static IEnumerable<TestCaseData> RandomECDsaInputs()
