@@ -3,12 +3,14 @@
 
 namespace Nethermind.Experimental.Abi.V2;
 
-// TODO: Use a more efficient `BinaryReader/Writer` that operates on `Span` instead of `Stream`
+public delegate T IAbiReadFunc<out T>(ref BinarySpanReader r);
+public delegate void IAbiWriteAction<in T>(ref BinarySpanWriter w, T value);
+
 public class IAbi<T>
 {
     public required string Name { get; init; }
-    public required Func<BinaryReader, T> Read { get; init; }
-    public required Action<BinaryWriter, T> Write { get; init; }
+    public required IAbiReadFunc<T> Read { get; init; }
+    public required IAbiWriteAction<T> Write { get; init; }
 
     public override string ToString() => Name;
 }
