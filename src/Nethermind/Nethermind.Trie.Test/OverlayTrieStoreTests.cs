@@ -23,9 +23,12 @@ public class OverlayTrieStoreTests
         TestRawTrieStore existingStore = new TestRawTrieStore(dbProvider.StateDb);
 
         PatriciaTree patriciaTree = new PatriciaTree(existingStore, LimboLogs.Instance);
-        patriciaTree.Set(TestItem.Keccaks[0].Bytes, TestItem.Keccaks[0].BytesToArray());
-        patriciaTree.Set(TestItem.Keccaks[1].Bytes, TestItem.Keccaks[1].BytesToArray());
-        patriciaTree.Commit();
+        {
+            using var _ = existingStore.BeginBlockCommit(0);
+            patriciaTree.Set(TestItem.Keccaks[0].Bytes, TestItem.Keccaks[0].BytesToArray());
+            patriciaTree.Set(TestItem.Keccaks[1].Bytes, TestItem.Keccaks[1].BytesToArray());
+            patriciaTree.Commit();
+        }
         Hash256 originalRoot = patriciaTree.RootHash;
         int originalKeyCount = dbProvider.StateDb.GetAllKeys().Count();
 

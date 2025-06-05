@@ -167,7 +167,7 @@ public class SnapProviderTests
         List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
         List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();
 
-        StateTree stree = new StateTree(TestTrieStoreFactory.Build(new TestMemDb(), LimboLogs.Instance), LimboLogs.Instance);
+        StateTree stree = new StateTree(new TestRawTrieStore(new TestMemDb()), LimboLogs.Instance);
         SnapProviderHelper.AddAccountRange(
                 stree,
                 0,
@@ -192,11 +192,14 @@ public class SnapProviderTests
         TestMemDb stateDb = new TestMemDb();
         TestRawTrieStore trieStore = new TestRawTrieStore(stateDb);
         StateTree st = new StateTree(trieStore, LimboLogs.Instance);
-        foreach (var entry in entries)
         {
-            st.Set(entry.Item1, entry.Item2);
+            using var _ = trieStore.BeginBlockCommit(0);
+            foreach (var entry in entries)
+            {
+                st.Set(entry.Item1, entry.Item2);
+            }
+            st.Commit();
         }
-        st.Commit();
 
         IStateReader stateRootTracker = Substitute.For<IStateReader>();
         stateRootTracker.HasStateForRoot(st.RootHash).Returns(true);
