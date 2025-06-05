@@ -238,7 +238,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
                 {
-                    authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple);
+                    Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple));
 
                     if (!IsValidForExecution(authTuple, accessTracker, out string? error))
                     {
@@ -246,17 +246,17 @@ namespace Nethermind.Evm.TransactionProcessing
                     }
                     else
                     {
-                        if (!WorldState.AccountExists(authTuple.Authority!))
+                        if (!WorldState.AccountExists(authority))
                         {
-                            WorldState.CreateAccount(authTuple.Authority, 0, 1);
+                            WorldState.CreateAccount(authority, 0, 1);
                         }
                         else
                         {
                             refunds++;
-                            WorldState.IncrementNonce(authTuple.Authority);
+                            WorldState.IncrementNonce(authority);
                         }
 
-                        _codeInfoRepository.SetDelegation(WorldState, authTuple.CodeAddress, authTuple.Authority, spec);
+                        _codeInfoRepository.SetDelegation(WorldState, authTuple.CodeAddress, authority, spec);
                     }
                 }
 
