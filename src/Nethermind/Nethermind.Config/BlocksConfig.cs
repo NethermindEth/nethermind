@@ -17,7 +17,7 @@ namespace Nethermind.Config
         public const int MaxCLWrapperKilobytes = 2560;
         public const int SafetyMarginKilobytes = 256;
         // 7424
-        public const int DefaultMaxTxKilobytes = MaxBlockSizeKilobytes - MaxCLWrapperKilobytes - SafetyMarginKilobytes ;
+        public const int DefaultMaxTxKilobytes = MaxBlockSizeKilobytes - MaxCLWrapperKilobytes - SafetyMarginKilobytes;
         private const string _clientExtraData = "Nethermind";
         public static string DefaultExtraData = _clientExtraData;
 
