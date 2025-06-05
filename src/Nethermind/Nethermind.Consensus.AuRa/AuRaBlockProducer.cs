@@ -63,9 +63,9 @@ namespace Nethermind.Consensus.AuRa
             return block;
         }
 
-        protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer)
+        protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token)
         {
-            Block? processedBlock = base.ProcessPreparedBlock(block, blockTracer);
+            Block? processedBlock = base.ProcessPreparedBlock(block, blockTracer, token);
 
             if (processedBlock is not null)
             {

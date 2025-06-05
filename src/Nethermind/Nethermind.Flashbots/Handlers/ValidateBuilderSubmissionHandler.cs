@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Flashbots.Data;
 using Nethermind.Consensus;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -50,7 +51,7 @@ public class ValidateSubmissionHandler
         IHeaderValidator headerValidator,
         IBlockTree blockTree,
         IBlockValidator blockValidator,
-        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
         ILogManager logManager,
         ISpecProvider specProvider,
         IFlashbotsConfig flashbotsConfig,
@@ -75,14 +76,12 @@ public class ValidateSubmissionHandler
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
             worldState,
             NullReceiptStorage.Instance,
-            transactionProcessor,
             new BeaconBlockRootHandler(transactionProcessor, worldState),
             new BlockhashStore(_specProvider, worldState),
             logManager: logManager,
             withdrawalProcessor: new WithdrawalProcessor(worldState, logManager!),
-            receiptsRootCalculator: new ReceiptsRootCalculator(),
-            preWarmer: preWarmer
-        );
+            preWarmer: preWarmer,
+            executionRequestsProcessor: new ExecutionRequestsProcessor(transactionProcessor));
     }
 
     public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
@@ -96,7 +95,6 @@ public class ValidateSubmissionHandler
 
         payload.ParentBeaconBlockRoot = new Hash256(request.ParentBeaconBlockRoot);
 
-
         BlobsBundleV1 blobsBundle = request.BlobsBundle;
 
         string payloadStr = $"BuilderBlock: {payload}";
@@ -104,24 +102,25 @@ public class ValidateSubmissionHandler
         if (_logger.IsInfo)
             _logger.Info($"blobs bundle blobs {blobsBundle.Blobs.Length} commits {blobsBundle.Commitments.Length} proofs {blobsBundle.Proofs.Length} commitments");
 
-        if (!payload.TryGetBlock(out Block? block))
+        BlockDecodingResult decodingResult = payload.TryGetBlock();
+        Block? block = decodingResult.Block;
+        if (block is null)
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid block. Result of {payloadStr}.");
-            return FlashbotsResult.Invalid($"Block {payload} coud not be parsed as a block");
+            if (_logger.IsTrace) _logger.Trace($"Invalid block: {decodingResult.Error}. Result of {payloadStr}.");
+            return FlashbotsResult.Invalid($"Block {payload} could not be parsed as a block: {decodingResult.Error}");
         }
 
-        if (block is not null && !ValidateBlock(block, request.Message, request.RegisteredGasLimit, out string? error))
+        if (!ValidateBlock(block, request.Message, request.RegisteredGasLimit, out string? error))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid block. Result of {payloadStr}. Error: {error}");
             return FlashbotsResult.Invalid(error ?? "Block validation failed");
         }
 
-        if (block is not null && !ValidateBlobsBundle(block.Transactions, blobsBundle, out string? blobsError))
+        if (!ValidateBlobsBundle(block.Transactions, blobsBundle, out string? blobsError))
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid blobs bundle. Result of {payloadStr}. Error: {blobsError}");
             return FlashbotsResult.Invalid(blobsError ?? "Blobs bundle validation failed");
         }
-
 
         return FlashbotsResult.Valid();
     }
@@ -190,7 +189,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (!KzgPolynomialCommitments.AreProofsValid(blobsBundle.Blobs, blobsBundle.Commitments, blobsBundle.Proofs))
+        if (!IBlobProofsManager.For(ProofVersion.V1).ValidateProofs(new ShardBlobNetworkWrapper(blobsBundle.Blobs, blobsBundle.Commitments, blobsBundle.Proofs, ProofVersion.V1)))
         {
             error = "Invalid KZG proofs";
             return false;

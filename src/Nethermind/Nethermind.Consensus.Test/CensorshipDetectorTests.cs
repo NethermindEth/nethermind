@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
@@ -13,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -31,7 +33,7 @@ namespace Nethermind.Consensus.Test;
 public class CensorshipDetectorTests
 {
     private ILogManager _logManager;
-    private WorldState _stateProvider;
+    private IWorldState _stateProvider;
     private IBlockTree _blockTree;
     private IBlockProcessor _blockProcessor;
     private ISpecProvider _specProvider;
@@ -44,16 +46,15 @@ public class CensorshipDetectorTests
     public void Setup()
     {
         _logManager = LimboLogs.Instance;
-        TrieStore trieStore = new(new MemDb(), _logManager);
-        MemDb codeDb = new();
-        _stateProvider = new WorldState(trieStore, codeDb, _logManager);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
         _blockProcessor = Substitute.For<IBlockProcessor>();
     }
 
     [TearDown]
-    public void TearDown()
+    public async Task TearDown()
     {
-        _txPool.Dispose();
+        await _txPool.DisposeAsync();
         _censorshipDetector.Dispose();
     }
 

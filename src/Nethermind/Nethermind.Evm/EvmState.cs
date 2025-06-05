@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.State;
 
@@ -20,7 +19,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     private static readonly StackPool _stackPool = new();
 
     public byte[]? DataStack;
-    public int[]? ReturnStack;
+    public ReturnState[]? ReturnStack;
 
     public long GasAvailable { get; set; }
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
@@ -28,10 +27,10 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public long Refund { get; set; }
 
     public int DataStackHead;
-
     public int ReturnStackHead;
     internal ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv
     public int ProgramCounter { get; set; }
+    public int FunctionIndex { get; set; }
     public bool IsTopLevel { get; private set; } // TODO: move to CallEnv
     private bool _canRestore;
     public bool IsStatic { get; private set; } // TODO: move to CallEnv
@@ -40,14 +39,15 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 
     private bool _isDisposed = true;
 
+    private ExecutionEnvironment _env;
     private EvmPooledMemory _memory;
     private Snapshot _snapshot;
-    private ExecutionEnvironment _env;
     private StackAccessTracker _accessTracker;
 
 #if DEBUG
     private StackTrace? _creationStackTrace;
 #endif
+
     /// <summary>
     /// Rent a top level <see cref="EvmState"/>.
     /// </summary>
@@ -63,13 +63,13 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             gasAvailable,
             outputDestination: 0L,
             outputLength: 0L,
-            executionType: executionType,
+            executionType,
             isTopLevel: true,
             isStatic: false,
             isCreateOnPreExistingAccount: false,
-            snapshot: snapshot,
-            env: env,
-            stateForAccessLists: accessedItems);
+            snapshot,
+            env,
+            accessedItems);
         return state;
     }
 
@@ -88,23 +88,22 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         in StackAccessTracker stateForAccessLists)
     {
         EvmState state = Rent();
-
         state.Initialize(
             gasAvailable,
             outputDestination,
             outputLength,
             executionType,
             isTopLevel: false,
-            isStatic: isStatic,
-            isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
-            snapshot: snapshot,
-            env: env,
-            stateForAccessLists: stateForAccessLists);
-
+            isStatic,
+            isCreateOnPreExistingAccount,
+            snapshot,
+            env,
+            stateForAccessLists);
         return state;
     }
 
-    private static EvmState Rent() => _statePool.TryDequeue(out EvmState state) ? state : new EvmState();
+    private static EvmState Rent()
+        => _statePool.TryDequeue(out EvmState state) ? state : new EvmState();
 
     private void Initialize(
         long gasAvailable,
@@ -126,6 +125,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         ReturnStackHead = 0;
         ExecutionType = executionType;
         ProgramCounter = 0;
+        FunctionIndex = 0;
         IsTopLevel = isTopLevel;
         _canRestore = !isTopLevel;
         IsStatic = isStatic;
@@ -140,24 +140,15 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
         }
         _accessTracker.TakeSnapshot();
 
-        // Should be disposed when being initialized
         if (!_isDisposed)
-        {
-            ThrowIfNotUninitialized();
-        }
-        // Mark revived
-        _isDisposed = false;
-
-#if DEBUG
-        _creationStackTrace = new();
-#endif
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowIfNotUninitialized()
         {
             throw new InvalidOperationException("Already in use");
         }
+        _isDisposed = false;
+
+#if DEBUG
+        _creationStackTrace = new StackTrace();
+#endif
     }
 
     public Address From => ExecutionType switch
@@ -169,7 +160,8 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     };
 
     public Address To => Env.CodeSource ?? Env.ExecutingAccount;
-    internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
+    internal bool IsPrecompile => Env.CodeInfo?.IsPrecompile ?? false;
+
     public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
     public ref readonly ExecutionEnvironment Env => ref _env;
     public ref EvmPooledMemory Memory => ref _memory; // TODO: move to CallEnv
@@ -177,12 +169,13 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 
     public void Dispose()
     {
-        // Shouldn't be called multiple times
         Debug.Assert(!_isDisposed);
-
-        if (_isDisposed) return;
-
+        if (_isDisposed)
+        {
+            return;
+        }
         _isDisposed = true;
+
         if (DataStack is not null)
         {
             // Only return if initialized
@@ -190,13 +183,13 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
             DataStack = null;
             ReturnStack = null;
         }
+
         if (_canRestore)
         {
             // if we didn't commit and we are not top level, then we need to restore and drop the changes done in this call
             _accessTracker.Restore();
         }
         _memory.Dispose();
-        // Blank refs to not hold against GC
         _memory = default;
         _accessTracker = default;
         _env = default;
@@ -222,7 +215,6 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public void InitializeStacks()
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-
         if (DataStack is null)
         {
             (DataStack, ReturnStack) = _stackPool.RentStacks();
@@ -232,8 +224,14 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
     public void CommitToParent(EvmState parentState)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-
         parentState.Refund += Refund;
         _canRestore = false; // we can't restore if we committed
+    }
+
+    public struct ReturnState
+    {
+        public int Index;
+        public int Offset;
+        public int Height;
     }
 }

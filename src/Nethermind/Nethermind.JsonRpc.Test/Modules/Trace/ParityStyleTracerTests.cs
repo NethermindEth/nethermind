@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -32,13 +33,18 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using Nethermind.Facade;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core.Test;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace;
 
 [Parallelizable(ParallelScope.Self)]
 public class ParityStyleTracerTests
 {
+#pragma warning disable NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private BlockchainProcessor? _processor;
+#pragma warning restore NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private BlockTree? _blockTree;
     private Tracer? _tracer;
     private IPoSSwitcher? _poSSwitcher;
@@ -56,29 +62,29 @@ public class ParityStyleTracerTests
             .WithSpecProvider(specProvider)
             .TestObject;
 
-        MemDb stateDb = new();
-        MemDb codeDb = new();
-        ITrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance).AsReadOnly();
-        WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
-        _stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
+        IDbProvider dbProvider = TestMemDbProvider.Init();
+        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        _stateReader = worldStateManager.GlobalStateReader;
 
         BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, LimboLogs.Instance);
+        VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance);
         TransactionProcessor transactionProcessor = new(specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
         _poSSwitcher = Substitute.For<IPoSSwitcher>();
-        BlockProcessor blockProcessor = new(
+        BlockProcessor blockProcessor = new BlockProcessor(
             specProvider,
             Always.Valid,
             new MergeRpcRewardCalculator(NoBlockRewards.Instance, _poSSwitcher),
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
-            transactionProcessor,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             new BlockhashStore(specProvider, stateProvider),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor));
 
         RecoverSignatures txRecovery = new(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, specProvider, LimboLogs.Instance);
         _processor = new BlockchainProcessor(_blockTree, blockProcessor, txRecovery, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);
@@ -93,7 +99,7 @@ public class ParityStyleTracerTests
     }
 
     [TearDown]
-    public void TearDown() => _processor?.Dispose();
+    public async Task TearDownAsync() => await (_processor?.DisposeAsync() ?? default);
 
     [Test]
     public void Can_trace_raw_parity_style()

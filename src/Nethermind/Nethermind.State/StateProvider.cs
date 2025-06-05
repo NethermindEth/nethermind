@@ -4,11 +4,15 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -22,6 +26,8 @@ namespace Nethermind.State
 {
     internal class StateProvider
     {
+        private static readonly UInt256 _zero = UInt256.Zero;
+
         private readonly Dictionary<AddressAsKey, Stack<int>> _intraTxCache = new();
         private readonly HashSet<AddressAsKey> _committedThisRound = new();
         private readonly HashSet<AddressAsKey> _nullAccountReads = new();
@@ -35,7 +41,9 @@ namespace Nethermind.State
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
-        private readonly IKeyValueStore _codeDb;
+        private readonly IKeyValueStoreWithBatching _codeDb;
+        private Dictionary<Hash256AsKey, byte[]> _codeBatch;
+        private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
 
         private readonly List<Change> _changes = new(Resettable.StartCapacity);
         internal readonly StateTree _tree;
@@ -44,7 +52,7 @@ namespace Nethermind.State
         private readonly bool _populatePreBlockCache;
 
         public StateProvider(IScopedTrieStore? trieStore,
-            IKeyValueStore codeDb,
+            IKeyValueStoreWithBatching codeDb,
             ILogManager logManager,
             StateTree? stateTree = null,
             ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null,
@@ -129,42 +137,45 @@ namespace Nethermind.State
             return account is null ? throw new InvalidOperationException($"Account {address} is null when accessing storage root") : account.StorageRoot;
         }
 
-        public UInt256 GetBalance(Address address)
+        public ref readonly UInt256 GetBalance(Address address)
         {
             Account? account = GetThroughCache(address);
-            return account?.Balance ?? UInt256.Zero;
+            return ref account is not null ? ref account.Balance : ref _zero;
         }
 
-        public void InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
-            _needsStateRootUpdate = true;
+            bool inserted = false;
 
             // Don't reinsert if already inserted. This can be the case when the same
             // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
             // or people copy and pasting popular contracts
             if (!_codeInsertFilter.Get(codeHash))
             {
-                if (!_codeDb.PreferWriteByArray)
+                if (_codeBatch is null)
                 {
-                    _codeDb.PutSpan(codeHash.Bytes, code.Span);
+                    _codeBatch = new(Hash256AsKeyComparer.Instance);
+                    _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
                 }
-                else if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
+                if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
                         && codeArray.Offset == 0
                         && codeArray.Count == code.Length)
                 {
-                    _codeDb[codeHash.Bytes] = codeArray.Array;
+                    _codeBatchAlternate[codeHash] = codeArray.Array;
                 }
                 else
                 {
-                    _codeDb[codeHash.Bytes] = code.ToArray();
+                    _codeBatchAlternate[codeHash] = code.ToArray();
                 }
 
                 _codeInsertFilter.Set(codeHash);
+                inserted = true;
             }
 
             Account? account = GetThroughCache(address) ?? throw new InvalidOperationException($"Account {address} is null when updating code hash");
             if (account.CodeHash.ValueHash256 != codeHash)
             {
+                _needsStateRootUpdate = true;
                 if (_logger.IsDebug) _logger.Debug($"  Update {address} C {account.CodeHash} -> {codeHash}");
                 Account changedAccount = account.WithChangedCodeHash((Hash256)codeHash);
                 PushUpdate(address, changedAccount);
@@ -177,6 +188,8 @@ namespace Nethermind.State
                     PushTouch(address, account, spec, account.Balance.IsZero);
                 }
             }
+
+            return inserted;
         }
 
         private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
@@ -225,7 +238,7 @@ namespace Nethermind.State
             UInt256 newBalance = isSubtracting ? account.Balance - balanceChange : account.Balance + balanceChange;
 
             Account changedAccount = account.WithChangedBalance(newBalance);
-            if (_logger.IsTrace) _logger.Trace($"  Update {address} B {account.Balance} -> {newBalance} ({(isSubtracting ? "-" : "+")}{balanceChange})");
+            if (_logger.IsTrace) _logger.Trace($"  Update {address} B {account.Balance.ToHexString(skipLeadingZeros: true)} -> {newBalance.ToHexString(skipLeadingZeros: true)} ({(isSubtracting ? "-" : "+")}{balanceChange})");
             PushUpdate(address, changedAccount);
         }
 
@@ -264,7 +277,7 @@ namespace Nethermind.State
             _needsStateRootUpdate = true;
             Account? account = GetThroughCache(address) ?? throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
             Account changedAccount = account.WithChangedNonce(account.Nonce + delta);
-            if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
+            if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce.ToHexString(skipLeadingZeros: true)} -> {changedAccount.Nonce.ToHexString(skipLeadingZeros: true)}");
             PushUpdate(address, changedAccount);
         }
 
@@ -273,25 +286,28 @@ namespace Nethermind.State
             _needsStateRootUpdate = true;
             Account? account = GetThroughCache(address) ?? throw new InvalidOperationException($"Account {address} is null when decrementing nonce.");
             Account changedAccount = account.WithChangedNonce(account.Nonce - delta);
-            if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
+            if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce.ToHexString(skipLeadingZeros: true)} -> {changedAccount.Nonce.ToHexString(skipLeadingZeros: true)}");
             PushUpdate(address, changedAccount);
         }
 
-        public Hash256 GetCodeHash(Address address)
+        public ref readonly ValueHash256 GetCodeHash(Address address)
         {
             Account? account = GetThroughCache(address);
-            return account?.CodeHash ?? Keccak.OfAnEmptyString;
+            return ref account is not null ? ref account.CodeHash.ValueHash256 : ref Keccak.OfAnEmptyString.ValueHash256;
         }
 
-        public byte[] GetCode(Hash256 codeHash)
-        {
-            byte[]? code = codeHash == Keccak.OfAnEmptyString ? [] : _codeDb[codeHash.Bytes];
-            return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
-        }
+        public byte[] GetCode(in ValueHash256 codeHash)
+            => GetCodeCore(in codeHash);
 
-        public byte[] GetCode(ValueHash256 codeHash)
+        private byte[] GetCodeCore(in ValueHash256 codeHash)
         {
-            byte[]? code = codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : _codeDb[codeHash.Bytes];
+            if (codeHash == Keccak.OfAnEmptyString.ValueHash256) return [];
+
+            if (_codeBatch is null || !_codeBatchAlternate.TryGetValue(codeHash, out byte[]? code))
+            {
+                code = _codeDb[codeHash.Bytes];
+            }
+
             return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
         }
 
@@ -303,7 +319,7 @@ namespace Nethermind.State
                 return [];
             }
 
-            return GetCode(account.CodeHash);
+            return GetCode(in account.CodeHash.ValueHash256);
         }
 
         public void DeleteAccount(Address address)
@@ -381,7 +397,7 @@ namespace Nethermind.State
         public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
         {
             _needsStateRootUpdate = true;
-            if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance} and nonce {nonce}");
+            if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance.ToHexString(skipLeadingZeros: true)} and nonce {nonce.ToHexString(skipLeadingZeros: true)}");
             Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance);
             PushNew(address, account);
         }
@@ -413,26 +429,22 @@ namespace Nethermind.State
             Commit(releaseSpec, NullStateTracer.Instance, commitRoots, isGenesis);
         }
 
-        private struct ChangeTrace
+        private struct ChangeTrace(Account? before, Account? after)
         {
-            public ChangeTrace(Account? before, Account? after)
+            public ChangeTrace(Account? after) : this(null, after)
             {
-                After = after;
-                Before = before;
             }
 
-            public ChangeTrace(Account? after)
-            {
-                After = after;
-                Before = null;
-            }
-
-            public Account? Before { get; set; }
-            public Account? After { get; set; }
+            public Account? Before { get; set; } = before;
+            public Account? After { get; set; } = after;
         }
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
         {
+            Task codeFlushTask = !commitRoots || _codeBatch is null || _codeBatch.Count == 0
+                ? Task.CompletedTask
+                : CommitCodeAsync();
+
             var currentPosition = _changes.Count - 1;
             if (currentPosition < 0)
             {
@@ -502,7 +514,7 @@ namespace Nethermind.State
                         {
                             if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
                             {
-                                if (_logger.IsTrace) _logger.Trace($"  Commit remove empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                                if (_logger.IsTrace) _logger.Trace($"  Commit remove empty {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
                                 SetState(change.Address, null);
                                 if (isTracing)
                                 {
@@ -511,7 +523,7 @@ namespace Nethermind.State
                             }
                             else
                             {
-                                if (_logger.IsTrace) _logger.Trace($"  Commit update {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce} C = {change.Account.CodeHash}");
+                                if (_logger.IsTrace) _logger.Trace($"  Commit update {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)} C = {change.Account.CodeHash}");
                                 SetState(change.Address, change.Account);
                                 if (isTracing)
                                 {
@@ -525,7 +537,7 @@ namespace Nethermind.State
                         {
                             if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
                             {
-                                if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                                if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
                                 SetState(change.Address, change.Account);
                                 if (isTracing)
                                 {
@@ -588,6 +600,34 @@ namespace Nethermind.State
             {
                 FlushToTree();
             }
+
+            codeFlushTask.GetAwaiter().GetResult();
+
+            Task CommitCodeAsync()
+            {
+                Dictionary<Hash256AsKey, byte[]> dict = Interlocked.Exchange(ref _codeBatch, null);
+                if (dict is null) return Task.CompletedTask;
+                _codeBatchAlternate = default;
+
+                return Task.Run(() =>
+                {
+                    using (var batch = _codeDb.StartWriteBatch())
+                    {
+                        // Insert ordered for improved performance
+                        foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
+                        {
+                            batch.PutSpan(kvp.Key.Value.Bytes, kvp.Value);
+                        }
+                    }
+
+                    // Reuse Dictionary if not already re-initialized
+                    dict.Clear();
+                    if (Interlocked.CompareExchange(ref _codeBatch, dict, null) is null)
+                    {
+                        _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
+                    }
+                });
+            }
         }
 
         private void FlushToTree()
@@ -639,12 +679,12 @@ namespace Nethermind.State
                         ? null
                         : beforeCodeHash == Keccak.OfAnEmptyString
                             ? []
-                            : _codeDb[beforeCodeHash.Bytes];
+                            : GetCodeCore(in beforeCodeHash.ValueHash256);
                     byte[]? afterCode = afterCodeHash is null
                         ? null
                         : afterCodeHash == Keccak.OfAnEmptyString
                             ? []
-                            : _codeDb[afterCodeHash.Bytes];
+                            : GetCodeCore(in afterCodeHash.ValueHash256);
 
                     if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
                     {
@@ -862,6 +902,7 @@ namespace Nethermind.State
             if (resetBlockChanges)
             {
                 _blockChanges.Clear();
+                _codeBatch?.Clear();
             }
             _intraTxCache.Clear();
             _committedThisRound.Clear();

@@ -4,40 +4,47 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Collections
 {
     /// <summary>
-    /// <see cref="ISet{T}"/> of items <see cref="T"/> with ability to store and restore state snapshots.
+    /// <see cref="ICollection{T}"/> of items <see cref="T"/> with ability to store and restore state snapshots.
     /// </summary>
     /// <typeparam name="T">Item type.</typeparam>
     /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
-    public class JournalSet<T> : IReadOnlySet<T>, ICollection<T>, IJournal<int>
+    public sealed class JournalSet<T> : IReadOnlyCollection<T>, ICollection<T>, IJournal<int>
     {
-        private readonly List<T> _items = new();
-        private readonly HashSet<T> _set = new();
+        private readonly List<T> _items = [];
+        private readonly HashSet<T> _set = [];
         public int TakeSnapshot() => Position;
 
         private int Position => Count - 1;
 
+        [SkipLocalsInit]
         public void Restore(int snapshot)
         {
-            if (snapshot >= Count)
+            if (snapshot >= _set.Count)
             {
-                throw new InvalidOperationException($"{nameof(JournalCollection<T>)} tried to restore snapshot {snapshot} beyond current position {Count}");
+                ThrowInvalidRestore(snapshot);
             }
 
-            int current = Position;
-
             // we use dictionary to remove items added after snapshot
-            for (int i = snapshot + 1; i <= current; i++)
+            foreach (T item in CollectionsMarshal.AsSpan(_items)[(snapshot + 1)..])
             {
-                T item = _items[i];
                 _set.Remove(item);
             }
 
-            _items.RemoveRange(snapshot + 1, current - snapshot);
+            CollectionsMarshal.SetCount(_items, snapshot + 1);
         }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private void ThrowInvalidRestore(int snapshot)
+            => throw new InvalidOperationException($"{nameof(JournalSet<T>)} tried to restore snapshot {snapshot} beyond current position {Count}");
 
         public bool Add(T item)
         {
@@ -65,11 +72,5 @@ namespace Nethermind.Core.Collections
         void ICollection<T>.Add(T item) => Add(item);
         public bool Contains(T item) => _set.Contains(item);
         public void CopyTo(T[] array, int arrayIndex) => _set.CopyTo(array, arrayIndex);
-        public bool IsProperSubsetOf(IEnumerable<T> other) => _set.IsProperSubsetOf(other);
-        public bool IsProperSupersetOf(IEnumerable<T> other) => _set.IsProperSupersetOf(other);
-        public bool IsSubsetOf(IEnumerable<T> other) => _set.IsSubsetOf(other);
-        public bool IsSupersetOf(IEnumerable<T> other) => _set.IsSupersetOf(other);
-        public bool Overlaps(IEnumerable<T> other) => _set.Overlaps(other);
-        public bool SetEquals(IEnumerable<T> other) => _set.SetEquals(other);
     }
 }

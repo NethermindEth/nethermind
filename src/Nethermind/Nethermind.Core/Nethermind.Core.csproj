@@ -13,6 +13,7 @@
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
     <PackageReference Include="Nethermind.Crypto.SecP256k1" />
     <PackageReference Include="Nethermind.Numerics.Int256" />
+    <PackageReference Include="NonBlocking" />
     <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" />
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
   </ItemGroup>

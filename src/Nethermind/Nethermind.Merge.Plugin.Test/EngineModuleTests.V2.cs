@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -31,10 +32,10 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [TestCase(
-        "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133",
-        "0x6d8a107ccab7a785de89f58db49064ee091df5d2b6306fe55db666e75a0e9f68",
-        "0x03e662d795ee2234c492ca4a08de03b1d7e3e0297af81a76582e16de75cdfc51",
-        "0xabd41416f2618ad0")]
+        "0x73b538422b679dae9148c7de383813d96182bcdf2636955096a19da1ffe97967",
+        "0x43b85f31b7441048476f2dd80f7d58486a0ca37b7f421e5107e6cbf26032b74b",
+        "0x0cb5b20122ce36c5d13058d8d6ec33b9fee729730f41a3adeacfb76dd8116ab7",
+        "0x0c26dbd2461b7b5d")]
     public virtual async Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
@@ -503,8 +504,13 @@ public partial class EngineModuleTests
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
         blockTree.FindBlock(Arg.Any<long>()).Returns(input.Impl);
 
-        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
-        chain.BlockTree = blockTree;
+        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) =>
+            builder
+                .AddSingleton<IBlockTree>(blockTree)
+                .AddSingleton(new TestBlockchain.Configuration()
+                {
+                    SuggestGenesisOnStart = false,
+                }));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
@@ -522,8 +528,12 @@ public partial class EngineModuleTests
             .Returns(static i => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject);
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
 
-        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
-        chain.BlockTree = blockTree;
+        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) => builder
+            .AddSingleton<IBlockTree>(blockTree)
+            .AddSingleton(new TestBlockchain.Configuration()
+            {
+                SuggestGenesisOnStart = false,
+            }));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =

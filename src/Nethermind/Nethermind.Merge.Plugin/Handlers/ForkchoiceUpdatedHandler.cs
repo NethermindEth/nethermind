@@ -50,7 +50,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private readonly IPeerRefresher _peerRefresher;
     private readonly ISpecProvider _specProvider;
     private readonly bool _simulateBlockProduction;
-    private readonly ulong _secondsPerSlot;
     private readonly ISyncPeerPool _syncPeerPool;
     private readonly IHistoryPruner? _historyPruner;
 
@@ -69,7 +68,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         ISyncPeerPool syncPeerPool,
         ILogManager logManager,
         IHistoryPruner? historyPruner,
-        ulong secondsPerSlot,
         bool simulateBlockProduction = false)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -85,7 +83,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _specProvider = specProvider;
         _syncPeerPool = syncPeerPool;
         _simulateBlockProduction = simulateBlockProduction;
-        _secondsPerSlot = secondsPerSlot;
         _historyPruner = historyPruner;
         _logger = logManager.GetClassLogger();
     }
@@ -312,17 +309,11 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private ResultWrapper<ForkchoiceUpdatedV1Result> StartBuildingPayload(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
     {
         string? payloadId = null;
+        bool isPayloadSimulated = _simulateBlockProduction && payloadAttributes is null;
 
-        if (_simulateBlockProduction)
+        if (isPayloadSimulated)
         {
-            payloadAttributes ??= new PayloadAttributes()
-            {
-                Timestamp = newHeadBlock.Timestamp + _secondsPerSlot,
-                ParentBeaconBlockRoot = newHeadBlock.ParentHash, // it doesn't matter
-                PrevRandao = newHeadBlock.ParentHash ?? Keccak.Zero, // it doesn't matter
-                Withdrawals = [],
-                SuggestedFeeRecipient = Address.Zero
-            };
+            payloadAttributes = newHeadBlock.Header.GenerateSimulatedPayload();
         }
 
         if (payloadAttributes is not null)
@@ -337,7 +328,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         }
 
         _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
-        return ForkchoiceUpdatedV1Result.Valid(payloadId, forkchoiceState.HeadBlockHash);
+        return ForkchoiceUpdatedV1Result.Valid(isPayloadSimulated ? null : payloadId, forkchoiceState.HeadBlockHash);
     }
 
     private ResultWrapper<ForkchoiceUpdatedV1Result>? ValidateAttributes(PayloadAttributes? payloadAttributes, int version)

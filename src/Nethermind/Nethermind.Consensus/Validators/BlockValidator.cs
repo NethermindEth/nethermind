@@ -238,7 +238,7 @@ public class BlockValidator(
     public bool ValidateWithdrawals(Block block, out string? error) =>
         ValidateWithdrawals(block, _specProvider.GetSpec(block.Header), out error);
 
-    private bool ValidateWithdrawals(Block block, IReleaseSpec spec, out string? error)
+    protected virtual bool ValidateWithdrawals(Block block, IReleaseSpec spec, out string? error)
     {
         if (spec.WithdrawalsEnabled && block.Withdrawals is null)
         {
@@ -355,10 +355,32 @@ public class BlockValidator(
         return true;
     }
 
-    public static bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
-        ValidateTxRootMatchesTxs(header, toBeValidated, out _)
-        && ValidateUnclesHashMatches(header, toBeValidated, out _)
-        && ValidateWithdrawalsHashMatches(header, toBeValidated, out _);
+    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
+        ValidateBodyAgainstHeader(header, toBeValidated, out _);
+
+    public virtual bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? errorMessage)
+    {
+        if (!ValidateTxRootMatchesTxs(header, toBeValidated, out Hash256? txRoot))
+        {
+            errorMessage = BlockErrorMessages.InvalidTxRoot(header.TxRoot, txRoot);
+            return false;
+        }
+
+        if (!ValidateUnclesHashMatches(header, toBeValidated, out _))
+        {
+            errorMessage = BlockErrorMessages.InvalidUnclesHash;
+            return false;
+        }
+
+        if (!ValidateWithdrawalsHashMatches(header, toBeValidated, out Hash256? withdrawalsRoot))
+        {
+            errorMessage = BlockErrorMessages.InvalidWithdrawalsRoot(header.WithdrawalsRoot, withdrawalsRoot);
+            return false;
+        }
+
+        errorMessage = null;
+        return true;
+    }
 
     public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot) =>
         ValidateTxRootMatchesTxs(block.Header, block.Body, out txRoot);

@@ -17,6 +17,9 @@ namespace Nethermind.State;
 /// </summary>
 public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 {
+    new ref readonly UInt256 GetBalance(Address address);
+    new ref readonly ValueHash256 GetCodeHash(Address address);
+
     /// <summary>
     /// Return the original persistent storage value from the storage cell
     /// </summary>
@@ -86,7 +89,18 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
     void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default);
 
-    void InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
+    /// <summary>
+    /// Inserts the given smart contract code into the system at the specified address,
+    /// associating it with a unique code hash.
+    /// </summary>
+    /// <param name="address">The target address where the code is to be inserted.</param>
+    /// <param name="codeHash">The hash representing the code content, used for deduplication and reference.</param>
+    /// <param name="code">The bytecode to be inserted.</param>
+    /// <param name="spec">The current release specification which may affect validation or processing rules.</param>
+    /// <param name="isGenesis">Indicates whether the insertion is part of the genesis block setup.</param>
+    /// <returns>True if the code was inserted to the database at that hash; otherwise false if it was already there.
+    /// Note: This is different from whether the account has its hash updated</returns>
+    bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
 
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 

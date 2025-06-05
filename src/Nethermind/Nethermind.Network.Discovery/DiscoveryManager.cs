@@ -4,10 +4,11 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -27,7 +28,7 @@ public class DiscoveryManager : IDiscoveryManager
     private readonly ConcurrentDictionary<Hash256, INodeLifecycleManager> _nodeLifecycleManagers = new();
     private readonly INodeTable _nodeTable;
     private readonly INetworkStorage _discoveryStorage;
-    public ClockKeyCache<IDiscoveryManager.IpAddressAsKey> NodesFilter { get; }
+    public NodeFilter NodesFilter { get; }
 
     private readonly ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMsg>> _waitingEvents = new();
     private readonly Func<Hash256, Node, INodeLifecycleManager> _createNodeLifecycleManager;
@@ -37,7 +38,7 @@ public class DiscoveryManager : IDiscoveryManager
     public DiscoveryManager(
         INodeLifecycleManagerFactory? nodeLifecycleManagerFactory,
         INodeTable? nodeTable,
-        INetworkStorage? discoveryStorage,
+        [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage? discoveryStorage,
         IDiscoveryConfig? discoveryConfig,
         INetworkConfig? networkConfig,
         ILogManager? logManager)

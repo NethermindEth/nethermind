@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using DotNetty.Buffers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -67,9 +66,10 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     /// </summary>
     /// <param name="cancellation"></param>
     /// <returns>Returns <see cref="true"/> if the expected accumulator matches, and <see cref="false"/> if there is no match.</returns>
-    public async Task<ValueHash256> VerifyContent(ISpecProvider specProvider, IBlockValidator blockValidator, CancellationToken cancellation = default)
+    public async Task<ValueHash256> VerifyContent(ISpecProvider specProvider, IBlockValidator blockValidator, int verifyConcurrency = 0, CancellationToken cancellation = default)
     {
-        if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
+        ArgumentNullException.ThrowIfNull(specProvider);
+        if (verifyConcurrency == 0) verifyConcurrency = Environment.ProcessorCount;
 
         ValueHash256 accumulator = ReadAccumulator();
 
@@ -79,19 +79,19 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
         ConcurrentQueue<long> blockNumbers = new ConcurrentQueue<long>(EnumerateBlockNumber());
 
-        using ArrayPoolList<Task> workers = Enumerable.Range(0, Environment.ProcessorCount).Select((_) => Task.Run(async () =>
+        using ArrayPoolList<Task> workers = Enumerable.Range(0, verifyConcurrency).Select((_) => Task.Run(async () =>
         {
             while (blockNumbers.TryDequeue(out long blockNumber))
             {
                 EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
                 EntryReadResult err = result.Value;
 
-                if (!BlockValidator.ValidateBodyAgainstHeader(err.Block.Header, err.Block.Body))
+                if (!blockValidator.ValidateBodyAgainstHeader(err.Block.Header, err.Block.Body, out string? error))
                 {
-                    throw new EraVerificationException($"Mismatched block body againts header. Block number {blockNumber}.");
+                    throw new EraVerificationException($"Mismatched block body againts header: {error}. Block number {blockNumber}.");
                 }
 
-                if (!blockValidator.ValidateOrphanedBlock(err.Block, out string? error))
+                if (!blockValidator.ValidateOrphanedBlock(err.Block, out error))
                 {
                     throw new EraVerificationException($"Invalid block {error}");
                 }
@@ -107,11 +107,11 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
                 // Note: Header.Hash is calculated by HeaderDecoder.
                 blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
             }
-        }, cancellation)).ToPooledList(Environment.ProcessorCount);
+        }, cancellation)).ToPooledList(verifyConcurrency);
         await Task.WhenAll(workers.AsSpan());
 
         using AccumulatorCalculator calculator = new();
-        foreach (var valueTuple in blockHashes)
+        foreach (var valueTuple in blockHashes.AsSpan())
         {
             calculator.Add(valueTuple.Item1, valueTuple.Item2);
         }

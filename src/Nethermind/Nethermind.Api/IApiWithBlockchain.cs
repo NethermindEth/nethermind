@@ -17,7 +17,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Era1;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
@@ -36,35 +35,39 @@ namespace Nethermind.Api
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
         IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         IBlockProducer? BlockProducer { get; set; }
-        IBlockProducerRunner? BlockProducerRunner { get; set; }
-        IBlockValidator? BlockValidator { get; set; }
+        IBlockProducerRunner BlockProducerRunner { get; set; }
+
+        [SkipServiceCollection]
+        IBlockValidator BlockValidator { get; }
+
         IEnode? Enode { get; set; }
         IFilterStore? FilterStore { get; set; }
         IFilterManager? FilterManager { get; set; }
-        IUnclesValidator? UnclesValidator { get; set; }
-        IHeaderValidator? HeaderValidator { get; set; }
-        IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
-        IRewardCalculatorSource? RewardCalculatorSource { get; set; }
-        ISealer? Sealer { get; set; }
-        ISealValidator? SealValidator { get; set; }
-        ISealEngine SealEngine { get; set; }
-        IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
-        IStateReader? StateReader { get; set; }
 
-        IWorldStateManager? WorldStateManager { get; set; }
-        INodeStorage? MainNodeStorage { get; set; }
-        CompositePruningTrigger? PruningTrigger { get; set; }
-        IVerifyTrieStarter? VerifyTrieStarter { get; set; }
+        [SkipServiceCollection]
+        IUnclesValidator? UnclesValidator { get; }
+
+        [SkipServiceCollection]
+        IHeaderValidator? HeaderValidator { get; }
+        IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
+        IRewardCalculatorSource RewardCalculatorSource { get; }
+        ISealer Sealer { get; }
+        ISealValidator SealValidator { get; }
+        ISealEngine SealEngine { get; }
+        IStateReader? StateReader { get; }
+
+        IWorldStateManager? WorldStateManager { get; }
         IMainProcessingContext? MainProcessingContext { get; set; }
         ITxSender? TxSender { get; set; }
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         CompositeTxGossipPolicy TxGossipPolicy { get; }
-        IHealthHintService? HealthHintService { get; set; }
         IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
-        TxValidator? TxValidator { get; set; }
+
+        [SkipServiceCollection]
+        TxValidator? TxValidator { get; }
 
         /// <summary>
         /// Manager of block finalization
@@ -74,12 +77,14 @@ namespace Nethermind.Api
         /// </remarks>
         IBlockFinalizationManager? FinalizationManager { get; set; }
 
-        IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
+        IBlockProducerEnvFactory BlockProducerEnvFactory { get; }
         IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
+        IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory { get; }
 
-        IGasPriceOracle? GasPriceOracle { get; set; }
+        IGasPriceOracle GasPriceOracle { get; }
 
-        IEthSyncingInfo? EthSyncingInfo { get; set; }
+        [SkipServiceCollection]
+        IEthSyncingInfo? EthSyncingInfo { get; }
 
         IHistoryPruner? HistoryPruner { get; set; }
 

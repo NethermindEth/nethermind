@@ -1798,5 +1798,10 @@ namespace Nethermind.Blockchain
             }
             TryUpdateSyncPivot();
         }
+
+        public long GetLowestBlock()
+        {
+            return _syncConfig.AncientReceiptsBarrierCalc < _syncConfig.AncientBodiesBarrierCalc ? _syncConfig.AncientReceiptsBarrierCalc : _syncConfig.AncientBodiesBarrierCalc;
+        }
     }
 }

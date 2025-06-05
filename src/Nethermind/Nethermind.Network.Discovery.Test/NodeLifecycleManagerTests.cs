@@ -10,7 +10,6 @@ using FluentAssertions;
 using MathNet.Numerics.Random;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -86,7 +85,7 @@ public class NodeLifecycleManagerTests
         _discoveryManager.MsgSender = udpClient;
 
         _discoveryManagerMock = Substitute.For<IDiscoveryManager>();
-        _discoveryManagerMock.NodesFilter.Returns(new ClockKeyCache<IDiscoveryManager.IpAddressAsKey>(16));
+        _discoveryManagerMock.NodesFilter.Returns(new NodeFilter(16));
     }
 
     [Test]
@@ -146,7 +145,7 @@ public class NodeLifecycleManagerTests
 
         Assert.That(sentMsg, Is.Not.Null);
         _nodeTable.Buckets[0].BondedItemsCount.Should().Be(32);
-        sentMsg!.Nodes.Length.Should().Be(12);
+        sentMsg!.Nodes.Count.Should().Be(12);
     }
 
     [Test]

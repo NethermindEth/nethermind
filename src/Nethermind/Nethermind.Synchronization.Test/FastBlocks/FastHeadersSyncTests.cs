@@ -19,12 +19,14 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SyncLimits;
+using Nethermind.Stats.SyncLimits;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -807,6 +809,35 @@ public class FastHeadersSyncTests
 
         Action act = () => feed.InitializeFeed();
         act.Should().Throw<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task Should_Limit_BatchSize_ToEstimate()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        using HeadersSyncFeed feed = new(
+            blockTree: blockTree,
+            syncPeerPool: syncPeerPool,
+            syncConfig: new TestSyncConfig
+            {
+                FastSync = true,
+                PivotNumber = "1000",
+                PivotHash = TestItem.KeccakA.ToString(),
+                PivotTotalDifficulty = "1000",
+            },
+            syncReport: new NullSyncReport(),
+            totalDifficultyStrategy: new CumulativeTotalDifficultyStrategy(),
+            poSSwitcher: Substitute.For<IPoSSwitcher>(),
+            logManager: LimboLogs.Instance);
+        blockTree.SyncPivot.Returns((1000, TestItem.KeccakB));
+
+        syncPeerPool.EstimateRequestLimit(RequestType.Headers, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Headers, default)
+            .Returns(Task.FromResult<int?>(5));
+
+        feed.InitializeFeed();
+        HeadersSyncBatch? req = await feed.PrepareRequest(default);
+        req!.RequestSize.Should().Be(5);
     }
 
     private class ResettableHeaderSyncFeed : HeadersSyncFeed

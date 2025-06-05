@@ -48,7 +48,7 @@ public class AlwaysCancelTxTracer : ITxTracer
 
     public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) => throw new OperationCanceledException(ErrorMessage);
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportOperationError(EvmExceptionType error) => throw new OperationCanceledException(ErrorMessage);
 
@@ -98,7 +98,7 @@ public class AlwaysCancelTxTracer : ITxTracer
     public void ReportGasUpdateForVmTrace(long refund, long gasAvailable) => throw new OperationCanceledException(ErrorMessage);
     public void ReportRefund(long refund) => throw new OperationCanceledException(ErrorMessage);
     public void ReportExtraGasPressure(long extraGasPressure) => throw new OperationCanceledException(ErrorMessage);
-    public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells) => throw new OperationCanceledException(ErrorMessage);
     public void ReportFees(UInt256 fees, UInt256 burntFees) => throw new OperationCanceledException(ErrorMessage);
     public void Dispose() { }
 }

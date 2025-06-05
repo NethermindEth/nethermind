@@ -23,14 +23,15 @@ public class ZeroSnappyEncoder : MessageToByteEncoder<IByteBuffer>
     {
         byte packetType = input.ReadByte();
 
-        output.EnsureWritable(1 + Snappy.GetMaxCompressedLength(input.ReadableBytes));
+        int maxLength = Snappy.GetMaxCompressedLength(input.ReadableBytes);
+        output.EnsureWritable(1 + maxLength);
         output.WriteByte(packetType);
 
         if (_logger.IsTrace) _logger.Trace($"Compressing with Snappy a message of length {input.ReadableBytes}");
 
         int length = Snappy.Compress(
             input.Array.AsSpan(input.ArrayOffset + input.ReaderIndex, input.ReadableBytes),
-            output.Array.AsSpan(output.ArrayOffset + output.WriterIndex));
+            output.Array.AsSpan(output.ArrayOffset + output.WriterIndex, maxLength));
 
         input.SetReaderIndex(input.ReaderIndex + input.ReadableBytes);
         output.SetWriterIndex(output.WriterIndex + length);

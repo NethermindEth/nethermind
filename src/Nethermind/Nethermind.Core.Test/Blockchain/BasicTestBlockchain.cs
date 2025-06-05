@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Core.Test.Blockchain;
@@ -11,10 +13,10 @@ namespace Nethermind.Core.Test.Blockchain;
 /// </summary>
 public class BasicTestBlockchain : TestBlockchain
 {
-    public static async Task<BasicTestBlockchain> Create(long slotTime = 1)
+    public static async Task<BasicTestBlockchain> Create(Action<ContainerBuilder>? configurer = null)
     {
         BasicTestBlockchain chain = new();
-        await chain.Build(slotTime: slotTime);
+        await chain.Build(configurer: configurer);
         return chain;
     }
 

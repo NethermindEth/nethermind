@@ -4,6 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using Nethermind.Config;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
@@ -12,7 +16,11 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.State.Proofs;
+using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
+
+#nullable enable
 
 namespace Nethermind.Consensus.Processing
 {
@@ -31,12 +39,14 @@ namespace Nethermind.Consensus.Processing
             public BlockProductionTransactionsExecutor(
                 IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
                 ISpecProvider specProvider,
-                ILogManager logManager)
+                ILogManager logManager,
+                long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes)
                 : this(
                     readOnlyTxProcessingEnv.TransactionProcessor,
                     readOnlyTxProcessingEnv.WorldState,
                     specProvider,
-                    logManager)
+                    logManager,
+                    maxTxLengthKilobytes)
             {
             }
 
@@ -44,8 +54,9 @@ namespace Nethermind.Consensus.Processing
                 ITransactionProcessor transactionProcessor,
                 IWorldState stateProvider,
                 ISpecProvider specProvider,
-                ILogManager logManager) : this(transactionProcessor, stateProvider,
-                new BlockProductionTransactionPicker(specProvider), logManager)
+                ILogManager logManager,
+                long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes) : this(transactionProcessor, stateProvider,
+                new BlockProductionTransactionPicker(specProvider, maxTxLengthKilobytes), logManager)
             {
             }
 
@@ -63,41 +74,63 @@ namespace Nethermind.Consensus.Processing
                 remove => txPicker.AddingTransaction -= value;
             }
 
-            public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
-                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+            public virtual TxReceipt[] ProcessTransactions(Block block, in BlockExecutionContext blkCtx, ProcessingOptions processingOptions,
+                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default)
             {
-                IEnumerable<Transaction> transactions = GetTransactions(block);
+                // We start with high number as don't want to resize too much
+                const int defaultTxCount = 512;
 
+                BlockToProduce? blockToProduce = block as BlockToProduce;
+
+                // Don't use blockToProduce.Transactions.Count() as that would fully enumerate which is expensive
+                int txCount = blockToProduce is not null ? defaultTxCount : block.Transactions.Length;
+                IEnumerable<Transaction> transactions = blockToProduce?.Transactions ?? block.Transactions;
+
+                using ArrayPoolList<Transaction> includedTx = new(txCount);
+
+                HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
                 int i = 0;
-                LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
-                BlockExecutionContext blkCtx = new(block.Header, spec);
                 foreach (Transaction currentTx in transactions)
                 {
-                    TxAction action = ProcessTransaction(block, in blkCtx, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
+                    // Check if we have gone over time or the payload has been requested
+                    if (token.IsCancellationRequested) break;
+
+                    TxAction action = ProcessTransaction(block, in blkCtx, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
                     if (action == TxAction.Stop) break;
+
+                    consideredTx.Add(currentTx);
+                    if (action == TxAction.Add)
+                    {
+                        includedTx.Add(currentTx);
+                        if (blockToProduce is not null)
+                        {
+                            blockToProduce.TxByteLength += currentTx.GetLength();
+                        }
+                    }
                 }
 
-                stateProvider.Commit(spec, receiptsTracer);
-
-                SetTransactions(block, transactionsInBlock);
+                block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());
+                if (blockToProduce is not null)
+                {
+                    blockToProduce.Transactions = includedTx.ToArray();
+                }
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
-            protected TxAction ProcessTransaction(
+            private TxAction ProcessTransaction(
                 Block block,
                 in BlockExecutionContext blkCtx,
                 Transaction currentTx,
                 int index,
                 BlockReceiptsTracer receiptsTracer,
                 ProcessingOptions processingOptions,
-                LinkedHashSet<Transaction> transactionsInBlock,
-                bool addToBlock = true)
+                HashSet<Transaction> transactionsInBlock)
             {
                 AddingTxEventArgs args = txPicker.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider);
 
                 if (args.Action != TxAction.Add)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
+                    if (_logger.IsDebug) DebugSkipReason(currentTx, args);
                 }
                 else
                 {
@@ -105,12 +138,8 @@ namespace Nethermind.Consensus.Processing
 
                     if (result)
                     {
-                        if (addToBlock)
-                        {
-                            transactionsInBlock.Add(currentTx);
-                            _transactionProcessed?.Invoke(this,
-                                new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
-                        }
+                        _transactionProcessed?.Invoke(this,
+                            new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
                     }
                     else
                     {
@@ -119,13 +148,10 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 return args.Action;
-            }
 
-            protected static IEnumerable<Transaction> GetTransactions(Block block) => block.GetTransactions();
-
-            protected static void SetTransactions(Block block, IEnumerable<Transaction> transactionsInBlock)
-            {
-                block.TrySetTransactions(transactionsInBlock.ToArray());
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                void DebugSkipReason(Transaction currentTx, AddingTxEventArgs args)
+                    => _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
             }
         }
     }

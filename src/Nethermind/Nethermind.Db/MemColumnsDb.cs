@@ -10,6 +10,10 @@ namespace Nethermind.Db
     {
         private readonly IDictionary<TKey, IDb> _columnDbs = new Dictionary<TKey, IDb>();
 
+        public MemColumnsDb() : this(Enum.GetValues<TKey>())
+        {
+        }
+
         public MemColumnsDb(string _) : this(Enum.GetValues<TKey>())
         {
         }

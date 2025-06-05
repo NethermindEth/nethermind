@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -86,15 +85,12 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return result;
         }
 
-        Transaction[]? transactions;
-        try
+        TransactionDecodingResult transactionDecodingResult = executionPayload.TryGetTransactions();
+        if (transactionDecodingResult.Error is not null)
         {
-            transactions = executionPayload.GetTransactions();
-        }
-        catch (RlpException rlpException)
-        {
-            error = rlpException.Message;
+            error = transactionDecodingResult.Error;
             return ValidationResult.Invalid;
+
         }
 
         static IEnumerable<byte[]?> FlattenHashesFromTransactions(Transaction[] transactions) =>
@@ -102,7 +98,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 .Where(t => t.BlobVersionedHashes is not null)
                 .SelectMany(t => t.BlobVersionedHashes!);
 
-        if (!FlattenHashesFromTransactions(transactions).SequenceEqual(blobVersionedHashes, Bytes.NullableEqualityComparer))
+        if (!FlattenHashesFromTransactions(transactionDecodingResult.Transactions).SequenceEqual(blobVersionedHashes, Bytes.NullableEqualityComparer))
         {
             error = "Blob versioned hashes do not match";
             return ValidationResult.Invalid;

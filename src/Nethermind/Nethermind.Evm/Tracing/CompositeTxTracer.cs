@@ -151,14 +151,14 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingInstructions)
             {
-                innerTracer.StartOperation(pc, opcode, gas, env);
+                innerTracer.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
             }
         }
     }
@@ -487,7 +487,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {

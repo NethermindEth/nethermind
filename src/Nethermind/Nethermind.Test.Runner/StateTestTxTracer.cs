@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -50,21 +50,25 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         _trace.Result.GasUsed = gasSpent;
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
         bool isPostMerge = env.IsPostMerge();
         _gasAlreadySetForCurrentOp = false;
         _traceEntry = new StateTestTxTraceEntry();
-        _traceEntry.Pc = pc;
+        _traceEntry.Pc = pc + env.CodeInfo.PcOffset();
+        _traceEntry.Section = codeSection;
         _traceEntry.Operation = (byte)opcode;
         _traceEntry.OperationName = opcode.GetName(isPostMerge);
         _traceEntry.Gas = gas;
         _traceEntry.Depth = env.GetGethTraceDepth();
+        _traceEntry.FunctionDepth = functionDepth;
         _trace.Entries.Add(_traceEntry);
     }
 
     public void ReportOperationError(EvmExceptionType error)
     {
+        if (_traceEntry is null) return;
+
         _traceEntry.Error = GetErrorDescription(error);
     }
 
@@ -86,6 +90,8 @@ public class StateTestTxTracer : ITxTracer, IDisposable
 
     public void ReportOperationRemainingGas(long gas)
     {
+        if (_traceEntry is null) return;
+
         if (!_gasAlreadySetForCurrentOp)
         {
             _gasAlreadySetForCurrentOp = true;
@@ -95,7 +101,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
 
     public void SetOperationStack(TraceStack stack)
     {
-        _traceEntry.Stack = new List<string>();
+        _traceEntry.Stack = [];
         foreach (string s in stack.ToHexWordList())
         {
             ReadOnlySpan<char> inProgress = s.AsSpan();
@@ -255,7 +261,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
-    public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
     {
         throw new NotImplementedException();
     }

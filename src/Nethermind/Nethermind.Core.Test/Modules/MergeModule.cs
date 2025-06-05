@@ -11,19 +11,16 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core.Timers;
 using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
-using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
-using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
@@ -54,25 +51,12 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
 
             // Validators
-            .AddDecorator<ISealValidator, MergeSealValidator>()
-            .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
-            .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
-            .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
-            .AddDecorator<IBlockValidator, InvalidBlockInterceptor>()
-            .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
-
             .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
             .AddSingleton<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
 
             .AddDecorator<IHealthHintService, MergeHealthHintService>()
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
             .AddDecorator<IBlockFinalizationManager, MergeFinalizationManager>()
-
-            .AddSingleton<IPeerRefresher, PeerRefresher>()
-            .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()
-
-            .AddSingleton<StartingSyncPivotUpdater>()
-            .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
 
             // Block production related.
             .AddScoped<PostMergeBlockProducer>()
@@ -83,7 +67,6 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
                 IPoSSwitcher posSwitcher = ctx.Resolve<IPoSSwitcher>();
                 return new MergeBlockProducer(currentBlockProducer, postMerge, posSwitcher);
             })
-            .AddDecorator<ISealEngine, SealEngine>()
             .AddSingleton<IPayloadPreparationService, BlockProducerContext>((producerContext) =>
             {
                 ILifetimeScope ctx = producerContext.LifetimeScope;

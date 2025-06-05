@@ -110,7 +110,7 @@ namespace Nethermind.Serialization.Rlp
                 case 1 when firstByteLessThan128:
                     // the single byte of content will be written without any prefix
                     break;
-                case < 56:
+                case < SmallPrefixBarrier:
                     {
                         byte smallPrefix = (byte)(contentLength + 128);
                         WriteByte(smallPrefix);
@@ -130,7 +130,7 @@ namespace Nethermind.Serialization.Rlp
         public void StartSequence(int contentLength)
         {
             byte prefix;
-            if (contentLength < 56)
+            if (contentLength < SmallPrefixBarrier)
             {
                 prefix = (byte)(192 + contentLength);
                 WriteByte(prefix);
@@ -385,136 +385,48 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(bool value)
-        {
-            Encode(value ? (byte)1 : (byte)0);
-        }
+        public void Encode(bool value) => Encode(value ? (byte)1 : (byte)0);
 
-        public void Encode(int value)
-        {
-            Encode((long)value);
-        }
+        public void Encode(int value) => Encode((ulong)(long)value);
 
-        public void Encode(long value)
-        {
-            if (value == 0L)
-            {
-                EncodeEmptyByteArray();
-                return;
-            }
+        public void Encode(long value) => Encode((ulong)value);
 
-            if (value > 0)
-            {
-                byte byte6 = (byte)(value >> 8);
-                byte byte5 = (byte)(value >> 16);
-                byte byte4 = (byte)(value >> 24);
-                byte byte3 = (byte)(value >> 32);
-                byte byte2 = (byte)(value >> 40);
-                byte byte1 = (byte)(value >> 48);
-                byte byte0 = (byte)(value >> 56);
-
-                if (value < 256L * 256L * 256L * 256L * 256L * 256L * 256L)
-                {
-                    if (value < 256L * 256L * 256L * 256L * 256L * 256L)
-                    {
-                        if (value < 256L * 256L * 256L * 256L * 256L)
-                        {
-                            if (value < 256L * 256L * 256L * 256L)
-                            {
-                                if (value < 256 * 256 * 256)
-                                {
-                                    if (value < 256 * 256)
-                                    {
-                                        if (value < 128)
-                                        {
-                                            WriteByte((byte)value);
-                                            return;
-                                        }
-
-                                        if (value < 256)
-                                        {
-                                            WriteByte(129);
-                                            WriteByte((byte)value);
-                                            return;
-                                        }
-
-                                        WriteByte(130);
-                                        WriteByte(byte6);
-                                        WriteByte((byte)value);
-                                        return;
-                                    }
-
-                                    WriteByte(131);
-                                    WriteByte(byte5);
-                                    WriteByte(byte6);
-                                    WriteByte((byte)value);
-                                    return;
-                                }
-
-                                WriteByte(132);
-                                WriteByte(byte4);
-                                WriteByte(byte5);
-                                WriteByte(byte6);
-                                WriteByte((byte)value);
-                                return;
-                            }
-
-                            WriteByte(133);
-                            WriteByte(byte3);
-                            WriteByte(byte4);
-                            WriteByte(byte5);
-                            WriteByte(byte6);
-                            WriteByte((byte)value);
-                            return;
-                        }
-
-                        WriteByte(134);
-                        WriteByte(byte2);
-                        WriteByte(byte3);
-                        WriteByte(byte4);
-                        WriteByte(byte5);
-                        WriteByte(byte6);
-                        WriteByte((byte)value);
-                        return;
-                    }
-
-                    WriteByte(135);
-                    WriteByte(byte1);
-                    WriteByte(byte2);
-                    WriteByte(byte3);
-                    WriteByte(byte4);
-                    WriteByte(byte5);
-                    WriteByte(byte6);
-                    WriteByte((byte)value);
-                    return;
-                }
-
-                WriteByte(136);
-                WriteByte(byte0);
-                WriteByte(byte1);
-                WriteByte(byte2);
-                WriteByte(byte3);
-                WriteByte(byte4);
-                WriteByte(byte5);
-                WriteByte(byte6);
-                WriteByte((byte)value);
-                return;
-            }
-
-            Encode(value, 8);
-        }
-
-        private void Encode(BigInteger bigInteger, int outputLength = -1)
-        {
-            Rlp rlp = bigInteger == 0
-                ? Rlp.OfEmptyByteArray
-                : Rlp.Encode(bigInteger.ToBigEndianByteArray(outputLength));
-            Write(rlp.Bytes);
-        }
-
+        [SkipLocalsInit]
         public void Encode(ulong value)
         {
-            Encode((UInt256)value);
+            if (value < 128)
+            {
+                // Single-byte optimization for [0..127]
+                byte singleByte = value > 0 ? (byte)value : EmptyArrayByte;
+                WriteByte(singleByte);
+                return;
+            }
+
+            // Count leading zero bytes
+            int leadingZeroBytes = BitOperations.LeadingZeroCount(value) >> 3;
+            int valueLength = sizeof(ulong) - leadingZeroBytes;
+
+            value = BinaryPrimitives.ReverseEndianness(value);
+            Span<byte> valueSpan = MemoryMarshal.CreateSpan(ref Unsafe.As<ulong, byte>(ref value), sizeof(ulong));
+            // Ok to stackalloc even if we don't use with SkipLocalsInit
+            Span<byte> output = stackalloc byte[1 + sizeof(ulong)];
+
+            byte prefix = (byte)(0x80 + valueLength);
+            if (leadingZeroBytes > 0)
+            {
+                // Reuse space in valueSpan for prefix rather than copying
+                valueSpan[leadingZeroBytes - 1] = prefix;
+                output = valueSpan.Slice(leadingZeroBytes - 1, 1 + valueLength);
+            }
+            else
+            {
+                // Build final output: prefix + value bytes
+                output[0] = prefix;
+                valueSpan.Slice(leadingZeroBytes, valueLength).CopyTo(output.Slice(1));
+                output = output.Slice(0, 1 + valueLength);
+            }
+
+            Write(output);
         }
 
         public void Encode(in UInt256 value, int length = -1)
@@ -571,7 +483,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 WriteByte(input[0]);
             }
-            else if (input.Length < 56)
+            else if (input.Length < SmallPrefixBarrier)
             {
                 byte smallPrefix = (byte)(input.Length + 128);
                 WriteByte(smallPrefix);
@@ -621,7 +533,7 @@ namespace Nethermind.Serialization.Rlp
                 {
                     int lengthOfLength = prefix - 183;
                     int length = DeserializeLength(lengthOfLength);
-                    if (length < 56)
+                    if (length < SmallPrefixBarrier)
                     {
                         throw new RlpException("Expected length greater or equal 56 and was {length}");
                     }
@@ -686,7 +598,7 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 int length = PeekDeserializeLength(1, lengthOfLength);
-                if (length < 56)
+                if (length < SmallPrefixBarrier)
                 {
                     throw new RlpException($"Expected length greater or equal 56 and was {length}");
                 }
@@ -701,7 +613,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 int lengthOfContentLength = prefix - 247;
                 int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
-                if (contentLength < 56)
+                if (contentLength < SmallPrefixBarrier)
                 {
                     throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
                 }
@@ -729,7 +641,7 @@ namespace Nethermind.Serialization.Rlp
 
             int lengthOfContentLength = prefix - 247;
             int contentLength = DeserializeLength(lengthOfContentLength);
-            if (contentLength < 56)
+            if (contentLength < SmallPrefixBarrier)
             {
                 throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
             }
@@ -1079,7 +991,7 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 int length = DeserializeLength(lengthOfLength);
-                if (length < 56)
+                if (length < SmallPrefixBarrier)
                 {
                     throw new RlpException("Expected length greater or equal 56 and was {length}");
                 }
@@ -1363,7 +1275,7 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 int length = DeserializeLength(lengthOfLength);
-                if (length < 56)
+                if (length < SmallPrefixBarrier)
                 {
                     ThrowUnexpectedLength(length);
                 }
@@ -1418,8 +1330,8 @@ namespace Nethermind.Serialization.Rlp
         }
 
         private const byte EmptyArrayByte = 128;
-
         private const byte EmptySequenceByte = 192;
+        private const int SmallPrefixBarrier = 56;
 
         public override string ToString()
         {

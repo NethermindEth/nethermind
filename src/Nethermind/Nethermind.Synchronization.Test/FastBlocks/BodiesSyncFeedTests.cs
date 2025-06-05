@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -14,9 +15,11 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Stats;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
@@ -33,6 +36,7 @@ public class BodiesSyncFeedTests
     private ISyncConfig _syncConfig = null!;
     private MemDb _metadataDb = null!;
     private Block _pivotBlock = null!;
+    private ISyncPeerPool _syncPeerPool = null!;
 
     [SetUp]
     public void Setup()
@@ -66,11 +70,13 @@ public class BodiesSyncFeedTests
         };
         _syncingToBlockTree.SyncPivot = (_pivotBlock.Number, _pivotBlock.Hash);
 
+        _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _feed = new BodiesSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
+            Always.Valid,
             _syncPointers,
-            Substitute.For<ISyncPeerPool>(),
+            _syncPeerPool,
             _syncConfig,
             new NullSyncReport(),
             _blocksDb,
@@ -86,6 +92,7 @@ public class BodiesSyncFeedTests
         _blocksDb?.Dispose();
         _feed?.Dispose();
         _metadataDb?.Dispose();
+        _syncPeerPool?.DisposeAsync();
     }
 
     [Test]
@@ -209,5 +216,15 @@ public class BodiesSyncFeedTests
         _syncPointers.LowestInsertedBodyNumber = lowestInsertedBlockNumber;
 
         _feed.IsFinished.Should().Be(shouldfinish);
+    }
+
+    [Test]
+    public async Task ShouldLimitBatchSizeToPeerEstimate()
+    {
+        _feed.InitializeFeed();
+        _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Bodies, default)
+            .Returns(Task.FromResult<int?>(5));
+        BodiesSyncBatch req = (await _feed.PrepareRequest())!;
+        req.Infos.Length.Should().Be(5);
     }
 }

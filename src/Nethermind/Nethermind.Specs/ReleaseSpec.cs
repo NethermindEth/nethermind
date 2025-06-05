@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -85,14 +86,20 @@ namespace Nethermind.Specs
         public bool IsRip7212Enabled { get; set; }
         public bool IsOpGraniteEnabled { get; set; }
         public bool IsOpHoloceneEnabled { get; set; }
+        public bool IsOpIsthmusEnabled { get; set; }
         public bool IsEip7623Enabled { get; set; }
+        public bool IsEip7883Enabled { get; set; }
         public bool IsEip5656Enabled { get; set; }
         public bool IsEip6780Enabled { get; set; }
         public bool IsEip4788Enabled { get; set; }
         public bool IsEip7702Enabled { get; set; }
+        public bool IsEip7823Enabled { get; set; }
         public bool IsEip4844FeeCollectorEnabled { get; set; }
         public bool IsEip7002Enabled { get; set; }
         public bool IsEip7251Enabled { get; set; }
+        public bool IsEip7825Enabled { get; set; }
+        public bool IsEip7918Enabled { get; set; }
+
         public ulong TargetBlobCount { get; set; }
         public ulong MaxBlobCount { get; set; }
         public UInt256 BlobBaseFeeUpdateFraction { get; set; }
@@ -118,6 +125,8 @@ namespace Nethermind.Specs
             set => _eip4788ContractAddress = value;
         }
 
+        public bool IsEofEnabled { get; set; }
+
         public bool IsEip6110Enabled { get; set; }
 
         private Address _depositContractAddress;
@@ -137,5 +146,11 @@ namespace Nethermind.Specs
             get => IsEip2935Enabled ? _eip2935ContractAddress : null;
             set => _eip2935ContractAddress = value;
         }
+
+        public bool IsEip7594Enabled { get; set; }
+
+        Array? IReleaseSpec.EvmInstructionsNoTrace { get; set; }
+
+        Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
     }
 }

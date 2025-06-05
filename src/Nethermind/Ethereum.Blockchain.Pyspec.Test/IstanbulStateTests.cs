@@ -16,6 +16,6 @@ public class IstanbulStateTests : GeneralStateTestBase
     private static IEnumerable<GeneralStateTest> LoadTests()
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(), $"fixtures/state_tests/istanbul");
-        return loader.LoadTests().Cast<GeneralStateTest>();
+        return loader.LoadTests<GeneralStateTest>();
     }
 }

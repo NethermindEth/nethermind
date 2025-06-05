@@ -20,6 +20,6 @@ public class EIP1153transientStorageTests : GeneralStateTestBase
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
         var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP1153-transientStorage");
-        return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+        return loader.LoadTests<GeneralStateTest>();
     }
 }

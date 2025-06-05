@@ -23,6 +23,7 @@ using Nethermind.State;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -49,7 +50,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Hash256 parentHash, PrivateKey from,
-            Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0)
+            Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0, IReleaseSpec? spec = null)
         {
             Transaction BuildTransaction(uint index, AccountStruct senderAccount)
             {
@@ -64,7 +65,7 @@ namespace Nethermind.Merge.Plugin.Test
 
                 if (blobCountPerTx != 0)
                 {
-                    builder = builder.WithShardBlobTxTypeAndFields(blobCountPerTx);
+                    builder = builder.WithShardBlobTxTypeAndFields(blobCountPerTx, spec: spec);
                 }
                 else
                 {
@@ -87,7 +88,7 @@ namespace Nethermind.Merge.Plugin.Test
                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
         {
             ExecutionPayload blockRequest = CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
-            blockRequest.TryGetBlock(out Block? block);
+            Block? block = blockRequest.TryGetBlock().Block;
 
             Snapshot before = chain.WorldStateManager.GlobalWorldState.TakeSnapshot();
             chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
@@ -115,7 +116,7 @@ namespace Nethermind.Merge.Plugin.Test
             Hash256? parentBeaconBlockRoot = null)
         {
             ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
-            blockRequestV3.TryGetBlock(out Block? block);
+            Block? block = blockRequestV3.TryGetBlock().Block;
 
             IWorldState globalWorldState = chain.WorldStateManager.GlobalWorldState;
             Snapshot before = globalWorldState.TakeSnapshot();
@@ -137,16 +138,19 @@ namespace Nethermind.Merge.Plugin.Test
                 ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
         {
             ExecutionPayloadV3 blockRequestV4 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
-            blockRequestV4.TryGetBlock(out Block? block);
+            Block? block = blockRequestV4.TryGetBlock().Block;
 
             var beaconBlockRootHandler = new BeaconBlockRootHandler(chain.TxProcessor, chain.WorldStateManager.GlobalWorldState);
-            beaconBlockRootHandler.StoreBeaconRoot(block!, chain.SpecProvider.GetSpec(block!.Header), NullTxTracer.Instance);
+
+            IReleaseSpec spec = chain.SpecProvider.GetSpec(block!.Header);
+            var blkCtx = new BlockExecutionContext(block!.Header, spec);
+            beaconBlockRootHandler.StoreBeaconRoot(block!, in blkCtx, spec, NullTxTracer.Instance);
             IWorldState globalWorldState = chain.WorldStateManager.GlobalWorldState;
             Snapshot before = globalWorldState.TakeSnapshot();
             var blockHashStore = new BlockhashStore(chain.SpecProvider, globalWorldState);
             blockHashStore.ApplyBlockhashStateChanges(block!.Header);
 
-            chain.ExecutionRequestsProcessor?.ProcessExecutionRequests(block!, globalWorldState, [], chain.SpecProvider.GenesisSpec);
+            chain.MainExecutionRequestsProcessor.ProcessExecutionRequests(block!, globalWorldState, new BlockExecutionContext(block.Header, chain.SpecProvider.GenesisSpec), [], chain.SpecProvider.GenesisSpec);
 
             globalWorldState.Commit(chain.SpecProvider.GenesisSpec);
             globalWorldState.RecalculateStateRoot();
@@ -225,7 +229,8 @@ namespace Nethermind.Merge.Plugin.Test
 
         private static bool TryCalculateHash(ExecutionPayload request, out Hash256 hash)
         {
-            if (request.TryGetBlock(out Block? block) && block is not null)
+            Block? block = request.TryGetBlock().Block;
+            if (block is not null)
             {
                 hash = block.CalculateHash();
                 return true;

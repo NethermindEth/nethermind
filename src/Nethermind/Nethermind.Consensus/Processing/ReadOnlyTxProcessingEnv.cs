@@ -14,17 +14,18 @@ using Nethermind.State;
 // ReSharper disable UnusedAutoPropertyAccessor.Global
 namespace Nethermind.Consensus.Processing
 {
-    public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
+    internal sealed class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
     {
-        public IStateReader StateReader { get; }
-        protected IWorldState StateProvider { get; }
-        protected IBlockTree BlockTree { get; }
-        public IBlockhashProvider BlockhashProvider { get; }
-        protected ISpecProvider SpecProvider { get; }
-        protected ILogManager LogManager { get; }
+        private IStateReader StateReader { get; }
+        private IWorldState StateProvider { get; }
+        private IBlockTree BlockTree { get; }
+        private IBlockhashProvider BlockhashProvider { get; }
+        private ISpecProvider SpecProvider { get; }
+        private ILogManager LogManager { get; }
 
-        protected ITransactionProcessor? _transactionProcessor;
-        protected ITransactionProcessor TransactionProcessor
+        private ITransactionProcessor? _transactionProcessor;
+
+        private ITransactionProcessor TransactionProcessor
         {
             get
             {
@@ -32,9 +33,9 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        public IVirtualMachine Machine { get; }
+        private IVirtualMachine Machine { get; }
 
-        public ICodeInfoRepository CodeInfoRepository { get; }
+        private ICodeInfoRepository CodeInfoRepository { get; }
 
         public ReadOnlyTxProcessingEnv(
             IWorldStateManager worldStateManager,
@@ -71,14 +72,14 @@ namespace Nethermind.Consensus.Processing
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
 
             CodeInfoRepository = codeInfoRepository;
-            Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
+            Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
 
             LogManager = logManager;
         }
 
-        protected virtual ITransactionProcessor CreateTransactionProcessor() =>
+        private ITransactionProcessor CreateTransactionProcessor() =>
             new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, LogManager);
 
         public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)

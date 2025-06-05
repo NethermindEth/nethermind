@@ -90,14 +90,24 @@
     "transactionPermissionContract": "0x7Dd7032AA75A37ea0b150f57F899119C7379A78b",
     "transactionPermissionContractTransition": 9186425,
     "terminalTotalDifficulty": "8626000000000000000000058750000000000000000000",
+    "eip2537TransitionTimestamp": "0x68122dbc",
+    "eip2935TransitionTimestamp": "0x68122dbc",
+    "eip6110TransitionTimestamp": "0x68122dbc",
+    "eip7002TransitionTimestamp": "0x68122dbc",
+    "eip7251TransitionTimestamp": "0x68122dbc",
+    "eip7623TransitionTimestamp": "0x68122dbc",
+    "eip7702TransitionTimestamp": "0x68122dbc",
+    "eip4844FeeCollectorTransitionTimestamp": "0x68122dbc",
     "depositContractAddress": "0x0B98057eA310F4d31F2a452B414647007d1645d9",
-    "blobSchedule": {
-      "cancun": {
+    "blobSchedule": [
+      {
+        "name": "cancun",
+        "timestamp": "0x65ef4dbc",
         "target": 1,
         "max": 2,
         "baseFeeUpdateFraction": "0x10fafa"
       }
-    }
+    ]
   },
   "genesis": {
     "seal": {

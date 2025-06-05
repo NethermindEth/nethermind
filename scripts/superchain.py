@@ -58,6 +58,12 @@ def one_of(*args):
     return None
 
 
+def fmap(f, optional):
+    if optional is None:
+        return None
+    return f(optional)
+
+
 def to_nethermind_accounts(genesis):
     alloc = lookup(genesis, ["alloc"])
 
@@ -69,30 +75,94 @@ def to_nethermind_accounts(genesis):
 
 
 def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
+    constants = {
+        "L1BeaconGenesisSlotTime": {
+            "mainnet": 1606824023,
+            "sepolia": 1655733600,
+        },
+        "L1ChainId": {
+            "mainnet": 1,
+            "sepolia": 11155111,
+        },
+        "DepositContractAddress": {
+            "mainnet": "0x00000000219ab540356cbb839cbe05303d7705fa",
+            "sepolia": "0x7f02c3e3c98b133055b8b348b2ac625669ed295d",
+        },
+    }
+
+    # Preprocessing
     config = merge_all(superchain, chain)
+
+    # We need to ensure that the Hardfork activation inheritance behavior is satisfied
+    # https://github.com/ethereum-optimism/superchain-registry/blob/main/docs/hardfork-activation-inheritance.md
+    # To derive, "It must not set a non-nil value for this activation time in its individual configuration file"
+    config["hardforks"] = {k: v for k, v in config["hardforks"].items() if k in chain["hardforks"]}
 
     nethermind = {
         "name": lookup(config, ["name"]),
         "dataDir": f"{chain_name}-{l1}",
         "engine": {
             "Optimism": {
-                "params": {
+                "params": filter_none({
                     "regolithTimestamp": "0x0",
                     "bedrockBlockNumber": hex(lookup(config, ["genesis", "l2", "number"])),
-                    "canyonTimestamp": hex(lookup(config, ["hardforks", "canyon_time"])),
-                    "ecotoneTimestamp": hex(lookup(config, ["hardforks", "ecotone_time"])),
-                    "fjordTimestamp": hex(lookup(config, ["hardforks", "fjord_time"])),
-                    "graniteTimestamp": hex(lookup(config, ["hardforks", "granite_time"])),
-                    "holoceneTimestamp": hex(lookup(config, ["hardforks", "holocene_time"])),
+                    "canyonTimestamp": fmap(hex, (lookup(config, ["hardforks", "canyon_time"]))),
+                    "deltaTimestamp": fmap(hex, (lookup(config, ["hardforks", "delta_time"]))),
+                    "ecotoneTimestamp": fmap(hex, (lookup(config, ["hardforks", "ecotone_time"]))),
+                    "fjordTimestamp": fmap(hex, (lookup(config, ["hardforks", "fjord_time"]))),
+                    "graniteTimestamp": fmap(hex, (lookup(config, ["hardforks", "granite_time"]))),
+                    "holoceneTimestamp": fmap(hex, (lookup(config, ["hardforks", "holocene_time"]))),
+                    "isthmusTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
                     "canyonBaseFeeChangeDenominator": str(lookup(config, ["optimism", "eip1559_denominator_canyon"])),
                     "l1FeeRecipient": "0x420000000000000000000000000000000000001A",
                     "l1BlockAddress": "0x4200000000000000000000000000000000000015",
                     "create2DeployerAddress": "0x13b0D85CcB8bf860b6b79AF3029fCA081AE9beF2",
                     "create2DeployerCode": "6080604052600436106100435760003560e01c8063076c37b21461004f578063481286e61461007157806356299481146100ba57806366cfa057146100da57600080fd5b3661004a57005b600080fd5b34801561005b57600080fd5b5061006f61006a366004610327565b6100fa565b005b34801561007d57600080fd5b5061009161008c366004610327565b61014a565b60405173ffffffffffffffffffffffffffffffffffffffff909116815260200160405180910390f35b3480156100c657600080fd5b506100916100d5366004610349565b61015d565b3480156100e657600080fd5b5061006f6100f53660046103ca565b610172565b61014582826040518060200161010f9061031a565b7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe082820381018352601f90910116604052610183565b505050565b600061015683836102e7565b9392505050565b600061016a8484846102f0565b949350505050565b61017d838383610183565b50505050565b6000834710156101f4576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152601d60248201527f437265617465323a20696e73756666696369656e742062616c616e636500000060448201526064015b60405180910390fd5b815160000361025f576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820181905260248201527f437265617465323a2062797465636f6465206c656e677468206973207a65726f60448201526064016101eb565b8282516020840186f5905073ffffffffffffffffffffffffffffffffffffffff8116610156576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152601960248201527f437265617465323a204661696c6564206f6e206465706c6f790000000000000060448201526064016101eb565b60006101568383305b6000604051836040820152846020820152828152600b8101905060ff815360559020949350505050565b61014e806104ad83390190565b6000806040838503121561033a57600080fd5b50508035926020909101359150565b60008060006060848603121561035e57600080fd5b8335925060208401359150604084013573ffffffffffffffffffffffffffffffffffffffff8116811461039057600080fd5b809150509250925092565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052604160045260246000fd5b6000806000606084860312156103df57600080fd5b8335925060208401359150604084013567ffffffffffffffff8082111561040557600080fd5b818601915086601f83011261041957600080fd5b81358181111561042b5761042b61039b565b604051601f82017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0908116603f011681019083821181831017156104715761047161039b565b8160405282815289602084870101111561048a57600080fd5b826020860160208301376000602084830101528095505050505050925092509256fe608060405234801561001057600080fd5b5061012e806100206000396000f3fe6080604052348015600f57600080fd5b506004361060285760003560e01c8063249cb3fa14602d575b600080fd5b603c603836600460b1565b604e565b60405190815260200160405180910390f35b60008281526020818152604080832073ffffffffffffffffffffffffffffffffffffffff8516845290915281205460ff16608857600060aa565b7fa2ef4600d742022d532d4747cb3547474667d6f13804902513b2ec01c848f4b45b9392505050565b6000806040838503121560c357600080fd5b82359150602083013573ffffffffffffffffffffffffffffffffffffffff8116811460ed57600080fd5b80915050925092905056fea26469706673582212205ffd4e6cede7d06a5daf93d48d0541fc68189eeb16608c1999a82063b666eb1164736f6c63430008130033a2646970667358221220fdc4a0fe96e3b21c108ca155438d37c9143fb01278a3c1d274948bad89c564ba64736f6c63430008130033",
-                }
+                })
             },
+            "OptimismCL": merge_all(
+                {
+                    "GenesisSystemConfig": {
+                        "BatcherAddr": lookup(config, ["genesis", "system_config", "batcherAddress"]),
+                        "Overhead": lookup(config, ["genesis", "system_config", "overhead"]),
+                        "Scalar": lookup(config, ["genesis", "system_config", "scalar"]),
+                        "GasLimit": lookup(config, ["genesis", "system_config", "gasLimit"]),
+                        "EIP1559Params": "0x0000000000000000",
+                        "OperatorFeeParams": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    },
+                    "L1BeaconGenesisSlotTime": lookup(constants, ["L1BeaconGenesisSlotTime", l1]),
+                    "L1ChainId": lookup(constants, ["L1ChainId", l1]),
+                    "L1GenesisNumber": lookup(config, ["genesis", "l1", "number"]),
+                    "L1GenesisHash": lookup(config, ["genesis", "l1", "hash"]),
+                    "BatcherInboxAddress": lookup(config, ["batch_inbox_addr"]),
+                    "L2BlockTime": lookup(config, ["block_time"]),
+                    "SeqWindowSize": lookup(config, ["seq_window_size"]),
+                    "ChannelTimeoutBedrock": 300,
+                    "MaxSequencerDrift": lookup(config, ["max_sequencer_drift"]),
+                    "SystemTransactionSender": "0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001",
+                    "SystemTransactionTo": "0x4200000000000000000000000000000000000015",
+                    "Nodes": [
+                        "/ip4/148.113.215.57/tcp/9223/p2p/16Uiu2HAm8aSUf4Stw7pKJEzsBiXWfV3gyWDxJymZ1XQN3nt1g8gu",
+                        "/ip4/40.160.1.105/tcp/9223/p2p/16Uiu2HAky2Uha3XgRVaBaCHCGoMU972MgkanESat6ApyKU982UJZ",
+                        "/ip4/144.76.17.55/tcp/30321/p2p/16Uiu2HAm6yHDvd1uqy9WPXwh1o57CtmyPLo8sugE2Ky8uzpksQFa",
+                        "/ip4/16.62.148.134/tcp/9222/p2p/16Uiu2HAmFayrxPwx4p7U3ahZtE57KzecnyuqbUrFemzp7j66HV4Y",
+                        "/ip4/167.235.91.92/tcp/9222/p2p/16Uiu2HAm4ro1o8Zhw6XfjxWhkbRwHF2TNNoK8ZM1cMUp3z1bU2Qv",
+                        "/ip4/16.62.139.228/tcp/9222/p2p/16Uiu2HAmDVP7huC3uZy2Eifd8d5UN4Jiu2rHBUAgyF9CB956ftPs",
+                        "/ip4/15.204.105.1/tcp/9222/p2p/16Uiu2HAm77PPudgtf94YN5DYi3PYRJETffKnT6dHG1Lwgb6tXiNg",
+                        "/ip4/185.185.51.127/tcp/9003/p2p/16Uiu2HAmMF8ErQ9dp7cmf2e3du5wjib9RYVVnR6JmGGff8YPVS4t",
+                        "/ip4/16.63.201.250/tcp/9222/p2p/16Uiu2HAkvVQqLJXzpTXwpaqF76bBEc8jJeRJAU1Z1eN9YKj154eJ",
+                        "/ip4/135.181.216.232/tcp/900/p2p/16Uiu2HAmJdoZp5vFhLpYkvyYKotWNZW4rvunSc3jCtuHKkzCcssG3",
+                        "/ip4/40.160.21.9/tcp/9222/p2p/16Uiu2HAmEbdyXFy3f8kbC86jqnn1EZ2WAdytjtioRJ7d8fnYc2Jw",
+                        "/ip4/162.55.232.96/tcp/15629/p2p/16Uiu2HAmUwwtLFeHeJZL5T5oEAwgArjo3UbzkTgyku5twRnRNiqY",
+                        "/ip4/176.9.123.83/tcp/9222/p2p/16Uiu2HAmU121HqRzryi8Dev3E4VoMMtG2Av6okTnbdQSK54EZMqU",
+                        "/ip4/5.9.80.215/tcp/9222/p2p/16Uiu2HAkvrrKbiUkS6XzoXiBzcpLqkFSkpgpBPtxzRwRjEcgTdCB",
+                    ],
+                },
+                lookup(config, ["roles"]),
+                lookup(config, ["addresses"]),
+            ),
         },
-        "params": {
+        "params": filter_none({
             "chainId": hex(lookup(config, ["chain_id"])),
             "gasLimitBoundDivisor": "0x400",
             "accountStartNonce": "0x0",
@@ -132,20 +202,28 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "eip3198Transition": hex(lookup(config, ["genesis", "l2", "number"])),
             "eip3529Transition": hex(lookup(config, ["genesis", "l2", "number"])),
             "eip3541Transition": hex(lookup(config, ["genesis", "l2", "number"])),
-            "eip4895TransitionTimestamp": hex(lookup(config, ["hardforks", "canyon_time"])),
-            "eip3651TransitionTimestamp": hex(lookup(config, ["hardforks", "canyon_time"])),
-            "eip3855TransitionTimestamp": hex(lookup(config, ["hardforks", "canyon_time"])),
-            "eip3860TransitionTimestamp": hex(lookup(config, ["hardforks", "canyon_time"])),
-            "eip1153TransitionTimestamp": hex(lookup(config, ["hardforks", "ecotone_time"])),
-            "eip4788TransitionTimestamp": hex(lookup(config, ["hardforks", "ecotone_time"])),
-            "eip4844TransitionTimestamp": hex(lookup(config, ["hardforks", "ecotone_time"])),
-            "eip5656TransitionTimestamp": hex(lookup(config, ["hardforks", "ecotone_time"])),
-            "eip6780TransitionTimestamp": hex(lookup(config, ["hardforks", "ecotone_time"])),
-            "rip7212TransitionTimestamp": hex(lookup(config, ["hardforks", "fjord_time"])),
-            "opGraniteTransitionTimestamp": hex(lookup(config, ["hardforks", "granite_time"])),
-            "opHoloceneTransitionTimestamp": hex(lookup(config, ["hardforks", "holocene_time"])),
+            "eip4895TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "canyon_time"]))),
+            "eip3651TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "canyon_time"]))),
+            "eip3855TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "canyon_time"]))),
+            "eip3860TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "canyon_time"]))),
+            "eip1153TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "ecotone_time"]))),
+            "eip4788TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "ecotone_time"]))),
+            "eip4844TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "ecotone_time"]))),
+            "eip5656TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "ecotone_time"]))),
+            "eip6780TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "ecotone_time"]))),
+            "rip7212TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "fjord_time"]))),
+            "opGraniteTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "granite_time"]))),
+            "opHoloceneTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "holocene_time"]))),
+            "opIsthmusTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
+            "eip7702TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
+            "eip2537TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
+            "eip2935TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
+            "eip7623TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
+            "eip6110TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
+            "eip7685TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
+            "depositContractAddress": lookup(constants, ["DepositContractAddress", l1]),
             "terminalTotalDifficulty": "0x0",
-        },
+        }),
         "genesis": filter_none(
             {
                 "seal": {
@@ -166,7 +244,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             }
         ),
         "nodes": [
-            # From: https://github.com/ethereum-optimism/op-geth/blob/1ab39853a132dbf098bc34436510473d27ac2dc9/params/bootnodes.go
+            # From: https://github.com/ethereum-optimism/op-geth/blob/3d7afdc2701b74c5987e31521e2c336c4511afdf/params/bootnodes.go
             "enode://d860a01f9722d78051619d1e2351aba3f43f943f6f00718d1b9baa4101932a1f5011f16bb2b1bb35db20d6fe28fa0bf09636d26a87d31de9ec6203eeedb1f666@18.138.108.67:30303",
             "enode://22a8232c3abc76a16ae9d6c3b164f98775fe226f0917b0ca871128a74a8e9630b458460865bab457221f1d448dd9791d24c4e5d88786180ac185df813a68d4de@3.209.45.79:30303",
             "enode://2b252ab6a1d0f971d9722cb839a42cb81db019ba44c08754628ab4a823487071b5695317c8ccd085219c3a03af063495b2f1da8d18218da2d6a82981b45e6ffc@65.108.70.101:30303",
@@ -191,6 +269,12 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "enode://bfda2e0110cfd0f4c9f7aa5bf5ec66e6bd18f71a2db028d36b8bf8b0d6fdb03125c1606a6017b31311d96a36f5ef7e1ad11604d7a166745e6075a715dfa67f8a@34.65.229.245:30305",
             "enode://548f715f3fc388a7c917ba644a2f16270f1ede48a5d88a4d14ea287cc916068363f3092e39936f1a3e7885198bef0e5af951f1d7b1041ce8ba4010917777e71f@18.210.176.114:30301",
             "enode://6f10052847a966a725c9f4adf6716f9141155b99a0fb487fea3f51498f4c2a2cb8d534e680ee678f9447db85b93ff7c74562762c3714783a7233ac448603b25f@107.21.251.55:30301",
+            "enode://b1a743328188dba3b2ed8c06abbb2688fabe64a3251e43bd77d4e5265bbd5cf03eca8ace4cde8ddb0c49c409b90bf941ebf556094638c6203edd6baa5ef0091b@3.134.214.169:30303",
+            "enode://ea9eaaf695facbe53090beb7a5b0411a81459bbf6e6caac151e587ee77120a1b07f3b9f3a9550f797d73d69840a643b775fd1e40344dea11e7660b6a483fe80e@52.14.30.39:30303",
+            "enode://77b6b1e72984d5d50e00ae934ffea982902226fe92fa50da42334c2750d8e405b55a5baabeb988c88125368142a64eda5096d0d4522d3b6eef75d166c7d303a9@3.148.100.173:30303",
+            "enode://9e138a8ec4291c4f2fe5851aaee44fc73ae67da87fb26b75e3b94183c7ffc15b2795afc816b0aa084151b95b3a3553f1cd0d1e9dd134dcf059a84d4e0b429afc@3.146.117.118:30303",
+            "enode://34d87d649e5c58a17a43c1d59900a2020bd82d5b12ea39467c3366bee2946aaa9c759c77ede61089624691291fb2129eeb2a47687b50e2463188c78e1f738cf2@52.15.54.8:30303",
+            "enode://c2405194166fe2c0e6c61ee469745fed1a6802f51c8fc39e1c78c21c9a6a15a7c55304f09ee37e430da9a1ce8117ca085263c6b0f474f6946811e398347611ef@3.146.213.65:30303",
         ],
         "accounts": to_nethermind_accounts(genesis),
     }

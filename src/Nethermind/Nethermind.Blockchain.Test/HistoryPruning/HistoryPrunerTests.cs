@@ -26,7 +26,7 @@ public class HistoryPrunerTests
     [Test]
     public async Task Can_prune_blocks_older_than_specified_epochs()
     {
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(SecondsPerSlot);
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -105,7 +105,7 @@ public class HistoryPrunerTests
     [Test]
     public async Task Can_prune_pre_merge_blocks()
     {
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(SecondsPerSlot);
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
@@ -183,7 +183,7 @@ public class HistoryPrunerTests
     [Test]
     public async Task Does_not_prune_when_disabled()
     {
-        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(SecondsPerSlot);
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
 
         List<Hash256> blockHashes = [];
         blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);

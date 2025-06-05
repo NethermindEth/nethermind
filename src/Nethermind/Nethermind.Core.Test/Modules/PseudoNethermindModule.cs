@@ -7,13 +7,14 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.Config;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Module = Autofac.Module;
@@ -32,20 +33,16 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
     protected override void Load(ContainerBuilder builder)
     {
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
-        INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
 
         base.Load(builder);
         builder
             .AddModule(new NethermindModule(spec, configProvider, logManager))
 
-            .AddModule(new NetworkModule(initConfig))
-            .AddModule(new DiscoveryModule(initConfig, networkConfig))
-            .AddModule(new WorldStateModule())
+            .AddModule(new PsudoNetworkModule())
             .AddModule(new BlockTreeModule())
-            .AddModule(new BlockProcessingModule())
+            .AddModule(new TestBlockProcessingModule())
 
             // Environments
-            .AddSingleton<DisposableStack>()
             .AddSingleton<ITimerFactory, TimerFactory>()
             .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext>((blockProcessingContext) => new BackgroundTaskScheduler(
                 blockProcessingContext.BlockProcessor,
@@ -55,12 +52,10 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<IFileSystem>(new FileSystem())
             .AddSingleton<IDbProvider>(new DbProvider())
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
+            .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
             // Crypto
             .AddSingleton<ICryptoRandom>(new CryptoRandom())
-            .AddSingleton<IEthereumEcdsa>(new EthereumEcdsa(spec.ChainId))
-            .Bind<IEcdsa, IEthereumEcdsa>()
-            .AddSingleton<IEciesCipher, EciesCipher>()
             ;
 
 

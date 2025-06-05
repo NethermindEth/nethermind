@@ -12,6 +12,7 @@ public class LatencyBasedRequestSizer
     private readonly TimeSpan _upperWatermark;
     private readonly TimeSpan _lowerWatermark;
     private readonly AdaptiveRequestSizer _requestSizer;
+    public int RequestSize => _requestSizer.RequestSize;
 
     public LatencyBasedRequestSizer(
         int minRequestLimit,

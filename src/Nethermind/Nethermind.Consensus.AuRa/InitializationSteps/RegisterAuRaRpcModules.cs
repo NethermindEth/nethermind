@@ -156,7 +156,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
                 logManager,
                 blockTree,
                 NullWithdrawalProcessor.Instance,
-                scope.TransactionProcessor,
+                new ExecutionRequestsProcessor(scope.TransactionProcessor),
                 auRaValidator: null,
                 auRaTxFilter,
                 GetGasLimitCalculator(),
@@ -177,7 +177,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
                                 _api.AbiEncoder,
                                 blockGasLimitContractTransition.Value,
                                 blockGasLimitContractTransition.Key,
-                                _api.CreateReadOnlyTransactionProcessorSource()))
+                                _api.ReadOnlyTxProcessingEnvFactory.Create()))
                         .ToArray<IBlockGasLimitContract>(),
                     _api.GasLimitCalculatorCache,
                     _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
@@ -199,7 +199,6 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.BlockValidator);
         StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
         StepDependencyException.ThrowIfNull(_api.KeyStore);
-        StepDependencyException.ThrowIfNull(_api.PeerPool);
         StepDependencyException.ThrowIfNull(_api.BadBlocksStore);
         StepDependencyException.ThrowIfNull(_api.WorldStateManager);
         StepDependencyException.ThrowIfNull(_api.BlockTree);
@@ -286,13 +285,12 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             ILogManager logManager,
             IBlockFinder blockTree,
             IWithdrawalProcessor withdrawalProcessor,
-            ITransactionProcessor transactionProcessor,
+            IExecutionRequestsProcessor executionRequestsProcessor,
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
             ContractRewriter? contractRewriter = null,
-            IBlockCachePreWarmer? preWarmer = null,
-            IExecutionRequestsProcessor? executionRequestsProcessor = null);
+            IBlockCachePreWarmer? preWarmer = null);
     }
 
     private class AuRaBlockProcessorFactory : IAuRaBlockProcessorFactory
@@ -300,13 +298,24 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         public AuRaBlockProcessor Create(ISpecProvider specProvider, IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator, IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor, IWorldState stateProvider,
             IReceiptStorage receiptStorage, IBeaconBlockRootHandler beaconBlockRootHandler, ILogManager logManager,
-            IBlockFinder blockTree, IWithdrawalProcessor withdrawalProcessor, ITransactionProcessor transactionProcessor,
+            IBlockFinder blockTree, IWithdrawalProcessor withdrawalProcessor, IExecutionRequestsProcessor executionRequestsProcessor,
             IAuRaValidator? auRaValidator, ITxFilter? txFilter = null, AuRaContractGasLimitOverride? gasLimitOverride = null,
-            ContractRewriter? contractRewriter = null, IBlockCachePreWarmer? preWarmer = null,
-            IExecutionRequestsProcessor? executionRequestsProcessor = null) =>
-            new(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-                stateProvider, receiptStorage, beaconBlockRootHandler, logManager, blockTree, withdrawalProcessor,
-                transactionProcessor, auRaValidator, txFilter, gasLimitOverride, contractRewriter, preWarmer,
-                executionRequestsProcessor);
+            ContractRewriter? contractRewriter = null, IBlockCachePreWarmer? preWarmer = null) =>
+            new(
+                specProvider,
+                blockValidator,
+                rewardCalculator,
+                blockTransactionsExecutor,
+                stateProvider,
+                receiptStorage,
+                beaconBlockRootHandler,
+                logManager,
+                blockTree,
+                withdrawalProcessor,
+                executionRequestsProcessor,
+                auRaValidator,
+                txFilter,
+                gasLimitOverride,
+                contractRewriter, preWarmer);
     }
 }

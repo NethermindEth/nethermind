@@ -262,4 +262,7 @@ public class BlockTreeOverlay : IBlockTree
 
     public BlockHeader FindBestSuggestedHeader() =>
         _overlayTree.FindBestSuggestedHeader() ?? _baseTree.FindBestSuggestedHeader();
+
+
+    public long GetLowestBlock() => _baseTree.GetLowestBlock();
 }

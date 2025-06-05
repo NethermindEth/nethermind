@@ -42,14 +42,14 @@ namespace Nethermind.State
             }
         }
 
-        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+        public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager)
             : this(trieStore, codeDb, logManager, null, null)
         {
         }
 
         internal WorldState(
             ITrieStore trieStore,
-            IKeyValueStore? codeDb,
+            IKeyValueStoreWithBatching? codeDb,
             ILogManager? logManager,
             StateTree? stateTree = null,
             IStorageTreeFactory? storageTreeFactory = null,
@@ -63,7 +63,7 @@ namespace Nethermind.State
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
 
-        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
+        public WorldState(ITrieStore trieStore, IKeyValueStoreWithBatching? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
             : this(trieStore, codeDb, logManager, null, preBlockCaches: preBlockCaches, populatePreBlockCache: populatePreBlockCache)
         {
         }
@@ -119,7 +119,7 @@ namespace Nethermind.State
                     bool exists = _stateProvider.WarmUp(address);
                     foreach (UInt256 storage in storages)
                     {
-                        _persistentStorageProvider.WarmUp(new StorageCell(address, storage), isEmpty: !exists);
+                        _persistentStorageProvider.WarmUp(new StorageCell(address, in storage), isEmpty: !exists);
                     }
                 }
             }
@@ -143,9 +143,9 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccount(address, balance, nonce);
         }
-        public void InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
-            _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
+            return _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
         }
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
@@ -184,22 +184,19 @@ namespace Nethermind.State
 
         public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);
 
-        public UInt256 GetBalance(Address address) => _stateProvider.GetBalance(address);
+        public ref readonly UInt256 GetBalance(Address address) => ref _stateProvider.GetBalance(address);
+
+        UInt256 IAccountStateProvider.GetBalance(Address address) => _stateProvider.GetBalance(address);
 
         public ValueHash256 GetStorageRoot(Address address) => _stateProvider.GetStorageRoot(address);
 
         public byte[] GetCode(Address address) => _stateProvider.GetCode(address);
 
-        public byte[] GetCode(Hash256 codeHash) => _stateProvider.GetCode(codeHash);
+        public byte[] GetCode(in ValueHash256 codeHash) => _stateProvider.GetCode(in codeHash);
 
-        public byte[] GetCode(ValueHash256 codeHash) => _stateProvider.GetCode(codeHash);
+        public ref readonly ValueHash256 GetCodeHash(Address address) => ref _stateProvider.GetCodeHash(address);
 
-        public Hash256 GetCodeHash(Address address) => _stateProvider.GetCodeHash(address);
-
-        ValueHash256 IAccountStateProvider.GetCodeHash(Address address)
-        {
-            return _stateProvider.GetCodeHash(address);
-        }
+        ValueHash256 IAccountStateProvider.GetCodeHash(Address address) => _stateProvider.GetCodeHash(address);
 
         public void Accept<TContext>(ITreeVisitor<TContext> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TContext : struct, INodeContext<TContext>
         {

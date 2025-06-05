@@ -15,7 +15,7 @@ namespace Nethermind.AuRa.Test.Contract
 {
     public class TestContractBlockchain : TestBlockchain
     {
-        public ChainSpec ChainSpec { get; set; }
+        public ChainSpec? ChainSpecOverride { get; set; }
 
         protected TestContractBlockchain()
         {
@@ -35,8 +35,14 @@ namespace Nethermind.AuRa.Test.Contract
             }
 
             (ChainSpec ChainSpec, ISpecProvider SpecProvider) provider = GetSpecProvider();
-            TTest test = new() { ChainSpec = provider.ChainSpec };
-            return (TTest)await test.Build(provider.SpecProvider);
+            TTest test = new() { ChainSpecOverride = provider.ChainSpec };
+            return (TTest)await test.Build(builder =>
+                builder.AddSingleton<ISpecProvider>(provider.SpecProvider));
+        }
+
+        protected override ChainSpec CreateChainSpec()
+        {
+            return ChainSpecOverride ?? base.CreateChainSpec();
         }
 
         protected override Block GetGenesisBlock(IWorldState worldState) =>

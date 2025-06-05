@@ -27,7 +27,7 @@ public class NullTxTracer : TxTracer
         => ThrowInvalidOperationException();
     public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         => ThrowInvalidOperationException();
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
         => ThrowInvalidOperationException();
 
     public override void ReportOperationError(EvmExceptionType error)
@@ -106,7 +106,7 @@ public class NullTxTracer : TxTracer
     public override void ReportExtraGasPressure(long extraGasPressure)
         => ThrowInvalidOperationException();
 
-    public override void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+    public override void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
         => ThrowInvalidOperationException();
 
     public override void ReportFees(UInt256 fees, UInt256 burntFees)

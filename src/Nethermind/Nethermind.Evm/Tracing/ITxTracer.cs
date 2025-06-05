@@ -179,8 +179,10 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="opcode"></param>
     /// <param name="gas"></param>
     /// <param name="env"></param>
+    /// <param name="codeSection"></param>
+    /// <param name="functionDepth"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env);
+    void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0);
 
     /// <summary>
     ///
@@ -429,7 +431,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="accessedAddresses">address</param>
     /// <param name="accessedStorageCells">cell</param>
     /// <remarks>Depends on <see cref="IsTracingAccess"/></remarks>
-    void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells);
+    void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells);
 
     /// <summary>
     /// Reports fees of a transaction
