@@ -84,6 +84,7 @@ public class ShutterPluginModule : Module
     {
         builder
             .AddSingleton(CreateShutterApi)
+            .Bind<IShutterApi, ShutterApi>()
             .AddDecorator<IBlockProducerTxSourceFactory, ShutterAdditionalBlockProductionTxSource>()
             ;
     }
