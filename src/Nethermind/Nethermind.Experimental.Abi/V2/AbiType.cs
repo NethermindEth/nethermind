@@ -88,6 +88,38 @@ public static class AbiType
         }
     };
 
+    public static IAbi<byte[]> Bytes => new()
+    {
+        Name = $"bytes",
+        Read = r =>
+        {
+            int length = (int)UInt256.Read(r); // TODO: Use `UInt256` when dealing with lengths
+            var bytes = r.ReadBytes(length);
+
+            var padding = PadTo32(length) - length;
+            if (padding > 0)
+            {
+                r.ReadBytes(padding); // Skip padding bytes
+            }
+
+            return bytes;
+
+        },
+        Write = (w, bytes) =>
+        {
+            int length = bytes.Length;
+
+            UInt256.Write(w, (UInt256)length);
+            w.Write(bytes);
+
+            var padding = PadTo32(length) - length;
+            if (padding > 0)
+            {
+                w.Write(stackalloc byte[padding]);
+            }
+        }
+    };
+
     public static IAbi<byte[]> BytesM(int length) => new()
     {
         Name = $"bytes{length}",
