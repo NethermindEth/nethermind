@@ -45,6 +45,8 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider.Commit(_spec);
             CodeInfoRepository codeInfoRepository = new();
             _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
+            _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
+            _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
 
             _environment = new ExecutionEnvironment
             (
@@ -54,7 +56,6 @@ namespace Nethermind.Evm.Benchmark
                 codeInfo: new CodeInfo(ByteCode),
                 value: 0,
                 transferValue: 0,
-                txExecutionContext: new TxExecutionContext(Address.Zero, codeInfoRepository, null, new BlockExecutionContext(_header, _spec), 0),
                 inputData: default
             );
 

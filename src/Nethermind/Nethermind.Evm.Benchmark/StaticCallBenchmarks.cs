@@ -88,7 +88,8 @@ namespace Nethermind.Evm.Benchmark
             Console.WriteLine(MuirGlacier.Instance);
             CodeInfoRepository codeInfoRepository = new();
             _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
-
+            _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
+            _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
             _environment = new ExecutionEnvironment
             (
                 executingAccount: Address.Zero,
@@ -97,7 +98,6 @@ namespace Nethermind.Evm.Benchmark
                 codeInfo: new CodeInfo(Bytecode),
                 value: 0,
                 transferValue: 0,
-                txExecutionContext: new TxExecutionContext(Address.Zero, codeInfoRepository, null, new BlockExecutionContext(_header, _spec), 0),
                 inputData: default
             );
 
