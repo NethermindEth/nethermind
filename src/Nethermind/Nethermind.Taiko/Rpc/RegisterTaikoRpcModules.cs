@@ -14,6 +14,7 @@ using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.Taiko.Config;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -51,6 +52,8 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         FeeHistoryOracle feeHistoryOracle = new(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
         _api.DisposeStack.Push(feeHistoryOracle);
 
+        IGasPriceOracle gasPriceOracle = _api.GasPriceOracle;
+
         // Use the Surge gas price oracle if specified in the chainspec configuration
         var taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GenesisSpec;
         if (taikoSpec.UseSurgeGasPriceOracle)
@@ -67,14 +70,13 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
                 _api.EthereumJsonSerializer,
                 _api.LogManager);
 
-            SurgeGasPriceOracle surgeGasPriceOracle = new(
+            gasPriceOracle = new SurgeGasPriceOracle(
                 _api.BlockTree,
                 _api.LogManager,
                 _api.SpecProvider,
                 _api.Config<IBlocksConfig>().MinGasPrice,
                 l1RpcClient,
                 surgeConfig);
-            _api.GasPriceOracle = surgeGasPriceOracle;
         }
 
         ModuleFactoryBase<ITaikoRpcModule> ethModuleFactory = new TaikoEthModuleFactory(
@@ -88,7 +90,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             _api.Wallet,
             _api.LogManager,
             _api.SpecProvider,
-            _api.GasPriceOracle,
+            gasPriceOracle,
             _api.EthSyncingInfo,
             feeHistoryOracle,
             _api.ProtocolsManager,
