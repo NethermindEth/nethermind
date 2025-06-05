@@ -49,4 +49,16 @@ public class Examples
         a.Should().Be(69u);
         b.Should().Be(true);
     }
+
+    [Test]
+    public void Sam()
+    {
+        var signature = new AbiSignature("sam")
+            .Arg(AbiType.Bytes)
+            .Arg(AbiType.Bool)
+            .Arg(AbiType.Array(AbiType.UInt));
+
+        var expectedMethodId = Bytes.FromHexString("0xa5643bf2");
+        signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
+    }
 }
