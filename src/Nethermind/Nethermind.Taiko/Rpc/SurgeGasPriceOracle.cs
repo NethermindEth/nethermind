@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -10,9 +13,6 @@ using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Taiko.Config;
-using System;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -75,7 +75,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         UInt256 proofPostingCost = _surgeConfig.ProofPostingGas * UInt256.Max(l1BaseFee, l1AverageBaseFee);
 
-        UInt256 averageGasUsage = GetAverageGasUsage();
+        UInt256 averageGasUsage = GetAverageGasUsageAcrossBatches();
         if (averageGasUsage == UInt256.Zero)
         {
             if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Failed to calculate average gas usage, using fallback gas price");
@@ -106,30 +106,31 @@ public class SurgeGasPriceOracle : GasPriceOracle
     }
 
     /// <summary>
-    /// Get the average gas usage across L2GasUsageWindowSize batches. It uses the TaikoInbox contract to get the total number of blocks in the latest proposed batch.
+    /// Get the average gas usage across L2GasUsageWindowSize batches.
+    /// It uses the TaikoInbox contract to get the total number of blocks in the latest proposed batch.
     /// </summary>
-    private UInt256 GetAverageGasUsage()
+    private UInt256 GetAverageGasUsageAcrossBatches()
     {
         // Get the current batch information
-        Stats2? stats2 = GetStats2();
-        if (stats2 == null)
+        ulong? numBatches = GetNumBatches();
+        if (numBatches is null or <= 1)
         {
-            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Failed to get stats2, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Failed to get numBatches, using fallback gas price");
             return UInt256.Zero;
         }
 
         // Get the latest proposed batch
-        Batch? currentBatch = GetBatch(stats2.NumBatches - 1);
-        if (currentBatch == null)
+        ulong? currentBatchLastBlockId = GetLastBlockId(numBatches.Value - 1);
+        if (currentBatchLastBlockId == null)
         {
-            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Failed to get current batch, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace("[SurgeGasPriceOracle] Failed to get current batch lastBlockId, using fallback gas price");
             return UInt256.Zero;
         }
 
         // Get the previous batch to find the total number of blocks in the latest proposed batch
-        Batch? previousBatch = stats2.NumBatches > 1 ? GetBatch(stats2.NumBatches - 2) : null;
-        ulong startBlockId = (previousBatch?.LastBlockId ?? 0) + 1;
-        ulong endBlockId = currentBatch.LastBlockId;
+        ulong? previousBatchLastBlockId = numBatches > 2 ? GetLastBlockId(numBatches.Value - 2) : 0;
+        ulong startBlockId = (previousBatchLastBlockId ?? 0) + 1;
+        ulong endBlockId = currentBatchLastBlockId.Value;
 
         // Calculate total gas used for the batch
         UInt256 totalGasUsed = UInt256.Zero;
@@ -147,71 +148,55 @@ public class SurgeGasPriceOracle : GasPriceOracle
         return _gasUsageBuffer.Average;
     }
 
-    private Stats2? GetStats2()
+    /// <summary>
+    /// Get the number of batches from the TaikoInbox contract's getStats2() function.
+    /// </summary>
+    private ulong? GetNumBatches()
     {
         try
         {
-            return _l1RpcClient.Post<Stats2?>("eth_call", new
+            var response = _l1RpcClient.Post<string>("eth_call", new
             {
                 to = _surgeConfig.TaikoInboxAddress,
                 data = "0x26baca1c" // getStats2() function selector
             }, "latest").GetAwaiter().GetResult();
+
+            // Extract the first 32 bytes (64 hex chars) after "0x" which contains NumBatches
+            if (string.IsNullOrEmpty(response) || response.Length < 66) return null;
+            return ulong.Parse(response[2..66], System.Globalization.NumberStyles.HexNumber);
         }
         catch (Exception ex)
         {
-            if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Failed to get stats2: {ex.Message}");
+            if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Failed to get numBatches: {ex.Message}");
             return null;
         }
     }
 
-    private Batch? GetBatch(ulong batchId)
+    /// <summary>
+    /// Get the last block id from the TaikoInbox contract's getBatch(uint64) function.
+    /// </summary>
+    private ulong? GetLastBlockId(ulong batchId)
     {
         try
         {
+            // Convert batchId to hex string with padding to 64 characters
             string batchIdHex = batchId.ToString("x64");
-            return _l1RpcClient.Post<Batch?>("eth_call", new
+            var response = _l1RpcClient.Post<string>("eth_call", new
             {
                 to = _surgeConfig.TaikoInboxAddress,
                 data = $"0x888775d9{batchIdHex}" // getBatch(uint64) function selector
             }, "latest").GetAwaiter().GetResult();
+
+            // Extract the second 32 bytes (64 hex chars) after "0x" which contains LastBlockId
+            if (string.IsNullOrEmpty(response) || response.Length < 130) return null;
+            return ulong.Parse(response[66..130], System.Globalization.NumberStyles.HexNumber);
         }
         catch (Exception ex)
         {
-            if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Failed to get batch {batchId}: {ex.Message}");
+            if (_logger.IsTrace) _logger.Trace($"[SurgeGasPriceOracle] Failed to get lastBlockId for batch {batchId}: {ex.Message}");
             return null;
         }
     }
-
-
-    /// <summary>
-    /// TaikoInbox contract response for getStats2()
-    /// </summary>
-    private sealed class Stats2
-    {
-        public ulong NumBatches { get; set; }
-        public ulong LastVerifiedBatchId { get; set; }
-        public bool Paused { get; set; }
-        public ulong LastProposedIn { get; set; }
-        public ulong LastUnpausedAt { get; set; }
-    }
-
-    /// <summary>
-    /// TaikoInbox contract response for getBatch(uint64)
-    /// </summary>
-    private sealed class Batch
-    {
-        public byte[] MetaHash { get; set; } = Array.Empty<byte>();
-        public ulong LastBlockId { get; set; }
-        public ulong Reserved3 { get; set; }
-        public ulong LivenessBond { get; set; }
-        public ulong BatchId { get; set; }
-        public ulong LastBlockTimestamp { get; set; }
-        public ulong AnchorBlockId { get; set; }
-        public uint NextTransitionId { get; set; }
-        public byte Reserved4 { get; set; }
-        public uint VerifiedTransitionId { get; set; }
-    }
-
 
     /// <summary>
     /// A fixed-size ring buffer for tracking gas usage and computing moving averages.

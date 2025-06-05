@@ -1,18 +1,20 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain.Find;
-using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.Taiko.Rpc;
-using Nethermind.Taiko.Config;
+using System;
+using System.Threading.Tasks;
 using NSubstitute;
 using NUnit.Framework;
-using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
+using Nethermind.Taiko.Config;
+using Nethermind.Taiko.Rpc;
 
 namespace Nethermind.Taiko.Test;
 
@@ -30,7 +32,7 @@ public class SurgeGasPriceOracleTests
     public void Setup()
     {
         _blockFinder = Substitute.For<IBlockFinder>();
-        _logManager = Substitute.For<ILogManager>();
+        _logManager = LimboLogs.Instance;
         _specProvider = Substitute.For<ISpecProvider>();
         _l1RpcClient = Substitute.For<IJsonRpcClient>();
         _surgeConfig = new SurgeConfig();
@@ -177,5 +179,42 @@ public class SurgeGasPriceOracleTests
         UInt256 secondGasPrice = _gasPriceOracle.GetGasPriceEstimate();
 
         Assert.That(secondGasPrice, Is.EqualTo(firstGasPrice));
+    }
+
+    [Test]
+    public void GetGasPriceEstimate_WithLiveTaikoInboxContract_ReturnsValidGasPrice()
+    {
+        // Create a real RPC client for L1
+        var l1RpcClient = new BasicJsonRpcClient(
+            new Uri("https://eth.llamarpc.com"),
+            new EthereumJsonSerializer(),
+            _logManager);
+
+        // Set up the block finder to return a valid block with gas usage for any block ID
+        _blockFinder.FindBlock(Arg.Any<long>(), Arg.Any<Blockchain.BlockTreeLookupOptions>())
+            .Returns(callInfo => Build.A.Block
+                .WithNumber(callInfo.Arg<long>())
+                .WithGasUsed(1000000)
+                .TestObject);
+
+        // Create a gas price oracle with the live client
+        var liveGasPriceOracle = new SurgeGasPriceOracle(
+            _blockFinder,
+            _logManager,
+            _specProvider,
+            MinGasPrice,
+            l1RpcClient,
+            _surgeConfig);
+
+        // Set up a head block with some gas used
+        Block headBlock = Build.A.Block.WithNumber(1).WithGasUsed(1000000).TestObject;
+        _blockFinder.Head.Returns(headBlock);
+
+        // Get the gas price estimate
+        UInt256 gasPrice = liveGasPriceOracle.GetGasPriceEstimate();
+
+        // Verify the gas price is valid
+        Assert.That(gasPrice, Is.GreaterThan(MinGasPrice));
+        Assert.That(gasPrice, Is.LessThan(UInt256.Parse("100000000000"))); // Less than 100 Gwei
     }
 }
