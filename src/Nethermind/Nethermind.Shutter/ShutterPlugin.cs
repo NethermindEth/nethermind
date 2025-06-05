@@ -72,7 +72,7 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
 
     public IEnumerable<StepInfo> GetSteps()
     {
-        yield return typeof(RunShutterP2PStep);
+        yield return typeof(RunShutterP2P);
     }
 
     public IModule? Module => new ShutterPluginModule();

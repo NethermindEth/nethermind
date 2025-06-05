@@ -17,7 +17,7 @@ namespace Nethermind.Shutter;
     dependencies: [typeof(InitializeNetwork)],
     dependents: [typeof(InitializeBlockProducer)]
 )]
-public class RunShutterP2PStep(IShutterConfig shutterConfig, IShutterApi shutterApi, IProcessExitSource exitSource) : IStep
+public class RunShutterP2P(IShutterConfig shutterConfig, IShutterApi shutterApi, IProcessExitSource exitSource) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)
     {
