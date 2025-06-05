@@ -66,16 +66,4 @@
     <Folder Include="configs\" />
   </ItemGroup>
 
-  <Target Name="CollectPlugins" AfterTargets="AfterBuild">
-    <ItemGroup Condition="'$(UseExternalPlugin)' == 'true'">
-      <PluginsForBuild Include="$(OutputPath)\$(ExternalPluginArtifacts)" />
-      <PluginsForPublish Include="$(OutputPath)\$(ExternalPluginArtifacts)" />
-    </ItemGroup>
-  </Target>
-
-  <Target Name="CopyPluginsAfterBuild" AfterTargets="AfterBuild" DependsOnTargets="CollectPlugins">
-    <Message Text="Copying plugins after build..." Importance="High" />
-    <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
-  </Target>
-
 </Project>

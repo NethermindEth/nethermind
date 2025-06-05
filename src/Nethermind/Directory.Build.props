@@ -28,14 +28,4 @@
     </AssemblyAttribute>
   </ItemGroup>
 
-  <!-- Default external plugin configurations that can be overriden by Directory.Build.props of parent directories -->
-  <PropertyGroup Label="ExternalPluginConfiguration">
-    <UseExternalPlugin>false</UseExternalPlugin>
-    <ExternalPluginProps>$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))</ExternalPluginProps>
-    <ExternalPluginProjectPath>$(MSBuildThisFileDirectory)Nethermind.Plugin.Example\Nethermind.Plugin.Example.csproj</ExternalPluginProjectPath>
-    <ExternalPluginArtifacts>Nethermind.Plugin.Example.*</ExternalPluginArtifacts>
-  </PropertyGroup>
-
-  <Import Project="$(ExternalPluginProps)" Condition="'$(ExternalPluginProps)' != ''" />
-
 </Project>
