@@ -9,6 +9,7 @@ using DotNetty.Transport.Channels.Sockets;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
@@ -19,20 +20,20 @@ namespace Nethermind.Network.Discovery;
 public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
 {
     private readonly ILogger _logger;
-    private readonly IDiscoveryManager _discoveryManager;
+    private readonly IDiscoveryMsgListener _discoveryMsgListener;
     private readonly IChannel _channel;
     private readonly IMessageSerializationService _msgSerializationService;
     private readonly ITimestamper _timestamper;
 
     public NettyDiscoveryHandler(
-        IDiscoveryManager? discoveryManager,
+        IDiscoveryMsgListener? discoveryManager,
         IChannel? channel,
         IMessageSerializationService? msgSerializationService,
         ITimestamper? timestamper,
         ILogManager? logManager) : base(logManager)
     {
         _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
-        _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
+        _discoveryMsgListener = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
         _channel = channel ?? throw new ArgumentNullException(nameof(channel));
         _msgSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
@@ -97,16 +98,17 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         }
 
         IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(msgBuffer, discoveryMsg.FarAddress);
-
-        await _channel.WriteAndFlushAsync(packet).ContinueWith(t =>
+        try
         {
-            if (t.IsFaulted)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMsg} ,Exp: {t.Exception}");
-            }
-        });
+            await _channel.WriteAndFlushAsync(packet);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMsg} ,Exp: {e}");
+        }
 
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
+        Metrics.DiscoveryMessagesSent.Increment(discoveryMsg.MsgType);
     }
 
     private bool TryParseMessage(DatagramPacket packet, out DiscoveryMsg? msg)
@@ -130,7 +132,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         }
 
         byte typeRaw = msgBytes[97];
-        if (!FastEnum.IsDefined<MsgType>((int)typeRaw))
+        if (!FastEnum.IsDefined((MsgType)typeRaw))
         {
             if (_logger.IsDebug) _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msgBytes.AsSpan(0, size).ToHexString()}");
             return false;
@@ -175,7 +177,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
 
             // Explicitly run it on the default scheduler to prevent something down the line hanging netty task scheduler.
             Task.Factory.StartNew(
-                () => _discoveryManager.OnIncomingMsg(msg),
+                () => _discoveryMsgListener.OnIncomingMsg(msg),
                 CancellationToken.None,
                 TaskCreationOptions.RunContinuationsAsynchronously,
                 TaskScheduler.Default
@@ -220,28 +222,28 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         long timeToExpire = msg.ExpirationTime - _timestamper.UnixTime.SecondsLong;
         if (timeToExpire < 0)
         {
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType.ToString()} expired", size);
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} expired", size);
             if (_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired {-timeToExpire} seconds ago, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
 
         if (msg.FarAddress is null)
         {
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType.ToString()} has null far address", size);
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} has null far address", size);
             if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid far address {msg.FarAddress}, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
 
         if (!msg.FarAddress.Equals((IPEndPoint)packet.Sender))
         {
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType.ToString()} has incorrect far address", size);
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} has incorrect far address", size);
             if (_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {msg.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
 
         if (msg.FarPublicKey is null)
         {
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType.ToString()} has null far public key", size);
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} has null far public key", size);
             if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {msg.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
@@ -259,6 +261,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", msg.MsgType.ToString(), size);
         }
+        Metrics.DiscoveryMessagesReceived.Increment(msg.MsgType);
     }
 
     public event EventHandler? OnChannelActivated;

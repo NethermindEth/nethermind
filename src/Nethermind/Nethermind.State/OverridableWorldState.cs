@@ -13,7 +13,7 @@ public class OverridableWorldState(
     ILogManager? logManager,
     PreBlockCaches? preBlockCaches = null,
     bool populatePreBlockCache = true)
-    : WorldState(trieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager, preBlockCaches, populatePreBlockCache)
+    : WorldState(trieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager, preBlockCaches, populatePreBlockCache), IOverridableWorldState
 {
 
     /// <summary>
@@ -21,7 +21,6 @@ public class OverridableWorldState(
     /// </summary>
     public void ResetOverrides()
     {
-        trieStore.ResetOverrides();
         dbProvider.ClearTempChanges();
     }
 }

@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
@@ -29,15 +30,15 @@ public abstract class GethLikeTxTracer : TxTracer
     public sealed override bool IsTracingStack { get; protected set; }
     protected bool IsTracingFullMemory { get; }
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         Trace.ReturnValue = output;
     }
 
-    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         Trace.Failed = true;
-        Trace.ReturnValue = output ?? Array.Empty<byte>();
+        Trace.ReturnValue = output ?? [];
     }
 
     protected static string? GetErrorDescription(EvmExceptionType evmExceptionType)
@@ -68,7 +69,7 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
     protected GethLikeTxTracer(GethTraceOptions options) : base(options) { }
     private bool _gasCostAlreadySetForCurrentOp;
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
         bool isPostMerge = env.IsPostMerge();
         if (CurrentTraceEntry is not null)
@@ -79,6 +80,8 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
         CurrentTraceEntry.Gas = gas;
         CurrentTraceEntry.Opcode = opcode.GetName(isPostMerge);
         CurrentTraceEntry.ProgramCounter = pc;
+        // skip codeSection
+        // skip functionDepth
         _gasCostAlreadySetForCurrentOp = false;
     }
 

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -21,11 +20,17 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong? CanyonTimestamp { get; set; }
 
+    public ulong? DeltaTimestamp { get; set; }
+
     public ulong? EcotoneTimestamp { get; set; }
 
     public ulong? FjordTimestamp { get; set; }
 
     public ulong? GraniteTimestamp { get; set; }
+
+    public ulong? HoloceneTimestamp { get; set; }
+
+    public ulong? IsthmusTimestamp { get; set; }
 
     public Address? L1FeeRecipient { get; set; }
 
@@ -37,28 +42,17 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public byte[]? Create2DeployerCode { get; set; }
 
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
-    {
-        ArgumentNullException.ThrowIfNull(BedrockBlockNumber);
-        ArgumentNullException.ThrowIfNull(RegolithTimestamp);
-        ArgumentNullException.ThrowIfNull(CanyonTimestamp);
-        ArgumentNullException.ThrowIfNull(EcotoneTimestamp);
-        ArgumentNullException.ThrowIfNull(FjordTimestamp);
-        ArgumentNullException.ThrowIfNull(GraniteTimestamp);
-        blockNumbers.Add(BedrockBlockNumber.Value);
-        timestamps.Add(RegolithTimestamp.Value);
-        timestamps.Add(CanyonTimestamp.Value);
-        timestamps.Add(EcotoneTimestamp.Value);
-        timestamps.Add(FjordTimestamp.Value);
-        timestamps.Add(GraniteTimestamp.Value);
-    }
-
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
     {
         ArgumentNullException.ThrowIfNull(CanyonBaseFeeChangeDenominator);
         if (CanyonTimestamp <= startTimestamp)
         {
             spec.BaseFeeMaxChangeDenominator = CanyonBaseFeeChangeDenominator.Value;
+        }
+
+        if (HoloceneTimestamp is not null)
+        {
+            spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp.Value, new DefaultBaseFeeCalculator());
         }
     }
 }

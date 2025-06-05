@@ -12,19 +12,17 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class BlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
+    public class ByTotalDifficultyPeerAllocationStrategy : IPeerAllocationStrategy
     {
         private readonly long? _minBlocksAhead;
 
         private const decimal MinDiffPercentageForSpeedSwitch = 0.10m;
         private const int MinDiffForSpeedSwitch = 10;
 
-        public BlocksSyncPeerAllocationStrategy(long? minBlocksAhead)
+        public ByTotalDifficultyPeerAllocationStrategy(long? minBlocksAhead)
         {
             _minBlocksAhead = minBlocksAhead;
         }
-
-        public bool CanBeReplaced => true;
 
         private static long? GetSpeed(INodeStatsManager nodeStatsManager, PeerInfo peerInfo)
         {
@@ -56,7 +54,7 @@ namespace Nethermind.Synchronization.Blocks
 
             foreach (PeerInfo info in peers)
             {
-                (this as IPeerAllocationStrategy).CheckAsyncState(info);
+                info.EnsureInitialized();
                 peersCount++;
 
                 if (_minBlocksAhead is not null)
@@ -68,14 +66,11 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 }
 
-                // TODO: this is not needed -> always wtapped
-                // if (info.TotalDifficulty <= localTotalDiff)
-                // {
-                //     // if we require higher difficulty then we need to discard peers with same diff as ours
-                //     continue;
-                // }
-
-                if (info.TotalDifficulty - localTotalDiff <= 2 && (info.PeerClientType == NodeClientType.Parity || info.PeerClientType == NodeClientType.OpenEthereum))
+                UInt256? remoteTotalDiff = info.TotalDifficulty;
+                if (remoteTotalDiff.HasValue &&
+                    remoteTotalDiff.Value >= localTotalDiff &&
+                    remoteTotalDiff.Value - localTotalDiff <= 2 &&
+                    info.PeerClientType is NodeClientType.Parity or NodeClientType.OpenEthereum)
                 {
                     // Parity advertises a better block but never sends it back and then it disconnects after a few conversations like this
                     // Geth responds all fine here
@@ -92,7 +87,7 @@ namespace Nethermind.Synchronization.Blocks
                     fastestPeer = (info, averageTransferSpeed);
                 }
 
-                if (info.TotalDifficulty >= (bestDiffPeer.Info?.TotalDifficulty ?? UInt256.Zero))
+                if (info.HasEqualOrBetterTDOrBlock(bestDiffPeer.Info))
                 {
                     bestDiffPeer = (info, averageTransferSpeed);
                 }
@@ -108,15 +103,39 @@ namespace Nethermind.Synchronization.Blocks
                 return fastestPeer.Info;
             }
 
-            averageSpeed /= peersCount;
-            UInt256 difficultyDifference = bestDiffPeer.Info.TotalDifficulty - localTotalDiff;
+            const int minBlocksDiff = 16;
 
-            // at least 1 diff times 16 blocks of diff
-            if (difficultyDifference > 0
-                && difficultyDifference < ((blockTree.Head?.Difficulty ?? 0) + 1) * 16
-                && bestDiffPeer.TransferSpeed > averageSpeed)
+            averageSpeed /= peersCount;
+            if (bestDiffPeer.Info.TotalDifficulty is { } bestPeerTD) // Try to compare by TD if present
             {
-                return bestDiffPeer.Info;
+                averageSpeed /= peersCount;
+                UInt256 difficultyDifference = bestPeerTD > localTotalDiff
+                    ? bestPeerTD - localTotalDiff
+                    : UInt256.Zero;
+
+                // at least 1 diff times 16 blocks of diff
+                if (difficultyDifference > 0
+                    && (difficultyDifference >= ((blockTree.Head?.Difficulty ?? 0) + 1) * minBlocksDiff
+                        || bestDiffPeer.TransferSpeed > averageSpeed))
+                {
+                    return bestDiffPeer.Info;
+                }
+            }
+            else // by last block otherwise
+            {
+                var bestPeerNumber = bestDiffPeer.Info.HeadNumber;
+                var localNumber = blockTree.Head?.Number ?? 0;
+                var blockDifference = bestPeerNumber > localNumber
+                    ? bestPeerNumber - localNumber
+                    : 0;
+
+                // at least 16 blocks
+                if (blockDifference > 0
+                    && (blockDifference >= localNumber + minBlocksDiff
+                        || bestDiffPeer.TransferSpeed > averageSpeed))
+                {
+                    return bestDiffPeer.Info;
+                }
             }
 
             decimal speedRatio = fastestPeer.TransferSpeed / (decimal)Math.Max(1L, currentSpeed);

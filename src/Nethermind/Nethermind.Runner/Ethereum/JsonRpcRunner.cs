@@ -2,14 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -33,10 +30,8 @@ namespace Nethermind.Runner.Ethereum
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
         private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
         private readonly IWebSocketsManager _webSocketsManager;
-        private readonly IJsonRpcConfig _jsonRpcConfig;
         private IWebHost? _webHost;
-        private readonly IInitConfig _initConfig;
-        private readonly INethermindApi _api;
+        private readonly IJsonRpcServiceConfigurer[] _jsonRpcServices;
 
         public JsonRpcRunner(
             IJsonRpcProcessor jsonRpcProcessor,
@@ -45,36 +40,40 @@ namespace Nethermind.Runner.Ethereum
             IConfigProvider configurationProvider,
             IRpcAuthentication rpcAuthentication,
             ILogManager logManager,
-            INethermindApi api)
+            IJsonRpcServiceConfigurer[] jsonRpcServices)
         {
-            _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
-            _initConfig = configurationProvider.GetConfig<IInitConfig>();
             _configurationProvider = configurationProvider;
             _rpcAuthentication = rpcAuthentication;
             _jsonRpcUrlCollection = jsonRpcUrlCollection;
             _logManager = logManager;
             _jsonRpcProcessor = jsonRpcProcessor;
             _webSocketsManager = webSocketsManager;
+            _jsonRpcServices = jsonRpcServices;
             _logger = logManager.GetClassLogger();
-            _api = api;
         }
 
         public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsDebug) _logger.Debug("Initializing JSON RPC");
             string[] urls = _jsonRpcUrlCollection.Urls;
-            var webHost = WebHost.CreateDefaultBuilder()
+            IWebHost webHost = new WebHostBuilder()
+                // Explicitly build from UseKestrelCore rather than UseKestrel to
+                // not add additional transports that we don't use e.g. msquic as that
+                // adds a lot of additional idle threads to the process.
+                .UseKestrelCore()
+                .UseKestrelHttpsConfiguration()
                 .ConfigureServices(s =>
                 {
+                    s.AddRouting();
                     s.AddSingleton(_configurationProvider);
                     s.AddSingleton(_jsonRpcProcessor);
                     s.AddSingleton(_jsonRpcUrlCollection);
                     s.AddSingleton(_webSocketsManager);
                     s.AddSingleton(_rpcAuthentication);
-                    foreach (var plugin in _api.Plugins.OfType<INethermindServicesPlugin>())
+                    foreach (IJsonRpcServiceConfigurer configurer in _jsonRpcServices)
                     {
-                        plugin.AddServices(s);
-                    };
+                        configurer.Configure(s);
+                    }
                 })
                 .UseStartup<Startup>()
                 .UseUrls(urls)

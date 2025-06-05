@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Test.Receipts;
 [TestFixture(false)]
 public class PersistentReceiptStorageTests
 {
-    private TestSpecProvider _specProvider = new TestSpecProvider(Byzantium.Instance);
+    private readonly TestSpecProvider _specProvider = new TestSpecProvider(Byzantium.Instance);
     private TestMemColumnsDb<ReceiptsColumns> _receiptsDb = null!;
     private ReceiptsRecovery _receiptsRecovery = null!;
     private IBlockTree _blockTree = null!;
@@ -206,7 +206,7 @@ public class PersistentReceiptStorageTests
             .WithReceiptsRoot(TestItem.KeccakA)
             .TestObject;
 
-        TxReceipt[] emptyReceipts = Array.Empty<TxReceipt>();
+        TxReceipt[] emptyReceipts = [];
         _storage.Get(block).Should().BeEquivalentTo(emptyReceipts);
         // can be from cache:
         _storage.Get(block).Should().BeEquivalentTo(emptyReceipts);
@@ -224,7 +224,7 @@ public class PersistentReceiptStorageTests
         iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
         receiptStructRef.LogsRlp.ToArray().Should().BeEmpty();
         receiptStructRef.Logs.Should().BeEquivalentTo(receipts.First().Logs);
-        iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
+        iterator.TryGetNext(out _).Should().BeFalse();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -238,7 +238,7 @@ public class PersistentReceiptStorageTests
         receiptStructRef.LogsRlp.ToArray().Should().NotBeEmpty();
         receiptStructRef.Logs.Should().BeNullOrEmpty();
 
-        iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
+        iterator.TryGetNext(out _).Should().BeFalse();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -252,7 +252,7 @@ public class PersistentReceiptStorageTests
         iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
         receiptStructRef.LogsRlp.ToArray().Should().BeEmpty();
         receiptStructRef.Logs.Should().BeEquivalentTo(receipts.First().Logs);
-        iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
+        iterator.TryGetNext(out _).Should().BeFalse();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -341,7 +341,7 @@ public class PersistentReceiptStorageTests
             Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(blockNumber).TestObject));
         Thread.Sleep(100);
         IEnumerable<ICall> calls = _blockTree.ReceivedCalls()
-            .Where(call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlock)));
+            .Where(static call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlock)));
         if (WillPruneOldIndicies)
             calls.Should().NotBeEmpty();
         else
@@ -360,28 +360,37 @@ public class PersistentReceiptStorageTests
     }
 
     [Test]
-    public void When_NewHeadBlock_Remove_TxIndex_OfRemovedBlock()
+    public void When_NewHeadBlock_DoNotRemove_TxIndex_WhenTxIsInOtherBlockNumber()
     {
         CreateStorage();
-        (Block block, TxReceipt[] receipts) = InsertBlock();
 
-        if (_receiptConfig.CompactTxIndex)
-        {
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
-        }
-        else
-        {
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().NotBeNull();
-        }
+        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
 
-        Block newHead = Build.A.Block.WithNumber(1).TestObject;
-        _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
-        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newHead, block));
+        Block b1a = Build.A.Block.WithNumber(1).TestObject;
+        Block b1b = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+        Block b2a = Build.A.Block.WithNumber(2).WithParent(b1a).WithTransactions(tx).TestObject;
+        Block b2b = Build.A.Block.WithNumber(2).WithParent(b1b).TestObject;
 
-        Assert.That(
-            () => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes],
-            Is.Null.After(1000, 100)
-            );
+        InsertBlock(b1a);
+        InsertBlock(b1b);
+        InsertBlock(b2a);
+        InsertBlock(b2b);
+
+        // b1a
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1a, null));
+
+        // b1b
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1b, b1a));
+
+        // b2a
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1a, b1b));
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b2a, null));
+
+        // b2b
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b1b, b1a));
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(b2b, b2a));
+
+        _storage.FindBlockHash(tx.Hash!).Should().Be(b1b.Hash!);
     }
 
     [Test]
@@ -389,7 +398,7 @@ public class PersistentReceiptStorageTests
     {
         _receiptConfig.CompactTxIndex = _useCompactReceipts;
         CreateStorage();
-        (Block block, TxReceipt[] receipts) = InsertBlock();
+        (Block block, _) = InsertBlock();
         Block block2 = Build.A.Block
             .WithParent(block)
             .WithNumber(2)
@@ -486,7 +495,12 @@ public class PersistentReceiptStorageTests
                 .TestObject;
             _blockTree.FindBestSuggestedHeader().Returns(farHead);
         }
-        TxReceipt[] receipts = { Build.A.Receipt.WithCalculatedBloom().TestObject };
+
+        TxReceipt[] receipts = Array.Empty<TxReceipt>();
+        if (block.Transactions.Length == 1)
+        {
+            receipts = [Build.A.Receipt.WithCalculatedBloom().TestObject];
+        }
         return (block, receipts);
     }
 
@@ -502,6 +516,6 @@ public class PersistentReceiptStorageTests
     private EquivalencyAssertionOptions<TxReceipt> ReceiptCompareOpt(EquivalencyAssertionOptions<TxReceipt> opts)
     {
         return opts
-            .Excluding(su => su.Error);
+            .Excluding(static su => su.Error);
     }
 }

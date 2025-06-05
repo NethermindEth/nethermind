@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -157,7 +156,7 @@ public struct EvmPooledMemory : IEvmMemory
     {
         if (length.IsZero)
         {
-            return Array.Empty<byte>();
+            return [];
         }
 
         CheckMemoryAccessViolation(in location, in length, out ulong newLength);
@@ -262,10 +261,17 @@ public struct EvmPooledMemory : IEvmMemory
         long result = CalculateMemoryCost(in location, in length, out bool outOfGas);
         if (outOfGas)
         {
-            throw new OutOfGasException();
+            ThrowOutOfGas();
         }
 
         return result;
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowOutOfGas()
+        {
+            throw new OutOfGasException();
+        }
     }
 
     public TraceMemory GetTrace()
@@ -285,6 +291,7 @@ public struct EvmPooledMemory : IEvmMemory
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long Div32Ceiling(in UInt256 length, out bool outOfGas)
     {
         if (length.IsLargerThanULong())
@@ -301,7 +308,7 @@ public struct EvmPooledMemory : IEvmMemory
             result++;
         }
 
-        if (result > int.MaxValue)
+        if (result > uint.MaxValue)
         {
             outOfGas = true;
             return 0;

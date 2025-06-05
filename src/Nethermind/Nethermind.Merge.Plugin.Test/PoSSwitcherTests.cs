@@ -37,9 +37,10 @@ namespace Nethermind.Merge.Plugin.Test
         {
             UInt256 expectedTtd = 10;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            ChainSpecLoader loader = new(new EthereumJsonSerializer());
+
+            var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
-            ChainSpec chainSpec = loader.LoadFromFile(path);
+            var chainSpec = loader.LoadEmbeddedOrFromFile(path);
 
             ChainSpecBasedSpecProvider specProvider = new(chainSpec);
             PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec(), LimboLogs.Instance);
@@ -56,7 +57,7 @@ namespace Nethermind.Merge.Plugin.Test
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.TerminalTotalDifficulty = (UInt256)terminalTotalDifficulty;
             BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(6).TestObject;
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
+            _ = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
             BlockHeader? block3 = blockTree.FindHeader(3, BlockTreeLookupOptions.All);
             BlockHeader? block4 = blockTree.FindHeader(4, BlockTreeLookupOptions.All);
@@ -78,7 +79,7 @@ namespace Nethermind.Merge.Plugin.Test
             Block genesisBlock = Build.A.Block.WithNumber(0).WithDifficulty((UInt256)genesisDifficulty)
                 .WithTotalDifficulty(genesisDifficulty).TestObject;
             BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(6).TestObject;
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
+            _ = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
             Assert.That(genesisBlock.IsTerminalBlock(specProvider), Is.EqualTo(expectedResult));
         }

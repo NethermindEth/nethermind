@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -26,8 +25,6 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) => _trieStore.IsPersisted(address, path, keccak);
 
-        public IReadOnlyTrieStore AsReadOnly(INodeStorage nodeStore) => new ReadOnlyTrieStore(_trieStore, nodeStore);
-
         public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
 
         public IBlockCommitter BeginBlockCommit(long blockNumber)
@@ -35,15 +32,7 @@ namespace Nethermind.Trie.Pruning
             return NullCommitter.Instance;
         }
 
-        public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
-        {
-            add { }
-            remove { }
-        }
-
         public IReadOnlyKeyValueStore TrieNodeRlpStore => _trieStore.TrieNodeRlpStore;
-
-        public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp) { }
 
         public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedReadOnlyTrieStore(this, address);
 
@@ -70,8 +59,6 @@ namespace Nethermind.Trie.Pruning
 
             public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
                 fullTrieStore.IsPersisted(address, path, in keccak);
-
-            public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp) { }
         }
     }
 }

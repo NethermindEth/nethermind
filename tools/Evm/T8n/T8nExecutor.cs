@@ -12,6 +12,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -28,24 +29,20 @@ public static class T8nExecutor
 {
     private static ILogManager _logManager = LimboLogs.Instance;
 
-    public static T8nResult Execute(T8nCommandArguments arguments)
+    public static T8nExecutionResult Execute(T8nCommandArguments arguments)
     {
         T8nTest test = T8nInputProcessor.ProcessInputAndConvertToT8nTest(arguments);
 
         KzgPolynomialCommitments.InitializeAsync();
 
-        IDb stateDb = new MemDb();
-        IDb codeDb = new MemDb();
-
-        TrieStore trieStore = new(stateDb, _logManager);
-        WorldState stateProvider = new(trieStore, codeDb, _logManager);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = worldStateManager.GlobalWorldState;
         CodeInfoRepository codeInfoRepository = new();
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
 
         IVirtualMachine virtualMachine = new VirtualMachine(
             blockhashProvider,
             test.SpecProvider,
-            codeInfoRepository,
             _logManager);
         TransactionProcessor transactionProcessor = new(
             test.SpecProvider,
@@ -76,10 +73,11 @@ public static class T8nExecutor
         blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
         blockReceiptsTracer.StartNewBlockTrace(block);
 
+        var blkCtx = new BlockExecutionContext(block.Header, test.Spec);
         BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor, stateProvider);
         if (test.ParentBeaconBlockRoot is not null)
         {
-            beaconBlockRootHandler.StoreBeaconRoot(block, test.Spec, storageTxTracer);
+            beaconBlockRootHandler.StoreBeaconRoot(block, in blkCtx, test.Spec, storageTxTracer);
         }
 
         int txIndex = 0;
@@ -102,7 +100,7 @@ public static class T8nExecutor
 
             blockReceiptsTracer.StartNewTxTrace(transaction);
             TransactionResult transactionResult = transactionProcessor
-                .Execute(transaction, new BlockExecutionContext(block.Header), blockReceiptsTracer);
+                .Execute(transaction, in blkCtx, blockReceiptsTracer);
             blockReceiptsTracer.EndTxTrace();
 
             transactionExecutionReport.ValidTransactions.Add(transaction);
@@ -133,7 +131,7 @@ public static class T8nExecutor
         stateProvider.Commit(test.SpecProvider.GetSpec((ForkActivation)1));
         stateProvider.CommitTree(test.CurrentNumber);
 
-        return T8nResult.ConstructT8nResult(stateProvider, block, test, storageTxTracer,
+        return T8nExecutionResult.ConstructT8nExecutionResult(stateProvider, block, test, storageTxTracer,
             blockReceiptsTracer, test.SpecProvider, transactionExecutionReport);
     }
 
@@ -149,7 +147,7 @@ public static class T8nExecutor
         return t8NBlockHashProvider;
     }
 
-    private static void ApplyRewards(Block block, WorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
+    private static void ApplyRewards(Block block, IWorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
     {
         var rewardCalculator = new RewardCalculator(specProvider);
         BlockReward[] rewards = rewardCalculator.CalculateRewards(block);

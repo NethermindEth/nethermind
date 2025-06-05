@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,7 +6,6 @@ using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions;
@@ -26,7 +25,7 @@ public static class Int64Extensions
     public static byte[] ToBigEndianByteArrayWithoutLeadingZeros(this long value)
         => value.ToBigEndianSpanWithoutLeadingZeros(out _).ToArray();
 
-    public static byte[] ToBigEndianByteArray(this long value)
+    public static byte[] ToBigEndianByteArray(this ulong value)
     {
         byte[] bytes = BitConverter.GetBytes(value);
         if (BitConverter.IsLittleEndian)
@@ -36,6 +35,10 @@ public static class Int64Extensions
 
         return bytes;
     }
+
+    public static byte[] ToBigEndianByteArray(this long value)
+        => ToBigEndianByteArray((ulong)value);
+
     public static void WriteBigEndian(this long value, Span<byte> output)
     {
         BinaryPrimitives.WriteInt64BigEndian(output, value);
@@ -46,7 +49,7 @@ public static class Int64Extensions
     {
         if (value == 0L)
         {
-            return "0x0";
+            return Bytes.ZeroHexValue;
         }
 
         Span<byte> bytes = stackalloc byte[8];
@@ -59,7 +62,7 @@ public static class Int64Extensions
     {
         if (value == 0UL)
         {
-            return "0x0";
+            return Bytes.ZeroHexValue;
         }
 
         Span<byte> bytes = stackalloc byte[8];
@@ -72,12 +75,12 @@ public static class Int64Extensions
     {
         if (skipLeadingZeros)
         {
-            if (value == default)
+            if (value.IsZero)
             {
-                return "0x0";
+                return Bytes.ZeroHexValue;
             }
 
-            if (value == UInt256.One)
+            if (value.IsOne)
             {
                 return "0x1";
             }

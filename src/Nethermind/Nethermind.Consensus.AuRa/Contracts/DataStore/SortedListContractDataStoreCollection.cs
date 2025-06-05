@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         protected override IDictionary<T, T> CreateDictionary() => new SortedList<T, T>(_keyComparer);
 
-        public override IEnumerable<T> GetSnapshot() => Items.Values.OrderBy(x => x, _valueComparer).ToList();
+        public override IEnumerable<T> GetSnapshot() => Items.Values.OrderBy(static x => x, _valueComparer).ToList();
 
         protected override bool CanReplace(T replaced, T replacing) =>
             (_valueComparer?.Compare(replacing, replaced) ?? 1) >= 0; // allow replacing only if new value is >= old value

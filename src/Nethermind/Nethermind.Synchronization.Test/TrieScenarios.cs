@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -40,7 +41,7 @@ namespace Nethermind.Synchronization.Test
             if (!Inited)
             {
                 // this setup is just for finding the storage root
-                StorageTree remoteStorageTree = SetStorage(new TrieStore(new MemDb(), LimboLogs.Instance), TestItem.AddressA);
+                StorageTree remoteStorageTree = SetStorage(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), TestItem.AddressA);
                 Hash256 storageRoot = remoteStorageTree.RootHash;
 
                 Empty = Build.An.Account.WithBalance(0).TestObject;
@@ -66,12 +67,12 @@ namespace Nethermind.Synchronization.Test
         {
             return new (string, Action<StateTree, ITrieStore, IDb>)[]
             {
-                ("empty", (tree, _, codeDb) =>
+                ("empty", static (tree, _, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     tree.Commit();
                 }),
-                ("set_3_via_address", (tree, stateDb, codeDb) =>
+                ("set_3_via_address", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     SetStorage(tree, stateDb, TestItem.AddressA, Account0);
@@ -79,7 +80,7 @@ namespace Nethermind.Synchronization.Test
                     SetStorage(tree, stateDb, TestItem.AddressC, Account0);
                     tree.Commit();
                 }),
-                ("storage_hash_and_code_hash_same", (tree, stateDb, codeDb) =>
+                ("storage_hash_and_code_hash_same", static (tree, stateDb, codeDb) =>
                 {
                     byte[] code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
                     Hash256 codeHash = Keccak.Compute(code);
@@ -92,7 +93,7 @@ namespace Nethermind.Synchronization.Test
                     tree.Set(account, AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash(codeHash));
                     tree.Commit();
                 }),
-                ("storage_hash_and_code_hash_same_with_additional_account_of_same_storage_root", (tree, stateDb, codeDb) =>
+                ("storage_hash_and_code_hash_same_with_additional_account_of_same_storage_root", static (tree, stateDb, codeDb) =>
                 {
                     byte[] code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
                     Hash256 codeHash = Keccak.Compute(code);
@@ -114,7 +115,7 @@ namespace Nethermind.Synchronization.Test
                     tree.Set(account2, AccountJustState0.WithChangedStorageRoot(remoteStorageTree2.RootHash).WithChangedCodeHash(codeHash));
                     tree.Commit();
                 }),
-                ("storage_hash_and_code_hash_same_with_additional_account_of_same_code", (tree, stateDb, codeDb) =>
+                ("storage_hash_and_code_hash_same_with_additional_account_of_same_code", static (tree, stateDb, codeDb) =>
                 {
                     byte[] code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
                     Hash256 codeHash = Keccak.Compute(code);
@@ -131,14 +132,14 @@ namespace Nethermind.Synchronization.Test
                     tree.Set(accountWithStorage, AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash).WithChangedCodeHash(codeHash));
                     tree.Commit();
                 }),
-                ("branch_with_same_accounts_at_different_addresses", (tree, _, codeDb) =>
+                ("branch_with_same_accounts_at_different_addresses", static (tree, _, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     tree.Set(new Hash256("1baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0);
                     tree.Set(new Hash256("2baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), AccountJustState0);
                     tree.Commit();
                 }),
-                ("set_3_delete_1", (tree, stateDb, codeDb) =>
+                ("set_3_delete_1", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     SetStorage(tree, stateDb, new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
@@ -147,7 +148,7 @@ namespace Nethermind.Synchronization.Test
                     tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
                     tree.Commit();
                 }),
-                ("set_3_delete_2", (tree, stateDb, codeDb) =>
+                ("set_3_delete_2", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     SetStorage(tree, stateDb, new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
@@ -157,7 +158,7 @@ namespace Nethermind.Synchronization.Test
                     tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
                     tree.Commit();
                 }),
-                ("set_3_delete_all", (tree, _, _) =>
+                ("set_3_delete_all", static (tree, _, _) =>
                 {
 //                    SetStorage(stateDb);
                     tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), Account0);
@@ -168,7 +169,7 @@ namespace Nethermind.Synchronization.Test
                     tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), null);
                     tree.Commit();
                 }),
-                ("extension_read_full_match", (tree, stateDb, codeDb) =>
+                ("extension_read_full_match", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
@@ -179,7 +180,7 @@ namespace Nethermind.Synchronization.Test
                     Hash256 __ = tree.RootHash;
                     tree.Commit();
                 }),
-                ("extension_read_missing", (tree, stateDb, codeDb) =>
+                ("extension_read_missing", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
@@ -190,7 +191,7 @@ namespace Nethermind.Synchronization.Test
                     Hash256 __ = tree.RootHash;
                     tree.Commit();
                 }),
-                ("extension_new_branch", (tree, stateDb, codeDb) =>
+                ("extension_new_branch", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
@@ -202,7 +203,7 @@ namespace Nethermind.Synchronization.Test
                     Hash256 _ = tree.RootHash;
                     tree.Commit();
                 }),
-                ("just_state", (tree, _, _) =>
+                ("just_state", static (tree, _, _) =>
                 {
                     tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), AccountJustState0);
                     tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), AccountJustState1);
@@ -211,7 +212,7 @@ namespace Nethermind.Synchronization.Test
                     Hash256 _ = tree.RootHash;
                     tree.Commit();
                 }),
-                ("extension_delete_missing", (tree, stateDb, codeDb) =>
+                ("extension_delete_missing", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
@@ -222,7 +223,7 @@ namespace Nethermind.Synchronization.Test
                     Hash256 _ = tree.RootHash;
                     tree.Commit();
                 }),
-                ("extension_create_new_extension", (tree, stateDb, codeDb) =>
+                ("extension_create_new_extension", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
@@ -236,7 +237,7 @@ namespace Nethermind.Synchronization.Test
                     Hash256 _ = tree.RootHash;
                     tree.Commit();
                 }),
-                ("leaf_new_value", (tree, stateDb, codeDb) =>
+                ("leaf_new_value", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
                     SetStorage(tree, stateDb, new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
@@ -245,7 +246,7 @@ namespace Nethermind.Synchronization.Test
                     Hash256 _ = tree.RootHash;
                     tree.Commit();
                 }),
-                ("leaf_no_change", (tree, stateDb, codeDb) =>
+                ("leaf_no_change", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     SetStorage(tree, stateDb, new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
@@ -254,7 +255,7 @@ namespace Nethermind.Synchronization.Test
                     Hash256 _ = tree.RootHash;
                     tree.Commit();
                 }),
-                ("leaf_delete", (tree, _, _) =>
+                ("leaf_delete", static (tree, _, _) =>
                 {
                     tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
                     tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), null);
@@ -262,7 +263,7 @@ namespace Nethermind.Synchronization.Test
                     Hash256 _ = tree.RootHash;
                     tree.Commit();
                 }),
-                ("leaf_delete_missing", (tree, stateDb, codeDb) =>
+                ("leaf_delete_missing", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     SetStorage(tree, stateDb, new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
@@ -271,7 +272,7 @@ namespace Nethermind.Synchronization.Test
                     Hash256 _ = tree.RootHash;
                     tree.Commit();
                 }),
-                ("leaf_update_extension", (tree, stateDb, codeDb) =>
+                ("leaf_update_extension", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
@@ -281,7 +282,7 @@ namespace Nethermind.Synchronization.Test
                     Hash256 _ = tree.RootHash;
                     tree.Commit();
                 }),
-                ("leaf_read", (tree, stateDb, codeDb) =>
+                ("leaf_read", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     SetStorage(tree, stateDb, new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
@@ -290,7 +291,7 @@ namespace Nethermind.Synchronization.Test
                     Hash256 __ = tree.RootHash;
                     tree.Commit();
                 }),
-                ("leaf_update_missing", (tree, stateDb, codeDb) =>
+                ("leaf_update_missing", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     SetStorage(tree, stateDb, new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), Account0);
@@ -299,7 +300,7 @@ namespace Nethermind.Synchronization.Test
                     Hash256 __ = tree.RootHash;
                     tree.Commit();
                 }),
-                ("branch_update_missing", (tree, stateDb, codeDb) =>
+                ("branch_update_missing", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
@@ -311,7 +312,7 @@ namespace Nethermind.Synchronization.Test
                     Hash256 _ = tree.RootHash;
                     tree.Commit();
                 }),
-                ("branch_read_missing", (tree, stateDb, codeDb) =>
+                ("branch_read_missing", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
@@ -322,7 +323,7 @@ namespace Nethermind.Synchronization.Test
                     Hash256 __ = tree.RootHash;
                     tree.Commit();
                 }),
-                ("branch_delete_missing", (tree, stateDb, codeDb) =>
+                ("branch_delete_missing", static (tree, stateDb, codeDb) =>
                 {
                     codeDb[Keccak.Compute(Code0).Bytes] = Code0;
                     codeDb[Keccak.Compute(Code1).Bytes] = Code1;
@@ -336,23 +337,20 @@ namespace Nethermind.Synchronization.Test
             };
         }
 
-        private static StorageTree SetStorage(ITrieStore trieStore, Address account)
-        {
-            return SetStorage(trieStore, account.ToAccountPath);
-        }
+        private static StorageTree SetStorage(ITrieStore trieStore, Address account) => SetStorage(trieStore, account.ToAccountPath.ToCommitment());
 
         private static StorageTree SetStorage(ITrieStore trieStore, Hash256 account)
         {
             StorageTree remoteStorageTree = new(trieStore.GetTrieStore(account), Keccak.EmptyTreeHash, LimboLogs.Instance);
 
-            remoteStorageTree.Set((UInt256)1, new byte[] { 1 });
-            remoteStorageTree.Set((UInt256)2, new byte[] { 2 });
-            remoteStorageTree.Set((UInt256)3, new byte[] { 3 });
-            remoteStorageTree.Set((UInt256)4, new byte[] { 4 });
-            remoteStorageTree.Set((UInt256)1005, new byte[] { 5 });
-            remoteStorageTree.Set((UInt256)1006, new byte[] { 6 });
-            remoteStorageTree.Set((UInt256)1007, new byte[] { 7 });
-            remoteStorageTree.Set((UInt256)1008, new byte[] { 8 });
+            remoteStorageTree.Set((UInt256)1, [1]);
+            remoteStorageTree.Set((UInt256)2, [2]);
+            remoteStorageTree.Set((UInt256)3, [3]);
+            remoteStorageTree.Set((UInt256)4, [4]);
+            remoteStorageTree.Set((UInt256)1005, [5]);
+            remoteStorageTree.Set((UInt256)1006, [6]);
+            remoteStorageTree.Set((UInt256)1007, [7]);
+            remoteStorageTree.Set((UInt256)1008, [8]);
 
             remoteStorageTree.Commit();
             return remoteStorageTree;
@@ -360,7 +358,7 @@ namespace Nethermind.Synchronization.Test
 
         private static void SetStorage(StateTree stateTree, ITrieStore trieStore, Address address, Account account)
         {
-            SetStorage(stateTree, trieStore, address.ToAccountPath, account);
+            SetStorage(stateTree, trieStore, address.ToAccountPath.ToCommitment(), account);
         }
 
         private static void SetStorage(StateTree stateTree, ITrieStore trieStore, Hash256 address, Account account)

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
@@ -171,7 +172,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingReceipt)
@@ -180,7 +181,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingReceipt)
@@ -189,12 +190,12 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
         {
-            innerTracer.StartOperation(pc, opcode, gas, env);
+            innerTracer.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
         }
     }
 
@@ -432,7 +433,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingAccess)

@@ -15,7 +15,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_have_expected_file_tracing_flags()
     {
-        var tracer = new GethLikeTxFileTracer(e => { }, GethTraceOptions.Default);
+        var tracer = new GethLikeTxFileTracer(static e => { }, GethTraceOptions.Default);
 
         tracer.IsTracingMemory.Should().BeTrue();
         tracer.IsTracingOpLevelStorage.Should().BeFalse();
@@ -25,7 +25,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_return_gas_and_return_value_as_expected()
     {
-        var trace = ExecuteAndTraceToFile(e => { }, GetBytecode(), GethTraceOptions.Default);
+        var trace = ExecuteAndTraceToFile(static e => { }, GetBytecode(), GethTraceOptions.Default);
 
         trace.Gas.Should().Be(24);
         trace.ReturnValue.Length.Should().Be(0);

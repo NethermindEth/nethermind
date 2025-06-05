@@ -14,12 +14,18 @@ using Nethermind.State;
 // ReSharper disable UnusedAutoPropertyAccessor.Global
 namespace Nethermind.Consensus.Processing
 {
-    public class ReadOnlyTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IReadOnlyTxProcessorSource
+    internal sealed class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
     {
-        protected readonly ILogManager _logManager;
+        private IStateReader StateReader { get; }
+        private IWorldState StateProvider { get; }
+        private IBlockTree BlockTree { get; }
+        private IBlockhashProvider BlockhashProvider { get; }
+        private ISpecProvider SpecProvider { get; }
+        private ILogManager LogManager { get; }
 
-        protected ITransactionProcessor? _transactionProcessor;
-        protected ITransactionProcessor TransactionProcessor
+        private ITransactionProcessor? _transactionProcessor;
+
+        private ITransactionProcessor TransactionProcessor
         {
             get
             {
@@ -27,37 +33,54 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        public IVirtualMachine Machine { get; }
+        private IVirtualMachine Machine { get; }
 
-        public ICodeInfoRepository CodeInfoRepository { get; }
+        private ICodeInfoRepository CodeInfoRepository { get; }
+
         public ReadOnlyTxProcessingEnv(
             IWorldStateManager worldStateManager,
-            IBlockTree blockTree,
-            ISpecProvider? specProvider,
-            ILogManager? logManager,
-            IWorldState? worldStateToWarmUp = null)
-            : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager, worldStateToWarmUp)
+            IReadOnlyBlockTree readOnlyBlockTree,
+            ISpecProvider specProvider,
+            ILogManager logManager,
+            IWorldState worldStateToWarmUp
+            ) : this(worldStateManager.GlobalStateReader, worldStateManager.CreateWorldStateForWarmingUp(worldStateToWarmUp), new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache), readOnlyBlockTree, specProvider, logManager)
         {
         }
 
         public ReadOnlyTxProcessingEnv(
             IWorldStateManager worldStateManager,
             IReadOnlyBlockTree readOnlyBlockTree,
-            ISpecProvider? specProvider,
-            ILogManager? logManager,
-            IWorldState? worldStateToWarmUp = null
-            ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp)
+            ISpecProvider specProvider,
+            ILogManager logManager
+            ) : this(worldStateManager.GlobalStateReader, worldStateManager.CreateResettableWorldState(), new CodeInfoRepository(), readOnlyBlockTree, specProvider, logManager)
         {
-            CodeInfoRepository = new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache);
-            Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
+        }
+
+        private ReadOnlyTxProcessingEnv(
+            IStateReader stateReader,
+            IWorldState stateProvider,
+            ICodeInfoRepository codeInfoRepository,
+            IReadOnlyBlockTree readOnlyBlockTree,
+            ISpecProvider specProvider,
+            ILogManager logManager
+            )
+        {
+            SpecProvider = specProvider;
+            StateReader = stateReader;
+            StateProvider = stateProvider;
+            BlockTree = readOnlyBlockTree;
+            BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
+
+            CodeInfoRepository = codeInfoRepository;
+            Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
 
-            _logManager = logManager;
+            LogManager = logManager;
         }
 
-        protected virtual ITransactionProcessor CreateTransactionProcessor() =>
-            new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, _logManager);
+        private ITransactionProcessor CreateTransactionProcessor() =>
+            new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, LogManager);
 
         public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
         {

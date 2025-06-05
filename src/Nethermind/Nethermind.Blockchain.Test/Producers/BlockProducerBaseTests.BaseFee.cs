@@ -12,7 +12,6 @@ using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
-using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.TxPool;
 using NUnit.Framework;
 

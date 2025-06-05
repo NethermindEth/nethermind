@@ -11,11 +11,11 @@ public class AlwaysPoS : IPoSSwitcher
     private AlwaysPoS() { }
 
     private static AlwaysPoS _instance;
-    public static AlwaysPoS Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new());
+    public static AlwaysPoS Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new());
 
     public UInt256? TerminalTotalDifficulty => 0;
 
-    public UInt256? FinalTotalDifficulty => null;
+    public UInt256? FinalTotalDifficulty => 0;
 
     public bool TransitionFinished => true;
 

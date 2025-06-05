@@ -45,12 +45,7 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Lowest header added in reverse fast sync insert
         /// </summary>
-        BlockHeader? LowestInsertedHeader { get; }
-
-        /// <summary>
-        /// Lowest body added in reverse fast sync insert
-        /// </summary>
-        long? LowestInsertedBodyNumber { get; set; }
+        BlockHeader? LowestInsertedHeader { get; set; }
 
         /// <summary>
         /// Lowest header number added in reverse beacon sync insert. Used to determine if BeaconHeaderSync is completed.
@@ -71,6 +66,14 @@ namespace Nethermind.Blockchain
         /// <param name="headerOptions"></param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
         AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None);
+
+        /// <summary>
+        /// Inserts a disconnected batched block header (without body)
+        /// </summary>
+        /// <param name="headers">Header batch to add</param>
+        /// <param name="headerOptions"></param>
+        /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
+        void BulkInsertHeader(IReadOnlyList<BlockHeader> headers, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None);
 
         /// <summary>
         /// Inserts a disconnected block body (not for processing).
@@ -183,5 +186,14 @@ namespace Nethermind.Blockchain
         void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
 
         void RecalculateTreeLevels();
+
+        /// <summary>
+        /// Sync pivot is mainly concerned with old blocks and receipts.
+        /// After sync pivot, blocks and headers should be continuous.
+        /// Sync pivot should be guaranteed to be a finalized block, code should not need to be concerned of consensus
+        /// for blocks before sync pivot.
+        /// Before sync pivot, there is no guarantee that blocks and receipts are available or continuous.
+        /// </summary>
+        (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
     }
 }

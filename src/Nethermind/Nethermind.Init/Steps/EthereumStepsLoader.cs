@@ -6,55 +6,47 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 
 namespace Nethermind.Init.Steps
 {
     public class EthereumStepsLoader : IEthereumStepsLoader
     {
-        private readonly IEnumerable<Assembly> _stepsAssemblies;
+        private readonly IEnumerable<StepInfo> _stepsInfo;
         private readonly Type _baseApiType = typeof(INethermindApi);
+        private readonly Type _apiType;
 
-        public EthereumStepsLoader(params Assembly[] stepsAssemblies)
-            : this((IEnumerable<Assembly>)stepsAssemblies) { }
-
-        public EthereumStepsLoader(IEnumerable<Assembly> stepsAssemblies)
+        public EthereumStepsLoader(IConsensusPlugin consensusPlugin, IEnumerable<StepInfo> stepsInfo)
         {
-            _stepsAssemblies = stepsAssemblies;
+            _stepsInfo = stepsInfo;
+            _apiType = consensusPlugin.ApiType;
         }
 
-        public IEnumerable<StepInfo> LoadSteps(Type apiType)
+        public IEnumerable<StepInfo> ResolveStepsImplementations()
         {
-            if (!apiType.GetInterfaces().Contains(_baseApiType))
+            if (!_apiType.GetInterfaces().Contains(_baseApiType))
             {
                 throw new NotSupportedException($"api type must implement {_baseApiType.Name}");
             }
 
-            List<Type> allStepTypes = new List<Type>();
-            foreach (Assembly stepsAssembly in _stepsAssemblies)
-            {
-                allStepTypes.AddRange(stepsAssembly.GetExportedTypes()
-                    .Where(t => !t.IsInterface && !t.IsAbstract && IsStepType(t)));
-            }
-
-            return allStepTypes
-                .Select(s => new StepInfo(s, GetStepBaseType(s)))
+            return _stepsInfo
                 .GroupBy(s => s.StepBaseType)
-                .Select(g => SelectImplementation(g.ToArray(), apiType))
+                .Select(g => SelectImplementation(g.ToArray()))
                 .Where(s => s is not null)
                 .Select(s => s!);
         }
 
         private static bool HasConstructorWithParameter(Type type, Type parameterType)
         {
-            Type[] expectedParams = { parameterType };
             return type.GetConstructors().Any(
-                c => c.GetParameters().Select(p => p.ParameterType).SequenceEqual(expectedParams));
+                c => c.GetParameters().Select(p => p.ParameterType).Any(pType => pType == parameterType));
         }
 
-        private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase, Type apiType)
+        private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase)
         {
             StepInfo[] stepsWithMatchingApiType = stepsWithTheSameBase
-                .Where(t => HasConstructorWithParameter(t.StepType, apiType)).ToArray();
+                .Where(t => HasConstructorWithParameter(t.StepType, _apiType)).ToArray();
 
             if (stepsWithMatchingApiType.Length == 0)
             {
@@ -68,19 +60,15 @@ namespace Nethermind.Init.Steps
                 Array.Sort(stepsWithMatchingApiType, (t1, t2) => t1.StepType.IsAssignableFrom(t2.StepType) ? 1 : -1);
             }
 
-            return stepsWithMatchingApiType.FirstOrDefault();
-        }
-
-        private static bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);
-
-        private static Type GetStepBaseType(Type type)
-        {
-            while (type.BaseType is not null && IsStepType(type.BaseType))
+            if (stepsWithMatchingApiType.Length == 0)
             {
-                type = type.BaseType;
+                // Step without INethermindApi in its constructor
+                if (stepsWithTheSameBase.Length == 1) return stepsWithTheSameBase[0];
+
+                throw new StepDependencyException($"Unable to decide step implementation to execute. Steps of same base time: {string.Join(", ", stepsWithTheSameBase.Select(s => s.StepType.Name))}");
             }
 
-            return type;
+            return stepsWithMatchingApiType.FirstOrDefault();
         }
     }
 }

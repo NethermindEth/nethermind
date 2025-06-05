@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,6 +6,7 @@ using System.Globalization;
 
 namespace Nethermind.Serialization.Json
 {
+    using Nethermind.Core.Extensions;
     using System.Buffers;
     using System.Buffers.Binary;
     using System.Buffers.Text;
@@ -22,7 +23,7 @@ namespace Nethermind.Serialization.Json
                 throw new JsonException("null cannot be assigned to long");
             }
 
-            if (s == "0x0")
+            if (s == Bytes.ZeroHexValue)
             {
                 return 0L;
             }
@@ -36,7 +37,7 @@ namespace Nethermind.Serialization.Json
             {
                 Span<char> withZero = new(new char[s.Length - 1]);
                 withZero[0] = '0';
-                s.AsSpan(2).CopyTo(withZero.Slice(1));
+                s.AsSpan(2).CopyTo(withZero[1..]);
                 return long.Parse(withZero, NumberStyles.AllowHexSpecifier);
             }
 
@@ -64,7 +65,7 @@ namespace Nethermind.Serialization.Json
             long value;
             if (s.StartsWith("0x"u8))
             {
-                s = s.Slice(2);
+                s = s[2..];
                 if (Utf8Parser.TryParse(s, out value, out _, 'x'))
                 {
                     return value;

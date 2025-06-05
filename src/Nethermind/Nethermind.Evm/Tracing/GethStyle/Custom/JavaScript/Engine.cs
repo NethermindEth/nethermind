@@ -67,9 +67,9 @@ public class Engine : IDisposable
 
         LoadBigInteger();
         LoadBuiltIn(nameof(CreateUint8ArrayCode), CreateUint8ArrayCode);
-        foreach ((string Name, string Code) tracer in LoadJavaScriptCodeFromFiles())
+        foreach ((string Name, string Code) in LoadJavaScriptCodeFromFiles())
         {
-            LoadBuiltIn(tracer.Name, tracer.Code);
+            LoadBuiltIn(Name, Code);
         }
     }
 

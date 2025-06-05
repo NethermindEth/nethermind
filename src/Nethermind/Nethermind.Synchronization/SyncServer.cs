@@ -7,6 +7,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -18,8 +19,10 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -38,7 +41,7 @@ namespace Nethermind.Synchronization
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
-        private readonly IReadOnlyKeyValueStore _stateDb;
+        private readonly IReadOnlyKeyValueStore? _stateDb;
         private readonly IReadOnlyKeyValueStore _codeDb;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
@@ -51,9 +54,11 @@ namespace Nethermind.Synchronization
         private readonly Hash256 _pivotHash;
         private BlockHeader? _pivotHeader;
 
+        private const int BlockRangeUpdateFrequency = 32;
+
         public SyncServer(
-            IReadOnlyKeyValueStore stateDb,
-            IReadOnlyKeyValueStore codeDb,
+            IWorldStateManager worldStateManager,
+            [KeyFilter(DbNames.Code)] IReadOnlyKeyValueStore codeDb,
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             IBlockValidator blockValidator,
@@ -71,16 +76,17 @@ namespace Nethermind.Synchronization
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            _stateDb = worldStateManager.HashServer;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _pivotNumber = config.PivotNumberParsed;
+            _pivotNumber = _blockTree.SyncPivot.BlockNumber;
             _pivotHash = new Hash256(config.PivotHash ?? Keccak.Zero.ToString());
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
+            _blockTree.NewHeadBlock += OnNewRange;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
         }
 
@@ -234,7 +240,7 @@ namespace Nethermind.Synchronization
 
         private void UpdatePeerInfoBasedOnBlockData(Block block, ISyncPeer syncPeer)
         {
-            if ((block.TotalDifficulty ?? 0) > syncPeer.TotalDifficulty)
+            if (syncPeer.TotalDifficulty is { } peerTD && (block.TotalDifficulty ?? UInt256.Zero) > peerTD)
             {
                 if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
                 syncPeer.HeadNumber = block.Number;
@@ -352,7 +358,7 @@ namespace Nethermind.Synchronization
 
         public TxReceipt[] GetReceipts(Hash256? blockHash)
         {
-            return blockHash is not null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
+            return blockHash is not null ? _receiptFinder.Get(blockHash) : [];
         }
 
         public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
@@ -373,7 +379,14 @@ namespace Nethermind.Synchronization
                 values.Add(null);
                 if ((includedTypes & NodeDataType.State) == NodeDataType.State)
                 {
-                    values[i] = _stateDb[keys[i].Bytes];
+                    if (_stateDb is null)
+                    {
+                        values[i] = null;
+                    }
+                    else
+                    {
+                        values[i] = _stateDb[keys[i].Bytes];
+                    }
                 }
 
                 if (values[i] is null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
@@ -412,6 +425,38 @@ namespace Nethermind.Synchronization
             }
         }
 
+        private void OnNewRange(object? sender, BlockEventArgs latestBlockEventArgs)
+        {
+            if (Genesis is null)
+                return;
+
+            if (_pool.PeerCount == 0)
+                return;
+
+            Block latestBlock = latestBlockEventArgs.Block;
+
+            // Notify every 32 blocks
+            if (latestBlock.Number % BlockRangeUpdateFrequency != 0)
+                return;
+
+            Task.Run(() =>
+                {
+                    var counter = 0;
+                    (BlockHeader earliest, BlockHeader latest) = (Genesis, latestBlock.Header);
+
+                    foreach (PeerInfo peerInfo in _pool.AllPeers)
+                    {
+                        // TODO: use actual earliest available block - once history expiry is implemented
+                        NotifyOfNewRange(peerInfo, Genesis, latest);
+                        counter++;
+                    }
+
+                    if (counter > 0 && _logger.IsDebug)
+                        _logger.Debug($"Broadcasting range update {earliest.Number}-{latest.Number} to {counter} peers.");
+                }
+            );
+        }
+
         private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockMode mode)
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
@@ -426,8 +471,19 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockMode.FullBlock);
+        private void NotifyOfNewRange(PeerInfo peerInfo, BlockHeader earliest, BlockHeader latest)
+        {
+            try
+            {
+                peerInfo.SyncPeer.NotifyOfNewRange(earliest, latest);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Error while broadcasting block range update: [{earliest.Number}, {latest.Number}, {latest.Hash}] to peer {peerInfo.SyncPeer}.", e);
+            }
+        }
 
+        private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockMode.FullBlock);
 
         public void StopNotifyingPeersAboutNewBlocks()
         {
@@ -439,9 +495,15 @@ namespace Nethermind.Synchronization
             }
         }
 
+        private void StopNotifyingPeersAboutBlockRangeUpdates()
+        {
+            _blockTree.NewHeadBlock -= OnNewRange;
+        }
+
         public void Dispose()
         {
             StopNotifyingPeersAboutNewBlocks();
+            StopNotifyingPeersAboutBlockRangeUpdates();
         }
     }
 }

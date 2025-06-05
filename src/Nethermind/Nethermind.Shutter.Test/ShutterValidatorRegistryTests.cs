@@ -46,30 +46,33 @@ class ShutterValidatorRegistryTests
         }
 
         // register all 10, then deregister last 5
-        updates.Add((0, CreateUpdate(100, 10, 0, true)));
-        updates.Add((1, CreateUpdate(105, 5, 1, false)));
+        updates.Add((0, CreateUpdate(100, 10, 0, 1, true)));
+        updates.Add((1, CreateUpdate(105, 5, 1, 1, false)));
+
+        // reregister 1 with V0 signature
+        updates.Add((2, CreateUpdate(107, 1, 2, 0, true)));
 
         // invalid updates should be ignored
-        updates.Add((2, CreateUpdate(100, 10, 0, false))); // invalid nonce
-        updates.Add((3, CreateUpdate(50, 50, 0, true))); // not in validatorsInfo
+        updates.Add((3, CreateUpdate(100, 10, 0, 1, false))); // invalid nonce
+        updates.Add((4, CreateUpdate(50, 50, 0, 1, true))); // not in validatorsInfo
 
         // bad signature
-        Update badUpdate = CreateUpdate(100, 10, 2, true);
+        Update badUpdate = CreateUpdate(100, 10, 2, 1, true);
         badUpdate.Signature[34] += 1;
-        updates.Add((4, badUpdate));
+        updates.Add((5, badUpdate));
 
         Assert.Multiple(() =>
         {
             Assert.That(!contract.IsRegistered(updates, validatorsInfo, out HashSet<ulong> unregistered));
-            Assert.That(unregistered, Has.Count.EqualTo(5));
+            Assert.That(unregistered, Has.Count.EqualTo(4));
         });
     }
 
-    private static Update CreateUpdate(ulong startIndex, uint count, uint nonce, bool isRegistration)
+    private static Update CreateUpdate(ulong startIndex, uint count, uint nonce, byte version, bool isRegistration)
     {
         ValidatorRegistryContract.Message msg = new()
         {
-            Version = 1,
+            Version = version,
             ChainId = ShutterTestsCommon.ChainId,
             ContractAddress = Address.Zero.Bytes,
             StartValidatorIndex = startIndex,

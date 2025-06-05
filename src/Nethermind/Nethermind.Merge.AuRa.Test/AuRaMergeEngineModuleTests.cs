@@ -1,8 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Abi;
+using Nethermind.Api;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
@@ -12,10 +15,9 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
-using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -29,12 +31,13 @@ using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Test;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test;
 using Nethermind.Specs.Test.ChainSpecStyle;
+using Nethermind.State;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -46,9 +49,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     protected override MergeTestBlockchain CreateBaseBlockchain(
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,
-        ILogManager? logManager = null,
-        IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null)
-        => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService, null, logManager, mockedConsensusRequestsProcessor);
+        ILogManager? logManager = null)
+        => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService, logManager);
 
     protected override Hash256 ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
 
@@ -62,18 +64,18 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
     [TestCase(
-        "0xe97d919a17fa5011ff3a08ffb07657ed9e1aaf5ff649888e5d7f605006caf598",
-        "0xdd9be69fe6ed616f44d53576f430c1c7720ed0e7bff59478539a4a43dbb3bf1f",
-        "0xd75d320c3a98a02ec7fe2abdcb1769bd063fec04d73f1735810f365ac12bc4ba",
-        "0x3c6a8926870bdeff")]
+        "0x1f26afbef938a122f4f55d2f081ac81cd9c8851ca22452fa5baf58845e574fc6",
+        "0x343ab3716f2475c9cdd993dc654dd0ea143379a62f0556180bff1869eb451858",
+        "0x26b9598dd31cd520c6dcaf4f6fa13e279b4fa1f94d150357290df0e944f53115",
+        "0x2de3ad8b5939b3b9")]
     public override Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V4(latestValidHash, blockHash, stateRoot, payloadId);
 
     [TestCase(
-        "0xe168b70ac8a6f7d90734010030801fbb2dcce03a657155c4024b36ba8d1e3926",
-        "0x3e604e45a9a74b66a7e03f828cc2597f0cb5f5e7dc50c9211be3a62fbcd6396d",
-        "0xdbd87b98a6be7d4e3f11ff8500c38a0736d9a5e7a47b5cb25628d37187a98cb9",
-        "0xcdd08163eccae523")]
+        "0xca2fbb93848df6500fcc33f9036f43f33db9844719f0a5fc69079d8d90dbb28f",
+        "0xc6caeb09b3f26ddda9b1adb956fadbe29d7d90cff9bf2e2b0f3f1d0ec9296a72",
+        "0xd4ab6af74f5566d54b164115a9b00726bd35e2170d206e466c4be30ebfe23894",
+        "0x103ea062e6e09c06")]
     public override Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V2(latestValidHash, blockHash, stateRoot, payloadId);
 
@@ -103,77 +105,98 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public class MergeAuRaTestBlockchain : MergeTestBlockchain
     {
         private AuRaNethermindApi? _api;
-        protected ITxSource? _additionalTxSource;
 
-        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ITxSource? additionalTxSource = null, ILogManager? logManager = null, IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null)
-            : base(mergeConfig, mockedPayloadPreparationService, logManager, mockedConsensusRequestsProcessor)
+        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null)
+            : base(mergeConfig, mockedPayloadPreparationService, logManager)
         {
-            ConsensusRequestsProcessor = mockedConsensusRequestsProcessor;
             SealEngineType = Core.SealEngineType.AuRa;
-            _additionalTxSource = additionalTxSource;
         }
 
-        protected override Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
-        {
-            if (specProvider is TestSingleReleaseSpecProvider provider) provider.SealEngine = SealEngineType;
-            return base.Build(specProvider, initialValues, addBlockOnStart);
-        }
-
-        protected override IBlockProcessor CreateBlockProcessor()
-        {
-            _api = new(new ConfigProvider(), new EthereumJsonSerializer(), LogManager,
-                    new ChainSpec
-                    {
-                        EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
-                            new AuRaChainSpecEngineParameters
-                            {
-                                WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
-                            }),
-                        Parameters = new()
-                    })
+        protected override Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null) =>
+            base.Build(builder =>
             {
-                BlockTree = BlockTree,
-                DbProvider = DbProvider,
-                WorldStateManager = WorldStateManager,
-                SpecProvider = SpecProvider,
-                TransactionComparerProvider = TransactionComparerProvider,
-                TxPool = TxPool
-            };
+                builder
+                    .AddDecorator<ISpecProvider>((ctx, specProvider) =>
+                    {
+                        // I guess ideally, just make a wrapper for `ISpecProvider` that replace only SealEngine.
+                        ISpecProvider unwrappedSpecProvider = specProvider;
+                        while (unwrappedSpecProvider is OverridableSpecProvider overridableSpecProvider)
+                            unwrappedSpecProvider = overridableSpecProvider.SpecProvider;
+                        if (unwrappedSpecProvider is TestSingleReleaseSpecProvider provider)
+                            provider.SealEngine = SealEngineType;
+                        return specProvider;
+                    })
 
-            WithdrawalContractFactory withdrawalContractFactory = new(_api.ChainSpec!.EngineChainSpecParametersProvider
-                .GetChainSpecParameters<AuRaChainSpecEngineParameters>(), _api.AbiEncoder);
+                    // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
+                    // as normally, test blockchain don't use INethermindApi at all. Note: This test does not
+                    // seems to use aura block processor which means a lot of aura things is not available here.
+                    .AddModule(new AuraModule(ChainSpec))
+                    .AddModule(new AuraMergeModule())
+                    .AddSingleton<NethermindApi.Dependencies>()
+                    .AddSingleton<IReportingValidator>(NullReportingValidator.Instance)
+                    .AddSingleton<ISealer>(NullSealEngine.Instance) // Test not originally made with aura sealer
+
+                    .AddDecorator<AuRaNethermindApi>((ctx, api) =>
+                    {
+                        // Yes getting from `TestBlockchain` itself, since steps are not run
+                        // and some of these are not from DI. you know... chicken and egg, but dont forgot about rooster.
+                        api.DbProvider = DbProvider;
+                        api.TxPool = TxPool;
+                        api.TransactionComparerProvider = TransactionComparerProvider;
+                        api.FinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
+                        return api;
+                    });
+                configurer?.Invoke(builder);
+            });
+
+        protected override ChainSpec CreateChainSpec()
+        {
+            ChainSpec baseChainSpec = base.CreateChainSpec();
+            baseChainSpec.EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
+                new AuRaChainSpecEngineParameters
+                {
+                    WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003"),
+                    StepDuration = { { 0, 3 } }
+                });
+            baseChainSpec.Parameters = new ChainParameters();
+            return baseChainSpec;
+        }
+
+        protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
+        {
+            _api = Container.Resolve<AuRaNethermindApi>();
+
+            WithdrawalContractFactory withdrawalContractFactory = new(Container.Resolve<ChainSpec>().EngineChainSpecParametersProvider
+                .GetChainSpecParameters<AuRaChainSpecEngineParameters>(), Container.Resolve<IAbiEncoder>());
             WithdrawalProcessor = new AuraWithdrawalProcessor(
                 withdrawalContractFactory.Create(TxProcessor),
                 LogManager
             );
 
-            BlockValidator = CreateBlockValidator();
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
-                State,
+                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, state),
+                state,
                 ReceiptStorage,
-                TxProcessor,
-                new BeaconBlockRootHandler(TxProcessor, State),
-                new BlockhashStore(SpecProvider, State),
+                new BeaconBlockRootHandler(TxProcessor, state),
+                new BlockhashStore(SpecProvider, state),
                 LogManager,
                 WithdrawalProcessor,
-                consensusRequestsProcessor: ConsensusRequestsProcessor,
-                preWarmer: CreateBlockCachePreWarmer());
+                ExecutionRequestsProcessorOverride ?? new ExecutionRequestsProcessor(TxProcessor),
+                CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
 
 
-        protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+        protected override IBlockProducer CreateTestBlockProducer()
         {
-            SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator!, LogManager);
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             ISyncConfig syncConfig = new SyncConfig();
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
-            EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig,
+            EthSyncingInfo = new EthSyncingInfo(BlockTree, Substitute.For<ISyncPointers>(), syncConfig,
                 new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), LogManager);
             PostMergeBlockProducerFactory blockProducerFactory = new(
                 SpecProvider,
@@ -183,28 +206,17 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
-            AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
-                _api!,
-                WorldStateManager,
-                BlockTree,
-                SpecProvider,
-                BlockValidator,
-                NoBlockRewards.Instance,
-                ReceiptStorage,
-                BlockPreprocessorStep,
-                TxPool,
-                transactionComparerProvider,
-                blocksConfig,
-                LogManager,
-                ConsensusRequestsProcessor);
+            if (ExecutionRequestsProcessorOverride is not null)
+            {
+                ((BlockProducerEnvFactory)BlockProducerEnvFactory).ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
+            }
 
-
-            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(_additionalTxSource);
+            BlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(
                 postMergeBlockProducer,
-                CreateBlockImprovementContextFactory(PostMergeBlockProducer),
+                StoringBlockImprovementContextFactory = new StoringBlockImprovementContextFactory(CreateBlockImprovementContextFactory(PostMergeBlockProducer)),
                 TimerFactory.Default,
                 LogManager,
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
@@ -213,12 +225,13 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
             IAuRaStepCalculator auraStepCalculator = Substitute.For<IAuRaStepCalculator>();
             auraStepCalculator.TimeToNextStep.Returns(TimeSpan.FromMilliseconds(0));
+            var env = BlockProducerEnvFactory.Create();
             FollowOtherMiners gasLimitCalculator = new(MainnetSpecProvider.Instance);
             AuRaBlockProducer preMergeBlockProducer = new(
-                txPoolTxSource,
-                blockProducerEnvFactory.Create().ChainProcessor,
-                State,
-                sealer,
+                env.TxSource,
+                env.ChainProcessor,
+                env.ReadOnlyStateProvider,
+                Sealer,
                 BlockTree,
                 Timestamper,
                 auraStepCalculator,

@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -20,7 +21,7 @@ namespace Nethermind.Consensus.Validators
         private static readonly byte[] DaoExtraData = Bytes.FromHexString("0x64616f2d686172642d666f726b");
 
         private readonly ISealValidator _sealValidator;
-        private readonly ISpecProvider _specProvider;
+        protected readonly ISpecProvider _specProvider;
         private readonly long? _daoBlockNumber;
         protected readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
@@ -38,7 +39,13 @@ namespace Nethermind.Consensus.Validators
             _daoBlockNumber = specProvider.DaoBlockNumber;
         }
 
-        public static bool ValidateHash(BlockHeader header) => header.Hash == header.CalculateHash();
+        public static bool ValidateHash(BlockHeader header, out Hash256 actualHash)
+        {
+            actualHash = header.CalculateHash();
+            return header.Hash == actualHash;
+        }
+
+        public static bool ValidateHash(BlockHeader header) => ValidateHash(header, out _);
 
         private bool ValidateHash(BlockHeader header, ref string? error)
         {
@@ -47,7 +54,7 @@ namespace Nethermind.Consensus.Validators
             if (!hashAsExpected)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
-                error = BlockErrorMessages.InvalidHeaderHash;
+                error = BlockErrorMessages.InvalidHeaderHash(header.Hash, header.CalculateHash());
                 return false;
             }
 
@@ -91,7 +98,31 @@ namespace Nethermind.Consensus.Validators
                 && ValidateTimestamp(header, parent, ref error)
                 && ValidateBlockNumber(header, parent, ref error)
                 && Validate1559(header, parent, spec, ref error)
-                && ValidateBlobGasFields(header, parent, spec, ref error);
+                && ValidateBlobGasFields(header, parent, spec, ref error)
+                && ValidateRequestsHash(header, spec, ref error);
+        }
+
+        protected virtual bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.RequestsEnabled)
+            {
+                if (header.RequestsHash is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("RequestsHash field is not set.");
+                    error = BlockErrorMessages.MissingRequests;
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.RequestsHash is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("RequestsHash field should not have value.");
+                    error = BlockErrorMessages.RequestsNotEnabled;
+                    return false;
+                }
+            }
+            return true;
         }
 
         protected virtual bool Validate1559(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
@@ -103,7 +134,7 @@ namespace Nethermind.Consensus.Validators
                 if (expectedBaseFee != header.BaseFeePerGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
-                    error = BlockErrorMessages.InvalidBaseFeePerGas;
+                    error = BlockErrorMessages.InvalidBaseFeePerGas(expectedBaseFee, header.BaseFeePerGas);
                     return false;
                 }
             }
@@ -240,7 +271,11 @@ namespace Nethermind.Consensus.Validators
                                      header.GasLimit >= spec.MinGasLimit;
             if (!gasLimitNotTooLow)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low. " +
+                                                 $"Gas limit: {header.GasLimit}, " +
+                                                 $"Adjusted parent gas limit: {adjustedParentGasLimit}, " +
+                                                 $"Max gas limit difference: {maxGasLimitDifference}, " +
+                                                 $"Spec min gas limit: {spec.MinGasLimit}");
                 error = BlockErrorMessages.InvalidGasLimit;
             }
 
@@ -333,7 +368,7 @@ namespace Nethermind.Consensus.Validators
                 if (header.ExcessBlobGas != expectedExcessBlobGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
-                    error = BlockErrorMessages.IncorrectExcessBlobGas;
+                    error = BlockErrorMessages.IncorrectExcessBlobGas(expectedExcessBlobGas, header.ExcessBlobGas);
                     return false;
                 }
             }

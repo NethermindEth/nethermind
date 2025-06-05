@@ -25,6 +25,8 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
     public ArrayPoolList(int capacity, IEnumerable<T> enumerable) : this(capacity) => this.AddRange(enumerable);
 
+    public ArrayPoolList(ReadOnlySpan<T> span) : this(span.Length) => AddRange(span);
+
     public ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount = 0)
     {
         _arrayPool = arrayPool;
@@ -36,7 +38,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         }
         else
         {
-            _array = Array.Empty<T>();
+            _array = [];
         }
         _capacity = _array.Length;
 
@@ -48,10 +50,10 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         return AsSpan();
     }
 
-    public IEnumerator<T> GetEnumerator()
+    public PooledArrayEnumerator<T> GetEnumerator()
     {
         GuardDispose();
-        return new ArrayPoolListEnumerator(_array, Count);
+        return new PooledArrayEnumerator<T>(_array, Count);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -68,6 +70,8 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
             throw new ObjectDisposedException(nameof(ArrayPoolList<T>));
         }
     }
+
+    IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
@@ -93,7 +97,11 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         Count += items.Length;
     }
 
-    public void Clear() => Count = 0;
+    public void Clear()
+    {
+        ClearToCount(_array);
+        Count = 0;
+    }
 
     public bool Contains(T item)
     {
@@ -140,6 +148,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
             _array.AsSpan(0, count).CopyTo(newArray);
             T[] oldArray = Interlocked.Exchange(ref _array, newArray);
             _capacity = newArray.Length;
+            ClearToCount(oldArray);
             _arrayPool.Return(oldArray);
         }
         else if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
@@ -151,6 +160,16 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         void ThrowOnlyReduce(int count)
         {
             throw new ArgumentException($"Count can only be reduced. {count} is larger than {Count}", nameof(count));
+        }
+    }
+
+    private void ClearToCount(T[] array)
+    {
+        int count = Count;
+        // Release any references to the objects in the array so can be GC'd.
+        if (count > 0 && RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+        {
+            Array.Clear(array, 0, count);
         }
     }
 
@@ -223,6 +242,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
             _array.CopyTo(newArray, 0);
             T[] oldArray = Interlocked.Exchange(ref _array, newArray);
             _capacity = newArray.Length;
+            ClearToCount(oldArray);
             _arrayPool.Return(oldArray);
         }
     }
@@ -249,6 +269,10 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
             }
 
             Count--;
+            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+            {
+                _array[Count] = default!;
+            }
         }
 
         return isValid;
@@ -259,6 +283,12 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         GuardDispose();
         GuardIndex(newLength, allowEqualToCount: true);
         Count = newLength;
+    }
+
+    public ref T GetRef(int index)
+    {
+        GuardIndex(index);
+        return ref _array[index];
     }
 
     public T this[int index]
@@ -312,20 +342,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
     public static ArrayPoolList<T> Empty() => new(0);
 
-    private struct ArrayPoolListEnumerator(T[] array, int count) : IEnumerator<T>
-    {
-        private int _index = -1;
 
-        public bool MoveNext() => ++_index < count;
-
-        public void Reset() => _index = -1;
-
-        public readonly T Current => array[_index];
-
-        readonly object IEnumerator.Current => Current!;
-
-        public readonly void Dispose() { }
-    }
 
     public void Dispose()
     {
@@ -335,13 +352,14 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         if (!_disposed)
         {
             _disposed = true;
-            Count = 0;
             T[]? array = _array;
+            _array = null!;
             if (array is not null)
             {
-                _arrayPool.Return(_array);
-                _array = null!;
+                ClearToCount(array);
+                _arrayPool.Return(array);
             }
+            Count = 0;
         }
 
 #if DEBUG
@@ -362,7 +380,8 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 #endif
 
     public Span<T> AsSpan() => _array.AsSpan(0, Count);
-
     public Memory<T> AsMemory() => new(_array, 0, Count);
     public ReadOnlyMemory<T> AsReadOnlyMemory() => new(_array, 0, Count);
+    public T[] UnsafeGetInternalArray() => _array;
+    public void Reverse() => AsSpan().Reverse();
 }

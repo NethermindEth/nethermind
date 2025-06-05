@@ -15,7 +15,7 @@ public class T8nCommandArguments
     public string OutputAlloc { get; set; } = "alloc.json";
     public string OutputResult { get; set; } = "result.json";
     public string? OutputBody { get; set; }
-    public string? OutputBaseDir { get; set; }
+    public string OutputBaseDir { get; set; } = "";
 
     public ulong StateChainId { get; set; } = MainnetSpecProvider.Instance.ChainId;
     public string StateFork { get; set; } = "GrayGlacier";
@@ -31,7 +31,6 @@ public class T8nCommandArguments
         var arguments = new T8nCommandArguments
         {
             OutputBody = parseResult.GetValue(T8nCommandOptions.OutputBodyOpt),
-            OutputBaseDir = parseResult.GetValue(T8nCommandOptions.OutputBaseDirOpt),
             Trace = parseResult.GetValue(T8nCommandOptions.TraceOpt),
             TraceMemory = parseResult.GetValue(T8nCommandOptions.TraceMemoryOpt),
             TraceNoStack = parseResult.GetValue(T8nCommandOptions.TraceNoStackOpt),
@@ -66,6 +65,12 @@ public class T8nCommandArguments
         if (outputResult is not null)
         {
             arguments.OutputResult = outputResult;
+        }
+
+        var outputBasedir = parseResult.GetValue(T8nCommandOptions.OutputBaseDirOpt);
+        if (outputBasedir is not null)
+        {
+            arguments.OutputBaseDir = outputBasedir;
         }
 
         var stateFork = parseResult.GetValue(T8nCommandOptions.StateForkOpt);

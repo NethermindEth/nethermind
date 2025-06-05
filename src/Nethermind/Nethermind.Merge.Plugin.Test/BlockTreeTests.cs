@@ -76,7 +76,7 @@ public partial class BlockTreeTests
             .WithSpecProvider(specProvider)
             .OfChainLength(10)
             .TestObject;
-        PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, new ChainSpec(), LimboLogs.Instance);
+        _ = new PoSSwitcher(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, new ChainSpec(), LimboLogs.Instance);
 
         Block? block8 = tree.FindBlock(8, BlockTreeLookupOptions.None);
         Assert.That(block8!.IsTerminalBlock(specProvider), Is.False);
@@ -95,7 +95,7 @@ public partial class BlockTreeTests
             .WithSpecProvider(specProvider)
             .OfChainLength(10)
             .TestObject;
-        PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, new ChainSpec(), LimboLogs.Instance);
+        _ = new PoSSwitcher(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, new ChainSpec(), LimboLogs.Instance);
 
         Block? block7 = tree.FindBlock(7, BlockTreeLookupOptions.None);
         Block newTerminalBlock = Build.A.Block
@@ -123,8 +123,8 @@ public partial class BlockTreeTests
             .WithSpecProvider(specProvider)
             .OfChainLength(10)
             .TestObject;
-
-        PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, new ChainSpec(), LimboLogs.Instance);
+        _ = new
+        PoSSwitcher(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, new ChainSpec(), LimboLogs.Instance);
 
         Block? block8 = tree.FindBlock(8, BlockTreeLookupOptions.None);
         Assert.That(block8!.Header.IsTerminalBlock(specProvider), Is.False);
@@ -195,7 +195,7 @@ public partial class BlockTreeTests
 
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None)!;
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
-        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
+        _ = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
 
         for (int i = 13; i > 9; --i)
         {
@@ -266,21 +266,33 @@ public partial class BlockTreeTests
                 int splitVariant = 0,
                 int splitFrom = 0,
                 int syncedSplitVariant = 0,
-                int syncedSplitFrom = 0
+                int syncedSplitFrom = 0,
+                IReceiptStorage? receiptStorage = null
             )
             {
                 TestSpecProvider testSpecProvider = new TestSpecProvider(London.Instance);
                 if (ttd is not null) testSpecProvider.TerminalTotalDifficulty = ttd;
 
                 NotSyncedTreeBuilder = Build.A.BlockTree()
-                    .WithSpecProvider(testSpecProvider)
+                    .WithSpecProvider(testSpecProvider);
+                if (receiptStorage is not null)
+                {
+                    NotSyncedTreeBuilder = NotSyncedTreeBuilder.WithTransactions(receiptStorage);
+                }
+                NotSyncedTreeBuilder = NotSyncedTreeBuilder
                     .OfChainLength(notSyncedTreeSize, splitVariant: splitVariant, splitFrom: splitFrom);
                 NotSyncedTree = NotSyncedTreeBuilder.TestObject;
 
                 if (syncedTreeSize > 0)
                 {
                     _syncedTreeBuilder = Build.A.BlockTree()
-                        .WithSpecProvider(testSpecProvider)
+                        .WithSpecProvider(testSpecProvider);
+
+                    if (receiptStorage is not null)
+                    {
+                        _syncedTreeBuilder = _syncedTreeBuilder.WithTransactions(receiptStorage);
+                    }
+                    _syncedTreeBuilder = _syncedTreeBuilder
                         .OfChainLength(syncedTreeSize, splitVariant: syncedSplitVariant, splitFrom: syncedSplitFrom);
 
                     SyncedTree = _syncedTreeBuilder.TestObject;
@@ -340,29 +352,10 @@ public partial class BlockTreeTests
                 BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber, 0)!;
                 while (headers is not null && headers.Length > 1)
                 {
-                    BlockDownloadContext blockDownloadContext = new(
-                        Substitute.For<ISpecProvider>(),
-                        new PeerInfo(Substitute.For<ISyncPeer>()),
-                        headers,
-                        false,
-                        Substitute.For<IReceiptsRecovery>()
-                    );
-                    bool shouldSetBlocks = NotSyncedTree.FindBlock(headers[1].Hash,
-                        BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null;
-                    Assert.That(_chainLevelHelper.TrySetNextBlocks(maxCount, blockDownloadContext), Is.EqualTo(shouldSetBlocks));
                     for (int i = 1; i < headers.Length; ++i)
                     {
-                        Block? beaconBlock;
-                        if (shouldSetBlocks)
-                        {
-                            beaconBlock = blockDownloadContext.Blocks[i - 1];
-                        }
-                        else
-                        {
-                            beaconBlock =
-                                SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
-                            beaconBlock!.Header.TotalDifficulty = null;
-                        }
+                        Block? beaconBlock = SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
+                        beaconBlock!.Header.TotalDifficulty = null;
 
                         AddBlockResult insertResult = NotSyncedTree.SuggestBlock(beaconBlock, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock | BlockTreeSuggestOptions.ForceSetAsMain);
                         Assert.That(AddBlockResult.Added == insertResult, Is.True, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)} result {insertResult}");
@@ -426,8 +419,7 @@ public partial class BlockTreeTests
                 Block? parent = null;
                 for (long i = low; i <= high; i++)
                 {
-                    if (parent is null)
-                        parent = SyncedTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
+                    parent ??= SyncedTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
                     Block blockToInsert = Build.A.Block.WithNumber(i).WithParent(parent).WithNonce(0).TestObject;
                     NotSyncedTree.Insert(blockToInsert, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
                     SyncedTree.Insert(blockToInsert, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.NotOnMainChain);
@@ -454,8 +446,7 @@ public partial class BlockTreeTests
                 List<Block> newBlocks = new();
                 for (long i = low; i <= high; i++)
                 {
-                    if (parent is null)
-                        parent = blockTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
+                    parent ??= blockTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
                     Block blockToInsert = Build.A.Block.WithNumber(i).WithParent(parent).WithNonce(0).TestObject;
                     blockToInsert.Header.TotalDifficulty = parent.TotalDifficulty + blockToInsert.Difficulty;
                     blockTree.Insert(blockToInsert, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
@@ -684,7 +675,7 @@ public partial class BlockTreeTests
     [Test]
     public void Best_pointers_are_set_on_restart_with_gap()
     {
-        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+        _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(10, 20)
             .InsertBeaconPivot(14)
             .Restart()
@@ -698,7 +689,7 @@ public partial class BlockTreeTests
     [Test]
     public void BeaconBlockInsert_does_not_change_best_blocks()
     {
-        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+        _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
             .InsertBeaconBlocks(8, 9)
@@ -710,7 +701,7 @@ public partial class BlockTreeTests
     [Test]
     public void pointers_are_set_on_restart_during_header_sync()
     {
-        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+        _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
             .InsertBeaconHeaders(6, 6)
@@ -726,7 +717,7 @@ public partial class BlockTreeTests
     [Test]
     public void pointers_are_set_on_restart_after_header_sync_finished()
     {
-        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+        _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
             .InsertBeaconHeaders(4, 6)
@@ -742,7 +733,7 @@ public partial class BlockTreeTests
     [Test]
     public void pointers_are_set_on_restart_during_filling_block_gap()
     {
-        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+        _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 30)
             .InsertBeaconPivot(7)
             .InsertBeaconHeaders(4, 6)
@@ -759,7 +750,7 @@ public partial class BlockTreeTests
     [Test]
     public void pointers_are_set_on_restart_after_filling_block_gap_finished()
     {
-        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+        _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
             .InsertBeaconHeaders(4, 6)
@@ -824,7 +815,7 @@ public partial class BlockTreeTests
     [Test]
     public void Can_reorg_beacon_main_chain()
     {
-        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+        _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconBlocks(4, 9)
             .InsertFork(6, 9, true)

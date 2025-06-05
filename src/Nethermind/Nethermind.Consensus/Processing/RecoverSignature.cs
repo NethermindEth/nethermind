@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -48,13 +49,20 @@ namespace Nethermind.Consensus.Processing
                 // so we assume the rest of txs in the block are already recovered
                 return;
 
-            Parallel.For(0, txs.Length, i =>
+            ParallelUnbalancedWork.For(
+                0,
+                txs.Length,
+                ParallelUnbalancedWork.DefaultOptions,
+                txs,
+                static (i, txs) =>
             {
                 Transaction tx = txs[i];
                 if (!tx.IsHashCalculated)
                 {
                     tx.CalculateHashInternal();
                 }
+
+                return txs;
             });
 
 
@@ -111,14 +119,21 @@ namespace Nethermind.Consensus.Processing
             if (recoverFromEcdsa > 3)
             {
                 // Recover ecdsa in Parallel
-                Parallel.For(0, txs.Length, i =>
+                ParallelUnbalancedWork.For(
+                    0,
+                    txs.Length,
+                    ParallelUnbalancedWork.DefaultOptions,
+                    (recover: this, txs, releaseSpec, useSignatureChainId),
+                    static (i, state) =>
                 {
-                    Transaction tx = txs[i];
-                    if (!ShouldRecoverSignatures(tx)) return;
+                    Transaction tx = state.txs[i];
+                    if (!ShouldRecoverSignatures(tx)) return state;
 
-                    tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
-                    RecoverAuthorities(tx);
-                    if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
+                    tx.SenderAddress ??= state.recover._ecdsa.RecoverAddress(tx, state.useSignatureChainId);
+                    state.recover.RecoverAuthorities(tx, state.releaseSpec);
+                    if (state.recover._logger.IsTrace) state.recover._logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
+
+                    return state;
                 });
             }
             else
@@ -128,38 +143,38 @@ namespace Nethermind.Consensus.Processing
                     if (!ShouldRecoverSignatures(tx)) continue;
 
                     tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
-                    RecoverAuthorities(tx);
+                    RecoverAuthorities(tx, releaseSpec);
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
                 }
             }
+        }
 
-            void RecoverAuthorities(Transaction tx)
+        private void RecoverAuthorities(Transaction tx, IReleaseSpec releaseSpec)
+        {
+            if (!releaseSpec.IsAuthorizationListEnabled
+                || !tx.HasAuthorizationList)
             {
-                if (!releaseSpec.IsAuthorizationListEnabled
-                    || !tx.HasAuthorizationList)
-                {
-                    return;
-                }
+                return;
+            }
 
-                if (tx.AuthorizationList.Length > 3)
+            if (tx.AuthorizationList.Length > 3)
+            {
+                Parallel.ForEach(tx.AuthorizationList.Where(t => t.Authority is null), (tuple) =>
                 {
-                    Parallel.ForEach(tx.AuthorizationList.Where(t => t.Authority is null), (tuple) =>
-                    {
-                        tuple.Authority = _ecdsa.RecoverAddress(tuple);
-                    });
-                }
-                else
+                    tuple.Authority = _ecdsa.RecoverAddress(tuple);
+                });
+            }
+            else
+            {
+                foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
                 {
-                    foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
-                    {
-                        tuple.Authority ??= _ecdsa.RecoverAddress(tuple);
-                    }
+                    tuple.Authority ??= _ecdsa.RecoverAddress(tuple);
                 }
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ShouldRecoverSignatures(Transaction tx)
-            => tx.IsSigned && (tx.SenderAddress is null || (tx.HasAuthorizationList && tx.AuthorizationList.Any(a => a.Authority is null)));
+            => tx.IsSigned && (tx.SenderAddress is null || (tx.HasAuthorizationList && tx.AuthorizationList.Any(static a => a.Authority is null)));
     }
 }

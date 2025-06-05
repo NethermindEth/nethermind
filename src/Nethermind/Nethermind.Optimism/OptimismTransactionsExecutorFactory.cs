@@ -13,9 +13,11 @@ public class OptimismTransactionsExecutorFactory : IBlockTransactionsExecutorFac
 {
     private readonly ISpecProvider _specProvider;
     private readonly ILogManager _logManager;
+    private readonly long _maxTxLengthKilobytes;
 
-    public OptimismTransactionsExecutorFactory(ISpecProvider specProvider, ILogManager logManager)
+    public OptimismTransactionsExecutorFactory(ISpecProvider specProvider, long maxTxLengthKilobytes, ILogManager logManager)
     {
+        _maxTxLengthKilobytes = maxTxLengthKilobytes;
         _specProvider = specProvider;
         _logManager = logManager;
     }
@@ -23,7 +25,7 @@ public class OptimismTransactionsExecutorFactory : IBlockTransactionsExecutorFac
     public IBlockProcessor.IBlockTransactionsExecutor Create(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv)
     {
         return new BlockProcessor.BlockProductionTransactionsExecutor(readOnlyTxProcessingEnv.TransactionProcessor,
-            readOnlyTxProcessingEnv.WorldState, new OptimismBlockProductionTransactionPicker(_specProvider),
+            readOnlyTxProcessingEnv.WorldState, new OptimismBlockProductionTransactionPicker(_specProvider, _maxTxLengthKilobytes),
             _logManager);
     }
 }

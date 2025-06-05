@@ -13,16 +13,16 @@ using System.IO.Abstractions;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
-public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxFileTracer>
+public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxFileTracer>, IDisposable
 {
-    private const string _alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+    private const string Alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
 
     private readonly Block _block;
-    private Stream _file;
+    private Stream? _file;
     private readonly string _fileNameFormat;
     private readonly List<string> _fileNames = new();
     private readonly IFileSystem _fileSystem;
-    private Utf8JsonWriter _jsonWriter;
+    private Utf8JsonWriter? _jsonWriter;
     private readonly GethTraceOptions _options;
     private readonly JsonSerializerOptions _serializerOptions = new();
 
@@ -52,7 +52,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
 
     protected override GethLikeTxTrace OnEnd(GethLikeTxFileTracer txTracer)
     {
-        var trace = txTracer.BuildResult();
+        GethLikeTxTrace trace = txTracer.BuildResult();
 
         JsonSerializer.Serialize(_jsonWriter,
             new
@@ -96,16 +96,23 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         var hash = txHash.Bytes[..4].ToHexString(true);
         var index = 0;
         var suffix = string.Create(8, Random.Shared,
-            (chars, rand) =>
+            static (chars, rand) =>
             {
                 for (var i = 0; i < chars.Length; i++)
-                    chars[i] = _alphabet[rand.Next(0, _alphabet.Length)];
+                    chars[i] = Alphabet[rand.Next(0, Alphabet.Length)];
             });
 
         for (; index < _block.Transactions.Length; index++)
+        {
             if (_block.Transactions[index].Hash == txHash)
                 break;
+        }
 
         return string.Format(_fileNameFormat, index, hash, suffix);
+    }
+
+    public void Dispose()
+    {
+        DisposeFileStreamIfAny();
     }
 }

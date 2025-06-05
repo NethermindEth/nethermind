@@ -9,6 +9,7 @@ using System.Text.Unicode;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -21,12 +22,11 @@ public class TransactionSubstate
     private static readonly List<LogEntry> _emptyLogs = new(0);
 
     private const string SomeError = "error";
-    private const string Revert = "revert";
+    public const string Revert = "revert";
 
     private const int RevertPrefix = 4;
     private const int WordSize = EvmPooledMemory.WordSize;
 
-    public const string RevertedErrorMessagePrefix = "Reverted ";
     public static readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
     public static readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
 
@@ -46,7 +46,7 @@ public class TransactionSubstate
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
-    public ReadOnlyMemory<byte> Output { get; }
+    public (ICodeInfo DeployCode, ReadOnlyMemory<byte> Bytes) Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
     public IReadOnlyCollection<LogEntry> Logs { get; }
@@ -61,7 +61,18 @@ public class TransactionSubstate
         ShouldRevert = false;
     }
 
-    public TransactionSubstate(ReadOnlyMemory<byte> output,
+    public static TransactionSubstate FailedInitCode { get; } = new TransactionSubstate();
+
+    private TransactionSubstate()
+    {
+        Error = "Eip 7698: Invalid CreateTx InitCode";
+        Refund = 0;
+        DestroyList = _emptyDestroyList;
+        Logs = _emptyLogs;
+        ShouldRevert = true;
+    }
+
+    public TransactionSubstate((ICodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
         long refund,
         IReadOnlyCollection<Address> destroyList,
         IReadOnlyCollection<LogEntry> logs,
@@ -87,14 +98,11 @@ public class TransactionSubstate
         if (!isTracerConnected)
             return;
 
-        if (Output.Length <= 0)
+        if (Output.Bytes.IsEmpty)
             return;
 
-        ReadOnlySpan<byte> span = Output.Span;
-        Error = string.Concat(
-            RevertedErrorMessagePrefix,
-            TryGetErrorMessage(span) ?? EncodeErrorMessage(span)
-        );
+        ReadOnlySpan<byte> span = Output.Bytes.Span;
+        Error = TryGetErrorMessage(span) ?? EncodeErrorMessage(span);
     }
 
     public static string EncodeErrorMessage(ReadOnlySpan<byte> span) =>
@@ -133,7 +141,7 @@ public class TransactionSubstate
             return EncodeErrorMessage(binaryMessage);
         }
 
-        start = new UInt256(span.Slice(0, WordSize), isBigEndian: true);
+        start = new UInt256(span[..WordSize], isBigEndian: true);
         if (UInt256.AddOverflow(start, WordSize, out UInt256 lengthOffset) || lengthOffset > span.Length) return null;
 
         length = new UInt256(span.Slice((int)start, WordSize), isBigEndian: true);

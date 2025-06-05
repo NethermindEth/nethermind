@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -31,7 +33,13 @@ namespace Nethermind.Consensus.Clique
         private ulong _lastSignersCount = 0;
         private readonly LruCache<ValueHash256, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
 
-        public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
+        public SnapshotManager(
+            ICliqueConfig cliqueConfig,
+            [KeyFilter(DbNames.Blocks)] IDb blocksDb,
+            IBlockTree blockTree,
+            IEthereumEcdsa ecdsa,
+            ILogManager logManager
+        )
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
@@ -85,11 +93,11 @@ namespace Nethermind.Consensus.Clique
         public static byte[] SliceExtraSealFromExtraData(byte[] extraData)
         {
             if (extraData.Length < Clique.ExtraSealLength)
-                new ArgumentException($"Cannot be less than extra seal length ({Clique.ExtraSealLength}).", nameof(extraData));
+                throw new ArgumentException($"Cannot be less than extra seal length ({Clique.ExtraSealLength}).", nameof(extraData));
             return extraData.Slice(0, extraData.Length - Clique.ExtraSealLength);
         }
 
-        private readonly object _snapshotCreationLock = new();
+        private readonly Lock _snapshotCreationLock = new();
 
         public ulong GetLastSignersCount() => _lastSignersCount;
 

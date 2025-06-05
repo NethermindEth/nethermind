@@ -68,7 +68,7 @@ public class TaikoPayloadPreparationService(
         return payloadId;
     }
 
-    private Block ProcessBlock(Block block, Hash256 parentStateRoot)
+    private Block ProcessBlock(Block block, Hash256 parentStateRoot, CancellationToken token = default)
     {
         if (_worldStateLock.Wait(_emptyBlockProcessingTimeout))
         {
@@ -78,7 +78,7 @@ public class TaikoPayloadPreparationService(
                 {
                     worldState.StateRoot = parentStateRoot;
 
-                    return processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance)
+                    return processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, token)
                         ?? throw new InvalidOperationException("Block processing failed");
                 }
             }
@@ -140,10 +140,10 @@ public class TaikoPayloadPreparationService(
         BlockHeader header = BuildHeader(parentHeader, payloadAttributes);
         Transaction[] transactions = BuildTransactions(payloadAttributes);
 
-        return new Block(header, transactions, [], payloadAttributes.Withdrawals);
+        return new BlockToProduce(header, transactions, [], payloadAttributes.Withdrawals);
     }
 
-    public ValueTask<IBlockProductionContext?> GetPayload(string payloadId)
+    public ValueTask<IBlockProductionContext?> GetPayload(string payloadId, bool skipCancel = false)
     {
         if (_payloadStorage.TryRemove(payloadId, out IBlockProductionContext? blockContext))
             return ValueTask.FromResult<IBlockProductionContext?>(blockContext);

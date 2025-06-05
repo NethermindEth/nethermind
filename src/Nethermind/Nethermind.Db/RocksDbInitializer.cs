@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Db
 {
@@ -68,13 +69,13 @@ namespace Nethermind.Db
 
         protected async Task InitAllAsync()
         {
-            HashSet<Task> allInitializers = new();
-            foreach (var registration in _registrations)
+            using ArrayPoolList<Task> allInitializers = new(_registrations.Count);
+            foreach (Action registration in _registrations)
             {
                 allInitializers.Add(Task.Run(() => registration.Invoke()));
             }
 
-            await Task.WhenAll(allInitializers);
+            await Task.WhenAll(allInitializers.AsSpan());
         }
 
         protected static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName[1..];

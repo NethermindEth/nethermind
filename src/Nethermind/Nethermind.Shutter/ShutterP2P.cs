@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
-using Nethermind.Libp2p.Stack;
 using Nethermind.Libp2p.Protocols;
+using Nethermind.Libp2p.Protocols.PubsubPeerDiscovery;
+using Nethermind.Network.Discovery;
 using System;
 using System.Threading.Tasks;
 using System.Threading;
@@ -19,6 +21,9 @@ using Google.Protobuf;
 using System.IO.Abstractions;
 using Nethermind.KeyStore.Config;
 using System.Net;
+using Microsoft.Extensions.Logging;
+using Nethermind.Core;
+using System.Collections.Generic;
 
 namespace Nethermind.Shutter;
 
@@ -26,14 +31,15 @@ public class ShutterP2P : IShutterP2P
 {
     private readonly ILogger _logger;
     private readonly IShutterConfig _cfg;
-    private readonly Channel<byte[]> _msgQueue = Channel.CreateBounded<byte[]>(1000);
+    private readonly Channel<byte[]> _msgQueue = System.Threading.Channels.Channel.CreateBounded<byte[]>(1000);
     private readonly PubsubRouter _router;
     private readonly PubsubPeerDiscoveryProtocol _disc;
     private readonly PeerStore _peerStore;
     private readonly ILocalPeer _peer;
+    private readonly string _address;
     private readonly ServiceProvider _serviceProvider;
-    private CancellationTokenSource? _cts;
-    private static readonly TimeSpan DisconnectionLogTimeout = TimeSpan.FromMinutes(5);
+    private readonly TimeSpan DisconnectionLogTimeout;
+    private readonly TimeSpan DisconnectionLogInterval;
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -42,40 +48,45 @@ public class ShutterP2P : IShutterP2P
     {
         _logger = logManager.GetClassLogger();
         _cfg = shutterConfig;
-        _serviceProvider = new ServiceCollection()
-            .AddLibp2p(builder => builder)
+        _address = $"/ip4/{ip}/tcp/{_cfg.P2PPort}";
+        DisconnectionLogTimeout = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogTimeout);
+        DisconnectionLogInterval = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogInterval);
+
+        IServiceCollection serviceCollection = new ServiceCollection()
+            .AddLibp2p(builder => builder.WithPubsub())
             .AddSingleton(new IdentifyProtocolSettings
             {
-                ProtocolVersion = shutterConfig.P2PProtocolVersion,
-                AgentVersion = shutterConfig.P2PAgentVersion
+                ProtocolVersion = _cfg.P2PProtocolVersion,
+                AgentVersion = ProductInfo.ClientId
             })
-            // pubsub settings
-            .AddSingleton(new Settings()
+            .AddSingleton(new PubsubSettings()
             {
                 ReconnectionAttempts = int.MaxValue,
                 Degree = 3,
                 LowestDegree = 2,
                 HighestDegree = 6,
                 LazyDegree = 3
-            })
-            .AddSingleton<PubsubRouter>()
-            .AddSingleton<PeerStore>()
-            .AddSingleton(sp => sp.GetService<IPeerFactoryBuilder>()!.Build())
-            //.AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager))
-            // .AddLogging(builder =>
-            //     builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace)
-            //     .AddSimpleConsole(l =>
-            //     {
-            //         l.SingleLine = true;
-            //         l.TimestampFormat = "[HH:mm:ss.FFF]";
-            //     })
-            // )
-            .BuildServiceProvider();
+            });
+
+        if (_cfg.P2PLogsEnabled)
+        {
+            serviceCollection
+                .AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager))
+                .AddLogging(builder =>
+                    builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace)
+                    .AddSimpleConsole(l =>
+                    {
+                        l.SingleLine = true;
+                        l.TimestampFormat = "[HH:mm:ss.FFF]";
+                    })
+                );
+        }
+        _serviceProvider = serviceCollection.BuildServiceProvider();
 
         IPeerFactory peerFactory = _serviceProvider!.GetService<IPeerFactory>()!;
 
         Identity identity = GetPeerIdentity(fileSystem, _cfg, keyStoreConfig);
-        _peer = peerFactory.Create(identity, $"/ip4/{ip}/tcp/{_cfg.P2PPort}");
+        _peer = peerFactory.Create(identity);
         _router = _serviceProvider!.GetService<PubsubRouter>()!;
         _disc = new(_router, _peerStore = _serviceProvider.GetService<PeerStore>()!, new PubsubPeerDiscoverySettings() { Interval = 300 }, _peer);
         ITopic topic = _router.GetTopic("decryptionKeys");
@@ -87,36 +98,44 @@ public class ShutterP2P : IShutterP2P
         };
     }
 
-    public async Task Start(Multiaddress[] bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationTokenSource? cts = null)
+    public async Task Start(IEnumerable<Multiaddress> bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationToken cancellationToken)
     {
-        _cts = cts ?? new();
-        _ = _router!.RunAsync(_peer, token: _cts.Token);
-        _ = _disc.DiscoverAsync(_peer.Address, _cts.Token);
-        _peerStore.Discover(bootnodeP2PAddresses);
+        await _peer.StartListenAsync([_address], cancellationToken);
+        await _router.StartAsync(_peer, cancellationToken);
+        _ = _disc.StartDiscoveryAsync([Multiaddress.Decode(_address)], cancellationToken);
 
-        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {_peer.Address}");
+        foreach (Multiaddress address in bootnodeP2PAddresses)
+        {
+            _peerStore.Discover([address]);
+        }
+
+        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {_address}");
 
         long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+        bool hasTimedOut = false;
+
         while (true)
         {
             try
             {
-                using var timeoutSource = new CancellationTokenSource(DisconnectionLogTimeout);
-                using var source = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, timeoutSource.Token);
+                using var timeoutSource = new CancellationTokenSource(hasTimedOut ? DisconnectionLogInterval : DisconnectionLogTimeout);
+                using var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
 
                 byte[] msg = await _msgQueue.Reader.ReadAsync(source.Token);
                 lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+                hasTimedOut = false;
                 ProcessP2PMessage(msg, onKeysReceived);
             }
             catch (OperationCanceledException)
             {
-                if (_cts.IsCancellationRequested)
+                if (cancellationToken.IsCancellationRequested)
                 {
                     if (_logger.IsInfo) _logger.Info($"Shutting down Shutter P2P...");
                     break;
                 }
                 else if (_logger.IsWarn)
                 {
+                    hasTimedOut = true;
                     long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
                     _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
                 }
@@ -133,7 +152,6 @@ public class ShutterP2P : IShutterP2P
     {
         _router?.UnsubscribeAll();
         await (_serviceProvider?.DisposeAsync() ?? default);
-        await (_cts?.CancelAsync() ?? Task.CompletedTask);
     }
 
     private Identity GetPeerIdentity(IFileSystem fileSystem, IShutterConfig shutterConfig, IKeyStoreConfig keyStoreConfig)
@@ -176,7 +194,7 @@ public class ShutterP2P : IShutterP2P
         }
         catch (InvalidProtocolBufferException e)
         {
-            if (_logger.IsDebug) _logger.Warn($"Could not parse Shutter decryption keys: {e}");
+            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Could not parse Shutter decryption keys: {e}");
         }
     }
 }

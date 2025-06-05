@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Synchronization.FastSync;
@@ -10,8 +11,8 @@ public interface ITreeSync
 {
     public event EventHandler<SyncCompletedEventArgs> SyncCompleted;
 
-    public class SyncCompletedEventArgs(Hash256 root) : EventArgs
+    public class SyncCompletedEventArgs(BlockHeader header) : EventArgs
     {
-        public Hash256 Root => root;
+        public BlockHeader Pivot => header;
     }
 }

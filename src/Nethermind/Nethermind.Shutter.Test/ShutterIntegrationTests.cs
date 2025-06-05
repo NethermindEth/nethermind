@@ -16,7 +16,7 @@ using Nethermind.Merge.Plugin.Test;
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
-public class ShutterIntegrationTests : EngineModuleTests
+public class ShutterIntegrationTests : BaseEngineModuleTests
 {
     private const int BuildingSlot = (int)ShutterTestsCommon.InitialSlot;
     private const ulong BuildingSlotTimestamp = ShutterTestsCommon.InitialSlotTimestamp;
@@ -53,7 +53,7 @@ public class ShutterIntegrationTests : EngineModuleTests
         // late block arrives, then next block should contain loaded transactions
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 2, lastPayload, true, null, 5);
         lastPayload = payloads[^1];
-        lastPayload.TryGetBlock(out Block? b);
+        Block? b = lastPayload.TryGetBlock().Block;
         Assert.That(b!.Transactions, Has.Length.EqualTo(20));
     }
 
@@ -87,7 +87,7 @@ public class ShutterIntegrationTests : EngineModuleTests
 
         payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
-        lastPayload.TryGetBlock(out Block? b);
+        Block? b = lastPayload.TryGetBlock().Block;
         Assert.That(b!.Transactions, Has.Length.EqualTo(20));
     }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Metric;
 
 namespace Nethermind.Core.Attributes;
 
@@ -29,4 +30,36 @@ public sealed class KeyIsLabelAttribute : Attribute
     {
         LabelNames = labelNames;
     }
+}
+
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class SummaryMetricAttribute : Attribute
+{
+    public string[] LabelNames { get; set; } = [];
+
+    // Summary objective in quantile-epsilon pair
+    public double[] ObjectiveQuantile { get; set; } = [];
+    public double[] ObjectiveEpsilon { get; set; } = [];
+}
+
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class ExponentialPowerHistogramMetric : Attribute
+{
+    public string[] LabelNames { get; init; } = [];
+    public double Start { get; set; }
+    public double Factor { get; set; }
+    public int Count { get; set; }
+}
+
+/// <summary>
+/// Mark a metric as detailed
+/// </summary>
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class DetailedMetricAttribute : Attribute
+{
+}
+
+public record StringLabel(string label) : IMetricLabels
+{
+    public string[] Labels => [label];
 }

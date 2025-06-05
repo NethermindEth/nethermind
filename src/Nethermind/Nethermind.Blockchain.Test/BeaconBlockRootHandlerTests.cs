@@ -5,6 +5,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -39,11 +40,11 @@ public class BeaconBlockRootHandlerTests
         Block block = Build.A.Block.WithHeader(header).TestObject;
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
 
-        (Address? toAddress, AccessList? accessList) result = _beaconBlockRootHandler
+        (Address? toAddress, AccessList? accessList) = _beaconBlockRootHandler
             .BeaconRootsAccessList(block, Shanghai.Instance);
 
-        Assert.That(result.accessList, Is.Null);
-        Assert.That(result.toAddress, Is.Null);
+        Assert.That(accessList, Is.Null);
+        Assert.That(toAddress, Is.Null);
     }
 
     [Test]
@@ -53,11 +54,11 @@ public class BeaconBlockRootHandlerTests
         Block block = Build.A.Block.WithHeader(header).TestObject;
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
 
-        (Address? toAddress, AccessList? accessList) result = _beaconBlockRootHandler
+        (Address? toAddress, AccessList? accessList) = _beaconBlockRootHandler
             .BeaconRootsAccessList(block, Cancun.Instance);
 
-        Assert.That(result.accessList, Is.Null);
-        Assert.That(result.toAddress, Is.Null);
+        Assert.That(accessList, Is.Null);
+        Assert.That(toAddress, Is.Null);
     }
 
     [Test]
@@ -67,11 +68,11 @@ public class BeaconBlockRootHandlerTests
         Block block = Build.A.Block.WithHeader(header).TestObject;
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
 
-        (Address? toAddress, AccessList? accessList) result = _beaconBlockRootHandler
+        (Address? toAddress, AccessList? accessList) = _beaconBlockRootHandler
             .BeaconRootsAccessList(block, Cancun.Instance);
 
-        Assert.That(result.accessList, Is.Null);
-        Assert.That(result.toAddress, Is.Null);
+        Assert.That(accessList, Is.Null);
+        Assert.That(toAddress, Is.Null);
     }
 
     [Test]
@@ -81,11 +82,11 @@ public class BeaconBlockRootHandlerTests
         Block block = Build.A.Block.WithHeader(header).TestObject;
         _worldState.AccountExists(Arg.Any<Address>()).Returns(false);
 
-        (Address? toAddress, AccessList? accessList) result = _beaconBlockRootHandler
+        (Address? toAddress, AccessList? accessList) = _beaconBlockRootHandler
             .BeaconRootsAccessList(block, Cancun.Instance);
 
-        Assert.That(result.accessList, Is.Null);
-        Assert.That(result.toAddress, Is.Null);
+        Assert.That(accessList, Is.Null);
+        Assert.That(toAddress, Is.Null);
     }
 
     [Test]
@@ -94,13 +95,12 @@ public class BeaconBlockRootHandlerTests
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithParentBeaconBlockRoot(Hash256.Zero).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
+        (_, AccessList? accessList) = _beaconBlockRootHandler
+            .BeaconRootsAccessList(block, Cancun.Instance, includeStorageCells: true);
 
-        (Address? toAddress, AccessList? accessList) result = _beaconBlockRootHandler
-            .BeaconRootsAccessList(block, Cancun.Instance);
-
-        Assert.That(result.accessList, Is.Not.Null);
-        Assert.That(result.accessList.Count.AddressesCount, Is.EqualTo(1));
-        Assert.That(result.accessList.Count.StorageKeysCount, Is.EqualTo(1));
+        Assert.That(accessList, Is.Not.Null);
+        Assert.That(accessList.Count.AddressesCount, Is.EqualTo(1));
+        Assert.That(accessList.Count.StorageKeysCount, Is.EqualTo(2));
     }
 
     [Test]
@@ -109,13 +109,12 @@ public class BeaconBlockRootHandlerTests
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithParentBeaconBlockRoot(Hash256.Zero).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
-
-        (Address? toAddress, AccessList? accessList) result = _beaconBlockRootHandler
+        (_, AccessList? accessList) = _beaconBlockRootHandler
             .BeaconRootsAccessList(block, Cancun.Instance, false);
 
-        Assert.That(result.accessList, Is.Not.Null);
-        Assert.That(result.accessList.Count.AddressesCount, Is.EqualTo(1));
-        Assert.That(result.accessList.Count.StorageKeysCount, Is.EqualTo(0));
+        Assert.That(accessList, Is.Not.Null);
+        Assert.That(accessList.Count.AddressesCount, Is.EqualTo(1));
+        Assert.That(accessList.Count.StorageKeysCount, Is.EqualTo(0));
     }
 
     [Test]
@@ -123,8 +122,9 @@ public class BeaconBlockRootHandlerTests
     {
         BlockHeader header = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
+        var blkCtx = new BlockExecutionContext(header, Cancun.Instance);
 
-        _beaconBlockRootHandler.StoreBeaconRoot(block, Cancun.Instance, NullTxTracer.Instance);
+        _beaconBlockRootHandler.StoreBeaconRoot(block, in blkCtx, Cancun.Instance, NullTxTracer.Instance);
 
         _transactionProcessor.DidNotReceive().Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>());
     }
@@ -134,9 +134,11 @@ public class BeaconBlockRootHandlerTests
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithParentBeaconBlockRoot(Hash256.Zero).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
+        var blkCtx = new BlockExecutionContext(header, Cancun.Instance);
+
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
 
-        _beaconBlockRootHandler.StoreBeaconRoot(block, Cancun.Instance, NullTxTracer.Instance);
+        _beaconBlockRootHandler.StoreBeaconRoot(block, in blkCtx, Cancun.Instance, NullTxTracer.Instance);
 
         Transaction transaction = new()
         {
@@ -151,6 +153,6 @@ public class BeaconBlockRootHandlerTests
 
         transaction.Hash = transaction.CalculateHash();
         _transactionProcessor.Received().Execute(Arg.Is<Transaction>(t =>
-            t.Hash == transaction.Hash), header, NullTxTracer.Instance);
+            t.Hash == transaction.Hash), new BlockExecutionContext(header, Cancun.Instance), NullTxTracer.Instance);
     }
 }

@@ -27,6 +27,6 @@ namespace Nethermind.Specs.Forks
             IsEip658Enabled = true;
         }
 
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Byzantium());
+        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Byzantium());
     }
 }

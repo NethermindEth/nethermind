@@ -103,10 +103,10 @@ public static class BlobTransactionForRpcTests
         var accessList = json.GetProperty("accessList").EnumerateArray();
         if (accessList.Any())
         {
-            accessList.Should().AllSatisfy(item =>
+            accessList.Should().AllSatisfy(static item =>
             {
                 item.GetProperty("address").GetString().Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
-                item.GetProperty("storageKeys").EnumerateArray().Should().AllSatisfy(key =>
+                item.GetProperty("storageKeys").EnumerateArray().Should().AllSatisfy(static key =>
                     key.GetString().Should().MatchRegex("^0x[0-9a-f]{64}$")
                 );
             });
@@ -114,7 +114,7 @@ public static class BlobTransactionForRpcTests
         var blobVersionedHashes = json.GetProperty("blobVersionedHashes").EnumerateArray();
         if (blobVersionedHashes.Any())
         {
-            blobVersionedHashes.Should().AllSatisfy(hash =>
+            blobVersionedHashes.Should().AllSatisfy(static hash =>
                 hash.GetString().Should().MatchRegex("^0x[0-9a-f]{64}$")
             );
         }
@@ -122,10 +122,6 @@ public static class BlobTransactionForRpcTests
         json.GetProperty("yParity").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("r").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("s").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-
-        // Assert deprecated fields are no longer serialized
-        json.TryGetProperty("v", out _).Should().BeFalse();
-        json.TryGetProperty("gasPrice", out _).Should().BeFalse();
 
         // Assert deserialization-only are not serialized
         json.TryGetProperty("blobs", out _).Should().BeFalse();

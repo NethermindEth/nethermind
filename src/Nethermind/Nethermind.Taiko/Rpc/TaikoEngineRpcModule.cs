@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
@@ -8,6 +8,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.IO;
+using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -36,15 +37,16 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IAsyncHandler<byte[], GetPayloadV2Result?> getPayloadHandlerV2,
         IAsyncHandler<byte[], GetPayloadV3Result?> getPayloadHandlerV3,
         IAsyncHandler<byte[], GetPayloadV4Result?> getPayloadHandlerV4,
+        IAsyncHandler<byte[], GetPayloadV5Result?> getPayloadHandlerV5,
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
         IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
         IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
-        IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>> executionGetPayloadBodiesByHashV2Handler,
-        IGetPayloadBodiesByRangeV2Handler executionGetPayloadBodiesByRangeV2Handler,
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
+        IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?> getBlobsHandlerV2,
+        IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
         ILogManager logManager,
@@ -56,15 +58,16 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 getPayloadHandlerV2,
                 getPayloadHandlerV3,
                 getPayloadHandlerV4,
+                getPayloadHandlerV5,
                 newPayloadV1Handler,
                 forkchoiceUpdatedV1Handler,
                 executionGetPayloadBodiesByHashV1Handler,
                 executionGetPayloadBodiesByRangeV1Handler,
-                executionGetPayloadBodiesByHashV2Handler,
-                executionGetPayloadBodiesByRangeV2Handler,
                 transitionConfigurationHandler,
                 capabilitiesHandler,
                 getBlobsHandler,
+                getBlobsHandlerV2,
+                engineRequestsTracker,
                 specProvider,
                 gcKeeper,
                 logManager), ITaikoEngineRpcModule
@@ -162,7 +165,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             batch.Dispose();
         }
 
-        BlockExecutionContext blkCtx = new(blockHeader);
+        BlockExecutionContext blkCtx = new(blockHeader, _specProvider.GetSpec(blockHeader));
         worldState.StateRoot = blockHeader.StateRoot;
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
@@ -279,7 +282,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 RlpStream rlpStream = new(data);
 
                 rlpStream.StartSequence(contentLength);
-                foreach (Transaction tx in Transactions)
+                foreach (Transaction tx in Transactions.AsSpan())
                 {
                     txDecoder.Encode(rlpStream, tx);
                 }

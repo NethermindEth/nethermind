@@ -33,7 +33,7 @@ public class ShutterApi : IShutterApi
     public readonly IShutterKeyValidator KeyValidator;
     public readonly IShutterEon Eon;
     public readonly ShutterTxLoader TxLoader;
-    public readonly ShutterTime Time;
+    public readonly SlotTime Time;
     public ShutterTxSource TxSource { get; }
     public IShutterP2P? P2P;
     public ShutterBlockImprovementContextFactory? BlockImprovementContextFactory;
@@ -42,7 +42,7 @@ public class ShutterApi : IShutterApi
     protected readonly TimeSpan _blockUpToDateCutoff;
     protected readonly IReadOnlyBlockTree _readOnlyBlockTree;
     protected readonly IBlockTree _blockTree;
-    private readonly ReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
+    private readonly IReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ILogManager _logManager;
     private readonly IFileSystem _fileSystem;
@@ -59,7 +59,7 @@ public class ShutterApi : IShutterApi
         ILogManager logManager,
         ISpecProvider specProvider,
         ITimestamper timestamper,
-        IWorldStateManager worldStateManager,
+        IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
         IFileSystem fileSystem,
         IKeyStoreConfig keyStoreConfig,
         IShutterConfig cfg,
@@ -76,10 +76,10 @@ public class ShutterApi : IShutterApi
         _slotLength = slotLength;
         _fileSystem = fileSystem;
         _keyStoreConfig = keyStoreConfig;
-        _blockUpToDateCutoff = slotLength;
+        _blockUpToDateCutoff = TimeSpan.FromMilliseconds(cfg.BlockUpToDateCutoff);
         _blockWaitCutoff = _slotLength / 3;
 
-        _txProcessingEnvFactory = new(worldStateManager, blockTree, specProvider, logManager);
+        _txProcessingEnvFactory = txProcessingEnvFactory;
 
         Time = InitTime(specProvider, timestamper);
         TxLoader = new(logFinder, _cfg, Time, specProvider, ecdsa, abiEncoder, logManager);
@@ -106,8 +106,8 @@ public class ShutterApi : IShutterApi
         InitP2P(ip);
     }
 
-    public Task StartP2P(Multiaddress[] bootnodeP2PAddresses, CancellationTokenSource? cancellationTokenSource = null)
-        => P2P!.Start(bootnodeP2PAddresses, OnKeysReceived, cancellationTokenSource);
+    public Task StartP2P(IEnumerable<Multiaddress> bootnodeP2PAddresses, CancellationToken cancellationToken)
+        => P2P!.Start(bootnodeP2PAddresses, OnKeysReceived, cancellationToken);
 
     public ShutterBlockImprovementContextFactory GetBlockImprovementContextFactory(IBlockProducer blockProducer)
     {
@@ -157,6 +157,6 @@ public class ShutterApi : IShutterApi
     protected virtual IShutterEon InitEon()
         => new ShutterEon(_readOnlyBlockTree, _txProcessingEnvFactory, _abiEncoder, _cfg, _logManager);
 
-    protected virtual ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
+    protected virtual SlotTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
         => new(specProvider.BeaconChainGenesisTimestamp!.Value * 1000, timestamper, _slotLength, _blockUpToDateCutoff);
 }

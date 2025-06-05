@@ -13,7 +13,6 @@ using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Facade.Eth;
 
@@ -22,7 +21,7 @@ public class BlockForRpc
     private readonly BlockDecoder _blockDecoder = new();
     private readonly bool _isAuRaBlock;
 
-    protected BlockForRpc()
+    public BlockForRpc()
     {
 
     }
@@ -31,7 +30,6 @@ public class BlockForRpc
     public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider)
     {
         _isAuRaBlock = block.Header.AuRaSignature is not null;
-        Author = block.Author ?? block.Beneficiary;
         Difficulty = block.Difficulty;
         ExtraData = block.ExtraData;
         GasLimit = block.GasLimit;
@@ -47,6 +45,7 @@ public class BlockForRpc
         }
         else
         {
+            Author = block.Author;
             Step = block.Header.AuRaStep;
             Signature = block.Header.AuRaSignature;
         }
@@ -87,8 +86,7 @@ public class BlockForRpc
         Uncles = block.Uncles.Select(o => o.Hash);
         Withdrawals = block.Withdrawals;
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
-        Requests = block.Requests;
-        RequestsRoot = block.Header.RequestsRoot;
+        RequestsHash = block.Header.RequestsHash;
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -147,8 +145,7 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? ParentBeaconBlockRoot { get; set; }
-    public IEnumerable<ConsensusRequest>? Requests { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Hash256? RequestsRoot { get; set; }
+    public Hash256? RequestsHash { get; set; }
 }

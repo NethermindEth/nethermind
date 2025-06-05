@@ -104,7 +104,7 @@ namespace Nethermind.AuRa.Test
             {
                 Hash256 blockHash = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.BlockHash;
                 Block? block = blockTreeBuilder.TestObject.FindBlock(blockHash, BlockTreeLookupOptions.None);
-                _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(block, Array.Empty<TxReceipt>()));
+                _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(block, []));
             }
 
             IEnumerable<bool> isBlockFinalized = Enumerable.Range(start, chainLength).Select(i => blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.IsFinalized);
@@ -136,7 +136,7 @@ namespace Nethermind.AuRa.Test
             {
                 Hash256 blockHash = blockTreeBuilder1.ChainLevelInfoRepository.LoadLevel(level).BlockInfos[index].BlockHash;
                 Block? block = blockTreeBuilder1.TestObject.FindBlock(blockHash, BlockTreeLookupOptions.None);
-                _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(block, Array.Empty<TxReceipt>()));
+                _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(block, []));
             }
 
             Block genesis = Build.A.Block.Genesis.TestObject;

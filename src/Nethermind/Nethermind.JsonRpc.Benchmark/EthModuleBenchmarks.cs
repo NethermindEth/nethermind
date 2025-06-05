@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -37,9 +38,22 @@ using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
+using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core.Test;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
+using Nethermind.Network;
+using Nethermind.Network.Config;
+using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.Rlpx;
+using Nethermind.Stats;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
+using NSubstitute;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
@@ -59,14 +73,15 @@ namespace Nethermind.JsonRpc.Benchmark
 
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IReleaseSpec spec = MainnetSpecProvider.Instance.GenesisSpec;
-            var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            var trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
 
             WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             stateProvider.Commit(spec);
             stateProvider.CommitTree(0);
 
-            OverridableWorldStateManager stateManager = new(dbProvider, trieStore.AsReadOnly(), LimboLogs.Instance);
+            WorldStateManager stateManager = new(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
+            OverridableWorldStateManager overridableScope = new(dbProvider, trieStore.AsReadOnly(), LimboLogs.Instance);
 
             StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
 
@@ -84,7 +99,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 LimboLogs.Instance);
             _blockhashProvider = new BlockhashProvider(blockTree, specProvider, stateProvider, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
-            _virtualMachine = new VirtualMachine(_blockhashProvider, specProvider, codeInfoRepository, LimboLogs.Instance);
+            _virtualMachine = new VirtualMachine(_blockhashProvider, specProvider, LimboLogs.Instance);
 
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             blockTree.SuggestBlock(genesisBlock);
@@ -103,10 +118,11 @@ namespace Nethermind.JsonRpc.Benchmark
                 transactionsExecutor,
                 stateProvider,
                 NullReceiptStorage.Instance,
-                transactionProcessor,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 new BlockhashStore(specProvider, stateProvider),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+                new ExecutionRequestsProcessor(transactionProcessor));
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId);
             BlockchainProcessor blockchainProcessor = new(
@@ -136,7 +152,7 @@ namespace Nethermind.JsonRpc.Benchmark
 
             BlockchainBridge bridge = new(
                 new OverridableTxProcessingEnv(
-                    stateManager,
+                    overridableScope,
                     new ReadOnlyBlockTree(blockTree),
                     specProvider,
                     LimboLogs.Instance),
@@ -145,6 +161,7 @@ namespace Nethermind.JsonRpc.Benchmark
                     new ReadOnlyBlockTree(blockTree),
                     new ReadOnlyDbProvider(dbProvider, true),
                     specProvider,
+                    SimulateTransactionProcessorFactory.Instance,
                     LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
@@ -162,7 +179,26 @@ namespace Nethermind.JsonRpc.Benchmark
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             ISyncConfig syncConfig = new SyncConfig();
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, new StaticSelector(SyncMode.All), null, LimboLogs.Instance);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, Substitute.For<ISyncPointers>(), syncConfig, new StaticSelector(SyncMode.All), null, LimboLogs.Instance);
+
+            ProtocolsManager protocolsManager = new(
+                Substitute.For<ISyncPeerPool>(),
+                Substitute.For<ISyncServer>(),
+                Substitute.For<IBackgroundTaskScheduler>(),
+                Substitute.For<ITxPool>(),
+                Substitute.For<IPooledTxsRequestor>(),
+                Substitute.For<IDiscoveryApp>(),
+                Substitute.For<IMessageSerializationService>(),
+                Substitute.For<IRlpxHost>(),
+                Substitute.For<INodeStatsManager>(),
+                Substitute.For<IProtocolValidator>(),
+                Substitute.For<INetworkStorage>(),
+                new ForkInfo(specProvider, genesisBlock.Hash!),
+                Substitute.For<IGossipPolicy>(),
+                stateManager,
+                LimboLogs.Instance,
+                Substitute.For<ITxGossipPolicy>()
+            );
 
             _ethModule = new EthRpcModule(
                 new JsonRpcConfig(),
@@ -178,6 +214,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 gasPriceOracle,
                 ethSyncingInfo,
                 feeHistoryOracle,
+                protocolsManager,
                 new BlocksConfig().SecondsPerSlot);
         }
 

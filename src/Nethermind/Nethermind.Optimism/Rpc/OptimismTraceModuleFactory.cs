@@ -9,35 +9,36 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
+using Nethermind.Facade;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Optimism.Rpc;
 
 public class OptimismTraceModuleFactory(
-    IReadOnlyTrieStore trieStore,
-    IDbProvider dbProvider,
+    IWorldStateManager worldStateManager,
     IBlockTree blockTree,
     IJsonRpcConfig jsonRpcConfig,
+    IBlockchainBridge blockchainBridge,
+    ulong secondsPerSlot,
     IBlockPreprocessorStep recoveryStep,
     IRewardCalculatorSource rewardCalculatorSource,
     IReceiptStorage receiptFinder,
     ISpecProvider specProvider,
     IPoSSwitcher poSSwitcher,
     ILogManager logManager,
-    IL1CostHelper l1CostHelper,
+    ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper,
     Create2DeployerContractRewriter contractRewriter,
     IWithdrawalProcessor withdrawalProcessor) : TraceModuleFactory(
-        trieStore,
-        dbProvider,
+        worldStateManager,
         blockTree,
         jsonRpcConfig,
+        blockchainBridge,
+        secondsPerSlot,
         recoveryStep,
         rewardCalculatorSource,
         receiptFinder,
@@ -45,10 +46,10 @@ public class OptimismTraceModuleFactory(
         poSSwitcher,
         logManager)
 {
-    protected override OverridableTxProcessingEnv CreateTxProcessingEnv(OverridableWorldStateManager worldStateManager) =>
-        new OptimismOverridableTxProcessingEnv(worldStateManager, _blockTree, _specProvider, _logManager, l1CostHelper, opSpecHelper);
+    protected override OverridableTxProcessingEnv CreateTxProcessingEnv(IOverridableWorldScope worldStateManager) =>
+        new OptimismOverridableTxProcessingEnv(worldStateManager, _blockTree, _specProvider, _logManager, costHelper, opSpecHelper);
 
-    protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(OverridableWorldStateManager worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new OptimismReadOnlyChainProcessingEnv(
+    protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new OptimismReadOnlyChainProcessingEnv(
                 scope,
                 Always.Valid,
                 _recoveryStep,

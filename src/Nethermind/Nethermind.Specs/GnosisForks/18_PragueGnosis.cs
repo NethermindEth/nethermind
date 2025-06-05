@@ -3,17 +3,27 @@
 
 using System.Threading;
 using Nethermind.Core.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs.GnosisForks;
 
-public class PragueGnosis : Forks.Prague
+public class PragueGnosis : Prague
 {
     private static IReleaseSpec _instance;
 
-    protected PragueGnosis() : base()
+    private PragueGnosis()
     {
-        IsEip4844FeeCollectorEnabled = true;
+        ToGnosisFork(this);
     }
 
-    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new PragueGnosis());
+    public static void ToGnosisFork(Prague spec)
+    {
+        CancunGnosis.ToGnosisFork(spec);
+        spec.IsEip4844FeeCollectorEnabled = true;
+        spec.BlobBaseFeeUpdateFraction = 0x10fafa;
+        spec.TargetBlobCount = 1;
+        spec.MaxBlobCount = 2;
+    }
+
+    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new PragueGnosis());
 }

@@ -12,6 +12,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
+[TestFixture]
 public class Eip7516BlobBaseFeeTests : VirtualMachineTestsBase
 {
 
@@ -38,10 +39,10 @@ public class Eip7516BlobBaseFeeTests : VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx(activation, 100000, code);
         block.Header.ExcessBlobGas = excessBlobGas;
 
+        IReleaseSpec spec = SpecProvider.GetSpec(activation);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, block.Header, tracer);
-
-        _ = BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, out UInt256 expectedFeePerBlobGas);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+        _ = BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 expectedFeePerBlobGas);
         if (eip7516Enabled)
         {
             AssertStorage((UInt256)0, expectedFeePerBlobGas);

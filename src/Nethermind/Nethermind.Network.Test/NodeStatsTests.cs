@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
@@ -119,5 +120,18 @@ public class NodeStatsTests
         }
 
         _nodeStats.CurrentNodeReputation().Should().Be(reputation);
+    }
+
+    [Test]
+    public async Task TestRequestLimit()
+    {
+        _nodeStats = new NodeStatsLight(_node);
+        _nodeStats.GetCurrentRequestLimit(RequestType.Bodies).Should().Be(4);
+
+        int[] result = await _nodeStats.RunSizeAndLatencyRequestSizer<int[], int, int>(RequestType.Bodies, [1, 2, 3, 4, 5],
+            (mapped) => Task.FromResult<(int[], long)>((mapped.ToArray(), 1)));
+
+        result.Should().BeEquivalentTo([1, 2, 3, 4]);
+        _nodeStats.GetCurrentRequestLimit(RequestType.Bodies).Should().Be(6);
     }
 }

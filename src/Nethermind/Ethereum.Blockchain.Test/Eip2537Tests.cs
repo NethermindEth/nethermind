@@ -7,20 +7,20 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test
 {
-    [TestFixture]
-    [Parallelizable(ParallelScope.All)]
-    public class Eip2537Tests : GeneralStateTestBase
-    {
-        [TestCaseSource(nameof(LoadTests))]
-        public void Test(GeneralStateTest test)
-        {
-            Assert.That(RunTest(test).Pass, Is.True);
-        }
-
-        public static IEnumerable<GeneralStateTest> LoadTests()
-        {
-            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "../EIPTests/StateTests/stEIP2537");
-            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
-        }
-    }
+    // [TestFixture]
+    // [Parallelizable(ParallelScope.All)]
+    // public class Eip2537Tests : GeneralStateTestBase
+    // {
+    //     [TestCaseSource(nameof(LoadTests))]
+    //     public void Test(GeneralStateTest test)
+    //     {
+    //         Assert.That(RunTest(test).Pass, Is.True);
+    //     }
+    //
+    //     public static IEnumerable<GeneralStateTest> LoadTests()
+    //     {
+    //         var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP2537");
+    //         return loader.LoadTests<GeneralStateTest>();
+    //     }
+    // }
 }

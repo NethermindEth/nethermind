@@ -20,11 +20,11 @@ namespace Ethereum.Trie.Test
     public class TrieTests
     {
         private MemDb _db;
+        private ILogger _logger = new TestLogManager().GetClassLogger();
 
         [SetUp]
         public void Setup()
         {
-            TrieNode.AllowBranchValues = true;
             _db = new MemDb();
         }
 
@@ -59,7 +59,9 @@ namespace Ethereum.Trie.Test
         {
             return TestLoader.LoadFromFile<Dictionary<string, TrieTestArraysJson>, TrieTest>(
                 "trietest.json",
-                dwj => dwj.Select(Convert));
+                dwj => dwj.Select(Convert))
+                // Remove branch value tests
+                .Where(t => t.Input.All(kvp => kvp.Key.Length == 32));
         }
 
         private static IEnumerable<TrieTest> LoadSecureTests()
@@ -73,7 +75,9 @@ namespace Ethereum.Trie.Test
         {
             IEnumerable<TrieTest> tests = TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
                 "trieanyorder.json",
-                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)));
+                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)))
+                    // Remove branch value tests
+                    .Where(t => t.Input.All(kvp => kvp.Key.Length == 32));
             return GetTestPermutations(tests);
         }
 
@@ -81,7 +85,9 @@ namespace Ethereum.Trie.Test
         {
             IEnumerable<TrieTest> tests = TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
                 "hex_encoded_securetrie_test.json",
-                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)));
+                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)))
+                    // Remove branch value tests
+                    .Where(t => t.Input.All(kvp => kvp.Key.Length == 32));
             return GetTestPermutations(tests);
         }
 
@@ -150,8 +156,7 @@ namespace Ethereum.Trie.Test
                     ? Bytes.FromHexString(valueString)
                     : Encoding.ASCII.GetBytes(valueString);
 
-                TestContext.Out.WriteLine();
-                TestContext.Out.WriteLine($"Setting {keyString} -> {valueString}");
+                _logger.Info($"\nSetting {keyString} -> {valueString}");
                 patriciaTree.Set(key.ToPackedByteArray(), value);
             }
 

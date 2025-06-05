@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
@@ -16,9 +16,9 @@ namespace Nethermind.TxPool
         private static readonly long MaxSizeOfTxForBroadcast = 4.KiB(); //4KB, as in Geth https://github.com/ethereum/go-ethereum/pull/27618
         private static readonly ITransactionSizeCalculator _transactionSizeCalculator = new NetworkTransactionSizeCalculator(TxDecoder.Instance);
 
-        public static int GetLength(this Transaction tx)
+        public static int GetLength(this Transaction tx, bool shouldCountBlobs = true)
         {
-            return tx.GetLength(_transactionSizeCalculator);
+            return tx.GetLength(_transactionSizeCalculator, shouldCountBlobs);
         }
 
         public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => tx.MaxFeePerGas >= currentBaseFee;
@@ -91,5 +91,14 @@ namespace Nethermind.TxPool
 
         internal static bool IsOverflowInTxCostAndValue(this Transaction tx, out UInt256 txCost)
             => IsOverflowWhenAddingTxCostToCumulative(tx, UInt256.Zero, out txCost);
+
+        public static bool IsInMempoolForm(this Transaction tx) => tx.NetworkWrapper is not null;
+
+        public static ProofVersion GetProofVersion(this Transaction mempoolTx) => mempoolTx switch
+        {
+            LightTransaction lt => lt.ProofVersion,
+            { NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion v } } => v,
+            _ => ProofVersion.V0,
+        };
     }
 }

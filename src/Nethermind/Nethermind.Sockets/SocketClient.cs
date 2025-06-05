@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Serialization.Json;
 
@@ -15,18 +16,20 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
 
     protected readonly TStream _stream;
     protected readonly IJsonSerializer _jsonSerializer;
+    private readonly int _maxRequestSize;
 
     public string Id { get; } = Guid.NewGuid().ToString("N");
     public string ClientName { get; }
 
-    public SocketClient(string clientName, TStream stream, IJsonSerializer jsonSerializer)
+    public SocketClient(string clientName, TStream stream, IJsonSerializer jsonSerializer, int maxRequestSize = MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API)
     {
         ClientName = clientName;
         _stream = stream;
         _jsonSerializer = jsonSerializer;
+        _maxRequestSize = maxRequestSize;
     }
 
-    public virtual Task ProcessAsync(ArraySegment<byte> data) => Task.CompletedTask;
+    public virtual Task ProcessAsync(ArraySegment<byte> data, CancellationToken cancellationToken) => Task.CompletedTask;
 
     public virtual async Task SendAsync(SocketsMessage message)
     {
@@ -38,24 +41,24 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
         if (message.Client == ClientName || string.IsNullOrWhiteSpace(ClientName) ||
             string.IsNullOrWhiteSpace(message.Client))
         {
-            await _jsonSerializer.SerializeAsync(_stream, new { type = message.Type, client = ClientName, data = message.Data }, indented: false, leaveOpen: true);
+            await _jsonSerializer.SerializeAsync(_stream, new { type = message.Type, client = ClientName, data = message.Data }, CancellationToken.None, indented: false, leaveOpen: true);
             await _stream.WriteEndOfMessageAsync();
         }
     }
 
-    public async Task ReceiveLoopAsync()
+    public virtual async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
         const int standardBufferLength = 1024 * 4;
         int currentMessageLength = 0;
         byte[] buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
         try
         {
-            ReceiveResult? result = await _stream.ReceiveAsync(buffer);
-            while (result?.Closed == false)
+            ReceiveResult result = await _stream.ReceiveAsync(buffer, cancellationToken);
+            while (!result.IsNull && result.Closed == false)
             {
                 currentMessageLength += result.Read;
 
-                if (currentMessageLength >= MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API)
+                if (currentMessageLength >= _maxRequestSize)
                 {
                     throw new InvalidOperationException("Message too long");
                 }
@@ -63,7 +66,7 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
                 if (result.EndOfMessage)
                 {
                     // process the already filled bytes
-                    await ProcessAsync(new ArraySegment<byte>(buffer, 0, currentMessageLength));
+                    await ProcessAsync(new ArraySegment<byte>(buffer, 0, currentMessageLength), cancellationToken);
                     currentMessageLength = 0; // reset message length
 
                     // if we grew the buffer too big lets reset it
@@ -87,7 +90,7 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
                 }
 
                 // receive only new bytes, leave already filled buffer alone
-                result = await _stream.ReceiveAsync(new ArraySegment<byte>(buffer, currentMessageLength, buffer.Length - currentMessageLength));
+                result = await _stream.ReceiveAsync(new ArraySegment<byte>(buffer, currentMessageLength, buffer.Length - currentMessageLength), cancellationToken);
             }
         }
         finally

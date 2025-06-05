@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
@@ -13,20 +12,17 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    private readonly IAsyncHandler<byte[], GetPayloadV4Result?> _getPayloadHandlerV4;
+    readonly IAsyncHandler<byte[], GetPayloadV4Result?> _getPayloadHandlerV4;
 
-    private readonly IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>> _executionGetPayloadBodiesByHashV2Handler;
-    private readonly IGetPayloadBodiesByRangeV2Handler _executionGetPayloadBodiesByRangeV2Handler;
-
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(ExecutionPayloadV4 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) =>
-        NewPayload(new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot), EngineApiVersions.Prague);
+    /// <summary>
+    /// Method parameter list is extended with <see cref="ExecutionRequets"/> parameter.
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
+    /// </summary>
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
+    {
+        return NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests), EngineApiVersions.Prague);
+    }
 
     public async Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId) =>
         await _getPayloadHandlerV4.HandleAsync(payloadId);
-
-    public ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>> engine_getPayloadBodiesByHashV2(IReadOnlyList<Hash256> blockHashes)
-        => _executionGetPayloadBodiesByHashV2Handler.Handle(blockHashes);
-
-    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(long start, long count)
-        => _executionGetPayloadBodiesByRangeV2Handler.Handle(start, count);
 }

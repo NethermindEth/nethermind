@@ -16,6 +16,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
@@ -30,14 +31,17 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     private readonly ILogger _logger;
     private readonly IJsonRpcService _jsonRpcService;
     private readonly Recorder _recorder;
+    private readonly IProcessExitSource? _processExitSource;
 
-    public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager)
+    public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager, IProcessExitSource? processExitSource = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         ArgumentNullException.ThrowIfNull(fileSystem);
 
         _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+
+        _processExitSource = processExitSource;
 
         if (_jsonRpcConfig.RpcRecorderState != RpcRecorderState.None)
         {
@@ -46,6 +50,9 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             _recorder = new Recorder(recorderBaseFilePath, fileSystem, _logger);
         }
     }
+
+    public CancellationToken ProcessExit
+        => _processExitSource?.Token ?? default;
 
     private (JsonRpcRequest? Model, ArrayPoolList<JsonRpcRequest>? Collection) DeserializeObjectOrArray(JsonDocument doc)
     {
@@ -120,9 +127,15 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
     public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader reader, JsonRpcContext context)
     {
+        if (ProcessExit.IsCancellationRequested)
+        {
+            JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
+            yield return JsonRpcResult.Single(RecordResponse(response, new RpcReport("Shutdown", 0, false)));
+        }
+
         reader = await RecordRequest(reader);
         long startTime = Stopwatch.GetTimestamp();
-        CancellationTokenSource timeoutSource = new(_jsonRpcConfig.Timeout);
+        using CancellationTokenSource timeoutSource = _jsonRpcConfig.BuildTimeoutCancellationToken();
 
         // Handles general exceptions during parsing and validation.
         // Sends an error response and stops the stopwatch.
@@ -361,18 +374,16 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         {
             if (localErrorResponse?.Error?.SuppressWarning == false)
             {
-                if (_logger.IsWarn) _logger.Warn($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
+                if (_logger.IsWarn) _logger.Warn($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {localErrorResponse.Error.Code} Message: {localErrorResponse.Error.Message}");
+                if (_logger.IsTrace) _logger.Trace($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
             }
             Metrics.JsonRpcErrors++;
         }
         else
         {
-            if (_logger.IsDebug) _logger.Debug($"Responded to {request}");
+            if (_logger.IsDebug) _logger.Debug($"Responded to Id:{request.Id} Method:{request.Method} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             Metrics.JsonRpcSuccesses++;
         }
-
-
-        if (_logger.IsDebug) _logger.Debug($"  {request} handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
         JsonRpcResult.Entry result = new(response, new RpcReport(request.Method, (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, isSuccess));
         TraceResult(result);

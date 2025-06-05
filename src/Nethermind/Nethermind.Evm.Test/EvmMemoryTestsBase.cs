@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -17,7 +18,7 @@ public abstract class EvmMemoryTestsBase
     {
         IEvmMemory memory = CreateEvmMemory();
         UInt256 dest = (UInt256)int.MaxValue + 1;
-        memory.Save(in dest, new byte[0]);
+        memory.Save(in dest, Array.Empty<byte>());
     }
 
     [Test]

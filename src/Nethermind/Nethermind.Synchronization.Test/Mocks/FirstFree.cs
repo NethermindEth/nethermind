@@ -19,7 +19,7 @@ namespace Nethermind.Synchronization.Test.Mocks
         {
             get
             {
-                if (_instance is null) LazyInitializer.EnsureInitialized(ref _instance, () => new FirstFree());
+                if (_instance is null) LazyInitializer.EnsureInitialized(ref _instance, static () => new FirstFree());
 
                 return _instance;
             }
@@ -28,8 +28,6 @@ namespace Nethermind.Synchronization.Test.Mocks
         private FirstFree()
         {
         }
-
-        public bool CanBeReplaced => false;
 
         public PeerInfo Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {

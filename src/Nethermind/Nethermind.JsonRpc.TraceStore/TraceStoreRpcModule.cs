@@ -13,6 +13,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
+using Nethermind.Facade.Proxy.Models.Simulate;
 
 namespace Nethermind.JsonRpc.TraceStore;
 
@@ -57,6 +58,9 @@ public class TraceStoreRpcModule : ITraceRpcModule
         Dictionary<Address, AccountOverride>? stateOverride = null) =>
         _traceModule.trace_call(call, traceTypes, blockParameter, stateOverride);
 
+    public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(
+        SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null) => _traceModule.trace_simulateV1(payload, blockParameter, traceTypes);
+
     public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null) =>
         _traceModule.trace_callMany(calls, blockParameter);
 
@@ -86,7 +90,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
         if (TryGetBlockTraces(block, out List<ParityLikeTxTrace>? traces) && traces is not null)
         {
             FilterTraces(traces, TraceRpcModule.GetParityTypes(traceTypes));
-            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(t => new ParityTxTraceFromReplay(t, true)));
+            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(static t => new ParityTxTraceFromReplay(t, true)));
         }
 
         return _traceModule.trace_replayBlockTransactions(blockParameter, traceTypes);
@@ -114,7 +118,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
                 if (blockSearch.IsError)
                 {
                     error = blockSearch;
-                    return Enumerable.Empty<ParityTxTraceFromStore>();
+                    return [];
                 }
 
                 Block block = blockSearch.Object!;
@@ -125,7 +129,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
                 else
                 {
                     missingTraces = true;
-                    return Enumerable.Empty<ParityTxTraceFromStore>();
+                    return [];
                 }
             });
 

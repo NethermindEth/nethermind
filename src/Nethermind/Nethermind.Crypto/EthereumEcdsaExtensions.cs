@@ -17,7 +17,7 @@ namespace Nethermind.Crypto
             using NettyRlpStream rlp = AuthorizationTupleDecoder.Instance.EncodeWithoutSignature(chainId, codeAddress, nonce);
             Span<byte> preImage = stackalloc byte[rlp.Length + 1];
             preImage[0] = Eip7702Constants.Magic;
-            rlp.AsSpan().CopyTo(preImage.Slice(1));
+            rlp.AsSpan().CopyTo(preImage[1..]);
             Signature sig = ecdsa.Sign(signer, Keccak.Compute(preImage));
             return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
         }
@@ -69,20 +69,12 @@ namespace Nethermind.Crypto
             bool applyEip155 = useSignatureChainId
                                || tx.Signature.V == CalculateV(ecdsa.ChainId, false)
                                || tx.Signature.V == CalculateV(ecdsa.ChainId, true);
-
-            ulong chainId;
-            switch (tx.Type)
+            var chainId = tx.Type switch
             {
-                case TxType.Legacy when useSignatureChainId:
-                    chainId = tx.Signature.ChainId.Value;
-                    break;
-                case TxType.Legacy:
-                    chainId = ecdsa.ChainId;
-                    break;
-                default:
-                    chainId = tx.ChainId!.Value;
-                    break;
-            }
+                TxType.Legacy when useSignatureChainId => tx.Signature.ChainId.Value,
+                TxType.Legacy => ecdsa.ChainId,
+                _ => tx.ChainId!.Value,
+            };
             Hash256 hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
 
             return ecdsa.RecoverAddress(tx.Signature, hash);
@@ -96,8 +88,8 @@ namespace Nethermind.Crypto
             Span<byte> buffer = stackalloc byte[128];
             buffer[0] = Eip7702Constants.Magic;
             using NettyRlpStream stream = AuthorizationTupleDecoder.Instance.EncodeWithoutSignature(tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
-            stream.AsSpan().CopyTo(buffer.Slice(1));
-            return ecdsa.RecoverAddress(tuple.AuthoritySignature, Keccak.Compute(buffer.Slice(0, stream.Length + 1)));
+            stream.AsSpan().CopyTo(buffer[1..]);
+            return ecdsa.RecoverAddress(tuple.AuthoritySignature, Keccak.Compute(buffer[..(stream.Length + 1)]));
         }
     }
 }

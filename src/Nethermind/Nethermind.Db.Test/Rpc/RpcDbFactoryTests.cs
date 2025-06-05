@@ -19,7 +19,7 @@ namespace Nethermind.Db.Test.Rpc
         [Test]
         public void ValidateDbs()
         {
-            void ValidateDb<T>(params object[] dbs)
+            static void ValidateDb<T>(params object[] dbs)
             {
                 foreach (object db in dbs)
                 {

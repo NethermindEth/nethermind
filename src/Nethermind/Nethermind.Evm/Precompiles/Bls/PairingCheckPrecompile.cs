@@ -23,14 +23,14 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
 
     private PairingCheckPrecompile() { }
 
-    public static Address Address { get; } = Address.FromNumber(0x11);
+    public static Address Address { get; } = Address.FromNumber(0xf);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 65000L;
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 37700L;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 43000L * (inputData.Length / PairSize);
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 32600L * (inputData.Length / PairSize);
 
     [SkipLocalsInit]
-    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsPairingCheckPrecompile++;
 
@@ -64,13 +64,14 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
                 continue;
             }
 
+            // acc *= e(x, y)
             p.MillerLoop(y, x);
             acc.Mul(p);
         }
 
-        bool verified = acc.FinalExp().IsOne();
+        // e(x_0, y_0) * e(x_1, y_1) * ... == 1
         byte[] res = new byte[32];
-        if (verified)
+        if (acc.FinalExp().IsOne())
         {
             res[31] = 1;
         }

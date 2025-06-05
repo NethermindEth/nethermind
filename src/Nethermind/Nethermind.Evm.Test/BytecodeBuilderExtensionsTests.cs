@@ -13,7 +13,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test;
 
-[Ignore("Broken and fails for NUnit v3.14.0. Skipped for some reason for earlier versions.")]
 public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
 {
     public class TestCase
@@ -67,7 +66,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
             {
                 if (hasDigit)
                 {
-                    return method.Name.StartsWith(opcodeStr.Substring(0, prefixLen));
+                    return method.Name.StartsWith(opcodeStr[..prefixLen]);
                 }
                 else
                 {
@@ -347,7 +346,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
 
             yield return new TestCase()
             {
-                Description = $"Testing opcode {opcode} : with {args.Length} args ({args.Aggregate((acc, v) => $"{acc},{v}")})",
+                Description = $"Testing opcode {opcode} : with {args.Length} args ({args.Aggregate(static (acc, v) => $"{acc},{v}")})",
                 FluentCodes = initBytecode.Done,
                 ResultCodes = Prepare.EvmCode
                     .PushData(outputLength)
@@ -373,7 +372,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
 
             yield return new TestCase()
             {
-                Description = $"Testing opcode {opcode} : with {args.Length} args ({args.Aggregate((acc, v) => $"{acc},{v}")})",
+                Description = $"Testing opcode {opcode} : with {args.Length} args ({args.Aggregate(static (acc, v) => $"{acc},{v}")})",
                 FluentCodes = initBytecode.Done,
                 ResultCodes = Prepare.EvmCode
                     .PushData(outputLength)

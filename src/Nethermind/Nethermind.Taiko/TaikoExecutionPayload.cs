@@ -15,14 +15,12 @@ public class TaikoExecutionPayload : ExecutionPayload
     public Hash256? WithdrawalsHash { get; set; } = null;
     public Hash256? TxHash { get; set; } = null;
 
-
-    private byte[][]? _encodedTransactions;
     public new byte[][]? Transactions
     {
-        get { return _encodedTransactions; }
+        get => _encodedTransactions is [] ? null : _encodedTransactions;
         set
         {
-            _encodedTransactions = value;
+            _encodedTransactions = value ?? [];
             _transactions = null;
         }
     }
@@ -34,11 +32,11 @@ public class TaikoExecutionPayload : ExecutionPayload
         _ => 1
     };
 
-    public override bool TryGetBlock([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null)
+    public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
     {
         if (Withdrawals is null && Transactions is null)
         {
-            var header = new BlockHeader(
+            BlockHeader header = new BlockHeader(
                 ParentHash,
                 Keccak.OfAnEmptySequenceRlp,
                 FeeRecipient,
@@ -63,9 +61,8 @@ public class TaikoExecutionPayload : ExecutionPayload
                 WithdrawalsRoot = WithdrawalsHash,
             };
 
-            block = new(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), null);
-            return true;
+            return new BlockDecodingResult(new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), null));
         }
-        return base.TryGetBlock(out block, totalDifficulty);
+        return base.TryGetBlock(totalDifficulty);
     }
 }

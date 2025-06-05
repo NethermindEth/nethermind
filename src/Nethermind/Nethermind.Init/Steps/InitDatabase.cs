@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
@@ -51,6 +52,7 @@ namespace Nethermind.Init.Steps
                 bool useReceiptsDb = receiptConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
                 bool useBlobsDb = txPoolConfig.BlobsSupport.IsPersistentStorage();
                 InitDbApi(initConfig, dbConfig, receiptConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                _api.DisposeStack.Push(_api.DbProvider!);
                 StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.DbFactory, _api.FileSystem);
                 await dbInitializer.InitStandardDbsAsync(useReceiptsDb, useBlobsDb);
                 _api.BlobTxStorage = useBlobsDb
@@ -77,7 +79,6 @@ namespace Nethermind.Init.Steps
                 case DiagnosticMode.ReadOnlyDb:
                     DbProvider rocksDbProvider = new();
                     _api.DbProvider = new ReadOnlyDbProvider(rocksDbProvider, storeReceipts); // ToDo storeReceipts as createInMemoryWriteStore - bug?
-                    _api.DisposeStack.Push(rocksDbProvider);
                     _api.DbFactory = new RocksDbFactory(dbConfig, _api.LogManager, Path.Combine(initConfig.BaseDbPath, "debug"));
                     break;
                 case DiagnosticMode.MemDb:
@@ -89,8 +90,6 @@ namespace Nethermind.Init.Steps
                     _api.DbFactory = new RocksDbFactory(dbConfig, _api.LogManager, initConfig.BaseDbPath);
                     break;
             }
-
-            _api.NodeStorageFactory = new NodeStorageFactory(initConfig.StateDbKeyScheme, _api.LogManager);
         }
     }
 }

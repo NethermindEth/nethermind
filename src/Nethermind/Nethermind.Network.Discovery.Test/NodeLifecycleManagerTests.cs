@@ -30,8 +30,8 @@ namespace Nethermind.Network.Discovery.Test;
 [Parallelizable(ParallelScope.Self)]
 public class NodeLifecycleManagerTests
 {
-    private Signature[] _signatureMocks = Array.Empty<Signature>();
-    private PublicKey[] _nodeIds = Array.Empty<PublicKey>();
+    private Signature[] _signatureMocks = [];
+    private PublicKey[] _nodeIds = [];
     private INodeStats _nodeStatsMock = null!;
 
     private readonly INetworkConfig _networkConfig = new NetworkConfig();
@@ -81,10 +81,11 @@ public class NodeLifecycleManagerTests
         IMsgSender udpClient = Substitute.For<IMsgSender>();
 
         SimpleFilePublicKeyDb discoveryDb = new("Test", "test", logManager);
-        _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(discoveryDb, logManager), discoveryConfig, logManager);
+        _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(discoveryDb, logManager), discoveryConfig, null, logManager);
         _discoveryManager.MsgSender = udpClient;
 
         _discoveryManagerMock = Substitute.For<IDiscoveryManager>();
+        _discoveryManagerMock.NodesFilter.Returns(new NodeFilter(16));
     }
 
     [Test]
@@ -144,11 +145,18 @@ public class NodeLifecycleManagerTests
 
         Assert.That(sentMsg, Is.Not.Null);
         _nodeTable.Buckets[0].BondedItemsCount.Should().Be(32);
-        sentMsg!.Nodes.Length.Should().Be(12);
+        sentMsg!.Nodes.Count.Should().Be(12);
     }
 
     [Test]
-    public async Task processNeighboursMessage_willCombineTwoSubsequentMessage()
+    public Task processNeighboursMessage_willCombineTwoSubsequentMessage()
+        => processNeighboursMessage_Test((pubkey, i) => new Node(pubkey, $"127.0.0.{i + 1}", 0), 16);
+
+    [Test]
+    public Task processNeighboursMessage_willCombineDeduplicateMultipleIps()
+        => processNeighboursMessage_Test((pubkey, i) => new Node(pubkey, $"127.0.0.100", 0), 1);
+
+    public async Task processNeighboursMessage_Test(Func<PublicKey, int, Node> createNode, int expectedCount)
     {
         IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
         discoveryConfig.PongTimeout = 50;
@@ -167,17 +175,17 @@ public class NodeLifecycleManagerTests
             .Received(0)
             .GetNodeLifecycleManager(Arg.Any<Node>(), Arg.Any<bool>());
 
-        await nodeManager.SendFindNode(Array.Empty<byte>());
+        await nodeManager.SendFindNode([]);
 
         Node[] firstNodes = TestItem.PublicKeys
             .Take(12)
-            .Select(pubkey => new Node(pubkey, "127.0.0.2", 0))
+            .Select(createNode)
             .ToArray();
         NeighborsMsg firstNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, firstNodes);
         Node[] secondNodes = TestItem.PublicKeys
             .Skip(12)
             .Take(4)
-            .Select(pubkey => new Node(pubkey, "127.0.0.2", 0))
+            .Select((pubkey, i) => createNode(pubkey, i + 14))
             .ToArray();
         NeighborsMsg secondNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, secondNodes);
 
@@ -185,7 +193,7 @@ public class NodeLifecycleManagerTests
         nodeManager.ProcessNeighborsMsg(secondNodeMsg);
 
         _discoveryManagerMock
-            .Received(16)
+            .Received(expectedCount)
             .GetNodeLifecycleManager(Arg.Any<Node>(), Arg.Any<bool>());
     }
 
@@ -239,12 +247,7 @@ public class NodeLifecycleManagerTests
         {
             string host = "192.168.1." + i;
             Node node = new(_nodeIds[i], host, _port);
-            INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            if (manager is null)
-            {
-                throw new Exception("Manager is null");
-            }
-
+            INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node) ?? throw new Exception("Manager is null");
             managers.Add(manager);
             Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.New));
 
@@ -310,12 +313,7 @@ public class NodeLifecycleManagerTests
         {
             string host = "192.168.1." + i;
             Node node = new(_nodeIds[i], host, _port);
-            INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            if (manager is null)
-            {
-                throw new Exception("Manager is null");
-            }
-
+            INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node) ?? throw new Exception("Manager is null");
             managers.Add(manager);
             Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.New));
 

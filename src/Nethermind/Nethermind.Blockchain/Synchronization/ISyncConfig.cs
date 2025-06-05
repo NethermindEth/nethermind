@@ -54,13 +54,10 @@ public interface ISyncConfig : IConfig
     string? PivotHash { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
-    long PivotNumberParsed => LongConverter.FromString(PivotNumber);
+    private long PivotNumberParsed => LongConverter.FromString(PivotNumber);
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
     UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
-
-    [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
-    Hash256? PivotHashParsed => PivotHash is null ? null : new Hash256(Bytes.FromHexString(PivotHash));
 
     [ConfigItem(Description = "The max number of attempts to update the pivot block based on the FCU message from the consensus client.", DefaultValue = "2147483647")]
     int MaxAttemptsToUpdatePivot { get; set; }
@@ -144,9 +141,36 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector sync mode timer loop interval. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
     int MultiSyncModeSelectorLoopTimerMs { get; set; }
 
+    [ConfigItem(Description = "_Technical._ SyncDispatcher delay on empty request. Used for testing.", DefaultValue = "10", HiddenFromDocs = true)]
+    int SyncDispatcherEmptyRequestDelayMs { get; set; }
+
+    [ConfigItem(Description = "_Technical._ SyncDispatcher allocation timeout. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
+    int SyncDispatcherAllocateTimeoutMs { get; set; }
+
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector will wait for header to completely sync first.", DefaultValue = "false", HiddenFromDocs = true)]
     bool NeedToWaitForHeader { get; set; }
 
     [ConfigItem(Description = "_Technical._ Run verify trie on state sync is finished.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool VerifyTrieOnStateSyncFinished { get; }
+    bool VerifyTrieOnStateSyncFinished { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Max distance of state sync from best suggested header.", DefaultValue = "128", HiddenFromDocs = true)]
+    int StateMaxDistanceFromHead { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Min distance of state sync from best suggested header.", DefaultValue = "32", HiddenFromDocs = true)]
+    int StateMinDistanceFromHead { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Run explicit GC after state sync finished.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool GCOnFeedFinished { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Max distance between best suggested header and available state to assume state is synced.", DefaultValue = "0", HiddenFromDocs = true)]
+    int HeaderStateDistance { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "0", HiddenFromDocs = true)]
+    ulong FastHeadersMemoryBudget { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Enable storage range split.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool EnableSnapSyncStorageRangeSplit { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Max tx in forward sync buffer.", DefaultValue = "200000", HiddenFromDocs = true)]
+    int MaxTxInForwardSyncBuffer { get; set; }
 }

@@ -12,7 +12,8 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
-using Nethermind.Core.ConsensusRequests;
+using Microsoft.AspNetCore.Server.Kestrel.Transport.Quic;
+using Nethermind.Core.ExecutionRequest;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -32,7 +33,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public long BlockNumber { get; set; }
 
-    public byte[] ExtraData { get; set; } = Array.Empty<byte>();
+    public byte[] ExtraData { get; set; } = [];
 
     public Address FeeRecipient { get; set; } = Address.Zero;
 
@@ -52,7 +53,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public ulong Timestamp { get; set; }
 
-    private byte[][] _encodedTransactions = Array.Empty<byte[]>();
+    protected byte[][] _encodedTransactions = [];
 
     /// <summary>
     /// Gets or sets an array of RLP-encoded transaction where each item is a byte list (data)
@@ -61,7 +62,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// </summary>
     public byte[][] Transactions
     {
-        get { return _encodedTransactions; }
+        get => _encodedTransactions;
         set
         {
             _encodedTransactions = value;
@@ -77,23 +78,11 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
 
     /// <summary>
-    /// Gets or sets a collection of <see cref="DepositRequests"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-6110">EIP-6110</see>.
+    /// Gets or sets a collection of <see cref="ExecutionRequest"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
-    public virtual Deposit[]? DepositRequests { get; set; }
-
-
-    /// <summary>
-    /// Gets or sets a collection of <see cref="WithdrawalRequests"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7002">EIP-7002</see>.
-    /// </summary>
-    public virtual WithdrawalRequest[]? WithdrawalRequests { get; set; }
-
-    /// <summary>
-    /// Gets or sets a collection of <see cref="ConsolidationRequests"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7251">EIP-7251</see>.
-    /// </summary>
-    public virtual ConsolidationRequest[]? ConsolidationRequests { get; set; }
+    [JsonIgnore]
+    public virtual byte[][]? ExecutionRequests { get; set; }
 
 
     /// <summary>
@@ -148,45 +137,45 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <param name="block">When this method returns, contains the execution block.</param>
     /// <param name="totalDifficulty">A total difficulty of the block.</param>
     /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
-    public virtual bool TryGetBlock([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null)
+    public virtual BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
     {
-        try
+        TransactionDecodingResult transactions = TryGetTransactions();
+        if (transactions.Error is not null)
         {
-            Transaction[] transactions = GetTransactions();
-            BlockHeader header = new(
-                ParentHash,
-                Keccak.OfAnEmptySequenceRlp,
-                FeeRecipient,
-                UInt256.Zero,
-                BlockNumber,
-                GasLimit,
-                Timestamp,
-                ExtraData)
-            {
-                Hash = BlockHash,
-                ReceiptsRoot = ReceiptsRoot,
-                StateRoot = StateRoot,
-                Bloom = LogsBloom,
-                GasUsed = GasUsed,
-                BaseFeePerGas = BaseFeePerGas,
-                Nonce = 0,
-                MixHash = PrevRandao,
-                Author = FeeRecipient,
-                IsPostMerge = true,
-                TotalDifficulty = totalDifficulty,
-                TxRoot = TxTrie.CalculateRoot(transactions),
-                WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
-            };
-
-            block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals);
-
-            return true;
+            return new BlockDecodingResult(transactions.Error);
         }
-        catch (Exception)
+
+        BlockHeader header = new(
+            ParentHash,
+            Keccak.OfAnEmptySequenceRlp,
+            FeeRecipient,
+            UInt256.Zero,
+            BlockNumber,
+            GasLimit,
+            Timestamp,
+            ExtraData)
         {
-            block = null;
-            return false;
-        }
+            Hash = BlockHash,
+            ReceiptsRoot = ReceiptsRoot,
+            StateRoot = StateRoot,
+            Bloom = LogsBloom,
+            GasUsed = GasUsed,
+            BaseFeePerGas = BaseFeePerGas,
+            Nonce = 0,
+            MixHash = PrevRandao,
+            Author = FeeRecipient,
+            IsPostMerge = true,
+            TotalDifficulty = totalDifficulty,
+            TxRoot = TxTrie.CalculateRoot(transactions.Transactions),
+            WithdrawalsRoot = BuildWithdrawalsRoot(),
+        };
+
+        return new BlockDecodingResult(new Block(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals));
+    }
+
+    protected virtual Hash256? BuildWithdrawalsRoot()
+    {
+        return Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
     }
 
     protected Transaction[]? _transactions = null;
@@ -195,18 +184,35 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
-    public Transaction[] GetTransactions() => _transactions ??= Transactions
-        .Select((t, i) =>
+    public TransactionDecodingResult TryGetTransactions()
+    {
+        if (_transactions is not null) return new TransactionDecodingResult(_transactions);
+
+        IRlpStreamDecoder<Transaction>? rlpDecoder = Rlp.GetStreamDecoder<Transaction>();
+        if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
+
+        int i = 0;
+        try
         {
-            try
+            byte[][] txData = Transactions;
+            Transaction[] transactions = new Transaction[txData.Length];
+
+            for (i = 0; i < transactions.Length; i++)
             {
-                return Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping);
+                transactions[i] = Rlp.Decode(txData[i].AsRlpStream(), rlpDecoder, RlpBehaviors.SkipTypedWrapping);
             }
-            catch (RlpException e)
-            {
-                throw new RlpException($"Transaction {i} is not valid", e);
-            }
-        }).ToArray();
+
+            return new TransactionDecodingResult(_transactions = transactions);
+        }
+        catch (RlpException e)
+        {
+            return new TransactionDecodingResult($"Transaction {i} is not valid: {e.Message}");
+        }
+        catch (ArgumentException)
+        {
+            return new TransactionDecodingResult($"Transaction {i} is not valid");
+        }
+    }
 
     /// <summary>
     /// RLP-encodes and sets the transactions specified to <see cref="Transactions"/>.
@@ -215,7 +221,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public void SetTransactions(params Transaction[] transactions)
     {
         Transactions = transactions
-            .Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
+            .Select(static t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes)
             .ToArray();
         _transactions = transactions;
     }
@@ -229,12 +235,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         if (spec.IsEip4844Enabled)
         {
             error = "ExecutionPayloadV3 expected";
-            return ValidationResult.Fail;
-        }
-
-        if (spec.RequestsEnabled)
-        {
-            error = "ExecutionPayloadV4 expected";
             return ValidationResult.Fail;
         }
 
@@ -252,7 +252,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected virtual int GetExecutionPayloadVersion() => this switch
     {
-        { DepositRequests: not null, WithdrawalRequests: not null, ConsolidationRequests: not null } => 4,
+        { ExecutionRequests: not null } => 4,
         { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
         { Withdrawals: not null } => 2,
         _ => 1
@@ -260,4 +260,36 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public virtual bool ValidateFork(ISpecProvider specProvider) =>
         !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
+}
+
+public struct TransactionDecodingResult
+{
+    public readonly string? Error;
+    public readonly Transaction[] Transactions = [];
+
+    public TransactionDecodingResult(Transaction[] transactions)
+    {
+        Transactions = transactions;
+    }
+
+    public TransactionDecodingResult(string error)
+    {
+        Error = error;
+    }
+}
+
+public struct BlockDecodingResult
+{
+    public readonly string? Error;
+    public readonly Block? Block;
+
+    public BlockDecodingResult(Block block)
+    {
+        Block = block;
+    }
+
+    public BlockDecodingResult(string error)
+    {
+        Error = error;
+    }
 }

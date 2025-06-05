@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -23,13 +24,13 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
     private static Always _valid;
 
     public static Always Valid
-        => LazyInitializer.EnsureInitialized(ref _valid, () => new Always(true));
+        => LazyInitializer.EnsureInitialized(ref _valid, static () => new Always(true));
 
     // ReSharper disable once NotNullMemberIsNotInitialized
     private static Always _invalid;
 
     public static Always Invalid
-        => LazyInitializer.EnsureInitialized(ref _invalid, () => new Always(false));
+        => LazyInitializer.EnsureInitialized(ref _invalid, static () => new Always(false));
 
     public bool ValidateHash(BlockHeader header)
     {
@@ -110,4 +111,9 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         return _result;
     }
 
+    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? errorMessage)
+    {
+        errorMessage = null;
+        return _result;
+    }
 }

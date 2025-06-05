@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -309,9 +310,24 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
+        /// Eof execution env in EVM
+        /// </summary>
+        bool IsEofEnabled { get; }
+
+        /// <summary>
         /// Transactions that allows code delegation for EOA
         /// </summary>
         bool IsEip7702Enabled { get; }
+
+        /// <summary>
+        /// Set upper bounds for MODEXP
+        /// </summary>
+        bool IsEip7823Enabled { get; }
+
+        /// <summary>
+        /// Blob base fee bounded by execution cost
+        /// </summary>
+        bool IsEip7918Enabled { get; }
 
         /// <summary>
         /// Blob base fee collection for Gnosis
@@ -326,14 +342,39 @@ namespace Nethermind.Core.Specs
         /// OP Granite
         bool IsOpGraniteEnabled { get; }
 
-        /// Taiko Ontake
-        bool IsOntakeEnabled { get; }
+        /// OP Holocene
+        bool IsOpHoloceneEnabled { get; }
+
+        // OP Isthmus
+        bool IsOpIsthmusEnabled { get; }
+
+        /// <summary>
+        ///  Increase call data cost
+        /// </summary>
+        bool IsEip7623Enabled { get; }
+
+        /// <summary>
+        ///  Transaction gas limit cap
+        /// </summary>
+        bool IsEip7825Enabled { get; }
+
+        /// <summary>
+        ///  Increase ModExp Gas Cost
+        /// </summary>
+        bool IsEip7883Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
         bool ValidateChainId => true;
+
+        /// <summary>
+        /// EIP-7780: Add blob schedule to EL config files
+        /// </summary>
+        public ulong TargetBlobCount { get; }
+        public ulong MaxBlobCount { get; }
+        public UInt256 BlobBaseFeeUpdateFraction { get; }
 
         public ulong WithdrawalTimestamp { get; }
 
@@ -416,5 +457,36 @@ namespace Nethermind.Core.Specs
         bool IsAuthorizationListEnabled => IsEip7702Enabled;
 
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
+
+        public bool IsEip7594Enabled { get; }
+
+        /// <summary>
+        /// This property holds an array that, at runtime, is actually an array of function pointers
+        /// with the signature:
+        /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
+        /// The array is lazily populated with JIT-optimized instructions for an EVM without tracing,
+        /// but it cannot be explicitly typed as such due to cross-project layering constraints.
+        /// </summary>
+        /// <remarks>
+        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
+        /// even though it internally represents a typed array of function pointers.
+        /// </remarks>
+        public Array? EvmInstructionsNoTrace { get; set; }
+
+        /// <summary>
+        /// This property holds an array that, at runtime, is actually an array of function pointers
+        /// with the signature:
+        /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
+        /// The array is lazily populated with JIT-optimized instructions for an EVM,
+        /// capturing additional tracing data. It cannot be explicitly typed as such due to cross-project
+        /// layering constraints.
+        /// </summary>
+        /// <remarks>
+        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
+        /// even though it internally represents a typed array of function pointers.
+        /// </remarks>
+        public Array? EvmInstructionsTraced { get; set; }
+
+        public ProofVersion BlobProofVersion => IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
     }
 }

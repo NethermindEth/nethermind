@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization.FastSync
             catch (Exception e)
             {
                 _logger.Error("Error when preparing a batch", e);
-                return await Task.FromResult(EmptyBatch);
+                return EmptyBatch;
             }
         }
 
@@ -94,5 +94,6 @@ namespace Nethermind.Synchronization.FastSync
         }
 
         public override bool IsFinished => false; // Check MultiSyncModeSelector
+        public override string FeedName => nameof(StateSyncFeed);
     }
 }

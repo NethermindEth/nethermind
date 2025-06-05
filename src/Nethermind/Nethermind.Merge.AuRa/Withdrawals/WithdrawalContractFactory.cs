@@ -7,7 +7,6 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa.Contracts;
-using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.AuRa.Withdrawals;
 

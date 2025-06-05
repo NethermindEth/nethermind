@@ -7,24 +7,20 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Nethermind.Api;
 using Nethermind.Logging;
 
 namespace Nethermind.HealthChecks
 {
     public class NodeHealthCheck : IHealthCheck
     {
-        private readonly INethermindApi _api;
         private readonly INodeHealthService _nodeHealthService;
         private readonly ILogger _logger;
 
         public NodeHealthCheck(
             INodeHealthService nodeHealthService,
-            INethermindApi api,
             ILogManager logManager)
         {
             _nodeHealthService = nodeHealthService ?? throw new ArgumentNullException(nameof(nodeHealthService));
-            _api = api;
             _logger = logManager.GetClassLogger();
         }
 
@@ -34,7 +30,7 @@ namespace Nethermind.HealthChecks
             {
                 CheckHealthResult healthResult = _nodeHealthService.CheckHealth();
                 if (_logger.IsTrace) _logger.Trace($"Checked health result. Healthy: {healthResult.Healthy}");
-                string description = FormatMessages(healthResult.Messages.Select(x => x.LongMessage));
+                string description = FormatMessages(healthResult.Messages.Select(static x => x.LongMessage));
                 if (healthResult.Healthy)
                     return Task.FromResult(HealthCheckResult.Healthy(description, CreateData(healthResult)));
 
@@ -57,9 +53,9 @@ namespace Nethermind.HealthChecks
 
         private static string FormatMessages(IEnumerable<string> messages)
         {
-            if (messages.Any(x => !string.IsNullOrWhiteSpace(x)))
+            if (messages.Any(static x => !string.IsNullOrWhiteSpace(x)))
             {
-                var joined = string.Join(". ", messages.Where(x => !string.IsNullOrWhiteSpace(x)));
+                var joined = string.Join(". ", messages.Where(static x => !string.IsNullOrWhiteSpace(x)));
                 if (!string.IsNullOrWhiteSpace(joined))
                 {
                     return joined + ".";

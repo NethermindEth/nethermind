@@ -26,13 +26,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
     public class Eth62ProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler
     {
-        private bool _statusReceived;
+        protected bool _statusReceived;
         private readonly TxFloodController _floodController;
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ITxGossipPolicy _txGossipPolicy;
         private LruKeyCache<Hash256AsKey>? _lastBlockNotificationCache;
         private LruKeyCache<Hash256AsKey> LastBlockNotificationCache => _lastBlockNotificationCache ??= new(10, "LastBlockNotificationCache");
+        private readonly Func<(IOwnedReadOnlyList<Transaction> txs, int startIndex), CancellationToken, ValueTask> _handleSlow;
 
         public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -49,6 +50,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _txGossipPolicy = transactionsGossipPolicy ?? TxPool.ShouldGossip.Instance;
+            _handleSlow = HandleSlow;
 
             EnsureGossipPolicy();
         }
@@ -85,18 +87,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             BlockHeader head = SyncServer.Head;
-            StatusMessage statusMessage = new()
-            {
-                NetworkId = SyncServer.NetworkId,
-                ProtocolVersion = ProtocolVersion,
-                TotalDifficulty = head.TotalDifficulty ?? head.Difficulty,
-                BestHash = head.Hash!,
-                GenesisHash = SyncServer.Genesis.Hash!
-            };
-
-            EnrichStatusMessage(statusMessage);
-
-            Send(statusMessage);
+            NotifyOfStatus(head);
 
             CheckProtocolInitTimeout().ContinueWith(x =>
             {
@@ -253,27 +244,36 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         {
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
 
-            BackgroundTaskScheduler.ScheduleBackgroundTask((iList, 0), HandleSlow);
+            BackgroundTaskScheduler.ScheduleBackgroundTask((iList, 0), _handleSlow);
         }
 
         private ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
         {
             IOwnedReadOnlyList<Transaction> transactions = request.txs;
+            ReadOnlySpan<Transaction> transactionsSpan = transactions.AsSpan();
             try
             {
                 int startIdx = request.startIndex;
                 bool isTrace = Logger.IsTrace;
-                int count = transactions.Count;
-                for (int i = startIdx; i < count; i++)
+                for (int i = startIdx; i < transactionsSpan.Length; i++)
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
+                        if (i == startIdx)
+                        {
+                            // Timeout immediately on the first transaction. This indicate that this task spent too much
+                            // time in the queue as the queue is probably full. In this case, queuing again wont help
+                            // as it later will just take as much time in the queue, then timing out again.
+                            if (Logger.IsDebug) Logger.Debug("Background task queue full. Dropping transactions.");
+                            return ValueTask.CompletedTask;
+                        }
+
                         // Reschedule and with different start index
                         BackgroundTaskScheduler.ScheduleBackgroundTask((transactions, i), HandleSlow);
                         return ValueTask.CompletedTask;
                     }
 
-                    PrepareAndSubmitTransaction(transactions[i], isTrace);
+                    PrepareAndSubmitTransaction(transactionsSpan[i], isTrace);
                 }
 
                 transactions.Dispose();
@@ -330,6 +330,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
+        protected virtual void NotifyOfStatus(BlockHeader head)
+        {
+            StatusMessage statusMessage = new()
+            {
+                NetworkId = SyncServer.NetworkId,
+                ProtocolVersion = ProtocolVersion,
+                TotalDifficulty = head.TotalDifficulty ?? head.Difficulty,
+                BestHash = head.Hash!,
+                GenesisHash = SyncServer.Genesis.Hash!
+            };
+
+            EnrichStatusMessage(statusMessage);
+
+            Send(statusMessage);
+        }
+
         public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
         {
             if (!CanGossip || !_gossipPolicy.ShouldGossipBlock(block.Header))
@@ -379,6 +395,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         protected override void OnDisposed()
         {
+            // Clear Events
+            ProtocolInitialized = null;
         }
     }
 }

@@ -23,6 +23,17 @@ public class NodeLifecycleManagerFactory : INodeLifecycleManagerFactory
     public NodeLifecycleManagerFactory(INodeTable nodeTable,
         IEvictionManager evictionManager,
         INodeStatsManager nodeStatsManager,
+        INodeRecordProvider nodeRecordProvider,
+        IDiscoveryConfig discoveryConfig,
+        ITimestamper timestamper,
+        ILogManager? logManager)
+        : this(nodeTable, evictionManager, nodeStatsManager, nodeRecordProvider.Current, discoveryConfig, timestamper, logManager)
+    {
+    }
+
+    public NodeLifecycleManagerFactory(INodeTable nodeTable,
+        IEvictionManager evictionManager,
+        INodeStatsManager nodeStatsManager,
         NodeRecord self,
         IDiscoveryConfig discoveryConfig,
         ITimestamper timestamper,
@@ -38,6 +49,7 @@ public class NodeLifecycleManagerFactory : INodeLifecycleManagerFactory
     }
 
     public IDiscoveryManager? DiscoveryManager { private get; set; }
+    public NodeRecord SelfNodeRecord => _selfNodeRecord;
 
     public INodeLifecycleManager CreateNodeLifecycleManager(Node node)
     {
