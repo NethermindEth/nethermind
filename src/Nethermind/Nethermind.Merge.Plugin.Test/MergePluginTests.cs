@@ -104,7 +104,7 @@ public class MergePluginTests
         Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(api));
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(api));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
-        Assert.DoesNotThrow(() => _plugin.InitBlockProducer(_consensusPlugin!, null));
+        Assert.DoesNotThrow(() => _plugin.InitBlockProducer(_consensusPlugin!));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
         Assert.DoesNotThrowAsync(async () => await _plugin.DisposeAsync());
     }
@@ -120,7 +120,7 @@ public class MergePluginTests
         ISyncConfig syncConfig = api.Config<ISyncConfig>();
         Assert.That(syncConfig.NetworkingEnabled, Is.True);
         Assert.That(api.GossipPolicy.CanGossipBlocks, Is.True);
-        _plugin.InitBlockProducer(_consensusPlugin!, null);
+        _plugin.InitBlockProducer(_consensusPlugin!);
         Assert.That(api.BlockProducer, Is.InstanceOf<MergeBlockProducer>());
         await _plugin.InitRpcModules();
         api.RpcModuleProvider!.Received().Register(Arg.Is<IRpcModulePool<IEngineRpcModule>>(m => m is SingletonModulePool<IEngineRpcModule>));

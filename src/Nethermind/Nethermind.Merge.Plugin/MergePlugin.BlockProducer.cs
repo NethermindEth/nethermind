@@ -17,7 +17,7 @@ namespace Nethermind.Merge.Plugin
         protected virtual PostMergeBlockProducerFactory CreateBlockProducerFactory()
             => new(_api.SpecProvider!, _api.SealEngine, _manualTimestamper!, _blocksConfig, _api.LogManager);
 
-        public virtual IBlockProducer InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, ITxSource? txSource)
+        public virtual IBlockProducer InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory)
         {
             if (MergeEnabled)
             {
@@ -39,11 +39,11 @@ namespace Nethermind.Merge.Plugin
                 if (_logger.IsInfo) _logger.Info("Starting Merge block producer & sealer");
 
                 IBlockProducer? blockProducer = _mergeBlockProductionPolicy.ShouldInitPreMergeBlockProduction()
-                    ? baseBlockProducerFactory.InitBlockProducer(txSource)
+                    ? baseBlockProducerFactory.InitBlockProducer()
                     : null;
                 _manualTimestamper ??= new ManualTimestamper();
 
-                BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create(txSource);
+                BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create();
 
                 _postMergeBlockProducer = CreateBlockProducerFactory().Create(blockProducerEnv);
                 _api.BlockProducer = new MergeBlockProducer(blockProducer, _postMergeBlockProducer, _poSSwitcher);

@@ -62,14 +62,9 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+        public IBlockProducer InitBlockProducer()
         {
-            if (_nethermindApi is not null)
-            {
-                return BlockProducerStarter!.BuildProducer(additionalTxSource);
-            }
-
-            return null;
+            return BlockProducerStarter!.BuildProducer();
         }
 
         public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)

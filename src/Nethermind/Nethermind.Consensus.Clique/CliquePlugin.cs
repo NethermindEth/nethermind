@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.Clique
             return Task.CompletedTask;
         }
 
-        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+        public IBlockProducer InitBlockProducer()
         {
             if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
             {
@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.Clique
                 throw new InvalidOperationException("Request to start block producer while mining disabled.");
             }
 
-            BlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create(additionalTxSource);
+            BlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create();
 
             IBlockchainProcessor chainProcessor = env.ChainProcessor;
 
