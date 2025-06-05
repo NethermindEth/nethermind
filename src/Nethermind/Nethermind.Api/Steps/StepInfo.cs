@@ -26,9 +26,7 @@ namespace Nethermind.Api.Steps
             RunnerStepDependenciesAttribute? dependenciesAttribute =
                 StepType.GetCustomAttribute<RunnerStepDependenciesAttribute>();
             Dependencies = dependenciesAttribute?.Dependencies ?? [];
-            RunnerStepDependentsAttribute? dependentsAttribute =
-                StepType.GetCustomAttribute<RunnerStepDependentsAttribute>();
-            Dependents = dependentsAttribute?.Dependencies ?? [];
+            Dependents = dependenciesAttribute?.Dependents ?? [];
         }
 
         public Type StepBaseType { get; }

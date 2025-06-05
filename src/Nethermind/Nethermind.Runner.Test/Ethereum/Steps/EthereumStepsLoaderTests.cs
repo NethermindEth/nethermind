@@ -71,6 +71,7 @@ public class EthereumStepsLoaderTests
                 new StepInfo(typeof(StepB)),
                 new StepInfo(typeof(StepCAuRa)),
                 new StepInfo(typeof(StepCStandard)),
+                new StepInfo(typeof(StepE)),
             ]);
     }
 

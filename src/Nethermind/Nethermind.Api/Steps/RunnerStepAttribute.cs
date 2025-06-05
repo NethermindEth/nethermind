@@ -6,8 +6,13 @@ using System;
 namespace Nethermind.Api.Steps
 {
     [AttributeUsage(AttributeTargets.Class)]
-    public class RunnerStepDependenciesAttribute(params Type[] dependencies) : Attribute
+    public class RunnerStepDependenciesAttribute(Type[] dependencies, Type[] dependents) : Attribute
     {
+        public RunnerStepDependenciesAttribute(params Type[] dependencies) : this(dependencies, [])
+        {
+        }
+
         public Type[] Dependencies { get; } = dependencies;
+        public Type[] Dependents { get; } = dependents;
     }
 }

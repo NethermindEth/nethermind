@@ -15,8 +15,10 @@ using Nethermind.State;
 
 namespace Nethermind.Init;
 
-[RunnerStepDependencies(typeof(InitializeBlockTree))]
-[RunnerStepDependents(typeof(InitializeBlockchain))]
+[RunnerStepDependencies(
+    dependencies: [typeof(InitializeBlockTree)],
+    dependents: [typeof(InitializeBlockchain)]
+)]
 public class RunVerifyTrie(
     IWorldStateManager worldStateManager,
     IBlockTree blockTree,

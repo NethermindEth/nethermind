@@ -275,7 +275,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
     }
 
-    [RunnerStepDependents(typeof(StepB))]
+    [RunnerStepDependencies(dependencies: [], dependents: [typeof(StepB)])]
     public class StepE : IStep
     {
         public TaskCompletionSource Waiter = new TaskCompletionSource();
