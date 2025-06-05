@@ -59,6 +59,13 @@ public static class AbiType
         Write = (w, v) => UInt256.Write(w, v ? 1u : 0u)
     };
 
+    public static IAbi<T[]> Array<T>(IAbi<T> elements) => new()
+    {
+        Name = $"{elements.Name}[]",
+        Read = r => throw new NotImplementedException(),
+        Write = (w, array) => throw new NotImplementedException()
+    };
+
     public static IAbi<T[]> Array<T>(IAbi<T> elements, int length) => new()
     {
         Name = $"{elements.Name}[{length}]",
