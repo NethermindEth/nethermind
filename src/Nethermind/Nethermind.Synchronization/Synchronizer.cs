@@ -331,18 +331,6 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             // Default TotalDifficulty calculation strategy used when processing headers
             .AddScoped<ITotalDifficultyStrategy, CumulativeTotalDifficultyStrategy>()
 
-            .AddDecorator<ISyncConfig>((ctx, syncConfig) =>
-            {
-                ILogger logger = ctx.Resolve<ILogManager>().GetClassLogger<SynchronizerModule>();
-                if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
-                {
-                    if (logger.IsWarn) logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
-                    syncConfig.DownloadBodiesInFastSync = true;
-                }
-
-                return syncConfig;
-            })
-
             // SyncProgress resolver need one header sync batch feed, which is the fast header one.
             .Register(static ctx => ctx
                 .ResolveNamed<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed))
