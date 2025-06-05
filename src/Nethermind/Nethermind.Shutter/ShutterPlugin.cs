@@ -58,7 +58,7 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
         if (_api!.BlockProducer is null) throw new ArgumentNullException(nameof(_api.BlockProducer));
 
         if (_logger.IsInfo) _logger.Info("Initializing Shutter block improvement.");
-        _api.BlockImprovementContextFactory = ShutterApi!.GetBlockImprovementContextFactory(_api.BlockProducer);
+        _api.BlockImprovementContextFactory = ShutterApi.GetBlockImprovementContextFactory(_api.BlockProducer);
         return Task.CompletedTask;
     }
 
