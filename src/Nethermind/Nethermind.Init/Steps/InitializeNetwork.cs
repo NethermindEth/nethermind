@@ -11,6 +11,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -305,7 +306,7 @@ public class InitializeNetwork : IStep
         await _api.TrustedNodesManager.InitAsync();
 
         ISyncServer syncServer = _api.SyncServer!;
-        ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
+        ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis?.Hash ?? Hash256.Zero);
 
         ProtocolValidator protocolValidator = new(_nodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>(), _api.SpecProvider);
