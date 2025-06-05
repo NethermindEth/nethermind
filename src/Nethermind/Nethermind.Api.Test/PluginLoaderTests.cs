@@ -210,7 +210,7 @@ public class PluginLoaderTests
             return ValueTask.CompletedTask;
         }
 
-        public IBlockProducer InitBlockProducer(ITxSource additionalTxSource = null)
+        public IBlockProducer InitBlockProducer()
         {
             throw new NotImplementedException();
         }

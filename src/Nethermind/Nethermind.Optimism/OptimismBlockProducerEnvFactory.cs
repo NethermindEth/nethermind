@@ -9,7 +9,6 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
@@ -22,7 +21,6 @@ namespace Nethermind.Optimism;
 public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
 {
     private readonly IOptimismSpecHelper _specHelper;
-    private readonly ICostHelper _l1CostHelper;
 
     public OptimismBlockProducerEnvFactory(
         IWorldStateManager worldStateManager,
@@ -34,7 +32,6 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         IBlockPreprocessorStep blockPreprocessorStep,
         IBlocksConfig blocksConfig,
         IOptimismSpecHelper specHelper,
-        ICostHelper l1CostHelper,
         IBlockProducerTxSourceFactory blockProducerTxSourceFactory,
         ILogManager logManager) : base(
             worldStateManager,
@@ -49,14 +46,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             logManager)
     {
         _specHelper = specHelper;
-        _l1CostHelper = l1CostHelper;
         TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, blocksConfig.BlockProductionMaxTxKilobytes, logManager);
-    }
-
-    protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource)
-    {
-        ITxSource baseTxSource = base.CreateTxSourceForProducer(additionalTxSource);
-        return new OptimismTxPoolTxSource(baseTxSource);
     }
 
     protected override BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv)

@@ -11,7 +11,6 @@ using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.GC;
@@ -37,6 +36,7 @@ using Nethermind.Optimism.ProtocolVersion;
 using Nethermind.Optimism.Cl.Rpc;
 using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Blockchain.Services;
+using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
@@ -74,12 +74,8 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     public IBlockProductionTrigger DefaultBlockProductionTrigger => NeverProduceTrigger.Instance;
 
-    public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+    public IBlockProducer InitBlockProducer()
     {
-        if (additionalTxSource is not null)
-            throw new ArgumentException(
-                "Optimism does not support additional tx source");
-
         StepDependencyException.ThrowIfNull(_api);
 
         OptimismGasLimitCalculator gasLimitCalculator = new OptimismGasLimitCalculator();
@@ -124,7 +120,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
 
         _blockCacheService = _api.Context.Resolve<IBlockCacheService>();
-        _api.EthereumEcdsa = new OptimismEthereumEcdsa(_api.EthereumEcdsa);
         _invalidChainTracker = _api.Context.Resolve<InvalidChainTracker>();
         _api.FinalizationManager = _blockFinalizationManager = new ManualBlockFinalizationManager();
 
@@ -339,7 +334,8 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddModule(new BaseMergePluginModule())
             .AddModule(new OptimismSynchronizerModule(chainSpec))
 
-            .AddSingleton(chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<OptimismChainSpecEngineParameters>())
+            .AddSingleton(chainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<OptimismChainSpecEngineParameters>())
             .AddSingleton<IOptimismSpecHelper, OptimismSpecHelper>()
             .AddSingleton<ICostHelper, OptimismCostHelper>()
 
@@ -353,6 +349,12 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
             // Block processing
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
+
+            .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
+            .AddSingleton<IBlockProducerEnvFactory, OptimismBlockProducerEnvFactory>()
+            .AddDecorator<IBlockProducerTxSourceFactory, OptimismBlockProducerTxSourceFactory>()
+
+            .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddSingleton<IBlockProducerEnvFactory, OptimismBlockProducerEnvFactory>()
 
             .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>

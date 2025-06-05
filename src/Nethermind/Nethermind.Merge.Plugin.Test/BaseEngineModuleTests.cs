@@ -323,9 +323,9 @@ public abstract partial class BaseEngineModuleTests
             base.ConfigureContainer(builder, configProvider)
                 .AddModule(new MergeModule(configProvider));
 
-        protected override IBlockProducer CreateTestBlockProducer(ITxSource? additionalTxSource)
+        protected override IBlockProducer CreateTestBlockProducer()
         {
-            IBlockProducer preMergeBlockProducer = base.CreateTestBlockProducer(additionalTxSource);
+            IBlockProducer preMergeBlockProducer = base.CreateTestBlockProducer();
 
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
@@ -345,7 +345,7 @@ public abstract partial class BaseEngineModuleTests
                 ((BlockProducerEnvFactory)BlockProducerEnvFactory).ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
             }
 
-            BlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create(additionalTxSource);
+            BlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
             BlockImprovementContextFactory ??= new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));

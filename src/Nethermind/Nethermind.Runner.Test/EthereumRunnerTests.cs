@@ -207,7 +207,6 @@ public class EthereumRunnerTests
         api.ReceiptStorage = Substitute.For<IReceiptStorage>();
         api.ReceiptFinder = Substitute.For<IReceiptFinder>();
         api.DbProvider = await TestMemDbProvider.InitAsync();
-        api.EthereumEcdsa = new EthereumEcdsa(runner.LifetimeScope.Resolve<ISpecProvider>());
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
 
         try

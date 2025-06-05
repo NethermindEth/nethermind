@@ -6,7 +6,6 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -18,8 +17,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Producers
 {
@@ -67,7 +64,7 @@ namespace Nethermind.Consensus.Producers
             TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, _blocksConfig.BlockProductionMaxTxKilobytes, logManager);
         }
 
-        public virtual BlockProducerEnv Create(ITxSource? additionalTxSource = null)
+        public virtual BlockProducerEnv Create()
         {
             ReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
 
@@ -95,14 +92,8 @@ namespace Nethermind.Consensus.Producers
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = scope.WorldState,
-                TxSource = CreateTxSourceForProducer(additionalTxSource),
+                TxSource = _blockProducerTxSourceFactory.Create()
             };
-        }
-
-        protected virtual ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource)
-        {
-            ITxSource txPoolSource = _blockProducerTxSourceFactory.Create();
-            return additionalTxSource.Then(txPoolSource);
         }
 
         protected virtual BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv) =>
