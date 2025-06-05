@@ -3,6 +3,7 @@
 
 using System;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -15,6 +16,7 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Init;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -192,15 +194,15 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_missing_state_after_fast_sync()
     {
-        using Context ctx = await Context.Create(configurer: builder => builder.ConfigureTrieStoreExposedWorldStateManager());
+        using Context ctx = await Context.Create();
         LegacyTransactionForRpc transaction = new(new Transaction(), 1, Keccak.Zero, 1L)
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB
         };
 
+        ctx.Test.Container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore.PersistCache(CancellationToken.None);
         ctx.Test.StateDb.Clear();
-        ctx.Test.Container.Resolve<TrieStore>().ClearCache();
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");

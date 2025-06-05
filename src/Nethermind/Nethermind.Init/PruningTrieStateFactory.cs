@@ -4,6 +4,7 @@
 using System;
 using System.IO.Abstractions;
 using System.Linq;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
@@ -38,6 +39,9 @@ public class PruningTrieStateFactory(
     IBlockTree blockTree,
     IFileSystem fileSystem,
     ITimerFactory timerFactory,
+    MainPruningTrieStoreFactory mainPruningTrieStoreFactory,
+    INodeStorageFactory nodeStorageFactory,
+    INodeStorage mainNodeStorage,
     IProcessExitSource processExit,
     ChainSpec chainSpec,
     IDisposableStack disposeStack,
@@ -46,80 +50,13 @@ public class PruningTrieStateFactory(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PruningTrieStateFactory>();
 
-    public (IWorldStateManager, INodeStorage, IPruningTrieStateAdminRpcModule) Build()
+    public (IWorldStateManager, IPruningTrieStateAdminRpcModule) Build()
     {
         CompositePruningTrigger compositePruningTrigger = new CompositePruningTrigger();
 
-        INodeStorageFactory nodeStorageFactory = new NodeStorageFactory(initConfig.StateDbKeyScheme, logManager);
-        nodeStorageFactory.DetectCurrentKeySchemeFrom(dbProvider.StateDb);
-
-        syncConfig.SnapServingEnabled |= syncConfig.SnapServingEnabled is null
-            && nodeStorageFactory.CurrentKeyScheme is INodeStorage.KeyScheme.HalfPath or null
-            && initConfig.StateDbKeyScheme != INodeStorage.KeyScheme.Hash;
-
-        if (nodeStorageFactory.CurrentKeyScheme is INodeStorage.KeyScheme.Hash
-            || initConfig.StateDbKeyScheme == INodeStorage.KeyScheme.Hash)
-        {
-            // Special case in case its using hashdb, use a slightly different database configuration.
-            if (dbProvider.StateDb is ITunableDb tunableDb) tunableDb.Tune(ITunableDb.TuneType.HashDb);
-        }
-
-        if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < 128)
-        {
-            if (_logger.IsInfo) _logger.Info($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
-            pruningConfig.PruningBoundary = 128;
-        }
-
-        if (pruningConfig.PruningBoundary < 64)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Pruning boundary must be at least 64. Setting to 64.");
-            pruningConfig.PruningBoundary = 64;
-        }
-
         AdviseConfig();
 
-        IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
-        IDb stateDb = dbProvider.StateDb;
-        IPersistenceStrategy persistenceStrategy;
-        IPruningStrategy pruningStrategy;
-        if (pruningConfig.Mode.IsMemory())
-        {
-            persistenceStrategy = No.Persistence;
-        }
-        else
-        {
-            persistenceStrategy = Persist.EveryNBlock(pruningConfig.PersistenceInterval);
-        }
-
-        pruningStrategy = Prune
-            .WhenCacheReaches(pruningConfig.DirtyCacheMb.MB())
-            .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB() - pruningConfig.DirtyCacheMb.MB())
-            .WhenLastPersistedBlockIsTooOld(pruningConfig.MaxUnpersistedBlockCount, pruningConfig.PruningBoundary)
-            .UnlessLastPersistedBlockIsTooNew(pruningConfig.MinUnpersistedBlockCount, pruningConfig.PruningBoundary);
-
-        if (!pruningConfig.Mode.IsMemory())
-        {
-            pruningStrategy = pruningStrategy
-                .DontDeleteObsoleteNode();
-        }
-
-        if (stateDb is IFullPruningDb fullPruningDb)
-        {
-            PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(fullPruningDb, blockTree!, pruningStrategy, logManager);
-            disposeStack.Push(triggerPersistenceStrategy);
-            persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
-            pruningStrategy = triggerPersistenceStrategy;
-        }
-
-        INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb);
-
-        TrieStore trieStore = new TrieStore(
-            mainNodeStorage,
-            pruningStrategy,
-            persistenceStrategy,
-            pruningConfig,
-            logManager);
-
+        IPruningTrieStore trieStore = mainPruningTrieStoreFactory.PruningTrieStore;
         ITrieStore mainWorldTrieStore = trieStore;
         PreBlockCaches? preBlockCaches = null;
         if (blockConfig.PreWarmStateOnBlockProcessing)
@@ -128,6 +65,7 @@ public class PruningTrieStateFactory(
             mainWorldTrieStore = new PreCachedTrieStore(trieStore, preBlockCaches.RlpCache);
         }
 
+        IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
         IWorldState worldState = syncConfig.TrieHealing
             ? new HealingWorldState(
                 mainWorldTrieStore,
@@ -167,7 +105,7 @@ public class PruningTrieStateFactory(
         disposeStack.Push(mainWorldTrieStore);
 
         InitializeFullPruning(
-            stateDb,
+            dbProvider.StateDb,
             stateManager.GlobalStateReader,
             mainNodeStorage,
             nodeStorageFactory,
@@ -185,7 +123,7 @@ public class PruningTrieStateFactory(
             verifyTrieStarter!
         );
 
-        return (stateManager, mainNodeStorage, adminRpcModule);
+        return (stateManager, adminRpcModule);
     }
 
     private void AdviseConfig()
@@ -269,4 +207,76 @@ public class PruningTrieStateFactory(
             disposeStack.Push(pruner);
         }
     }
+}
+
+public class MainPruningTrieStoreFactory
+{
+    private readonly ILogger _logger;
+
+    public MainPruningTrieStoreFactory(
+        ISyncConfig syncConfig,
+        IPruningConfig pruningConfig,
+        IDbProvider dbProvider,
+        INodeStorageFactory nodeStorageFactory,
+        IBlockTree blockTree,
+        IDisposer disposer,
+        ILogManager logManager
+        )
+    {
+        _logger = logManager.GetClassLogger<MainPruningTrieStoreFactory>();
+
+        if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < 128)
+        {
+            if (_logger.IsInfo) _logger.Info($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
+            pruningConfig.PruningBoundary = 128;
+        }
+
+        if (pruningConfig.PruningBoundary < 64)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Pruning boundary must be at least 64. Setting to 64.");
+            pruningConfig.PruningBoundary = 64;
+        }
+
+        IDb stateDb = dbProvider.StateDb;
+        IPersistenceStrategy persistenceStrategy;
+        if (pruningConfig.Mode.IsMemory())
+        {
+            persistenceStrategy = No.Persistence;
+        }
+        else
+        {
+            persistenceStrategy = Persist.EveryNBlock(pruningConfig.PersistenceInterval);
+        }
+
+        IPruningStrategy pruningStrategy = Prune
+            .WhenCacheReaches(pruningConfig.DirtyCacheMb.MB())
+            .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB() - pruningConfig.DirtyCacheMb.MB())
+            .WhenLastPersistedBlockIsTooOld(pruningConfig.MaxUnpersistedBlockCount, pruningConfig.PruningBoundary)
+            .UnlessLastPersistedBlockIsTooNew(pruningConfig.MinUnpersistedBlockCount, pruningConfig.PruningBoundary);
+
+        if (!pruningConfig.Mode.IsMemory())
+        {
+            pruningStrategy = pruningStrategy
+                .DontDeleteObsoleteNode();
+        }
+
+        if (stateDb is IFullPruningDb fullPruningDb)
+        {
+            PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(fullPruningDb, blockTree!, logManager);
+            disposer.AddInstanceForDisposal(triggerPersistenceStrategy);
+            persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
+            pruningStrategy = new PruningTriggerPruningStrategy(fullPruningDb, pruningStrategy);
+        }
+
+        INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb);
+
+        PruningTrieStore = new TrieStore(
+            mainNodeStorage,
+            pruningStrategy,
+            persistenceStrategy,
+            pruningConfig,
+            logManager);
+    }
+
+    public IPruningTrieStore PruningTrieStore { get; }
 }
