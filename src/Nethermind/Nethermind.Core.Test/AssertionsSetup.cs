@@ -20,9 +20,9 @@ public class AssertionsSetup
         AssertionOptions.AssertEquivalencyUsing(static options =>
             {
                 options
-                    .Using<Memory<byte>>(static context =>
+                    .Using<ReadOnlyMemory<byte>>(static context =>
                         context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray()))
-                    .WhenTypeIs<Memory<byte>>();
+                    .WhenTypeIs<ReadOnlyMemory<byte>>();
                 return options;
             });
     }
