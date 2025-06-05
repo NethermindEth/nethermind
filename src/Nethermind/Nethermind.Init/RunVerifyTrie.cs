@@ -22,7 +22,6 @@ namespace Nethermind.Init;
 public class RunVerifyTrie(
     IWorldStateManager worldStateManager,
     IBlockTree blockTree,
-    IInitConfig initConfig,
     IProcessExitSource processExitSource,
     ILogManager logManager)
     : IStep
@@ -31,15 +30,12 @@ public class RunVerifyTrie(
 
     public Task Execute(CancellationToken cancellationToken)
     {
-        if (initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)
+        _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
+        BlockHeader? head = blockTree!.Head?.Header;
+        if (head is not null)
         {
-            _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-            BlockHeader? head = blockTree!.Head?.Header;
-            if (head is not null)
-            {
-                _logger.Info($"Starting from {head.Number} {head.StateRoot}{Environment.NewLine}");
-                worldStateManager.VerifyTrie(head, processExitSource!.Token);
-            }
+            _logger.Info($"Starting from {head.Number} {head.StateRoot}{Environment.NewLine}");
+            worldStateManager.VerifyTrie(head, processExitSource!.Token);
         }
 
         return Task.CompletedTask;
