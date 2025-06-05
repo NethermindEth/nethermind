@@ -37,24 +37,31 @@ public class AsyncDb : IAsyncDb
         {
             try
             {
-                using IWriteBatch batch = _db.StartWriteBatch();
-                // Insert ordered for improved performance
-                foreach (KeyValuePair<byte[], byte[]> kv in data.OrderBy(static kvp => kvp.Key, Bytes.Comparer))
-                {
-                    batch.Set(kv.Key, kv.Value);
-                }
+                if (_logger.IsInfo) _logger.Info($"Start saving batch with count {data.Count}, channel count {channel.Reader.Count}, batch count {_asyncBatchesCount}");
+                SaveBatch(data);
 
                 _asyncBatches.TryRemove(data, out _);
                 Interlocked.Decrement(ref _asyncBatchesCount);
+                if (_logger.IsInfo) _logger.Info($"Saved batch with count {data.Count}, channel count {channel.Reader.Count}, batch count {_asyncBatchesCount}");
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error("Failed to save batch", e);
+                if (_logger.IsError) _logger.Error($"Failed to save batch with count {data.Count}, channel count {channel.Reader.Count}, batch count {_asyncBatchesCount}", e);
                 if (!channel.Writer.TryWrite(data))
                 {
-                    if (_logger.IsError) _logger.Error("Failed to re-add batch");
+                    if (_logger.IsError) _logger.Error($"Failed to re-add batch with count {data.Count}, channel count {channel.Reader.Count}, batch count {_asyncBatchesCount}");
                 }
             }
+        }
+    }
+
+    private void SaveBatch(Dictionary<byte[], byte[]> data)
+    {
+        using IWriteBatch batch = _db.StartWriteBatch();
+        // Insert ordered for improved performance
+        foreach (KeyValuePair<byte[], byte[]> kv in data.OrderBy(static kvp => kvp.Key, Bytes.Comparer))
+        {
+            batch.Set(kv.Key, kv.Value);
         }
     }
 
@@ -91,7 +98,7 @@ public class AsyncDb : IAsyncDb
     public void Dispose()
     {
         _channel.Writer.Complete();
-        _asyncTask.GetAwaiter().GetResult();
+        Parallel.ForEach(_asyncBatches, batch => SaveBatch(batch.Key));
         _db.Dispose();
     }
 
@@ -208,9 +215,9 @@ public class AsyncDb : IAsyncDb
         {
             Interlocked.Increment(ref asyncDb._asyncBatchesCount);
             asyncDb._asyncBatches.TryAdd(_dictionary, _dictionary.GetAlternateLookup<ReadOnlySpan<byte>>());
-            if (asyncDb._channel.Writer.TryWrite(_dictionary))
+            if (!asyncDb._channel.Writer.TryWrite(_dictionary))
             {
-                if (asyncDb._logger.IsError) asyncDb._logger.Error("Failed to add batch");
+                if (asyncDb._logger.IsError) asyncDb._logger.Error($"Failed to add batch with count {_dictionary.Count}, channel count {asyncDb._channel.Reader.Count}, batch count {asyncDb._asyncBatchesCount}");
             }
         }
 
