@@ -19,6 +19,7 @@ using V63 = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using V65 = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using V66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using V68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
+using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using NodeData = Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 using Snap = Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 
@@ -111,6 +112,11 @@ public class NetworkModule(IConfigProvider configProvider) : Module
 
             // V68
             .AddMessageSerializer<V68.NewPooledTransactionHashesMessage68, V68.NewPooledTransactionHashesMessageSerializer>()
+
+            // V69
+            .AddMessageSerializer<V69.BlockRangeUpdateMessage, V69.BlockRangeUpdateMessageSerializer>()
+            .AddMessageSerializer<V69.ReceiptsMessage69, V69.ReceiptsMessageSerializer69>()
+            .AddMessageSerializer<V69.StatusMessage69, V69.StatusMessageSerializer69>()
 
             ;
     }

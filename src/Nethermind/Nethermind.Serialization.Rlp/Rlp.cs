@@ -79,6 +79,14 @@ namespace Nethermind.Serialization.Rlp
         private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decoders;
         public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders => _decoders ??= _decoderBuilder.ToFrozenDictionary();
 
+        public static void ResetDecoders()
+        {
+            _decoderBuilder.Clear();
+            _decoders = null;
+            RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
+            Rlp.RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+        }
+
         public static void RegisterDecoder(RlpDecoderKey key, IRlpDecoder decoder)
         {
             _decoderBuilder[key] = decoder;
@@ -1179,9 +1187,7 @@ namespace Nethermind.Serialization.Rlp
             public ReadOnlySpan<byte> PeekNextItem()
             {
                 int length = PeekNextRlpLength();
-                ReadOnlySpan<byte> item = Read(length);
-                Position -= item.Length;
-                return item;
+                return Peek(length);
             }
 
             public readonly bool IsNextItemNull()

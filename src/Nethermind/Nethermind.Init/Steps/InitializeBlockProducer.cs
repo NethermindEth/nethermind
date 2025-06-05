@@ -40,8 +40,6 @@ namespace Nethermind.Init.Steps
                 return Task.CompletedTask;
             }
 
-            _api.BlockProducerEnvFactory = InitBlockProducerEnvFactory();
-
             IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
             if (consensusPlugin is null)
             {
@@ -66,29 +64,6 @@ namespace Nethermind.Init.Steps
 
             return Task.CompletedTask;
         }
-
-        /// <summary>
-        /// Creates the <see cref="IBlockProducerEnvFactory"/> to be for the <see cref="NethermindApi"/>
-        /// </summary>
-        /// <remarks>
-        /// Usually if you're overriding this method you're probably also overriding the way the BlockProducer
-        /// is created by the <see cref="IConsensusPlugin"/>. At which point it's probably better to just override
-        /// api.BlockProducerEnvFactory directly in the same `IConsensusPlugin.InitBlockProducer` method.
-        /// </remarks>
-        protected virtual IBlockProducerEnvFactory InitBlockProducerEnvFactory() =>
-            new BlockProducerEnvFactory(
-                _api.WorldStateManager!,
-                _api.ReadOnlyTxProcessingEnvFactory,
-                _api.BlockTree!,
-                _api.SpecProvider!,
-                _api.BlockValidator!,
-                _api.RewardCalculatorSource!,
-                _api.ReceiptStorage!,
-                _api.BlockPreprocessor,
-                _api.TxPool!,
-                _api.TransactionComparerProvider!,
-                _api.Config<IBlocksConfig>(),
-                _api.LogManager);
 
         private class ConsensusWrapperToBlockProducerFactoryAdapter(
             IConsensusWrapperPlugin consensusWrapperPlugin,

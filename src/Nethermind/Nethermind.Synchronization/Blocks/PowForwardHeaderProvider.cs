@@ -12,6 +12,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
@@ -306,7 +307,7 @@ public class PowForwardHeaderProvider(
 
     protected virtual bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
     {
-        return bestPeer!.TotalDifficulty > (blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0);
+        return (bestPeer!.TotalDifficulty ?? UInt256.Zero) > (blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero);
     }
 
     protected virtual IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> headers)

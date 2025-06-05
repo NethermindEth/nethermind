@@ -33,7 +33,7 @@ public class ExecutionProcessorTests
 {
     private ISpecProvider _specProvider;
     private ITransactionProcessor _transactionProcessor;
-    private WorldState _stateProvider;
+    private IWorldState _stateProvider;
     private IReleaseSpec _spec;
     private static readonly UInt256 AccountBalance = 1.Ether();
     private static readonly Address DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
@@ -68,10 +68,8 @@ public class ExecutionProcessorTests
     public void Setup()
     {
         _specProvider = MainnetSpecProvider.Instance;
-        MemDb stateDb = new();
-        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
-
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
         _stateProvider.CreateAccount(eip7002Account, AccountBalance);
         _stateProvider.CreateAccount(eip7251Account, AccountBalance);
 

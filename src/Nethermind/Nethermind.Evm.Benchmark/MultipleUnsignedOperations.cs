@@ -30,7 +30,7 @@ public class MultipleUnsignedOperations
     private readonly BlockHeader _header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.MuirGlacierBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
     private readonly IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
     private EvmState _evmState;
-    private WorldState _stateProvider;
+    private IWorldState _stateProvider;
 
     private readonly byte[] _bytecode = Prepare.EvmCode
         .PushData(2)
@@ -69,10 +69,8 @@ public class MultipleUnsignedOperations
     [GlobalSetup]
     public void GlobalSetup()
     {
-        TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
-        IKeyValueStoreWithBatching codeDb = new MemDb();
-
-        _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
         _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
         _stateProvider.Commit(_spec);
 
