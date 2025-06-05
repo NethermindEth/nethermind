@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Producers
         protected readonly ISpecProvider _specProvider;
         protected readonly IBlockValidator _blockValidator;
         protected readonly IRewardCalculatorSource _rewardCalculatorSource;
-        protected readonly IReceiptStorage _receiptStorage = NullReceiptStorage.Instance;
+        protected readonly IReceiptStorage _receiptStorage;
         protected readonly IBlockPreprocessorStep _blockPreprocessorStep;
         protected readonly IBlocksConfig _blocksConfig;
         protected readonly ILogManager _logManager;
@@ -55,10 +55,12 @@ namespace Nethermind.Consensus.Producers
             _specProvider = specProvider;
             _blockValidator = blockValidator;
             _rewardCalculatorSource = rewardCalculatorSource;
+            _receiptStorage = NullReceiptStorage.Instance;
             _blockPreprocessorStep = blockPreprocessorStep;
             _blocksConfig = blocksConfig;
             _blockProducerTxSourceFactory = blockProducerTxSourceFactory;
             _logManager = logManager;
+
             TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, _blocksConfig.BlockProductionMaxTxKilobytes, logManager);
         }
 
