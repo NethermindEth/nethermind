@@ -63,9 +63,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
         // Got cyclic dependency. AuRaBlockFinalizationManager -> IAuraValidator -> AuraBlockProcessor -> AuraBlockFinalizationManager.
         _api.FinalizationManager.SetMainBlockProcessor(_api.MainProcessingContext!.BlockProcessor!);
-
-        // SealValidator is assigned before AuraValidator is created, so this is needed also
-        ((AuRaSealValidator)_api.SealValidator).ReportingValidator = _api.ReportingValidator;
     }
 
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)

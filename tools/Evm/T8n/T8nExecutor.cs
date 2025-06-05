@@ -35,11 +35,8 @@ public static class T8nExecutor
 
         KzgPolynomialCommitments.InitializeAsync();
 
-        IDb stateDb = new MemDb();
-        IDb codeDb = new MemDb();
-
-        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, _logManager);
-        WorldState stateProvider = new(trieStore, codeDb, _logManager);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = worldStateManager.GlobalWorldState;
         CodeInfoRepository codeInfoRepository = new();
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
 
@@ -150,7 +147,7 @@ public static class T8nExecutor
         return t8NBlockHashProvider;
     }
 
-    private static void ApplyRewards(Block block, WorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
+    private static void ApplyRewards(Block block, IWorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
     {
         var rewardCalculator = new RewardCalculator(specProvider);
         BlockReward[] rewards = rewardCalculator.CalculateRewards(block);

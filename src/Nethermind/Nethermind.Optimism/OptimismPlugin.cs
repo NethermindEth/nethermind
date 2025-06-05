@@ -36,6 +36,7 @@ using Nethermind.Optimism.ProtocolVersion;
 using Nethermind.Optimism.Cl.Rpc;
 using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Blockchain.Services;
+using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
@@ -119,7 +120,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
 
         _blockCacheService = _api.Context.Resolve<IBlockCacheService>();
-        _api.EthereumEcdsa = new OptimismEthereumEcdsa(_api.EthereumEcdsa);
         _invalidChainTracker = _api.Context.Resolve<InvalidChainTracker>();
         _api.FinalizationManager = _blockFinalizationManager = new ManualBlockFinalizationManager();
 
@@ -130,10 +130,10 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         return Task.CompletedTask;
     }
 
-    public async Task InitRpcModules()
+    public Task InitRpcModules()
     {
         if (_api is null)
-            return;
+            return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
@@ -148,12 +148,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_invalidChainTracker);
         ArgumentNullException.ThrowIfNull(_blockFinalizationManager);
-
-        // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
-        // Then we will wait 5s more to ensure everything is processed
-        while (!_api.BlockProcessingQueue.IsEmpty)
-            await Task.Delay(100);
-        await Task.Delay(5000);
 
         // Single block shouldn't take a full slot to run
         // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
@@ -305,6 +299,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         }
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
+        return Task.CompletedTask;
     }
 
     public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
@@ -339,7 +334,8 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddModule(new BaseMergePluginModule())
             .AddModule(new OptimismSynchronizerModule(chainSpec))
 
-            .AddSingleton(chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<OptimismChainSpecEngineParameters>())
+            .AddSingleton(chainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<OptimismChainSpecEngineParameters>())
             .AddSingleton<IOptimismSpecHelper, OptimismSpecHelper>()
             .AddSingleton<ICostHelper, OptimismCostHelper>()
 
@@ -353,6 +349,9 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
             // Block processing
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
+            .AddSingleton<IBlockProducerEnvFactory, OptimismBlockProducerEnvFactory>()
+
+            .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddSingleton<IBlockProducerEnvFactory, OptimismBlockProducerEnvFactory>()
 
             .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>
