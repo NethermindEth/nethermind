@@ -199,6 +199,10 @@ public struct EvmPooledMemory : IEvmMemory
             return default;
         }
 
+        if (location >= Size)
+        {
+            return default;
+        }
         UInt256 largeSize = location + length;
         if (largeSize > _memory.Length)
         {
