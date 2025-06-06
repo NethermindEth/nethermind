@@ -11,6 +11,7 @@ using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
+
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
@@ -730,28 +731,26 @@ internal static partial class EvmInstructions
         ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(dataOffset, dataSize);
 
         // Set up the execution environment for the new contract.
-        ExecutionEnvironment callEnv = new
-        (
+        ExecutionEnvironment callEnv = new(
             codeInfo: codeInfo,
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
             codeSource: null,
+            callDepth: env.CallDepth + 1,
             transferValue: in value,
             value: in value,
-            inputData: in callData,
-            callDepth: env.CallDepth + 1
-        );
+            inputData: in callData);
+
         vm.ReturnData = EvmState.RentFrame(
-            callGas,
+            gasAvailable: callGas,
             outputDestination: 0,
             outputLength: 0,
             executionType: currentContext,
             isStatic: vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: accountExists,
-            in snapshot,
             env: in callEnv,
-            in vm.EvmState.AccessTracker
-        );
+            stateForAccessLists: in vm.EvmState.AccessTracker,
+            snapshot: in snapshot);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -986,28 +985,26 @@ internal static partial class EvmInstructions
         state.SubtractFromBalance(caller, transferValue, spec);
 
         // Set up the new execution environment for the call.
-        ExecutionEnvironment callEnv = new
-        (
+        ExecutionEnvironment callEnv = new(
             codeInfo: targetCodeInfo,
             executingAccount: target,
             caller: caller,
             codeSource: codeSource,
+            callDepth: env.CallDepth + 1,
             transferValue: in transferValue,
             value: in callValue,
-            inputData: in callData,
-            callDepth: env.CallDepth + 1
-        );
+            inputData: in callData);
+
         vm.ReturnData = EvmState.RentFrame(
-            callGas,
+            gasAvailable: callGas,
             outputDestination: 0,
             outputLength: 0,
-            TOpEofCall.ExecutionType,
+            executionType: TOpEofCall.ExecutionType,
             isStatic: TOpEofCall.IsStatic || vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: false,
-            in snapshot,
             env: in callEnv,
-            in vm.EvmState.AccessTracker
-        );
+            stateForAccessLists: in vm.EvmState.AccessTracker,
+            snapshot: in snapshot);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

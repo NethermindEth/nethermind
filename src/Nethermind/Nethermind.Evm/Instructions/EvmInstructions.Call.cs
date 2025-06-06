@@ -246,17 +246,15 @@ internal static partial class EvmInstructions
         // Load call data from memory.
         ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(in dataOffset, dataLength);
         // Construct the execution environment for the call.
-        ExecutionEnvironment callEnv = new
-        (
+        ExecutionEnvironment callEnv = new(
             codeInfo: codeInfo,
             executingAccount: target,
             caller: caller,
             codeSource: codeSource,
+            callDepth: env.CallDepth + 1,
             transferValue: in transferValue,
             value: in callValue,
-            inputData: in callData,
-            callDepth: env.CallDepth + 1
-        );
+            inputData: in callData);
 
         // Normalize output offset if output length is zero.
         if (outputLength == 0)
@@ -267,15 +265,15 @@ internal static partial class EvmInstructions
 
         // Rent a new call frame for executing the call.
         vm.ReturnData = EvmState.RentFrame(
-            gasLimitUl,
-            outputOffset.ToLong(),
-            outputLength.ToLong(),
-            TOpCall.ExecutionType,
-            TOpCall.IsStatic || vm.EvmState.IsStatic,
+            gasAvailable: gasLimitUl,
+            outputDestination: outputOffset.ToLong(),
+            outputLength: outputLength.ToLong(),
+            executionType: TOpCall.ExecutionType,
+            isStatic: TOpCall.IsStatic || vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: false,
-            snapshot: snapshot,
-            env: callEnv,
-            stateForAccessLists: vm.EvmState.AccessTracker);
+            env: in callEnv,
+            stateForAccessLists: in vm.EvmState.AccessTracker,
+            snapshot: in snapshot);
 
         return EvmExceptionType.None;
 

@@ -48,18 +48,17 @@ public unsafe partial class VirtualMachine
         vm.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
         vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0));
 
-        ExecutionEnvironment env = new
-        (
+        ExecutionEnvironment env = new(
             executingAccount: addressOne,
             codeSource: addressOne,
             caller: addressOne,
             codeInfo: new CodeInfo(bytecode),
             value: 0,
             transferValue: 0,
-            inputData: default
-        );
+            inputData: default,
+            callDepth: 0);
 
-        using var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, state.TakeSnapshot(), env, new StackAccessTracker());
+        using var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, in env, new StackAccessTracker(), state.TakeSnapshot());
 
         vm.EvmState = evmState;
         vm._worldState = state;

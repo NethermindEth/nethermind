@@ -577,17 +577,15 @@ namespace Nethermind.Evm.TransactionProcessing
                 accessTracker.WarmUp(tx.SenderAddress!);
             }
 
-            env = new ExecutionEnvironment
-            (
+            env = new ExecutionEnvironment(
                 codeInfo: codeInfo,
                 executingAccount: recipient,
                 caller: tx.SenderAddress,
                 codeSource: recipient,
+                callDepth: 0,
                 transferValue: in tx.ValueRef,
                 value: in tx.ValueRef,
-                inputData: in inputData,
-                callDepth: 0
-            );
+                inputData: in inputData);
 
             return TransactionResult.Ok;
         }
@@ -643,7 +641,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             ExecutionType executionType = tx.IsContractCreation ? (tx.IsEofContractCreation ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
 
-            using (EvmState state = EvmState.RentTopLevel(gasAvailable, executionType, snapshot, env, accessedItems))
+            using (EvmState state = EvmState.RentTopLevel(gasAvailable, executionType, in env, in accessedItems, in snapshot))
             {
                 substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
 
