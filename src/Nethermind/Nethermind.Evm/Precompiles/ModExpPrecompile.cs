@@ -82,7 +82,6 @@ namespace Nethermind.Evm.Precompiles
                 UInt256 exp = new(inputData.Span.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
                 UInt256 iterationCount = CalculateIterationCount(expLength, exp, releaseSpec.IsEip7883Enabled);
                 bool overflow = UInt256.MultiplyOverflow(complexity, iterationCount, out UInt256 result);
-                // Console.WriteLine($"generated testcase {result}");
                 result /= 3;
                 return result > long.MaxValue || overflow ? long.MaxValue : Math.Max(releaseSpec.IsEip7883Enabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExpEip2565, (long)result);
             }
