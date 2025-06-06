@@ -65,3 +65,22 @@ public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
         return scope;
     }
 }
+
+public class AutoOverridableTxProcessingEnv(IOverridableCodeInfoRepository codeInfoRepository, ITransactionProcessor transactionProcessor, IOverridableWorldState worldState, ISpecProvider specProvider) : IOverridableTxProcessorSource
+{
+    public IOverridableTxProcessingScope Build(Hash256 stateRoot)
+    {
+        return new OverridableTxProcessingScope(codeInfoRepository, transactionProcessor, worldState, stateRoot);
+    }
+
+    public IOverridableTxProcessingScope BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
+    {
+        IOverridableTxProcessingScope scope = Build(header.StateRoot ?? throw new ArgumentException($"Block {header.Hash} state root is null", nameof(header)));
+        if (stateOverride is not null)
+        {
+            scope.WorldState.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
+            header.StateRoot = scope.WorldState.StateRoot;
+        }
+        return scope;
+    }
+}

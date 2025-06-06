@@ -9,6 +9,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
@@ -31,13 +32,16 @@ public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, ILifet
     public override ITraceRpcModule Create()
     {
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
+        IOverridableCodeInfoRepository codeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
 
         ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) => ConfigureCommonBlockProcessing(builder)
+            .AddScoped<ICodeInfoRepository>(codeInfoRepository)
             .AddScoped<IWorldState>(overridableScope.WorldState)
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor>(ctx =>
                 ctx.ResolveKeyed<IBlockProcessor.IBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Rpc)
             ));
         ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) => ConfigureCommonBlockProcessing(builder)
+            .AddScoped<ICodeInfoRepository>(codeInfoRepository)
             .AddScoped<IWorldState>(overridableScope.WorldState)
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor>(ctx =>
                 ctx.ResolveKeyed<IBlockProcessor.IBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Validation)
@@ -46,10 +50,14 @@ public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, ILifet
         ILifetimeScope traceRpcLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
             builder
-                .AddSingleton<IOverridableWorldScope>(overridableScope)
-                .AddSingleton<IOverridableTxProcessorSource, OverridableTxProcessingEnv>()
-                .AddSingleton<IReadOnlyTxProcessingScope, IOverridableTxProcessorSource>((src) => src.Build(Keccak.EmptyTreeHash))
-                .AddSingleton<ITracer, IReadOnlyTxProcessingScope>((scope) => new Tracer(
+                .AddScoped<IOverridableWorldScope>(overridableScope)
+                .AddScoped<IOverridableWorldState>(overridableScope.WorldState)
+                .AddScoped<IWorldState>(overridableScope.WorldState)
+                .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository)
+                .AddScoped<ICodeInfoRepository>(codeInfoRepository)
+                .AddScoped<IOverridableTxProcessorSource, AutoOverridableTxProcessingEnv>()
+                .AddScoped<IReadOnlyTxProcessingScope, IOverridableTxProcessorSource>((src) => src.Build(Keccak.EmptyTreeHash))
+                .AddScoped<ITracer, IReadOnlyTxProcessingScope>((scope) => new Tracer(
                     scope,
                     rpcProcessingScope.Resolve<IBlockchainProcessor>(),
                     validationProcessingScope.Resolve<IBlockchainProcessor>(),
