@@ -138,7 +138,7 @@ public class StateProviderTests
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
-        provider.Restore(new Snapshot(4, Snapshot.Storage.Empty));
+        provider.Restore(new Snapshot(Snapshot.Storage.Empty, 4));
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -147,7 +147,7 @@ public class StateProviderTests
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
-        provider.Restore(new Snapshot(4, Snapshot.Storage.Empty));
+        provider.Restore(new Snapshot(Snapshot.Storage.Empty, 4));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)4));
     }
 
@@ -184,27 +184,27 @@ public class StateProviderTests
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
         Assert.That(provider.GetCode(_address1), Is.EqualTo(code));
-        provider.Restore(new Snapshot(4, Snapshot.Storage.Empty));
+        provider.Restore(new Snapshot(Snapshot.Storage.Empty, 4));
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
         Assert.That(provider.GetCode(_address1), Is.EqualTo(code));
-        provider.Restore(new Snapshot(3, Snapshot.Storage.Empty));
+        provider.Restore(new Snapshot(Snapshot.Storage.Empty, 3));
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
         Assert.That(provider.GetCode(_address1), Is.EqualTo(code));
-        provider.Restore(new Snapshot(2, Snapshot.Storage.Empty));
+        provider.Restore(new Snapshot(Snapshot.Storage.Empty, 2));
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
         Assert.That(provider.GetCode(_address1), Is.EqualTo(Array.Empty<byte>()));
-        provider.Restore(new Snapshot(1, Snapshot.Storage.Empty));
+        provider.Restore(new Snapshot(Snapshot.Storage.Empty, 1));
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.Zero));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
         Assert.That(provider.GetCode(_address1), Is.EqualTo(Array.Empty<byte>()));
-        provider.Restore(new Snapshot(0, Snapshot.Storage.Empty));
+        provider.Restore(new Snapshot(Snapshot.Storage.Empty, 0));
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.Zero));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One));
         Assert.That(provider.GetCode(_address1), Is.EqualTo(Array.Empty<byte>()));
-        provider.Restore(new Snapshot(-1, Snapshot.Storage.Empty));
+        provider.Restore(new Snapshot(Snapshot.Storage.Empty, -1));
         Assert.That(provider.AccountExists(_address1), Is.EqualTo(false));
     }
 
