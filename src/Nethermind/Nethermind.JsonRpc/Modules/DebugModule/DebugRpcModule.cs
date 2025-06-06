@@ -20,6 +20,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using DotNetty.Buffers;
+using Nethermind.Consensus.Stateless;
 using Nethermind.TxPool;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
@@ -47,6 +48,7 @@ public class DebugRpcModule : IDebugRpcModule
         _blockDecoder = new BlockDecoder();
         _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
         _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
+        _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
     }
 
@@ -474,6 +476,11 @@ public class DebugRpcModule : IDebugRpcModule
     {
         return new SimulateTxExecutor<GethLikeTxTrace>(_blockchainBridge, _blockFinder, _jsonRpcConfig, new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default), _secondsPerSlot)
             .Execute(payload, blockParameter);
+    }
+
+    public ResultWrapper<bool> debug_executeWitness(BlockParameter blockParameter, WitnessForRpc witness)
+    {
+        return ResultWrapper<bool>.Success(_blockchainBridge.ExecuteWitness(blockParameter, new Witness{ State = witness.State, Codes = witness.Codes, Headers = witness.Headers, Keys = witness.Keys}));
     }
 
     private static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary)

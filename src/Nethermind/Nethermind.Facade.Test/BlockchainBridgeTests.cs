@@ -95,6 +95,7 @@ public class BlockchainBridgeTests
         _blockchainBridge = new BlockchainBridge(
             processingEnv,
             simulateProcessingEnvFactory,
+            null!,
             _txPool,
             _receiptStorage,
             _filterStore,
@@ -239,6 +240,7 @@ public class BlockchainBridgeTests
         _blockchainBridge = new BlockchainBridge(
             processingEnv,
             simulateProcessingEnv,
+            null!,
             _txPool,
             _receiptStorage,
             _filterStore,

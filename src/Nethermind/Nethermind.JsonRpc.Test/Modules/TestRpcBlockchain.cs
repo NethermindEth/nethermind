@@ -255,7 +255,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SimulateTransactionProcessorFactory.Instance,
                 LimboLogs.Instance);
 
-            Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, BlocksConfig, false);
+            Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, null!, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, BlocksConfig, false);
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
 
             ITxSigner txSigner = new WalletTxSigner(TestWallet, SpecProvider.ChainId);

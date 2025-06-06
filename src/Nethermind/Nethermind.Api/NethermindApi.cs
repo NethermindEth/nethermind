@@ -50,6 +50,7 @@ using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Trie;
 using Nethermind.Consensus.Processing.CensorshipDetector;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Facade.Find;
 
 namespace Nethermind.Api
@@ -98,9 +99,12 @@ namespace Nethermind.Api
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
             IBlocksConfig blocksConfig = ConfigProvider.GetConfig<IBlocksConfig>();
 
+            StatelessBlocksProcessingEnv statelessBlocksProcessingEnv = new(BlockTree!, SpecProvider, Always.Valid, LogManager);
+
             return new BlockchainBridge(
                 txProcessingEnv,
                 simulateReadOnlyBlocksProcessingEnvFactory,
+                statelessBlocksProcessingEnv,
                 TxPool,
                 ReceiptFinder,
                 FilterStore,
