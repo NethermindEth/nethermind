@@ -26,6 +26,8 @@ public class ChainSpecParamsJson
 
     public long? MinGasLimit { get; set; }
 
+    public long? MinHistoryRetentionEpochs { get; set; }
+
     public long? ForkBlock { get; set; }
 
     public Hash256 ForkCanonHash { get; set; }

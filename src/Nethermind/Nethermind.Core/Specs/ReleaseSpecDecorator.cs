@@ -19,6 +19,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual long MaximumExtraDataSize => spec.MaximumExtraDataSize;
     public virtual long MaxCodeSize => spec.MaxCodeSize;
     public virtual long MinGasLimit => spec.MinGasLimit;
+    public virtual long MinHistoryRetentionEpochs => spec.MinHistoryRetentionEpochs;
     public virtual long GasLimitBoundDivisor => spec.GasLimitBoundDivisor;
     public virtual UInt256 BlockReward => spec.BlockReward;
     public virtual long DifficultyBombDelay => spec.DifficultyBombDelay;

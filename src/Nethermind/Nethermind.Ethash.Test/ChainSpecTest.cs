@@ -78,6 +78,7 @@ public class ChainSpecTest
                 MaxCodeSize = maxCodeSize,
                 Registrar = Address.Zero,
                 MinGasLimit = 11,
+                MinHistoryRetentionEpochs = 11,
                 GasLimitBoundDivisor = 13,
                 MaximumExtraDataSize = 17,
                 Eip140Transition = 1400L,
@@ -151,6 +152,7 @@ public class ChainSpecTest
         {
             r.DifficultyBoundDivisor = 0x800;
             r.MinGasLimit = 11L;
+            r.MinHistoryRetentionEpochs = 11L;
             r.GasLimitBoundDivisor = 13L;
             r.MaximumExtraDataSize = 17L;
             r.MaxCodeSize = long.MaxValue;
