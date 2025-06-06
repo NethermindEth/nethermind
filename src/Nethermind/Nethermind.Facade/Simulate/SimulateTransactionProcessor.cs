@@ -26,7 +26,7 @@ public sealed class SimulateTransactionProcessor(
     {
         if (!validate)
         {
-            opts |= ExecutionOptions.SkipValidation;
+            //opts |= ExecutionOptions.SkipValidation;
         }
 
         return base.Execute(tx, in blCtx, tracer, opts);
