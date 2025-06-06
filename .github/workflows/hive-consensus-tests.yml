@@ -163,8 +163,8 @@ jobs:
       - name: Check out Hive repository
         uses: actions/checkout@v4
         with:
-          repository: ethereum/hive
-          ref: master
+          repository: flcl42/hive
+          ref: old-blob-schedule
           path: hive
 
       - name: Patch Hive Dockerfile
