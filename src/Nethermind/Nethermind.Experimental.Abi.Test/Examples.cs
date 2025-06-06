@@ -2,6 +2,7 @@
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Experimental.Abi.V2;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Experimental.Abi.Test;
@@ -66,6 +67,9 @@ public class Examples
 
         var expectedMethodId = Bytes.FromHexString("0xa5643bf2");
         signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
+
+        byte[] encoded = V2.Abi.Encode(signature, ("dave"u8.ToArray(), true, [1, 2, 3]));
+
         var expected = Bytes.FromHexString(
             "0xa5643bf2" + // `MethodId`
             "0000000000000000000000000000000000000000000000000000000000000060" + // Location of the data part of the first parameter
@@ -77,5 +81,11 @@ public class Examples
             "0000000000000000000000000000000000000000000000000000000000000001" + // First element of the third argument, `1`
             "0000000000000000000000000000000000000000000000000000000000000002" + // Second element of the third argument, `2`
             "0000000000000000000000000000000000000000000000000000000000000003"); // Third element of the third argument, `3`
+        encoded.Should().BeEquivalentTo(expected);
+
+        (byte[] a, bool b, UInt256[] c) = V2.Abi.Decode(signature, encoded);
+        a.Should().BeEquivalentTo("dave"u8.ToArray());
+        b.Should().Be(true);
+        c.Should().BeEquivalentTo(new UInt256[] { 1, 2, 3 });
     }
 }
