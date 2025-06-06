@@ -707,7 +707,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.Restore(snapshot);
 
         Complete:
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+            //if (!opts.HasFlag(ExecutionOptions.SkipValidation))
                 header.GasUsed += gasConsumed.SpentGas;
         }
 
