@@ -13,7 +13,8 @@ public class Examples
     public void Bar()
     {
         var signature = new AbiSignature("bar")
-            .Arg(AbiType.Array(AbiType.BytesM(3), length: 2));
+            .With(
+                AbiType.Array(AbiType.BytesM(3), length: 2));
 
         var expectedMethodId = Bytes.FromHexString("0xfce353f6");
         signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
@@ -34,13 +35,14 @@ public class Examples
     public void Baz()
     {
         var signature = new AbiSignature("baz")
-            .Arg(AbiType.UInt32)
-            .Arg(AbiType.Bool);
+            .With(
+                AbiType.UInt32,
+                AbiType.Bool);
 
         var expectedMethodId = Bytes.FromHexString("0xcdcd77c0");
         signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
 
-        byte[] encoded = V2.Abi.Encode(signature, 69u, true);
+        byte[] encoded = V2.Abi.Encode(signature, (69u, true));
 
         var expected = Bytes.FromHexString(
             "0xcdcd77c0" + // `MethodId`
@@ -57,11 +59,23 @@ public class Examples
     public void Sam()
     {
         var signature = new AbiSignature("sam")
-            .Arg(AbiType.Bytes)
-            .Arg(AbiType.Bool)
-            .Arg(AbiType.Array(AbiType.UInt));
+            .With(
+                AbiType.Bytes,
+                AbiType.Bool,
+                AbiType.Array(AbiType.UInt));
 
         var expectedMethodId = Bytes.FromHexString("0xa5643bf2");
         signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
+        var expected = Bytes.FromHexString(
+            "0xa5643bf2" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000060" + // Location of the data part of the first parameter
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Second argument, `true`
+            "00000000000000000000000000000000000000000000000000000000000000a0" + // Location of the data part of the third parameter
+            "0000000000000000000000000000000000000000000000000000000000000004" + // Data part of the first argument
+            "6461766500000000000000000000000000000000000000000000000000000000" + // Contents of the first argument, `"dave"`
+            "0000000000000000000000000000000000000000000000000000000000000003" + // Data part of the third argument
+            "0000000000000000000000000000000000000000000000000000000000000001" + // First element of the third argument, `1`
+            "0000000000000000000000000000000000000000000000000000000000000002" + // Second element of the third argument, `2`
+            "0000000000000000000000000000000000000000000000000000000000000003"); // Third element of the third argument, `3`
     }
 }
