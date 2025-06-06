@@ -589,8 +589,7 @@ public class TraceRpcModuleTests
             .WithGasLimit(93548).TestObject;
         await blockchain.AddBlock(transaction);
         string[] traceTypes = { "rewards" };
-        var traceRpcModule = context.TraceRpcModule;
-        ResultWrapper<ParityTxTraceFromReplay> traces = traceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
+        ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
         Assert.That(traces.Data.Action!.CallType, Is.EqualTo("reward"));
         Assert.That(traces.Data.Action.Value, Is.EqualTo(UInt256.Parse("2000000000000000000")));
         Assert.That(traces.Result.ResultType == ResultType.Success, Is.True);

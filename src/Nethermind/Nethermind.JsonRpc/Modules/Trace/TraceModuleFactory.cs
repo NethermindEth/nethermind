@@ -18,7 +18,12 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, ILifetimeScope rootLifetimeScope) : ModuleFactoryBase<ITraceRpcModule>
 {
 
-    protected virtual ContainerBuilder ConfigureCommonBlockProcessing(ContainerBuilder builder)
+    protected virtual ContainerBuilder ConfigureCommonBlockProcessing(
+        ContainerBuilder builder,
+        ICodeInfoRepository codeInfoRepository,
+        IWorldState worldState,
+        string transactionExecutorName
+    )
     {
         // Note: Not overriding `IReceiptStorage` to null.
         return builder
@@ -26,7 +31,11 @@ public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, ILifet
             .AddDecorator<IRewardCalculator, MergeRpcRewardCalculator>() // TODO: Check, what if this is pre merge?
             .AddScoped<IBlockValidator>(Always.Valid) // Why?
             .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts);
+            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+            .AddScoped<ICodeInfoRepository>(codeInfoRepository)
+            .AddScoped<IWorldState>(worldState)
+            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor>(ctx => ctx.ResolveKeyed<IBlockProcessor.IBlockTransactionsExecutor>(transactionExecutorName))
+            ;
     }
 
     public override ITraceRpcModule Create()
@@ -34,18 +43,10 @@ public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, ILifet
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
         IOverridableCodeInfoRepository codeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
 
-        ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) => ConfigureCommonBlockProcessing(builder)
-            .AddScoped<ICodeInfoRepository>(codeInfoRepository)
-            .AddScoped<IWorldState>(overridableScope.WorldState)
-            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor>(ctx =>
-                ctx.ResolveKeyed<IBlockProcessor.IBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Rpc)
-            ));
-        ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) => ConfigureCommonBlockProcessing(builder)
-            .AddScoped<ICodeInfoRepository>(codeInfoRepository)
-            .AddScoped<IWorldState>(overridableScope.WorldState)
-            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor>(ctx =>
-                ctx.ResolveKeyed<IBlockProcessor.IBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Validation)
-            ));
+        ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
+            ConfigureCommonBlockProcessing(builder, codeInfoRepository, overridableScope.WorldState, IBlockProcessor.IBlockTransactionsExecutor.Rpc));
+        ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
+            ConfigureCommonBlockProcessing(builder, codeInfoRepository, overridableScope.WorldState, IBlockProcessor.IBlockTransactionsExecutor.Validation));
 
         ILifetimeScope traceRpcLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {

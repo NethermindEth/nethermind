@@ -74,7 +74,6 @@ public class NethermindRunnerModule(
             .AddSingleton<NethermindApi>()
             .AddSingleton<NethermindApi.Dependencies>()
             .Bind<INethermindApi, NethermindApi>()
-            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly())
 
             .AddSingleton<IBlockPreprocessorStep, INethermindApi>((api) => api.BlockPreprocessor)
             .AddSingleton(jsonSerializer)

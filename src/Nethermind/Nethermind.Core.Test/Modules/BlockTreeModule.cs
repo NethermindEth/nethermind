@@ -27,7 +27,6 @@ public class BlockTreeModule : Autofac.Module
             .AddSingleton<IBloomStorage, BloomStorage>()
             .AddSingleton<IHeaderStore, HeaderStore>()
             .AddSingleton<IBlockStore, BlockStore>()
-            .AddSingleton<IReceiptsRecovery, ReceiptsRecovery>()
             .AddSingleton<IReceiptStorage, PersistentReceiptStorage>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()

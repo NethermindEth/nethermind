@@ -82,7 +82,6 @@ public class RegisterRpcModules : IStep
         RegisterDebugRpcModule(rpcModuleProvider);
 
         rpcModuleProvider.RegisterBounded(_api.Context.Resolve<IRpcModuleFactory<ITraceRpcModule>>(), 2, JsonRpcConfig.Timeout);
-        // RegisterTraceRpcModule(rpcModuleProvider);
 
         PersonalRpcModule personalRpcModule = new(
             _api.EthereumEcdsa,

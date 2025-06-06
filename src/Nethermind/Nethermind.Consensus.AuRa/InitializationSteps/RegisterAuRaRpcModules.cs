@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Init.Steps.Migrations;
@@ -184,10 +185,15 @@ public class AuRaBlockProcessorFactory : IAuRaBlockProcessorFactory
 
 public class AutoAuRaTraceModuleFactory(IWorldStateManager worldStateManager, ILifetimeScope rootLifetimeScope) : AutoTraceModuleFactory(worldStateManager, rootLifetimeScope)
 {
-    protected override ContainerBuilder ConfigureCommonBlockProcessing(ContainerBuilder builder)
+    protected override ContainerBuilder ConfigureCommonBlockProcessing(
+        ContainerBuilder builder,
+        ICodeInfoRepository codeInfoRepository,
+        IWorldState worldState,
+        string transactionExecutorName
+    )
     {
         // Screw it! aura will just construct things on its own.
-        return base.ConfigureCommonBlockProcessing(builder)
+        return base.ConfigureCommonBlockProcessing(builder, codeInfoRepository, worldState, transactionExecutorName)
             .AddScoped<IReadOnlyTxProcessingScope, ITransactionProcessor, IWorldState>((txP, worldState) => new ReadOnlyTxProcessingScope(txP, worldState, Keccak.EmptyTreeHash))
             .AddScoped<ReadOnlyChainProcessingEnv, AuRaReadOnlyChainProcessingEnv>()
             .AddScoped<IBlockProcessor, ReadOnlyChainProcessingEnv>((env) => env.BlockProcessor);
