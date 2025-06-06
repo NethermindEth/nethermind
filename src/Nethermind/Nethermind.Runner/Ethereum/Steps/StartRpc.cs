@@ -7,6 +7,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
@@ -16,13 +17,12 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
-using Nethermind.Serialization.Json;
 using Nethermind.KeyStore.Config;
 
 namespace Nethermind.Runner.Ethereum.Steps;
 
 [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(RegisterPluginRpcModules))]
-public class StartRpc(INethermindApi api) : IStep
+public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers) : IStep
 {
     private readonly INethermindApi _api = api;
 
@@ -83,7 +83,7 @@ public class StartRpc(INethermindApi api) : IStep
                 _api.ConfigProvider,
                 auth,
                 _api.LogManager,
-                _api);
+                serviceConfigurers);
 
             await jsonRpcRunner.Start(cancellationToken).ContinueWith(x =>
             {

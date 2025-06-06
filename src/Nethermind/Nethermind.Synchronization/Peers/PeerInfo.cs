@@ -37,7 +37,10 @@ namespace Nethermind.Synchronization.Peers
 
         public bool IsInitialized => SyncPeer.IsInitialized;
 
-        public UInt256 TotalDifficulty => SyncPeer.TotalDifficulty;
+        /// <summary>
+        /// See <see cref="ISyncPeer.TotalDifficulty"/>.
+        /// </summary>
+        public UInt256? TotalDifficulty => SyncPeer.TotalDifficulty;
 
         public long HeadNumber => SyncPeer.HeadNumber;
 
@@ -143,6 +146,17 @@ namespace Nethermind.Synchronization.Peers
             }
 
             return sleeps;
+        }
+
+        public bool HasEqualOrBetterTDOrBlock(PeerInfo? other)
+        {
+            if (other is null)
+                return true;
+
+            if (TotalDifficulty is null || other.TotalDifficulty is null)
+                return HeadNumber >= other.HeadNumber;
+
+            return TotalDifficulty >= other.TotalDifficulty;
         }
 
         private static void ResolveWeaknessChecks(ref int weakness, AllocationContexts singleContext, ref AllocationContexts sleeps)

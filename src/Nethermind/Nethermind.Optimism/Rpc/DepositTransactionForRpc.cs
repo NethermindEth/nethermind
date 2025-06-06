@@ -57,7 +57,7 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         Value = transaction.Value;
         Gas = transaction.GasLimit;
         IsSystemTx = transaction.IsOPSystemTransaction;
-        Input = transaction.Data?.ToArray() ?? [];
+        Input = transaction.Data.ToArray();
         Nonce = receipt?.DepositNonce ?? 0;
 
         DepositReceiptVersion = receipt?.DepositReceiptVersion;

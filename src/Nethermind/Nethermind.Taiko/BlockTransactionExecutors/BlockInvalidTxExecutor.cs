@@ -20,8 +20,10 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
     private readonly ITransactionProcessorAdapter _txProcessor = txProcessor;
 
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        => _txProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
-    public TxReceipt[] ProcessTransactions(Block block, in BlockExecutionContext blkCtx, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token)
+    public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (block.Transactions.Length == 0)
         {
@@ -50,7 +52,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
 
             try
             {
-                if (!_txProcessor.Execute(tx, in blkCtx, receiptsTracer))
+                if (!_txProcessor.Execute(tx, receiptsTracer))
                 {
                     // if the transaction was invalid, we ignore it and continue
                     _worldState.Restore(snap);

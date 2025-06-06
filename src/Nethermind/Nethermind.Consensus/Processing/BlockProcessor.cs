@@ -27,6 +27,9 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+
+using static Nethermind.Consensus.Processing.IBlockProcessor;
+
 using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
@@ -35,7 +38,7 @@ public partial class BlockProcessor(
     ISpecProvider specProvider,
     IBlockValidator blockValidator,
     IRewardCalculator rewardCalculator,
-    IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
+    IBlockTransactionsExecutor blockTransactionsExecutor,
     IWorldState stateProvider,
     IReceiptStorage receiptStorage,
     IBeaconBlockRootHandler beaconBlockRootHandler,
@@ -310,13 +313,13 @@ public partial class BlockProcessor(
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
+        blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+
         StoreBeaconRoot(block, spec);
         blockHashStore.ApplyBlockhashStateChanges(header);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        var blkCtx = new BlockExecutionContext(block.Header, spec);
-
-        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, blkCtx, options, ReceiptsTracer, spec, token);
+        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec, token);
 
         _stateProvider.Commit(spec, commitRoots: false);
 

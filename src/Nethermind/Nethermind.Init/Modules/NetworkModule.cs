@@ -9,6 +9,8 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Handshake = Nethermind.Network.Rlpx.Handshake;
 using P2P = Nethermind.Network.P2P.Messages;
@@ -17,6 +19,7 @@ using V63 = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using V65 = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using V66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using V68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
+using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using NodeData = Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 using Snap = Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 
@@ -29,6 +32,13 @@ public class NetworkModule(IConfigProvider configProvider) : Module
         base.Load(builder);
         builder
             .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
+            .AddSingleton<IIPResolver, IPResolver>()
+
+            // Rlpxhost
+            .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
+            .AddSingleton<ISessionMonitor, SessionMonitor>()
+            .AddSingleton<IRlpxHost, RlpxHost>()
+            .AddSingleton<Handshake.IHandshakeService, Handshake.HandshakeService>()
 
             .AddSingleton<INodeStatsManager>(ctx => new NodeStatsManager(
                 ctx.Resolve<ITimerFactory>(),
@@ -102,6 +112,11 @@ public class NetworkModule(IConfigProvider configProvider) : Module
 
             // V68
             .AddMessageSerializer<V68.NewPooledTransactionHashesMessage68, V68.NewPooledTransactionHashesMessageSerializer>()
+
+            // V69
+            .AddMessageSerializer<V69.BlockRangeUpdateMessage, V69.BlockRangeUpdateMessageSerializer>()
+            .AddMessageSerializer<V69.ReceiptsMessage69, V69.ReceiptsMessageSerializer69>()
+            .AddMessageSerializer<V69.StatusMessage69, V69.StatusMessageSerializer69>()
 
             ;
     }

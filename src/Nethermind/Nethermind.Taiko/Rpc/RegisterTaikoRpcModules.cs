@@ -39,6 +39,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.Sealer);
         StepDependencyException.ThrowIfNull(_api.L1OriginStore);
+        StepDependencyException.ThrowIfNull(_api.ProtocolsManager);
 
         ISyncConfig syncConfig = _api.Config<ISyncConfig>();
 
@@ -62,6 +63,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             _api.GasPriceOracle,
             _api.EthSyncingInfo,
             feeHistoryOracle,
+            _api.ProtocolsManager,
             _api.ConfigProvider.GetConfig<IBlocksConfig>().SecondsPerSlot,
 
             syncConfig,
@@ -79,6 +81,7 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
         TaikoProofModuleFactory proofModuleFactory = new(
             _api.WorldStateManager,
+            _api.ReadOnlyTxProcessingEnvFactory,
             _api.BlockTree,
             _api.BlockPreprocessor,
             _api.ReceiptFinder,

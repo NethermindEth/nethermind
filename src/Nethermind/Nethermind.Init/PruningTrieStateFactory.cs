@@ -40,7 +40,7 @@ public class PruningTrieStateFactory(
     ITimerFactory timerFactory,
     IProcessExitSource processExit,
     ChainSpec chainSpec,
-    DisposableStack disposeStack,
+    IDisposableStack disposeStack,
     ILogManager logManager
 )
 {
@@ -74,12 +74,6 @@ public class PruningTrieStateFactory(
         {
             if (_logger.IsWarn) _logger.Warn($"Pruning boundary must be at least 64. Setting to 64.");
             pruningConfig.PruningBoundary = 64;
-        }
-
-        if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
-        {
-            if (_logger.IsWarn) _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
-            syncConfig.DownloadBodiesInFastSync = true;
         }
 
         IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;

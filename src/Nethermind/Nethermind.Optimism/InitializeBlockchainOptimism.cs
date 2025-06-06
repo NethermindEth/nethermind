@@ -28,12 +28,8 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 {
     private readonly IBlocksConfig _blocksConfig = api.Config<IBlocksConfig>();
 
-    private readonly OptimismChainSpecEngineParameters _chainSpecParameters = api.ChainSpec
-        .EngineChainSpecParametersProvider.GetChainSpecParameters<OptimismChainSpecEngineParameters>();
-
     protected override async Task InitBlockchain()
     {
-        api.L1CostHelper = new(api.SpecHelper, _chainSpecParameters.L1BlockAddress!);
         api.SimulateTransactionProcessorFactory = new SimulateOptimismTransactionProcessorFactory(api.L1CostHelper, api.SpecHelper);
 
         await base.InitBlockchain();
@@ -87,9 +83,6 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             new ExecutionRequestsProcessor(transactionProcessor),
             preWarmer: preWarmer);
     }
-
-    protected override IHealthHintService CreateHealthHintService() =>
-        new ManualHealthHintService(_blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint);
 
     protected override IBlockProductionPolicy CreateBlockProductionPolicy() => AlwaysStartBlockProductionPolicy.Instance;
 

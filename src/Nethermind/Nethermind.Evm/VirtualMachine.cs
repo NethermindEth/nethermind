@@ -11,9 +11,9 @@ using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
@@ -66,7 +66,7 @@ public sealed unsafe partial class VirtualMachine(
     internal static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
     internal static readonly OutOfGasException PrecompileOutOfGasException = new();
 
-    private readonly Word _chainId = Vector256.Create(((UInt256)specProvider.ChainId).ToBigEndian());
+    private readonly ValueHash256 _chainId = ((UInt256)specProvider.ChainId).ToValueHash();
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -91,10 +91,21 @@ public sealed unsafe partial class VirtualMachine(
     public IReleaseSpec Spec => _spec;
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _worldState;
-    public ref readonly Word ChainId => ref _chainId;
+    public ref readonly ValueHash256 ChainId => ref _chainId;
     public ReadOnlyMemory<byte> ReturnDataBuffer { get; set; } = Array.Empty<byte>();
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
+
+    private BlockExecutionContext _blockExecutionContext;
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
+    public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
+
+    private TxExecutionContext _txExecutionContext;
+    public ref readonly TxExecutionContext TxExecutionContext => ref _txExecutionContext;
+    /// <summary>
+    /// Transaction context
+    /// </summary>
+    public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
 
     private EvmState _vmState;
     public EvmState EvmState { get => _vmState; private set => _vmState = value; }
@@ -127,15 +138,11 @@ public sealed unsafe partial class VirtualMachine(
         _txTracer = txTracer;
         _worldState = worldState;
 
-        // Extract the transaction execution context from the EVM environment.
-        ref readonly TxExecutionContext txExecutionContext = ref evmState.Env.TxExecutionContext;
-
         // Prepare the specification and opcode mapping based on the current block header.
-        IReleaseSpec spec = PrepareSpecAndOpcodes<TTracingInst>(
-            txExecutionContext.BlockExecutionContext.Header);
+        IReleaseSpec spec = PrepareSpecAndOpcodes<TTracingInst>(BlockExecutionContext.Header);
 
         // Initialize the code repository and set up the initial execution state.
-        _codeInfoRepository = txExecutionContext.CodeInfoRepository;
+        _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = evmState;
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;

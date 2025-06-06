@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Api.Extensions;
@@ -209,7 +210,7 @@ public class PluginLoaderTests
             return ValueTask.CompletedTask;
         }
 
-        public IBlockProducer InitBlockProducer(ITxSource additionalTxSource = null)
+        public IBlockProducer InitBlockProducer()
         {
             throw new NotImplementedException();
         }

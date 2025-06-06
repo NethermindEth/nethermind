@@ -327,7 +327,7 @@ public partial class ForwardHeaderProviderTests
         public byte ProtocolVersion { get; } = default;
         public Hash256 HeadHash { get; set; } = headHash ?? Keccak.Zero;
         public long HeadNumber { get; set; } = number;
-        public UInt256 TotalDifficulty { get; set; } = totalDiff ?? UInt256.MaxValue;
+        public UInt256? TotalDifficulty { get; set; } = totalDiff ?? UInt256.MaxValue;
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
@@ -527,7 +527,7 @@ public partial class ForwardHeaderProviderTests
         public Hash256 HeadHash { get; set; } = null!;
         public PublicKey Id => Node.Id;
         public long HeadNumber { get; set; }
-        public UInt256 TotalDifficulty { get; set; }
+        public UInt256? TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
