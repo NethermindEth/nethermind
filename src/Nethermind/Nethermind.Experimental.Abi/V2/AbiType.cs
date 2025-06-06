@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text;
 using Nethermind.Int256;
 
 namespace Nethermind.Experimental.Abi.V2;
@@ -115,6 +116,27 @@ public static partial class AbiType
             w.WritePadded(bytes);
         }
     };
+
+    public static IAbi<String> String => new()
+    {
+        Name = $"string",
+        Read = (ref BinarySpanReader r) =>
+        {
+            int length = (int)UInt256.Read(ref r); // TODO: Use `UInt256` when dealing with lengths
+            var bytes = r.ReadBytesPadded(length);
+            return Encoding.UTF8.GetString(bytes);
+        },
+        Write = (ref BinarySpanWriter w, String v) =>
+        {
+            Span<byte> buffer = new byte[Encoding.UTF8.GetByteCount(v)];
+            Encoding.UTF8.GetBytes(v, buffer);
+            int length = buffer.Length;
+
+            UInt256.Write(ref w, (UInt256)length);
+            w.WritePadded(buffer);
+        }
+    };
+}
 
 // Synonyms
 public static partial class AbiType
