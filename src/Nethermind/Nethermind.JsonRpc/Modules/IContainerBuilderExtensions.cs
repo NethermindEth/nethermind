@@ -34,9 +34,10 @@ public static class IContainerBuilderExtensions
     {
         return builder
             .AddSingleton<TFactory>()
+            .AddSingleton<IRpcModuleFactory<T>, TFactory>()
             .AddSingleton<RpcModuleInfo>((ctx) =>
             {
-                TFactory factory = ctx.Resolve<TFactory>();
+                IRpcModuleFactory<T> factory = ctx.Resolve<IRpcModuleFactory<T>>();
                 return new RpcModuleInfo(typeof(T), new BoundedModulePool<T>(factory, maxCount, timeout));
             });
     }

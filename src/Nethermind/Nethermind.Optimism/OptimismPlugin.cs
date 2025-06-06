@@ -36,6 +36,7 @@ using Nethermind.Optimism.ProtocolVersion;
 using Nethermind.Optimism.Cl.Rpc;
 using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Blockchain.Services;
+using Nethermind.Consensus.Processing;
 using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Simulate;
@@ -351,6 +352,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
             // Block processing
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
+            .AddScoped<IBlockProcessor, OptimismBlockProcessor>()
 
             .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddSingleton<IBlockProducerEnvFactory, OptimismBlockProducerEnvFactory>()

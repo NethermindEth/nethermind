@@ -15,6 +15,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1;
 using Nethermind.Facade;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
@@ -39,7 +40,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new DiscoveryModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<INetworkConfig>()))
             .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
             .AddModule(new BuiltInStepsModule())
-            .AddModule(new RpcModules())
+            .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
             .AddModule(new EraModule())
             .AddSource(new ConfigRegistrationSource())
             .AddModule(new DbModule())

@@ -76,12 +76,7 @@ public class RegisterRpcModules : IStep
 
         RpcLimits.Init(JsonRpcConfig.RequestQueueLimit);
         RegisterEthRpcModule(rpcModuleProvider);
-
-        rpcModuleProvider.RegisterBounded(_api.Context.Resolve<IRpcModuleFactory<IProofRpcModule>>(), 2, JsonRpcConfig.Timeout);
-
         RegisterDebugRpcModule(rpcModuleProvider);
-
-        rpcModuleProvider.RegisterBounded(_api.Context.Resolve<IRpcModuleFactory<ITraceRpcModule>>(), 2, JsonRpcConfig.Timeout);
 
         PersonalRpcModule personalRpcModule = new(
             _api.EthereumEcdsa,

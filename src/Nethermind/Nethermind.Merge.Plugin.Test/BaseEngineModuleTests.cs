@@ -287,6 +287,10 @@ public abstract partial class BaseEngineModuleTests
         public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
         {
             _blockProcessingThrottle = delayMs;
+            if (BlockProcessor is TestBlockProcessorInterceptor testBlockProcessor)
+            {
+                testBlockProcessor.DelayMs = delayMs;
+            }
             return this;
         }
 
