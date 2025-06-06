@@ -51,6 +51,7 @@ public class BlockProcessingModule : Module
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
             .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
 
+            // Some plugin replace these implementation. So we name it here.
             .AddKeyedScoped<IBlockProcessor.IBlockTransactionsExecutor, RpcBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Rpc)
             .AddKeyedScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Validation)
 

@@ -353,6 +353,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             // Block processing
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
             .AddScoped<IBlockProcessor, OptimismBlockProcessor>()
+            .AddScoped<Create2DeployerContractRewriter>()
 
             .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddSingleton<IBlockProducerEnvFactory, OptimismBlockProducerEnvFactory>()

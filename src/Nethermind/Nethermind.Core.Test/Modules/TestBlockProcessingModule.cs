@@ -102,8 +102,8 @@ public class TestBlockProcessingModule : Module
                 // These are main block processing specific
                 .AddScoped<ICodeInfoRepository>(mainCodeInfoRepository)
                 .AddScoped(mainWorldState)
-                .AddScoped<IBlockProcessor.IBlockTransactionsExecutor,
-                    BlockProcessor.BlockValidationTransactionsExecutor>()
+                .AddScoped<IBlockProcessor.IBlockTransactionsExecutor>(ctx => ctx
+                    .ResolveKeyed<IBlockProcessor.IBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Validation))
                 .AddScoped(new BlockchainProcessor.Options
                 {
                     StoreReceiptsByDefault = receiptConfig.StoreReceipts,
