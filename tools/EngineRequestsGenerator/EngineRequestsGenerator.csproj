@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Merge.Plugin.Test\Nethermind.Merge.Plugin.Test.csproj" />
+    <PackageReference Include="CommandLineParser" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="benchmarks_chainspec.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <StartupObject>EngineRequestsGenerator.Program</StartupObject>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+</Project>
