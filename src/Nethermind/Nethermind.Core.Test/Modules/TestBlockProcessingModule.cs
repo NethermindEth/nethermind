@@ -60,14 +60,7 @@ public class TestBlockProcessingModule : Module
 
             // These are common between processing and production and worldstate-ful, so they should be scoped instead
             // of singleton.
-            .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
-            .AddScoped<IBlockProcessor, BlockProcessor>()
             .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardCalculatorSource, txProcessor) => rewardCalculatorSource.Get(txProcessor))
-            .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
-            .AddScoped<IBlockhashStore, BlockhashStore>()
-            .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
-            .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
-            .AddScoped<BlockchainProcessor>()
 
             // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
             // in a `MainBlockProcessingContext`.

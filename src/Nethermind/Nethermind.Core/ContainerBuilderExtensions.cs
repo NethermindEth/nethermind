@@ -268,6 +268,16 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder AddKeyedScoped<T, TImpl>(this ContainerBuilder builder, object key) where TImpl : notnull where T : notnull
+    {
+        builder.RegisterType<TImpl>()
+            .Keyed<T>(key)
+            .WithAttributeFiltering()
+            .InstancePerLifetimeScope();
+
+        return builder;
+    }
+
     public static ContainerBuilder AddScoped<T>(this ContainerBuilder builder, Func<IComponentContext, T> factoryMethod) where T : class
     {
         return builder.AddScoped<T, IComponentContext>(factoryMethod);

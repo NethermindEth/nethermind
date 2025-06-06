@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Config;
@@ -76,7 +77,7 @@ public class RegisterRpcModules : IStep
         RpcLimits.Init(JsonRpcConfig.RequestQueueLimit);
         RegisterEthRpcModule(rpcModuleProvider);
 
-        RegisterProofRpcModule(rpcModuleProvider);
+        rpcModuleProvider.RegisterBounded(_api.Context.Resolve<IRpcModuleFactory<IProofRpcModule>>(), 2, JsonRpcConfig.Timeout);
 
         RegisterDebugRpcModule(rpcModuleProvider);
 
@@ -127,23 +128,6 @@ public class RegisterRpcModules : IStep
         ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Enabled.OrderBy(static x => x))}");
 
         await Task.CompletedTask;
-    }
-
-    protected virtual void RegisterProofRpcModule(IRpcModuleProvider rpcModuleProvider)
-    {
-        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.ReceiptFinder);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        ProofModuleFactory proofModuleFactory = new(
-            _api.WorldStateManager,
-            _api.ReadOnlyTxProcessingEnvFactory,
-            _api.BlockTree,
-            _api.BlockPreprocessor,
-            _api.ReceiptFinder,
-            _api.SpecProvider,
-            _api.LogManager);
-        rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, JsonRpcConfig.Timeout);
     }
 
     protected virtual void RegisterDebugRpcModule(IRpcModuleProvider rpcModuleProvider)

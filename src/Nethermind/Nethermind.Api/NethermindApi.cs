@@ -155,7 +155,7 @@ namespace Nethermind.Api
         public IProtocolsManager? ProtocolsManager { get; set; }
         public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
-        public IReceiptFinder? ReceiptFinder { get; set; }
+        public IReceiptFinder ReceiptFinder => Context.Resolve<IReceiptFinder>();
         public IReceiptMonitor? ReceiptMonitor { get; set; }
         public IRewardCalculatorSource RewardCalculatorSource => Context.Resolve<IRewardCalculatorSource>();
         public IRlpxHost RlpxPeer => Context.Resolve<IRlpxHost>();

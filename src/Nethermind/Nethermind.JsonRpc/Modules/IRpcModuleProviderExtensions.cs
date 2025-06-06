@@ -11,7 +11,7 @@ public static class IRpcModuleProviderExtensions
 
     public static void RegisterBounded<T>(
         this IRpcModuleProvider rpcModuleProvider,
-        ModuleFactoryBase<T> factory,
+        IRpcModuleFactory<T> factory,
         int maxCount,
         int timeout)
         where T : IRpcModule
@@ -21,7 +21,7 @@ public static class IRpcModuleProviderExtensions
 
     public static void RegisterBoundedByCpuCount<T>(
         this IRpcModuleProvider rpcModuleProvider,
-        ModuleFactoryBase<T> factory,
+        IRpcModuleFactory<T> factory,
         int timeout)
         where T : IRpcModule
     {
