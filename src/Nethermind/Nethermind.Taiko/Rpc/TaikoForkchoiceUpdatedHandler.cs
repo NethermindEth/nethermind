@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -34,6 +35,7 @@ internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
     ILogManager logManager,
+    IHistoryPruner? historyPruner,
     bool simulateBlockProduction = false) : ForkchoiceUpdatedHandler(blockTree,
           manualBlockFinalizationManager,
           poSSwitcher,
@@ -47,7 +49,7 @@ internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
           specProvider,
           syncPeerPool,
           logManager,
-          null,
+          historyPruner,
           simulateBlockProduction)
 {
     protected override bool IsOnMainChainBehindHead(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,

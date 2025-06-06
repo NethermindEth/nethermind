@@ -19,6 +19,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.JsonRpc;
 using Nethermind.Taiko.Rpc;
+using Nethermind.Blockchain.HistoryPruning;
 
 namespace Nethermind.Taiko.Test;
 
@@ -48,6 +49,7 @@ public class TaikoEngineApiTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
             Substitute.For<ILogManager>(),
+            Substitute.For<IHistoryPruner>(),
             false // simulateBlockProduction
         );
 
