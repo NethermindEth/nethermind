@@ -38,7 +38,7 @@ public class TransactionProcessorTests
     private readonly bool _isEip155Enabled;
     private readonly ISpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
-    private TransactionProcessor _transactionProcessor;
+    private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
 
     public TransactionProcessorTests(bool eip155Enabled)

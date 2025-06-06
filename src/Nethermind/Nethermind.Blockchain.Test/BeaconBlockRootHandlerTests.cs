@@ -122,11 +122,10 @@ public class BeaconBlockRootHandlerTests
     {
         BlockHeader header = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
-        var blkCtx = new BlockExecutionContext(header, Cancun.Instance);
 
-        _beaconBlockRootHandler.StoreBeaconRoot(block, in blkCtx, Cancun.Instance, NullTxTracer.Instance);
+        _beaconBlockRootHandler.StoreBeaconRoot(block, Cancun.Instance, NullTxTracer.Instance);
 
-        _transactionProcessor.DidNotReceive().Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>());
+        _transactionProcessor.DidNotReceive().Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
     }
 
     [Test]
@@ -134,11 +133,10 @@ public class BeaconBlockRootHandlerTests
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithParentBeaconBlockRoot(Hash256.Zero).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
-        var blkCtx = new BlockExecutionContext(header, Cancun.Instance);
 
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
 
-        _beaconBlockRootHandler.StoreBeaconRoot(block, in blkCtx, Cancun.Instance, NullTxTracer.Instance);
+        _beaconBlockRootHandler.StoreBeaconRoot(block, Cancun.Instance, NullTxTracer.Instance);
 
         Transaction transaction = new()
         {
@@ -153,6 +151,6 @@ public class BeaconBlockRootHandlerTests
 
         transaction.Hash = transaction.CalculateHash();
         _transactionProcessor.Received().Execute(Arg.Is<Transaction>(t =>
-            t.Hash == transaction.Hash), new BlockExecutionContext(header, Cancun.Instance), NullTxTracer.Instance);
+            t.Hash == transaction.Hash), NullTxTracer.Instance);
     }
 }

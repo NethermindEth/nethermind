@@ -1293,7 +1293,7 @@ namespace Nethermind.Serialization.Rlp
                 return default;
             }
 
-            public Memory<byte>? DecodeByteArrayMemory()
+            public Memory<byte> DecodeByteArrayMemory()
             {
                 if (!_sliceMemory)
                 {
@@ -1799,6 +1799,11 @@ namespace Nethermind.Serialization.Rlp
         public static int LengthOf(Memory<byte>? memory)
         {
             return LengthOf(memory.GetValueOrDefault().Span);
+        }
+
+        public static int LengthOf(in ReadOnlyMemory<byte> memory)
+        {
+            return LengthOf(memory.Span);
         }
 
         public static int LengthOf(IReadOnlyList<byte> array)

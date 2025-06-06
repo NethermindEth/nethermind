@@ -57,13 +57,16 @@ namespace Nethermind.Core
         [JsonIgnore]
         public long SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
         public Address? To { get; set; }
-        public UInt256 Value { get; set; }
-        public Memory<byte>? Data { get; set; }
+        private UInt256 _value;
+        public UInt256 Value { get => _value; set => _value = value; }
+        [JsonIgnore]
+        public ref readonly UInt256 ValueRef { get => ref _value; }
+        public ReadOnlyMemory<byte> Data { get; set; }
         public Address? SenderAddress { get; set; }
         public Signature? Signature { get; set; }
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
-        public bool IsEofContractCreation => IsContractCreation && (Data?.Span.StartsWith(EofMagic) ?? false);
+        public bool IsEofContractCreation => IsContractCreation && Data.Span.StartsWith(EofMagic);
         public bool IsLegacyContractCreation => IsContractCreation && !IsEofContractCreation;
         public bool IsMessageCall => To is not null;
 
@@ -168,7 +171,7 @@ namespace Nethermind.Core
 
         public UInt256 Timestamp { get; set; }
 
-        public int DataLength => Data?.Length ?? 0;
+        public int DataLength => Data.Length;
 
         public AccessList? AccessList { get; set; } // eip2930
 
@@ -212,7 +215,7 @@ namespace Nethermind.Core
         {
             string gasPriceString =
                 Supports1559 ? $"maxPriorityFeePerGas: {MaxPriorityFeePerGas}, MaxFeePerGas: {MaxFeePerGas}" : $"gas price {GasPrice}";
-            return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data.AsArray()?.ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
+            return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data.AsArray().ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
         }
 
         public string ToString(string indent)
@@ -238,7 +241,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
-            builder.AppendLine($"{indent}Data:      {(Data.AsArray() ?? []).ToHexString()}");
+            builder.AppendLine($"{indent}Data:      {Data.AsArray().ToHexString()}");
             builder.AppendLine($"{indent}Signature: {Signature?.Bytes.ToHexString()}");
             builder.AppendLine($"{indent}V:         {Signature?.V}");
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
