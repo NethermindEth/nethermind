@@ -116,7 +116,9 @@ public static partial class AbiType
         }
     };
 
-    // Synonyms
+// Synonyms
+public static partial class AbiType
+{
     public static readonly IAbi<UInt256> UInt = UInt256;
 }
 
