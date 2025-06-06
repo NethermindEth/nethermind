@@ -45,7 +45,11 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
             {
                 Hash256? _ = tx.Hash; // Just need to trigger hash calculation
                 // Disconnect from any backing
-                tx.Data = tx.Data.ToArray();
+                if (!MemoryMarshal.TryGetArray(tx.Data, out ArraySegment<byte> segment) ||
+                    segment.Offset != 0 || segment.Count != tx.Data.Length)
+                {
+                    tx.Data = tx.Data.Span.ToArray();
+                }
             }
         }
 
