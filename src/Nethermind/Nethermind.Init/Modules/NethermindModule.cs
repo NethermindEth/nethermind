@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1;
+using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
@@ -55,6 +56,9 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             // .AddDecorator<IReceiptFinder, FullInfoReceiptFinder>()
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
             .Bind<IEcdsa, IEthereumEcdsa>()
+            .AddSingleton<IBlockchainBridgeFactory, BlockchainBridgeFactory>()
+            .AddScoped<IBlockchainBridge>((ctx) => ctx.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge())
+            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((btree) => btree.AsReadOnly())
             .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
             ;
     }

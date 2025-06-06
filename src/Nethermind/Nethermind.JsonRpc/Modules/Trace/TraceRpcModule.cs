@@ -8,6 +8,7 @@ using System.Threading;
 using FastEnumUtility;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
@@ -57,6 +58,19 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IOverridableTxProcessorSource _env = env ?? throw new ArgumentNullException(nameof(env));
         private readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
         private readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
+
+
+        public TraceRpcModule(
+            IReceiptFinder? receiptFinder,
+            ITracer? tracer,
+            IBlockFinder? blockFinder,
+            IJsonRpcConfig? jsonRpcConfig,
+            IStateReader? stateReader,
+            IOverridableTxProcessorSource? env,
+            IBlockchainBridge? blockchainBridge,
+            IBlocksConfig? blocksConfig): this(receiptFinder, tracer, blockFinder, jsonRpcConfig, stateReader, env, blockchainBridge, blocksConfig?.SecondsPerSlot)
+        {
+        }
 
         public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, OverridableTxProcessingEnv? env, IBlockchainBridge? blockchainBridge, ulong? secondsPerSlot)
             : this(receiptFinder, tracer, blockFinder, jsonRpcConfig, env?.StateReader, env, blockchainBridge, secondsPerSlot) { }

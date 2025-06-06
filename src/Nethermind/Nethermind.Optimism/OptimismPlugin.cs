@@ -38,6 +38,8 @@ using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Blockchain.Services;
 using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Simulate;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
 
@@ -356,6 +358,9 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
             .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddSingleton<IBlockProducerEnvFactory, OptimismBlockProducerEnvFactory>()
+
+            .AddSingleton<IRpcModuleFactory<ITraceRpcModule>, AutoOptimismTraceModuleFactory>()
+            .AddSingleton<ISimulateTransactionProcessorFactory, SimulateOptimismTransactionProcessorFactory>()
 
             .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>
                 new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))

@@ -4,6 +4,7 @@
 #nullable enable
 using System;
 using Nethermind.Config;
+using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Rlp;
@@ -34,4 +35,5 @@ namespace Nethermind.Api
             TransactionForRpc.RegisterTransactionType<T>();
         }
     }
+
 }

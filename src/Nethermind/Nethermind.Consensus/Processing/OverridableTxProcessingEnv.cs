@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -37,9 +38,9 @@ public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
         SpecProvider = specProvider;
         StateReader = overridableScope.GlobalStateReader;
         BlockTree = readOnlyBlockTree;
-        IBlockhashProvider blockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
         LogManager = logManager;
         StateProvider = overridableScope.WorldState;
+        IBlockhashProvider blockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
 
         CodeInfoRepository = new(new CodeInfoRepository());
         Machine = new VirtualMachine(blockhashProvider, specProvider, logManager);

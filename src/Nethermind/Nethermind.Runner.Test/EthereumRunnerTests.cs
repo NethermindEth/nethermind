@@ -28,6 +28,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -291,6 +292,7 @@ public class EthereumRunnerTests
                 typeof(IProtectedPrivateKey),
                 typeof(PublicKey),
                 typeof(IPrivateKeyGenerator),
+                typeof(ITracer), // Completely different construction on every case
                 typeof(string),
             ];
 

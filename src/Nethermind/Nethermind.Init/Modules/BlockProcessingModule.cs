@@ -18,6 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Simulate;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
@@ -51,6 +52,7 @@ public class BlockProcessingModule : Module
             .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
 
             .AddKeyedScoped<IBlockProcessor.IBlockTransactionsExecutor, RpcBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Rpc)
+            .AddKeyedScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Validation)
 
             // Block production components
             .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
@@ -58,6 +60,7 @@ public class BlockProcessingModule : Module
             .AddSingleton<ISealer>(NullSealEngine.Instance)
             .AddSingleton<ISealEngine, SealEngine>()
 
+            .AddSingleton<ISimulateTransactionProcessorFactory>(SimulateTransactionProcessorFactory.Instance)
             .AddSingleton<IBlockProducerEnvFactory, BlockProducerEnvFactory>()
             .AddSingleton<IBlockProducerTxSourceFactory, TxPoolTxSourceFactory>()
 

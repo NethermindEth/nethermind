@@ -16,19 +16,17 @@ using Nethermind.State;
 namespace Nethermind.JsonRpc.Modules.Proof
 {
     public class AutoProofModuleFactory(
-        ILifetimeScope rootLifecycleScope,
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
-        IDisposableStack disposableStack
+        ILifetimeScope rootLifetimeScope,
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory
     ) : ModuleFactoryBase<IProofRpcModule>
     {
 
         public override IProofRpcModule Create()
         {
             IReadOnlyTxProcessingScope txProcessingEnv = readOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
-            ILifetimeScope blockProcessingScope = rootLifecycleScope.BeginLifetimeScope((builder) =>
+            ILifetimeScope blockProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             {
                 builder
-                    .AddScoped<IReadOnlyTxProcessingScope>(txProcessingEnv)
                     .AddScoped<IWorldState>(txProcessingEnv.WorldState)
                     .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
                     .AddScoped<IBlockProcessor.IBlockTransactionsExecutor>(ctx =>
@@ -38,16 +36,19 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     .AddScoped<IRewardCalculator>(NoBlockRewards.Instance)
                     .AddScoped<IBlockValidator>(Always.Valid) // Why?
                     .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+                    .AddScoped<IReadOnlyTxProcessingScope>(txProcessingEnv)
+                    .AddScoped<ITracer, Tracer>()
                     ;
             });
-            disposableStack.Push((IAsyncDisposable)blockProcessingScope);
 
             // The tracer need a null receipts while the proof does not
-            ILifetimeScope proofRpcScope = rootLifecycleScope.BeginLifetimeScope((builder) =>
+            ILifetimeScope proofRpcScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             {
                 builder.AddSingleton<ITracer>(blockProcessingScope.Resolve<ITracer>());
             });
-            disposableStack.Push((IAsyncDisposable)proofRpcScope);
+
+            proofRpcScope.Disposer.AddInstanceForAsyncDisposal(blockProcessingScope);
+            rootLifetimeScope.Disposer.AddInstanceForDisposal(proofRpcScope);
 
             return proofRpcScope.Resolve<IProofRpcModule>();
         }

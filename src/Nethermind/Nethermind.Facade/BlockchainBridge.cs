@@ -31,14 +31,12 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
 using System.Linq;
+using Nethermind.Consensus;
+using Nethermind.Db;
+using Nethermind.Logging;
 
 namespace Nethermind.Facade
 {
-    public interface IBlockchainBridgeFactory
-    {
-        IBlockchainBridge CreateBlockchainBridge();
-    }
-
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {
@@ -431,6 +429,64 @@ namespace Nethermind.Facade
             };
 
             return error is null ? null : $"err: {error} (supplied gas {gasLimit})";
+        }
+    }
+
+    public interface IBlockchainBridgeFactory
+    {
+        IBlockchainBridge CreateBlockchainBridge();
+    }
+
+    public class BlockchainBridgeFactory(
+        IReadOnlyBlockTree readOnlyTree,
+        IWorldStateManager worldStateManager,
+        ISimulateTransactionProcessorFactory simulateTransactionProcessorFactory,
+        IDbProvider dbProvider,
+        ITxPool txPool,
+        IReceiptFinder receiptFinder,
+        IFilterStore filterStore,
+        IFilterManager filterManager,
+        IEthereumEcdsa ethereumEcdsa,
+        ITimestamper timestamper,
+        ILogFinder logFinder,
+        ISpecProvider specProvider,
+        IMiningConfig miningConfig,
+        IBlocksConfig blocksConfig,
+        ILogManager logManager
+    ) : IBlockchainBridgeFactory
+    {
+        public IBlockchainBridge CreateBlockchainBridge()
+        {
+            // TODO: reuse the same trie cache here
+            OverridableTxProcessingEnv txProcessingEnv = new(
+                worldStateManager.CreateOverridableWorldScope(),
+                readOnlyTree,
+                specProvider,
+                logManager);
+
+            SimulateReadOnlyBlocksProcessingEnvFactory simulateReadOnlyBlocksProcessingEnvFactory =
+                new SimulateReadOnlyBlocksProcessingEnvFactory(
+                    worldStateManager,
+                    readOnlyTree,
+                    dbProvider,
+                    specProvider,
+                    simulateTransactionProcessorFactory,
+                    logManager);
+
+            return new BlockchainBridge(
+                txProcessingEnv,
+                simulateReadOnlyBlocksProcessingEnvFactory,
+                txPool,
+                receiptFinder,
+                filterStore,
+                filterManager,
+                ethereumEcdsa,
+                timestamper,
+                logFinder,
+                specProvider!,
+                blocksConfig,
+                miningConfig.Enabled
+            );
         }
     }
 }

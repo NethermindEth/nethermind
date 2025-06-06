@@ -81,7 +81,8 @@ public class RegisterRpcModules : IStep
 
         RegisterDebugRpcModule(rpcModuleProvider);
 
-        RegisterTraceRpcModule(rpcModuleProvider);
+        rpcModuleProvider.RegisterBounded(_api.Context.Resolve<IRpcModuleFactory<ITraceRpcModule>>(), 2, JsonRpcConfig.Timeout);
+        // RegisterTraceRpcModule(rpcModuleProvider);
 
         PersonalRpcModule personalRpcModule = new(
             _api.EthereumEcdsa,
@@ -208,35 +209,5 @@ public class RegisterRpcModules : IStep
 
         rpcModuleProvider.RegisterBounded(ethModuleFactory,
             JsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, JsonRpcConfig.Timeout);
-    }
-
-    protected ModuleFactoryBase<ITraceRpcModule> CreateTraceModuleFactory()
-    {
-        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.DbProvider);
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-
-        return new TraceModuleFactory(
-            _api.WorldStateManager,
-            _api.BlockTree,
-            JsonRpcConfig,
-            _api.CreateBlockchainBridge(),
-            _blocksConfig.SecondsPerSlot,
-            _api.BlockPreprocessor,
-            _api.RewardCalculatorSource,
-            _api.ReceiptStorage,
-            _api.SpecProvider,
-            _poSSwitcher,
-            _api.LogManager);
-    }
-
-    protected virtual void RegisterTraceRpcModule(IRpcModuleProvider rpcModuleProvider)
-    {
-        ModuleFactoryBase<ITraceRpcModule> traceModuleFactory = CreateTraceModuleFactory();
-
-        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, JsonRpcConfig.Timeout);
     }
 }

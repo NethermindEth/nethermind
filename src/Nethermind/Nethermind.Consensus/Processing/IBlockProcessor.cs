@@ -52,6 +52,7 @@ namespace Nethermind.Consensus.Processing
         public interface IBlockTransactionsExecutor
         {
             public const string Rpc = "Rpc";
+            public const string Validation = "Validation";
 
 
             TxReceipt[] ProcessTransactions(Block block, in BlockExecutionContext blkCtx, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default);

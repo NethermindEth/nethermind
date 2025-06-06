@@ -73,34 +73,6 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
             JsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, JsonRpcConfig.Timeout);
     }
 
-    protected override void RegisterTraceRpcModule(IRpcModuleProvider rpcModuleProvider)
-    {
-        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.DbProvider);
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-
-        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
-        ulong secondsPerSlot = blockConfig.SecondsPerSlot;
-
-        TaikoTraceModuleFactory traceModuleFactory = new(
-            _api.WorldStateManager,
-            _api.BlockTree.AsReadOnly(),
-            JsonRpcConfig,
-            _api.CreateBlockchainBridge(),
-            secondsPerSlot,
-            _api.BlockPreprocessor,
-            _api.RewardCalculatorSource,
-            _api.ReceiptStorage,
-            _api.SpecProvider,
-            _poSSwitcher,
-            _api.LogManager);
-
-        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, JsonRpcConfig.Timeout);
-    }
-
     protected override void RegisterDebugRpcModule(IRpcModuleProvider rpcModuleProvider)
     {
         StepDependencyException.ThrowIfNull(_api.DbProvider);

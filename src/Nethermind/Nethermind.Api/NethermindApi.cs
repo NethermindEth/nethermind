@@ -77,41 +77,7 @@ namespace Nethermind.Api
 
         public IBlockchainBridge CreateBlockchainBridge()
         {
-            ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
-
-            // TODO: reuse the same trie cache here
-            OverridableTxProcessingEnv txProcessingEnv = new(
-                WorldStateManager!.CreateOverridableWorldScope(),
-                readOnlyTree,
-                SpecProvider!,
-                LogManager);
-
-            SimulateReadOnlyBlocksProcessingEnvFactory simulateReadOnlyBlocksProcessingEnvFactory =
-                new SimulateReadOnlyBlocksProcessingEnvFactory(
-                    WorldStateManager!,
-                    readOnlyTree,
-                    DbProvider!,
-                    SpecProvider!,
-                    SimulateTransactionProcessorFactory,
-                    LogManager);
-
-            IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
-            IBlocksConfig blocksConfig = ConfigProvider.GetConfig<IBlocksConfig>();
-
-            return new BlockchainBridge(
-                txProcessingEnv,
-                simulateReadOnlyBlocksProcessingEnvFactory,
-                TxPool,
-                ReceiptFinder,
-                FilterStore,
-                FilterManager,
-                EthereumEcdsa,
-                Timestamper,
-                LogFinder,
-                SpecProvider!,
-                blocksConfig,
-                miningConfig.Enabled
-            );
+            return Context.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
         }
 
         public IAbiEncoder AbiEncoder => Context.Resolve<IAbiEncoder>();
@@ -217,7 +183,9 @@ namespace Nethermind.Api
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public IProcessExitSource ProcessExit => _dependencies.ProcessExitSource;
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
-        public ISimulateTransactionProcessorFactory SimulateTransactionProcessorFactory { get; set; } = Nethermind.Facade.Simulate.SimulateTransactionProcessorFactory.Instance;
+
+        public ISimulateTransactionProcessorFactory SimulateTransactionProcessorFactory =>
+            Context.Resolve<ISimulateTransactionProcessorFactory>();
         public ILifetimeScope Context => _dependencies.Context;
     }
 }
