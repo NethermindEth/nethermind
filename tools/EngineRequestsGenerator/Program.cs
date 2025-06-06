@@ -8,13 +8,13 @@ public static class Program
     public class Options
     {
         [Option('c', "chainspecpath", Required = false, HelpText = "Path to chainspec used to generate tests")]
-        public string ChainspecPath { get; set; }
+        public string? ChainspecPath { get; set; }
 
         [Option('t', "testcase", Required = false, HelpText = "Title of the test case")]
-        public string TestCaseName { get; set; }
+        public string? TestCaseName { get; set; }
 
         [Option('o', "outputPath", Required = false, HelpText = "Output folder path")]
-        public string OutputPath { get; set; }
+        public string? OutputPath { get; set; }
 
         [Option('m', "generateMetadataOnly", Required = false, HelpText = "Generating only metadata for test cases")]
         public bool GenerateMetadata { get; set; }
@@ -35,13 +35,13 @@ public static class Program
             if (!foundTestCase)
                 throw new ArgumentException($"Test case {options.TestCaseName} not found");
 
-            var testCaseGenerator = new TestCaseGenerator(options.ChainspecPath, testCase, options.OutputPath);
+            var testCaseGenerator = new TestCaseGenerator(options.ChainspecPath!, testCase, options.OutputPath!);
             await testCaseGenerator.Generate();
         }
 
         if (options.GenerateMetadata)
         {
-            MetadataGenerator metadataGenerator = new(options.OutputPath);
+            MetadataGenerator metadataGenerator = new(options.OutputPath!);
             await metadataGenerator.GenerateAll();
         }
     }

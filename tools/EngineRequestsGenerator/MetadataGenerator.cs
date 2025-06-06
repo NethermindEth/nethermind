@@ -51,7 +51,7 @@ public class MetadataGenerator
     static TestCaseMetadataAttribute GetTestCaseMetadata(TestCase testCase)
     {
         FieldInfo? fieldInfo = testCase.GetType().GetField(testCase.ToString());
-        TestCaseMetadataAttribute[]? attributes = (TestCaseMetadataAttribute[])fieldInfo?.GetCustomAttributes(typeof(TestCaseMetadataAttribute), false);
+        TestCaseMetadataAttribute[]? attributes = (TestCaseMetadataAttribute[])fieldInfo!.GetCustomAttributes(typeof(TestCaseMetadataAttribute), false);
 
         if (attributes == null || attributes.Length != 1)
             throw new ArgumentException("Incorrect amount of attributes found");

@@ -9,6 +9,8 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -29,9 +31,9 @@ public class TestCaseGenerator
     private int _numberOfWithdrawals;
     private int _txsPerBlock;
 
-    private string _chainSpecPath;
-    private ChainSpec _chainSpec;
-    private ChainSpecBasedSpecProvider _chainSpecBasedSpecProvider;
+    private string? _chainSpecPath;
+    private ChainSpec? _chainSpec;
+    private ChainSpecBasedSpecProvider? _chainSpecBasedSpecProvider;
     private EthereumJsonSerializer _serializer = new();
     private TestCase _testCase;
     private readonly string _outputPath;
@@ -79,12 +81,20 @@ public class TestCaseGenerator
 
         // chain initialization
         StringBuilder stringBuilder = new();
-        ChainSpecLoader chainSpecLoader = new(_serializer);
-        _chainSpec = chainSpecLoader.LoadEmbeddedOrFromFile(_chainSpecPath, LimboLogs.Instance.GetClassLogger());
+        ChainSpecFileLoader chainSpecFileLoader = new(_serializer, LimboLogs.Instance.GetClassLogger());
+        _chainSpec = chainSpecFileLoader.LoadEmbeddedOrFromFile(_chainSpecPath!);
         _chainSpecBasedSpecProvider = new(_chainSpec);
-        EngineModuleTests.MergeTestBlockchain chain = await new EngineModuleTests.MergeTestBlockchain(keepStateEmptyOnStart: true).Build(_chainSpecBasedSpecProvider);
+        BaseEngineModuleTests.MergeTestBlockchain chain =
+            await new BaseEngineModuleTests.MergeTestBlockchain().BuildMergeTestBlockchain(
+                configurer: (builder) => builder
+                    .AddSingleton<ISpecProvider>(_chainSpecBasedSpecProvider)
+                    .AddSingleton(new TestBlockchain.Configuration()
+                    {
+                        SuggestGenesisOnStart = false,
+                        KeepStateEmptyAtInit = true
+                    }));
 
-        GenesisLoader genesisLoader = new(_chainSpec, _chainSpecBasedSpecProvider, chain.State, chain.TxProcessor);
+        GenesisLoader genesisLoader = new(_chainSpec, _chainSpecBasedSpecProvider, chain.WorldStateManager.GlobalWorldState, chain.TxProcessor);
         Block genesisBlock = genesisLoader.Load();
 
         chain.BlockTree.SuggestBlock(genesisBlock);
@@ -111,7 +121,7 @@ public class TestCaseGenerator
                 case TestCase.Transfers:
                 case TestCase.Warmup:
                 case TestCase.TxDataZero:
-                    SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals, _testCase, blockGasConsumptionTarget);
+                    SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals!, _testCase, blockGasConsumptionTarget);
                     break;
                 // cases with contract deployment:
                 case TestCase.SStoreManyAccountsRandomKeysZeroValue:
@@ -119,12 +129,12 @@ public class TestCaseGenerator
                     if (i == 0)
                     {
                         // in iteration 0 there is only withdrawal,
-                        SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals, _testCase, blockGasConsumptionTarget);
+                        SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals!, _testCase, blockGasConsumptionTarget);
                     }
                     else if (i == blockGasConsumptionTarget / 1_000_000 - 1)
                     {
                         // at last iteration, call contract
-                        CallContract(chain, privateKeys[previousBlock.Withdrawals.FirstOrDefault().ValidatorIndex - 1], blockGasConsumptionTarget);
+                        CallContract(chain, privateKeys[previousBlock.Withdrawals!.FirstOrDefault()!.ValidatorIndex - 1], blockGasConsumptionTarget);
                     }
                     else
                     {
@@ -137,12 +147,12 @@ public class TestCaseGenerator
                     {
                         // in iteration 0 there is only withdrawal,
                         // in iteration 1 there is only contract deployment
-                        SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals, _testCase, blockGasConsumptionTarget);
+                        SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals!, _testCase, blockGasConsumptionTarget);
                     }
                     else
                     {
                         // starting from in iteration 2, there are contract calls
-                        CallContract(chain, privateKeys[previousBlock.Withdrawals.FirstOrDefault().ValidatorIndex - 1], blockGasConsumptionTarget);
+                        CallContract(chain, privateKeys[previousBlock.Withdrawals!.FirstOrDefault()!.ValidatorIndex - 1], blockGasConsumptionTarget);
                     }
                     break;
             }
@@ -160,7 +170,7 @@ public class TestCaseGenerator
 
             WriteJsonRpcRequest(stringBuilder, "engine_newPayloadV3", executionPayloadString, blobsString, parentBeaconBlockRootString);
 
-            ForkchoiceStateV1 forkchoiceState = new(block.Hash, Keccak.Zero, Keccak.Zero);
+            ForkchoiceStateV1 forkchoiceState = new(block.Hash!, Keccak.Zero, Keccak.Zero);
             WriteJsonRpcRequest(stringBuilder, "engine_forkchoiceUpdatedV3", _serializer.Serialize(forkchoiceState));
 
             if (block.Number < _numberOfBlocksToProduce)
@@ -392,9 +402,9 @@ public class TestCaseGenerator
             case TestCase.TStoreOneKeyRandomValue:
                 return SStoreOneKey.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Secp256r1ValidSignature:
-                return Secp256r1.GetTxsWithValidSig(privateKey, nonce, blockGasConsumptionTarget);
+                return TestCases.Secp256r1.GetTxsWithValidSig(privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Secp256r1InvalidSignature:
-                return Secp256r1.GetTxsWithInvalidSig(privateKey, nonce, blockGasConsumptionTarget);
+                return TestCases.Secp256r1.GetTxsWithInvalidSig(privateKey, nonce, blockGasConsumptionTarget);
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }

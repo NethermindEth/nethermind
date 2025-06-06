@@ -53,19 +53,19 @@ public static class EcRecover
         // codeToDeploy.Add((byte)Instruction.MSTORE);
 
         codeToDeploy.Add((byte)Instruction.PUSH1);
-        codeToDeploy.Add((byte)tx.Signature.V);
+        codeToDeploy.Add((byte)tx.Signature!.V);
         codeToDeploy.Add((byte)Instruction.PUSH1);
         codeToDeploy.Add(0x20);
         codeToDeploy.Add((byte)Instruction.MSTORE);
 
         codeToDeploy.Add((byte)Instruction.PUSH32);
-        codeToDeploy.AddRange(tx.Signature.R);
+        codeToDeploy.AddRange(tx.Signature.R.ToArray());
         codeToDeploy.Add((byte)Instruction.PUSH1);
         codeToDeploy.Add(0x40);
         codeToDeploy.Add((byte)Instruction.MSTORE);
 
         codeToDeploy.Add((byte)Instruction.PUSH32);
-        codeToDeploy.AddRange(tx.Signature.S);
+        codeToDeploy.AddRange(tx.Signature.S.ToArray());
         codeToDeploy.Add((byte)Instruction.PUSH1);
         codeToDeploy.Add(0x60);
         codeToDeploy.Add((byte)Instruction.MSTORE);

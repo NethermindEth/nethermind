@@ -120,7 +120,7 @@ public static class PointEvaluation
             .TestObject;
 
         codeToDeploy.Add((byte)Instruction.PUSH32);                    // versioned hashes
-        codeToDeploy.AddRange(tx.BlobVersionedHashes.FirstOrDefault());
+        codeToDeploy.AddRange(tx.BlobVersionedHashes!.FirstOrDefault()!);
         codeToDeploy.Add((byte)Instruction.PUSH0);
         codeToDeploy.Add((byte)Instruction.MSTORE);
 
@@ -135,8 +135,8 @@ public static class PointEvaluation
         codeToDeploy.Add((byte)Instruction.MSTORE);
 
         List<byte> commitmentAndProof = new();
-        commitmentAndProof.AddRange(((ShardBlobNetworkWrapper)tx.NetworkWrapper).Commitments.FirstOrDefault());
-        commitmentAndProof.AddRange(((ShardBlobNetworkWrapper)tx.NetworkWrapper).Proofs.FirstOrDefault());
+        commitmentAndProof.AddRange(((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments.FirstOrDefault()!);
+        commitmentAndProof.AddRange(((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs.FirstOrDefault()!);
 
         codeToDeploy.Add((byte)Instruction.PUSH32);                     // commitment and proof
         codeToDeploy.AddRange(commitmentAndProof.Slice(0, 32));
