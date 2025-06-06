@@ -512,9 +512,7 @@ namespace Nethermind.Trie
                 TreePath startingPath = TreePath.Empty;
                 TrieNode startNode = TrieStore.FindCachedOrUnknown(startingPath, startRootHash);
                 ResolveNode(startNode, in traverseContext, in startingPath);
-                return ref startNode.IsBranch ?
-                    ref TraverseBranches(startNode, ref startingPath, traverseContext) :
-                    ref TraverseNode(startNode, traverseContext, ref startingPath);
+                return ref TraverseNode(startNode, traverseContext, ref startingPath);
             }
             else
             {
@@ -536,9 +534,7 @@ namespace Nethermind.Trie
                     TreePath startingPath = TreePath.Empty;
                     ResolveNode(RootRef, in traverseContext, in startingPath);
                     if (_logger.IsTrace) TraceNode(in traverseContext);
-                    return ref RootRef.IsBranch ?
-                        ref TraverseBranches(RootRef, ref startingPath, traverseContext) :
-                        ref TraverseNode(RootRef, traverseContext, ref startingPath);
+                    return ref TraverseNode(RootRef, traverseContext, ref startingPath);
                 }
             }
 
@@ -588,6 +584,11 @@ namespace Nethermind.Trie
 
         private ref readonly CappedArray<byte> TraverseNode(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
         {
+            if (node.IsBranch)
+            {
+                return ref TraverseBranches(node, traverseContext, ref path);
+            }
+
             if (_logger.IsTrace) Trace(node, traverseContext);
 
             if (traverseContext.IsNodeRead && traverseContext.RemainingUpdatePathLength == 0)
@@ -617,20 +618,11 @@ namespace Nethermind.Trie
             {
                 switch (node.NodeType)
                 {
-                    case NodeType.Branch:
-                        return ref TraverseBranch(node);
                     case NodeType.Unknown:
                         return ref TraverseUnknown(node);
                     default:
                         return ref ThrowNotSupported(node);
                 }
-            }
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static ref readonly CappedArray<byte> TraverseBranch(TrieNode node)
-            {
-                throw new InvalidOperationException($"Branch node {node.Keccak} should already be handled");
             }
 
             [DoesNotReturn]
@@ -891,7 +883,7 @@ namespace Nethermind.Trie
                 => throw new InvalidOperationException($"An attempt to set a null node as a child of the {node}");
         }
 
-        private ref readonly CappedArray<byte> TraverseBranches(TrieNode node, scoped ref TreePath path, TraverseContext traverseContext)
+        private ref readonly CappedArray<byte> TraverseBranches(TrieNode node, TraverseContext traverseContext, scoped ref TreePath path)
         {
             while (true)
             {
@@ -1049,9 +1041,7 @@ namespace Nethermind.Trie
 
                 ResolveNode(next, in traverseContext, in path);
                 TraverseContext newContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + extensionLength);
-                return ref next.IsBranch ?
-                    ref TraverseBranches(next, ref path, newContext) :
-                    ref TraverseNode(next, newContext, ref path);
+                return ref TraverseNode(next, newContext, ref path);
             }
 
             if (traverseContext.IsRead || traverseContext.IsDelete)
@@ -1189,7 +1179,6 @@ namespace Nethermind.Trie
                 ref TreePath updatePathTreePath,
                 in CappedArray<byte> updateValue,
                 bool isUpdate,
-                bool ignoreMissingDelete = true,
                 bool isNodeRead = false)
             {
                 UpdatePath = updatePath;
