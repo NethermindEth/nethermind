@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Config;
@@ -75,12 +76,7 @@ public class RegisterRpcModules : IStep
 
         RpcLimits.Init(JsonRpcConfig.RequestQueueLimit);
         RegisterEthRpcModule(rpcModuleProvider);
-
-        RegisterProofRpcModule(rpcModuleProvider);
-
         RegisterDebugRpcModule(rpcModuleProvider);
-
-        RegisterTraceRpcModule(rpcModuleProvider);
 
         PersonalRpcModule personalRpcModule = new(
             _api.EthereumEcdsa,
@@ -127,23 +123,6 @@ public class RegisterRpcModules : IStep
         ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Enabled.OrderBy(static x => x))}");
 
         await Task.CompletedTask;
-    }
-
-    protected virtual void RegisterProofRpcModule(IRpcModuleProvider rpcModuleProvider)
-    {
-        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.ReceiptFinder);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        ProofModuleFactory proofModuleFactory = new(
-            _api.WorldStateManager,
-            _api.ReadOnlyTxProcessingEnvFactory,
-            _api.BlockTree,
-            _api.BlockPreprocessor,
-            _api.ReceiptFinder,
-            _api.SpecProvider,
-            _api.LogManager);
-        rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, JsonRpcConfig.Timeout);
     }
 
     protected virtual void RegisterDebugRpcModule(IRpcModuleProvider rpcModuleProvider)
@@ -224,35 +203,5 @@ public class RegisterRpcModules : IStep
 
         rpcModuleProvider.RegisterBounded(ethModuleFactory,
             JsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, JsonRpcConfig.Timeout);
-    }
-
-    protected ModuleFactoryBase<ITraceRpcModule> CreateTraceModuleFactory()
-    {
-        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.DbProvider);
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-
-        return new TraceModuleFactory(
-            _api.WorldStateManager,
-            _api.BlockTree,
-            JsonRpcConfig,
-            _api.CreateBlockchainBridge(),
-            _blocksConfig.SecondsPerSlot,
-            _api.BlockPreprocessor,
-            _api.RewardCalculatorSource,
-            _api.ReceiptStorage,
-            _api.SpecProvider,
-            _poSSwitcher,
-            _api.LogManager);
-    }
-
-    protected virtual void RegisterTraceRpcModule(IRpcModuleProvider rpcModuleProvider)
-    {
-        ModuleFactoryBase<ITraceRpcModule> traceModuleFactory = CreateTraceModuleFactory();
-
-        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, JsonRpcConfig.Timeout);
     }
 }

@@ -23,11 +23,16 @@ using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.State.Tracing;
 using NSubstitute;
 
@@ -46,7 +51,7 @@ public class ProofRpcModuleTests
     private IDbProvider _dbProvider = null!;
     private TestSpecProvider _specProvider = null!;
     private WorldStateManager _worldStateManager = null!;
-    private IReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory = null!;
+    private IContainer _container;
 
     public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
     {
@@ -72,18 +77,22 @@ public class ProofRpcModuleTests
             .OfChainLength(10)
             .TestObject;
 
-        _readOnlyTxProcessingEnvFactory = new ReadOnlyTxProcessingEnvFactory(_worldStateManager, _blockTree, _specProvider, LimboLogs.Instance);
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ConfigProvider()))
+            .AddSingleton<ISpecProvider>(_specProvider)
+            .AddSingleton<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, _specProvider, LimboLogs.Instance)))
+            .AddSingleton<IBlockTree>(_blockTree)
+            .AddSingleton<IDbProvider>(_dbProvider)
+            .AddSingleton<IReceiptStorage>(receiptStorage)
+            .AddSingleton<IWorldStateManager>(_worldStateManager)
+            .Build();
+        _proofRpcModule = _container.Resolve<IRpcModuleFactory<IProofRpcModule>>().Create();
+    }
 
-        ProofModuleFactory moduleFactory = new(
-            _worldStateManager,
-            _readOnlyTxProcessingEnvFactory,
-            _blockTree,
-            new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
-            receiptStorage,
-            _specProvider,
-            LimboLogs.Instance);
-
-        _proofRpcModule = moduleFactory.Create();
+    [TearDown]
+    public void TearDown()
+    {
+        _container.Dispose();
     }
 
     [TestCase(true)]
@@ -218,16 +227,17 @@ public class ProofRpcModuleTests
         _receiptFinder.Get(Arg.Any<Hash256>()).Returns(receipts);
         _receiptFinder.FindBlockHash(Arg.Any<Hash256>()).Returns(_blockTree.FindBlock(1)!.Hash);
 
-        ProofModuleFactory moduleFactory = new ProofModuleFactory(
-            _worldStateManager,
-            _readOnlyTxProcessingEnvFactory,
-            _blockTree,
-            new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
-            _receiptFinder,
-            _specProvider,
-            LimboLogs.Instance);
-
-        _proofRpcModule = moduleFactory.Create();
+        _container.Dispose();
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ConfigProvider()))
+            .AddSingleton<ISpecProvider>(_specProvider)
+            .AddSingleton<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, _specProvider, LimboLogs.Instance)))
+            .AddSingleton<IBlockTree>(_blockTree)
+            .AddSingleton<IReceiptFinder>(_receiptFinder)
+            .AddSingleton<IDbProvider>(_dbProvider)
+            .AddSingleton<IWorldStateManager>(_worldStateManager)
+            .Build();
+        _proofRpcModule = _container.Resolve<IRpcModuleFactory<IProofRpcModule>>().Create();
         ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
 
         if (withHeader)
@@ -879,7 +889,7 @@ public class ProofRpcModuleTests
 
     private IWorldState CreateInitialState(byte[]? code)
     {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(_dbProvider, LimboLogs.Instance);
+        WorldStateManager worldStateManager = _worldStateManager;
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
         AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
