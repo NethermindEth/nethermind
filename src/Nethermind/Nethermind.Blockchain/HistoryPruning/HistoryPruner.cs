@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,21 +12,37 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.HistoryPruning;
 
-public class HistoryPruner(
-    IBlockTree blockTree,
-    IReceiptStorage receiptStorage,
-    ISpecProvider specProvider,
-    IHistoryConfig historyConfig,
-    ulong secondsPerSlot,
-    ILogManager logManager) : IHistoryPruner
+public class HistoryPruner : IHistoryPruner
 {
     private Task? _pruneHistoryTask;
     private readonly Lock _pruneLock = new();
     private ulong _lastPrunedTimestamp;
-    private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly bool _enabled = historyConfig.Enabled;
-    private readonly ulong _epochLength = secondsPerSlot * 32;
-    private readonly ulong _minHistoryRetentionEpochs = 82125;
+    private readonly ISpecProvider _specProvider;
+    private readonly ILogger _logger;
+    private readonly IBlockTree _blockTree;
+    private readonly IReceiptStorage _receiptStorage;
+    private readonly IHistoryConfig _historyConfig;
+    private readonly bool _enabled;
+    private readonly long _epochLength;
+    private readonly long _minHistoryRetentionEpochs;
+
+    public HistoryPruner(
+        IBlockTree blockTree,
+        IReceiptStorage receiptStorage,
+        ISpecProvider specProvider,
+        IHistoryConfig historyConfig,
+        long secondsPerSlot,
+        ILogManager logManager)
+    {
+        _specProvider = specProvider;
+        _logger = logManager.GetClassLogger();
+        _blockTree = blockTree;
+        _receiptStorage = receiptStorage;
+        _historyConfig = historyConfig;
+        _enabled = historyConfig.Enabled;
+        _epochLength = secondsPerSlot * 32;
+        _minHistoryRetentionEpochs = specProvider.GetFinalSpec().MinHistoryRetentionEpochs;
+    }
 
     public async Task TryPruneHistory(CancellationToken cancellationToken)
     {
@@ -50,7 +65,8 @@ public class HistoryPruner(
 
     public bool CheckConfig()
     {
-        if (historyConfig.HistoryRetentionEpochs < _minHistoryRetentionEpochs)
+        if (_historyConfig.HistoryRetentionEpochs is not null &&
+            _historyConfig.HistoryRetentionEpochs < _minHistoryRetentionEpochs)
         {
             _logger.Error($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
             return false;
@@ -71,7 +87,7 @@ public class HistoryPruner(
 
     private async Task PruneHistory(CancellationToken cancellationToken)
     {
-        if (blockTree.Head is null)
+        if (_blockTree.Head is null)
         {
             return;
         }
@@ -87,7 +103,7 @@ public class HistoryPruner(
 
         await Task.Run(() =>
         {
-            var deletedBlocks = blockTree.DeleteBlocksBeforeTimestamp(cutoffTimestamp, cancellationToken);
+            var deletedBlocks = _blockTree.DeleteBlocksBeforeTimestamp(cutoffTimestamp, cancellationToken);
             PruneReceipts(deletedBlocks);
         }, cancellationToken);
 
@@ -99,7 +115,7 @@ public class HistoryPruner(
     {
         foreach (Block block in blocks)
         {
-            receiptStorage.RemoveReceipts(block);
+            _receiptStorage.RemoveReceipts(block);
         }
     }
 
@@ -107,14 +123,14 @@ public class HistoryPruner(
     {
         ulong cutoffTimestamp = 0;
 
-        if (historyConfig.HistoryRetentionEpochs.HasValue)
+        if (_historyConfig.HistoryRetentionEpochs.HasValue)
         {
-            cutoffTimestamp = blockTree.Head!.Timestamp - (historyConfig.HistoryRetentionEpochs.Value * _epochLength);
+            cutoffTimestamp = _blockTree.Head!.Timestamp - (ulong)(_historyConfig.HistoryRetentionEpochs.Value * _epochLength);
         }
 
-        if (historyConfig.DropPreMerge)
+        if (_historyConfig.DropPreMerge)
         {
-            ulong? beaconGenesisTimestamp = specProvider.BeaconChainGenesisTimestamp;
+            ulong? beaconGenesisTimestamp = _specProvider.BeaconChainGenesisTimestamp;
             if (beaconGenesisTimestamp.HasValue && beaconGenesisTimestamp.Value > cutoffTimestamp)
             {
                 cutoffTimestamp = beaconGenesisTimestamp.Value;

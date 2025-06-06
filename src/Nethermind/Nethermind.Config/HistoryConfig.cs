@@ -7,6 +7,6 @@ public class HistoryConfig : IHistoryConfig
 {
     public bool Enabled => HistoryRetentionEpochs is not null || DropPreMerge;
 
-    public ulong? HistoryRetentionEpochs { get; set; } = null;
+    public long? HistoryRetentionEpochs { get; set; } = null;
     public bool DropPreMerge { get; set; } = false;
 }
