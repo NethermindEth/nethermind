@@ -5,8 +5,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Experimental.Abi.V2;
 
-// NOTE: Make `partial` to allow for extension
-public static class AbiType
+public static partial class AbiType
 {
     public static readonly IAbi<UInt256> UInt256 = new()
     {
@@ -119,4 +118,57 @@ public static class AbiType
 
     // Synonyms
     public static readonly IAbi<UInt256> UInt = UInt256;
+}
+
+// Tuples
+public static partial class AbiType
+{
+
+    public static IAbi<T> Tuple<T>(IAbi<T> abi) => new()
+    {
+        Name = $"({abi})",
+        Read = (ref BinarySpanReader r) =>
+        {
+            T arg = abi.Read(ref r);
+            return arg;
+        },
+        Write = (ref BinarySpanWriter w, T v) =>
+        {
+            abi.Write(ref w, v);
+        }
+    };
+
+    public static IAbi<(T1, T2)> Tuple<T1, T2>(IAbi<T1> abi1, IAbi<T2> abi2) => new()
+    {
+        Name = $"({abi1.Name},{abi2.Name})",
+        Read = (ref BinarySpanReader r) =>
+        {
+            T1 arg1 = abi1.Read(ref r);
+            T2 arg2 = abi2.Read(ref r);
+            return (arg1, arg2);
+        },
+        Write = (ref BinarySpanWriter w, (T1, T2) v) =>
+        {
+            abi1.Write(ref w, v.Item1);
+            abi2.Write(ref w, v.Item2);
+        }
+    };
+
+    public static IAbi<(T1, T2, T3)> Tuple<T1, T2, T3>(IAbi<T1> abi1, IAbi<T2> abi2, IAbi<T3> arg3) => new()
+    {
+        Name = $"({abi1.Name},{abi2.Name},{arg3.Name})",
+        Read = (ref BinarySpanReader r) =>
+        {
+            T1 arg1 = abi1.Read(ref r);
+            T2 arg2 = abi2.Read(ref r);
+            T3 arg3Value = arg3.Read(ref r);
+            return (arg1, arg2, arg3Value);
+        },
+        Write = (ref BinarySpanWriter w, (T1, T2, T3) v) =>
+        {
+            abi1.Write(ref w, v.Item1);
+            abi2.Write(ref w, v.Item2);
+            arg3.Write(ref w, v.Item3);
+        }
+    };
 }
