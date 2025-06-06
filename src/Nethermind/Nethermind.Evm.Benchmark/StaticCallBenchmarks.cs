@@ -96,12 +96,13 @@ namespace Nethermind.Evm.Benchmark
                 codeSource: Address.Zero,
                 caller: Address.Zero,
                 codeInfo: new CodeInfo(Bytecode),
+                callDepth: 0,
                 value: 0,
                 transferValue: 0,
                 inputData: default
             );
 
-            _evmState = EvmState.RentTopLevel(100_000_000L, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot(), _environment, new StackAccessTracker());
+            _evmState = EvmState.RentTopLevel(100_000_000L, ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
         }
 
         [Benchmark(Baseline = true)]
