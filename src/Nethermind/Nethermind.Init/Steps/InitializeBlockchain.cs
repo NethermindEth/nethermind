@@ -173,10 +173,12 @@ namespace Nethermind.Init.Steps
                     _api.ReceiptStorage!,
                     _api.SpecProvider!,
                     historyConfig,
-                    blocksConfig.SecondsPerSlot,
+                    (long)blocksConfig.SecondsPerSlot,
                     _api.LogManager);
                 historyPruner.CheckConfig();
                 setApi.HistoryPruner = historyPruner;
+
+                blockchainProcessor.ProcessingQueueEmpty += historyPruner.OnBlockProcessorQueueEmpty;
             }
 
             return Task.CompletedTask;

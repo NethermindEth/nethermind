@@ -164,8 +164,7 @@ public abstract partial class BaseEngineModuleTests
                 peerRefresher,
                 chain.SpecProvider,
                 chain.SyncPeerPool,
-                chain.LogManager,
-                chain.HistoryPruner),
+                chain.LogManager),
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
@@ -358,8 +357,7 @@ public abstract partial class BaseEngineModuleTests
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
                 50000); // by default we want to avoid cleanup payload effects in testing
 
-            // ExecutionRequestsProcessor ??= new ExecutionRequestsProcessor(TxProcessor);
-            HistoryPruner = new HistoryPruner(BlockTree, ReceiptStorage, SpecProvider, new HistoryConfig(), MergeConfig.SecondsPerSlot, LogManager);
+            HistoryPruner = new HistoryPruner(BlockTree, ReceiptStorage, SpecProvider, new HistoryConfig(), (long)MergeConfig.SecondsPerSlot, LogManager);
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 

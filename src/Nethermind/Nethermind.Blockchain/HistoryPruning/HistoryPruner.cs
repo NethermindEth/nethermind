@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,36 +13,29 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.HistoryPruning;
 
-public class HistoryPruner : IHistoryPruner
+public class HistoryPruner(
+    IBlockTree blockTree,
+    IReceiptStorage receiptStorage,
+    ISpecProvider specProvider,
+    IHistoryConfig historyConfig,
+    long secondsPerSlot,
+    ILogManager logManager) : IHistoryPruner
 {
     private Task? _pruneHistoryTask;
     private readonly Lock _pruneLock = new();
     private ulong _lastPrunedTimestamp;
-    private readonly ISpecProvider _specProvider;
-    private readonly ILogger _logger;
-    private readonly IBlockTree _blockTree;
-    private readonly IReceiptStorage _receiptStorage;
-    private readonly IHistoryConfig _historyConfig;
-    private readonly bool _enabled;
-    private readonly long _epochLength;
-    private readonly long _minHistoryRetentionEpochs;
+    private readonly ISpecProvider _specProvider = specProvider;
+    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly IBlockTree _blockTree = blockTree;
+    private readonly IReceiptStorage _receiptStorage = receiptStorage;
+    private readonly IHistoryConfig _historyConfig = historyConfig;
+    private readonly bool _enabled = historyConfig.Enabled;
+    private readonly long _epochLength = secondsPerSlot * 32;
+    private readonly long _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
 
-    public HistoryPruner(
-        IBlockTree blockTree,
-        IReceiptStorage receiptStorage,
-        ISpecProvider specProvider,
-        IHistoryConfig historyConfig,
-        long secondsPerSlot,
-        ILogManager logManager)
+    public void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
     {
-        _specProvider = specProvider;
-        _logger = logManager.GetClassLogger();
-        _blockTree = blockTree;
-        _receiptStorage = receiptStorage;
-        _historyConfig = historyConfig;
-        _enabled = historyConfig.Enabled;
-        _epochLength = secondsPerSlot * 32;
-        _minHistoryRetentionEpochs = specProvider.GetFinalSpec().MinHistoryRetentionEpochs;
+        _ = TryPruneHistory(CancellationToken.None);
     }
 
     public async Task TryPruneHistory(CancellationToken cancellationToken)

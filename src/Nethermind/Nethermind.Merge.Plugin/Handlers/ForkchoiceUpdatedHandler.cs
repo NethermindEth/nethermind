@@ -51,7 +51,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private readonly ISpecProvider _specProvider;
     private readonly bool _simulateBlockProduction;
     private readonly ISyncPeerPool _syncPeerPool;
-    private readonly IHistoryPruner? _historyPruner;
 
     public ForkchoiceUpdatedHandler(
         IBlockTree blockTree,
@@ -67,7 +66,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         ISpecProvider specProvider,
         ISyncPeerPool syncPeerPool,
         ILogManager logManager,
-        IHistoryPruner? historyPruner,
         bool simulateBlockProduction = false)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -83,13 +81,11 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _specProvider = specProvider;
         _syncPeerPool = syncPeerPool;
         _simulateBlockProduction = simulateBlockProduction;
-        _historyPruner = historyPruner;
         _logger = logManager.GetClassLogger();
     }
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
-        _ = Task.Run(() => _historyPruner?.TryPruneHistory(CancellationToken.None));
         Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
         return await ApplyForkchoiceUpdate(newHeadBlock, forkchoiceState, payloadAttributes)
             ?? ValidateAttributes(payloadAttributes, version)
