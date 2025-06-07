@@ -4,7 +4,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -340,40 +343,41 @@ namespace Nethermind.State
             int currentPosition = _changes.Count - 1;
             if (snapshot > currentPosition)
             {
-                throw new InvalidOperationException($"{nameof(StateProvider)} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
+                ThrowCannotRestore(currentPosition, snapshot);
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Restoring state snapshot {snapshot}");
+            if (_logger.IsTrace) Trace(snapshot);
             if (snapshot == currentPosition)
             {
                 return;
             }
 
-            for (int i = 0; i < currentPosition - snapshot; i++)
+            ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+            int endPosition = currentPosition - snapshot;
+            for (int i = 0; i < endPosition; i++)
             {
-                Change change = _changes[currentPosition - i];
+                int nextPosition = currentPosition - i;
+                ref readonly Change change = ref changes[nextPosition];
                 Stack<int> stack = _intraTxCache[change!.Address];
                 if (stack.Count == 1)
                 {
                     if (change.ChangeType == ChangeType.JustCache)
                     {
                         int actualPosition = stack.Pop();
-                        if (actualPosition != currentPosition - i)
+                        if (actualPosition != nextPosition)
                         {
-                            throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {currentPosition} - {i}");
+                            ThrowUnexpectedPosition(currentPosition, i, actualPosition);
                         }
 
                         _keptInCache.Add(change);
-                        _changes[actualPosition] = default;
                         continue;
                     }
                 }
 
-                _changes[currentPosition - i] = default; // TODO: temp, ???
                 int forChecking = stack.Pop();
-                if (forChecking != currentPosition - i)
+                if (forChecking != nextPosition)
                 {
-                    throw new InvalidOperationException($"Expected checked value {forChecking} to be equal to {currentPosition} - {i}");
+                    ThrowExpectedValueNotEqual(currentPosition, i, forChecking);
                 }
 
                 if (stack.Count == 0)
@@ -383,8 +387,9 @@ namespace Nethermind.State
             }
 
             CollectionsMarshal.SetCount(_changes, snapshot + 1);
-            currentPosition = _changes.Count - 1;
-            foreach (Change kept in _keptInCache)
+            currentPosition = snapshot;
+            ReadOnlySpan<Change> keptInCache = CollectionsMarshal.AsSpan(_keptInCache);
+            foreach (ref readonly Change kept in keptInCache)
             {
                 currentPosition++;
                 _changes.Add(kept);
@@ -392,6 +397,21 @@ namespace Nethermind.State
             }
 
             _keptInCache.Clear();
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace(int snapshot) => _logger.Trace($"Restoring state snapshot {snapshot}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowCannotRestore(int currentPosition, int snapshot)
+                => throw new InvalidOperationException($"{nameof(StateProvider)} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowUnexpectedPosition(int currentPosition, int i, int actualPosition)
+                => throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {currentPosition} - {i}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowExpectedValueNotEqual(int currentPosition, int i, int forChecking)
+                => throw new InvalidOperationException($"Expected checked value {forChecking} to be equal to {currentPosition} - {i}");
         }
 
         public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
