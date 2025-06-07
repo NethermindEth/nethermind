@@ -557,7 +557,7 @@ namespace Nethermind.State
                 {
                     if (change.ChangeType == ChangeType.JustCache)
                     {
-                        trace?.Add(change.Address, new ChangeTrace(change.Account, trace[change.Address].After));
+                        trace?.UpdateTrace(change.Address, change.Account);
                     }
 
                     continue;
@@ -967,9 +967,15 @@ namespace Nethermind.State
     internal static class Extensions
     {
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void AddToTrace(this Dictionary<AddressAsKey, ChangeTrace>? trace, Address address, Account? change)
+        public static void AddToTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change)
         {
-            trace?.Add(address, new ChangeTrace(change));
+            trace.Add(address, new ChangeTrace(change));
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void UpdateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change)
+        {
+            trace[address] = new ChangeTrace(change, trace[address].After);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
