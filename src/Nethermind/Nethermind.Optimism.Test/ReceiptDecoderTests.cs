@@ -81,13 +81,68 @@ public class ReceiptDecoderTests
         TestTrieEncoding(decodedReceipt, shouldIncludeNonceAndVersionForTxTrie);
     }
 
+    [Test]
+    public void Should_handle_erigon_zero_bloom()
+    {
+        // Arrange
+        OptimismReceiptMessageDecoder decoder = new();
+        byte[] zeroBloom = new byte[256]; // Erigon sends zero bloom
+        byte[] rlp = Rlp.Encode(new[] {
+            Rlp.Encode((byte)1), // status code
+            Rlp.Encode(100L), // gas used
+            Rlp.Encode(zeroBloom), // zero bloom
+            Rlp.Encode(Array.Empty<LogEntry>()) // empty logs
+        }).Bytes;
+        RlpStream rlpStream = new(rlp);
+
+        // Act
+        OptimismTxReceipt receipt = decoder.Decode(rlpStream, RlpBehaviors.None);
+
+        // Assert
+        Assert.Multiple(() =>
+        {
+            Assert.That(receipt.Bloom, Is.Null, "Bloom should be null when Erigon sends zero bloom");
+            Assert.That(receipt.StatusCode, Is.EqualTo(1), "Status code should be preserved");
+            Assert.That(receipt.GasUsedTotal, Is.EqualTo(100L), "Gas used should be preserved");
+            Assert.That(receipt.Logs, Is.Empty, "Logs should be empty");
+        });
+    }
+
+    [Test]
+    public void Should_handle_non_zero_bloom()
+    {
+        // Arrange
+        OptimismReceiptMessageDecoder decoder = new();
+        byte[] nonZeroBloom = new byte[256];
+        nonZeroBloom[0] = 1; // Make bloom non-zero
+        byte[] rlp = Rlp.Encode(new[] {
+            Rlp.Encode((byte)1), // status code
+            Rlp.Encode(100L), // gas used
+            Rlp.Encode(nonZeroBloom), // non-zero bloom
+            Rlp.Encode(Array.Empty<LogEntry>()) // empty logs
+        }).Bytes;
+        RlpStream rlpStream = new(rlp);
+
+        // Act
+        OptimismTxReceipt receipt = decoder.Decode(rlpStream, RlpBehaviors.None);
+
+        // Assert
+        Assert.Multiple(() =>
+        {
+            Assert.That(receipt.Bloom, Is.Not.Null, "Bloom should not be null for non-zero bloom");
+            Assert.That(receipt.Bloom!.Bytes[0], Is.EqualTo(1), "Bloom should preserve non-zero values");
+            Assert.That(receipt.StatusCode, Is.EqualTo(1), "Status code should be preserved");
+            Assert.That(receipt.GasUsedTotal, Is.EqualTo(100L), "Gas used should be preserved");
+            Assert.That(receipt.Logs, Is.Empty, "Logs should be empty");
+        });
+    }
 
     public static IEnumerable DepositTxReceiptsSerializationTestCases
     {
         get
         {
             yield return new TestCaseData(
-                Bytes.FromHexString("7ef901090182f9f5b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c080"),
+                Bytes.FromHexString("7ef901090182f9f5b901000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c080"),
                 true,
                 false,
                 false
@@ -97,7 +152,7 @@ public class ReceiptDecoderTests
             };
 
             yield return new TestCaseData(
-                Bytes.FromHexString("0x7ef9010c0182b729b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0830154f4"),
+                Bytes.FromHexString("0x7ef9010c0182b729b901000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0830154f4"),
                 true,
                 false,
                 false
