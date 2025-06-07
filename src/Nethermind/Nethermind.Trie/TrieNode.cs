@@ -491,10 +491,10 @@ namespace Nethermind.Trie
             }
             else
             {
-                (byte[] key, bool isLeaf) = HexPrefix.FromBytes(rlpStream.DecodeByteArraySpan());
+                ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
+                (byte[] key, bool isLeaf) = HexPrefix.FromBytes(valueSpan);
                 if (isLeaf)
                 {
-                    ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
                     SpanSource buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
                     valueSpan.CopyTo(buffer.Span);
                     _nodeData = new LeafData(key, buffer);
@@ -852,13 +852,6 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowIndexOutOfRangeException()
-        {
-            throw new IndexOutOfRangeException();
-        }
-
         public TrieNode CloneWithChangedValue(SpanSource changedValue)
         {
             TrieNode trieNode = Clone();
@@ -954,7 +947,7 @@ namespace Nethermind.Trie
                     using (currentPath.ScopedAppend(Key))
                     {
                         if (currentPath.Length != 64)
-                            throw new Exception(
+                            throw new TrieException(
                                 $"unexpected storage path length. Total nibble count should add up to 64. Got {currentPath.Length}.");
                         storagePathAddr = currentPath.Path.ToCommitment();
                     }
@@ -1067,7 +1060,7 @@ namespace Nethermind.Trie
                 using (currentPath.ScopedAppend(Key))
                 {
                     if (currentPath.Length != 64)
-                        throw new Exception("unexpected storage path length. Total nibble count should add up to 64.");
+                        throw new TrieException("unexpected storage path length. Total nibble count should add up to 64.");
                     storagePathAddr = currentPath.Path.ToCommitment();
                 }
 
