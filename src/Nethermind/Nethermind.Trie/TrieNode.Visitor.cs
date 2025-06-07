@@ -119,7 +119,7 @@ namespace Nethermind.Trie
 
                         if (!isStorage && visitor.ExpectAccounts)
                         {
-                            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.AsSpan());
+                            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.Span);
                             if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
                             {
                                 throw new InvalidDataException("Non storage leaf should be an account");

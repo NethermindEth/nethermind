@@ -47,8 +47,9 @@ public class ReceiptTrieTests
     {
         TxReceipt receipt1 = Build.A.Receipt.WithAllFieldsFilled.TestObject;
         TxReceipt receipt2 = Build.A.Receipt.WithAllFieldsFilled.TestObject;
+        using var pool = new TrackingCappedArrayPool();
         ReceiptTrie<TxReceipt> trie = new(MainnetSpecProvider.Instance.GetSpec((ForkActivation)1),
-            [receipt1, receipt2], _decoder, true);
+            [receipt1, receipt2], _decoder, true, pool);
         byte[][] proof = trie.BuildProof(0);
         Assert.That(proof.Length, Is.EqualTo(2));
 
@@ -60,7 +61,7 @@ public class ReceiptTrieTests
     {
         TrieNode node = new(NodeType.Unknown, proof.Last());
         node.ResolveNode(Substitute.For<ITrieNodeResolver>(), TreePath.Empty);
-        TxReceipt receipt = _decoder.Decode(node.Value.AsRlpStream());
+        TxReceipt receipt = _decoder.Decode(node.Value.ToArray().AsRlpStream());
         Assert.That(receipt.Bloom, Is.Not.Null);
 
         for (int i = proof.Length; i > 0; i--)
