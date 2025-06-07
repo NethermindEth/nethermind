@@ -15,7 +15,7 @@ public class PathWithStorageCollector : RangeQueryVisitor.ILeafValueCollector
 
     public int Collect(in ValueHash256 path, SpanSource value)
     {
-        Slots.Add(new PathWithStorageSlot(path, value.ToArray()));
+        Slots.Add(new PathWithStorageSlot(in path, value.ToArray()));
         return 32 + value.Length;
     }
 }

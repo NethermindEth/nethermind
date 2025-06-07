@@ -63,12 +63,12 @@ public sealed class L1BlockGasInfo
         if (block is not null && block.Transactions.Length > 0)
         {
             Transaction depositTx = block.Transactions[0];
-            if (depositTx.Data is null || depositTx.Data.Value.Length < 4)
+            if (depositTx.Data.Length < 4)
             {
                 return;
             }
 
-            Memory<byte> data = depositTx.Data.Value;
+            ReadOnlyMemory<byte> data = depositTx.Data;
 
             _isIsthmus = _specHelper.IsIsthmus(block.Header);
             _isFjord = _specHelper.IsFjord(block.Header);
@@ -120,7 +120,7 @@ public sealed class L1BlockGasInfo
 
         return;
 
-        static void ParsePostEcotoneBaseValues(Memory<byte> data, out UInt256? l1GasPrice, out UInt256? l1BlobBaseFee,
+        static void ParsePostEcotoneBaseValues(in ReadOnlyMemory<byte> data, out UInt256? l1GasPrice, out UInt256? l1BlobBaseFee,
             out UInt256? l1BaseFeeScalar, out UInt256? l1BlobBaseFeeScalar)
         {
             l1GasPrice = new(data[36..68].Span, true);

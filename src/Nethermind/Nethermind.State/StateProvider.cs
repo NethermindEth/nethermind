@@ -463,11 +463,7 @@ namespace Nethermind.State
             }
 
             bool isTracing = stateTracer.IsTracingState;
-            Dictionary<AddressAsKey, ChangeTrace> trace = null;
-            if (isTracing)
-            {
-                trace = new Dictionary<AddressAsKey, ChangeTrace>();
-            }
+            Dictionary<AddressAsKey, ChangeTrace>? trace = !isTracing ? null : [];
 
             for (int i = 0; i <= currentPosition; i++)
             {
@@ -802,26 +798,26 @@ namespace Nethermind.State
 
         private void PushJustCache(Address address, Account account)
         {
-            Push(ChangeType.JustCache, address, account);
+            Push(address, account, ChangeType.JustCache);
         }
 
         private void PushUpdate(Address address, Account account)
         {
-            Push(ChangeType.Update, address, account);
+            Push(address, account, ChangeType.Update);
         }
 
         private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
         {
             if (isZero && releaseSpec.IsEip158IgnoredAccount(address)) return;
-            Push(ChangeType.Touch, address, account);
+            Push(address, account, ChangeType.Touch);
         }
 
         private void PushDelete(Address address)
         {
-            Push(ChangeType.Delete, address, null);
+            Push(address, null, ChangeType.Delete);
         }
 
-        private void Push(ChangeType changeType, Address address, Account? touchedAccount)
+        private void Push(Address address, Account? touchedAccount, ChangeType changeType)
         {
             Stack<int> stack = SetupCache(address);
             if (changeType == ChangeType.Touch
@@ -831,14 +827,14 @@ namespace Nethermind.State
             }
 
             stack.Push(_changes.Count);
-            _changes.Add(new Change(changeType, address, touchedAccount));
+            _changes.Add(new Change(address, touchedAccount, changeType));
         }
 
         private void PushNew(Address address, Account account)
         {
             Stack<int> stack = SetupCache(address);
             stack.Push(_changes.Count);
-            _changes.Add(new Change(ChangeType.New, address, account));
+            _changes.Add(new Change(address, account, ChangeType.New));
         }
 
         private Stack<int> SetupCache(Address address)
@@ -862,18 +858,11 @@ namespace Nethermind.State
             Delete
         }
 
-        private readonly struct Change
+        private readonly struct Change(Address address, Account? account, ChangeType type)
         {
-            public Change(ChangeType type, Address address, Account? account)
-            {
-                ChangeType = type;
-                Address = address;
-                Account = account;
-            }
-
-            public readonly ChangeType ChangeType;
-            public readonly Address Address;
-            public readonly Account? Account;
+            public readonly Address Address = address;
+            public readonly Account? Account = account;
+            public readonly ChangeType ChangeType = type;
 
             public bool IsNull => ChangeType == ChangeType.Null;
         }

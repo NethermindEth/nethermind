@@ -180,7 +180,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         EncodeGasPrice(transaction, stream);
         stream.Encode(transaction.GasLimit);
         stream.Encode(transaction.To);
-        stream.Encode(transaction.Value);
+        stream.Encode(in transaction.ValueRef);
         stream.Encode(transaction.Data);
     }
 
@@ -197,7 +197,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         + Rlp.LengthOf(transaction.GasPrice)
         + Rlp.LengthOf(transaction.GasLimit)
         + Rlp.LengthOf(transaction.To)
-        + Rlp.LengthOf(transaction.Value)
+        + Rlp.LengthOf(in transaction.ValueRef)
         + Rlp.LengthOf(transaction.Data);
 
     protected virtual int GetSignatureLength(Signature? signature, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
