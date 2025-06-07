@@ -191,6 +191,9 @@ namespace Nethermind.Blockchain
 
         }
 
+        public IEnumerable<Block> DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken)
+            => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteBlocksBeforeTimestamp)} calls");
+
         public bool IsBetterThanHead(BlockHeader? header) => _wrapped.IsBetterThanHead(header);
         public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateBeaconMainChain)} calls");
         public void RecalculateTreeLevels() => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(RecalculateTreeLevels)} calls");

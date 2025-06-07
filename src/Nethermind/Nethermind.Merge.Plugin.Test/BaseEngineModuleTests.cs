@@ -12,15 +12,14 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -280,6 +279,7 @@ public abstract partial class BaseEngineModuleTests
 
         public ISyncPeerPool SyncPeerPool { get; set; }
 
+        public IHistoryPruner? HistoryPruner { get; set; }
         public IExecutionRequestsProcessor? ExecutionRequestsProcessorOverride { get; set; }
 
         protected int _blockProcessingThrottle = 0;
@@ -357,6 +357,7 @@ public abstract partial class BaseEngineModuleTests
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
                 50000); // by default we want to avoid cleanup payload effects in testing
 
+            HistoryPruner = new HistoryPruner(BlockTree, ReceiptStorage, SpecProvider, new HistoryConfig(), (long)MergeConfig.SecondsPerSlot, LogManager);
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 

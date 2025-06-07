@@ -32,6 +32,8 @@ namespace Nethermind.Specs.Test
 
         public long MinGasLimit => _spec.MinGasLimit;
 
+        public long MinHistoryRetentionEpochs => _spec.MinHistoryRetentionEpochs;
+
         public long GasLimitBoundDivisor => _spec.GasLimitBoundDivisor;
 
         private UInt256? _blockReward;

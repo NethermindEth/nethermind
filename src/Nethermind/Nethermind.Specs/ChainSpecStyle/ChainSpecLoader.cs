@@ -94,6 +94,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400,
             MaximumExtraDataSize = chainSpecJson.Params.MaximumExtraDataSize ?? 32,
             MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000,
+            MinHistoryRetentionEpochs = chainSpecJson.Params.MinHistoryRetentionEpochs ?? 82125,
             MaxCodeSize = chainSpecJson.Params.MaxCodeSize,
             MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition,
             MaxCodeSizeTransitionTimestamp = chainSpecJson.Params.MaxCodeSizeTransitionTimestamp,
