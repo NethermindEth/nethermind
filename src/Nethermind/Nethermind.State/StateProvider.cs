@@ -25,6 +25,7 @@ using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 using Metrics = Nethermind.Db.Metrics;
+using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State
 {
@@ -523,10 +524,11 @@ namespace Nethermind.State
                 ? Task.CompletedTask
                 : CommitCodeAsync();
 
-            var currentPosition = _changes.Count - 1;
-            if (currentPosition < 0)
+            bool isTracing = _logger.IsTrace;
+            int stepsBack = _changes.Count - 1;
+            if (stepsBack < 0)
             {
-                if (_logger.IsTrace) _logger.Trace("  no state changes to commit");
+                if (isTracing) TraceNoChanges();
                 if (commitRoots)
                 {
                     FlushToTree();
@@ -534,35 +536,35 @@ namespace Nethermind.State
                 return;
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Committing state changes (at {currentPosition})");
-            if (_changes[currentPosition].IsNull)
+            if (isTracing) TraceCommit(stepsBack);
+            if (_changes[stepsBack].IsNull)
             {
-                throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(StateProvider)}");
+                ThrowStartOfCommitIsNull(stepsBack);
             }
 
-            bool isTracing = stateTracer.IsTracingState;
-            Dictionary<AddressAsKey, ChangeTrace>? trace = !isTracing ? null : [];
+            Dictionary<AddressAsKey, ChangeTrace>? trace = !stateTracer.IsTracingState ? null : [];
 
-            for (int i = 0; i <= currentPosition; i++)
+            ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+            for (int i = 0; i <= stepsBack; i++)
             {
-                Change change = _changes[currentPosition - i];
-                if (!isTracing && change!.ChangeType == ChangeType.JustCache)
+                ref readonly Change change = ref changes[stepsBack - i];
+                if (trace is null && change!.ChangeType == ChangeType.JustCache)
                 {
                     continue;
                 }
 
                 if (_committedThisRound.Contains(change!.Address))
                 {
-                    if (isTracing && change.ChangeType == ChangeType.JustCache)
+                    if (change.ChangeType == ChangeType.JustCache)
                     {
-                        trace[change.Address] = new ChangeTrace(change.Account, trace[change.Address].After);
+                        trace?.Add(change.Address, new ChangeTrace(change.Account, trace[change.Address].After));
                     }
 
                     continue;
                 }
 
                 // because it was not committed yet it means that the just cache is the only state (so it was read only)
-                if (isTracing && change.ChangeType == ChangeType.JustCache)
+                if (trace is not null && change.ChangeType == ChangeType.JustCache)
                 {
                     _nullAccountReads.Add(change.Address);
                     continue;
@@ -570,9 +572,9 @@ namespace Nethermind.State
 
                 Stack<int> stack = _intraTxCache[change.Address];
                 int forAssertion = stack.Pop();
-                if (forAssertion != currentPosition - i)
+                if (forAssertion != stepsBack - i)
                 {
-                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
+                    ThrowUnexpectedPosition(stepsBack, i, forAssertion);
                 }
 
                 _committedThisRound.Add(change.Address);
@@ -580,29 +582,21 @@ namespace Nethermind.State
                 switch (change.ChangeType)
                 {
                     case ChangeType.JustCache:
-                        {
                             break;
-                        }
                     case ChangeType.Touch:
                     case ChangeType.Update:
                         {
                             if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
                             {
-                                if (_logger.IsTrace) _logger.Trace($"  Commit remove empty {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
+                                if (isTracing) TraceRemoveEmpty(change);
                                 SetState(change.Address, null);
-                                if (isTracing)
-                                {
-                                    trace[change.Address] = new ChangeTrace(null);
-                                }
+                                trace?.AddToTrace(change.Address, null);
                             }
                             else
                             {
-                                if (_logger.IsTrace) _logger.Trace($"  Commit update {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)} C = {change.Account.CodeHash}");
+                                if (isTracing) TraceUpdate(change);
                                 SetState(change.Address, change.Account);
-                                if (isTracing)
-                                {
-                                    trace[change.Address] = new ChangeTrace(change.Account);
-                                }
+                                trace?.AddToTrace(change.Address, change.Account);
                             }
 
                             break;
@@ -611,19 +605,16 @@ namespace Nethermind.State
                         {
                             if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
                             {
-                                if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
+                                if (isTracing) TraceCreate(change);
                                 SetState(change.Address, change.Account);
-                                if (isTracing)
-                                {
-                                    trace[change.Address] = new ChangeTrace(change.Account);
-                                }
+                                trace?.AddToTrace(change.Address, change.Account);
                             }
 
                             break;
                         }
                     case ChangeType.Delete:
                         {
-                            if (_logger.IsTrace) _logger.Trace($"  Commit remove {change.Address}");
+                            if (isTracing) TraceRemove(change);
                             bool wasItCreatedNow = false;
                             while (stack.Count > 0)
                             {
@@ -638,37 +629,23 @@ namespace Nethermind.State
                             if (!wasItCreatedNow)
                             {
                                 SetState(change.Address, null);
-                                if (isTracing)
-                                {
-                                    trace[change.Address] = new ChangeTrace(null);
-                                }
+                                trace?.AddToTrace(change.Address, null);
                             }
 
                             break;
                         }
                     default:
-                        throw new ArgumentOutOfRangeException();
+                        ThrowUnknownChangeType();
+                        break;
                 }
             }
 
-            if (isTracing)
-            {
-                foreach (Address nullRead in _nullAccountReads)
-                {
-                    // // this may be enough, let us write tests
-                    stateTracer.ReportAccountRead(nullRead);
-                }
-            }
+            trace?.ReportStateTrace(stateTracer, _nullAccountReads, this);
 
             _changes.Clear();
             _committedThisRound.Clear();
             _nullAccountReads.Clear();
             _intraTxCache.Clear();
-
-            if (isTracing)
-            {
-                ReportChanges(stateTracer, trace);
-            }
 
             if (commitRoots)
             {
@@ -702,6 +679,38 @@ namespace Nethermind.State
                     }
                 });
             }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceCommit(int currentPosition) => _logger.Trace($"Committing state changes (at {currentPosition})");
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceNoChanges() => _logger.Trace("No state changes to commit");
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceRemove(in Change change) => _logger.Trace($"Commit remove {change.Address}");
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceCreate(in Change change)
+                => _logger.Trace($"Commit create {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceUpdate(in Change change)
+                => _logger.Trace($"Commit update {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)} C = {change.Account.CodeHash}");
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceRemoveEmpty(in Change change)
+                => _logger.Trace($"Commit remove empty {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowStartOfCommitIsNull(int currentPosition)
+                => throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(StateProvider)}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowUnknownChangeType() => throw new ArgumentOutOfRangeException();
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowUnexpectedPosition(int currentPosition, int i, int forAssertion)
+                => throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
         }
 
         private void FlushToTree()
@@ -727,64 +736,6 @@ namespace Nethermind.State
                 Metrics.IncrementStateTreeWrites(writes);
             if (skipped > 0)
                 Metrics.IncrementStateSkippedWrites(skipped);
-        }
-
-        private void ReportChanges(IStateTracer stateTracer, Dictionary<AddressAsKey, ChangeTrace> trace)
-        {
-            foreach ((Address address, ChangeTrace change) in trace)
-            {
-                bool someChangeReported = false;
-
-                Account? before = change.Before;
-                Account? after = change.After;
-
-                UInt256? beforeBalance = before?.Balance;
-                UInt256? afterBalance = after?.Balance;
-
-                UInt256? beforeNonce = before?.Nonce;
-                UInt256? afterNonce = after?.Nonce;
-
-                Hash256? beforeCodeHash = before?.CodeHash;
-                Hash256? afterCodeHash = after?.CodeHash;
-
-                if (beforeCodeHash != afterCodeHash)
-                {
-                    byte[]? beforeCode = beforeCodeHash is null
-                        ? null
-                        : beforeCodeHash == Keccak.OfAnEmptyString
-                            ? []
-                            : GetCodeCore(in beforeCodeHash.ValueHash256);
-                    byte[]? afterCode = afterCodeHash is null
-                        ? null
-                        : afterCodeHash == Keccak.OfAnEmptyString
-                            ? []
-                            : GetCodeCore(in afterCodeHash.ValueHash256);
-
-                    if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
-                    {
-                        stateTracer.ReportCodeChange(address, beforeCode, afterCode);
-                    }
-
-                    someChangeReported = true;
-                }
-
-                if (afterBalance != beforeBalance)
-                {
-                    stateTracer.ReportBalanceChange(address, beforeBalance, afterBalance);
-                    someChangeReported = true;
-                }
-
-                if (afterNonce != beforeNonce)
-                {
-                    stateTracer.ReportNonceChange(address, beforeNonce, afterNonce);
-                    someChangeReported = true;
-                }
-
-                if (!someChangeReported)
-                {
-                    stateTracer.ReportAccountRead(address);
-                }
-            }
         }
 
         public bool WarmUp(Address address)
@@ -1002,7 +953,7 @@ namespace Nethermind.State
             public bool IsNull => ChangeType == ChangeType.Null;
         }
 
-        private struct ChangeTrace(Account? before, Account? after)
+        internal struct ChangeTrace(Account? before, Account? after)
         {
             public ChangeTrace(Account? after) : this(null, after)
             {
@@ -1010,6 +961,84 @@ namespace Nethermind.State
 
             public Account? Before { get; set; } = before;
             public Account? After { get; set; } = after;
+        }
+    }
+
+    internal static class Extensions
+    {
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void AddToTrace(this Dictionary<AddressAsKey, ChangeTrace>? trace, Address address, Account? change)
+        {
+            trace?.Add(address, new ChangeTrace(change));
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void ReportStateTrace(this Dictionary<AddressAsKey, ChangeTrace>? trace, IWorldStateTracer stateTracer, HashSet<AddressAsKey> nullAccountReads, StateProvider stateProvider)
+        {
+            foreach (Address nullRead in nullAccountReads)
+            {
+                // // this may be enough, let us write tests
+                stateTracer.ReportAccountRead(nullRead);
+            }
+            ReportChanges(trace, stateTracer, stateProvider);
+        }
+
+        private static void ReportChanges(Dictionary<AddressAsKey, ChangeTrace> trace, IStateTracer stateTracer, StateProvider stateProvider)
+        {
+            foreach ((Address address, ChangeTrace change) in trace)
+            {
+                bool someChangeReported = false;
+
+                Account? before = change.Before;
+                Account? after = change.After;
+
+                UInt256? beforeBalance = before?.Balance;
+                UInt256? afterBalance = after?.Balance;
+
+                UInt256? beforeNonce = before?.Nonce;
+                UInt256? afterNonce = after?.Nonce;
+
+                Hash256? beforeCodeHash = before?.CodeHash;
+                Hash256? afterCodeHash = after?.CodeHash;
+
+                if (beforeCodeHash != afterCodeHash)
+                {
+                    byte[]? beforeCode = beforeCodeHash is null
+                        ? null
+                        : beforeCodeHash == Keccak.OfAnEmptyString
+                            ? []
+                            : stateProvider.GetCode(in beforeCodeHash.ValueHash256);
+                    byte[]? afterCode = afterCodeHash is null
+                        ? null
+                        : afterCodeHash == Keccak.OfAnEmptyString
+                            ? []
+                            : stateProvider.GetCode(in afterCodeHash.ValueHash256);
+
+                    if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
+                    {
+                        stateTracer.ReportCodeChange(address, beforeCode, afterCode);
+                    }
+
+                    someChangeReported = true;
+                }
+
+                if (afterBalance != beforeBalance)
+                {
+                    stateTracer.ReportBalanceChange(address, beforeBalance, afterBalance);
+                    someChangeReported = true;
+                }
+
+                if (afterNonce != beforeNonce)
+                {
+                    stateTracer.ReportNonceChange(address, beforeNonce, afterNonce);
+                    someChangeReported = true;
+                }
+
+                if (!someChangeReported)
+                {
+                    stateTracer.ReportAccountRead(address);
+                }
+            }
         }
     }
 }
