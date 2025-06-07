@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -120,4 +122,20 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks")]
     ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
+
+    [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks")]
+    ResultWrapper<bool> debug_executeWitness(BlockParameter blockParameter, WitnessForRpc witness);
 }
+
+public struct WitnessForRpc
+{
+    [JsonPropertyName("codes")]
+    public byte[][] Codes;
+    [JsonPropertyName("state")]
+    public byte[][] State;
+    [JsonPropertyName("keys")]
+    public byte[][] Keys;
+    [JsonPropertyName("headers")]
+    public byte[][] Headers;
+}
+

@@ -31,6 +31,7 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
 using System.Linq;
+using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.Facade
 {
@@ -56,9 +57,11 @@ namespace Nethermind.Facade
         private readonly IBlocksConfig _blocksConfig;
         private readonly SimulateBridgeHelper _simulateBridgeHelper;
         private readonly SimulateReadOnlyBlocksProcessingEnvFactory _simulateProcessingEnvFactory;
+        private readonly StatelessBlocksProcessingEnv _statelessBlocksProcessingEnv;
 
         public BlockchainBridge(OverridableTxProcessingEnv processingEnv,
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
+            StatelessBlocksProcessingEnv statelessBlocksProcessingEnv,
             ITxPool? txPool,
             IReceiptFinder? receiptStorage,
             IFilterStore? filterStore,
@@ -84,6 +87,7 @@ namespace Nethermind.Facade
             _blocksConfig = blocksConfig;
             IsMining = isMining;
             _simulateProcessingEnvFactory = simulateProcessingEnvFactory ?? throw new ArgumentNullException(nameof(simulateProcessingEnvFactory));
+            _statelessBlocksProcessingEnv = statelessBlocksProcessingEnv;
             _simulateBridgeHelper = new SimulateBridgeHelper(_blocksConfig, _specProvider);
         }
 
@@ -431,6 +435,17 @@ namespace Nethermind.Facade
             };
 
             return error is null ? null : $"err: {error} (supplied gas {gasLimit})";
+        }
+
+        public bool ExecuteWitness(BlockParameter blockParameter, Witness witness)
+        {
+            Block block = _blockTree.FindBlock(blockParameter);
+            Block parent = _blockTree.FindBlock(block.ParentHash);
+            IBlockProcessor blockProcessor = _statelessBlocksProcessingEnv.GetProcessor(witness, parent.StateRoot);
+            Hash256 expectedHash = block.Hash;
+            Block[] result = blockProcessor.Process(parent.StateRoot, [block], ProcessingOptions.DoNotUpdateHead,
+                NullBlockTracer.Instance);
+            return expectedHash == result[0].Hash;
         }
     }
 }
