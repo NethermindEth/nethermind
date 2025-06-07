@@ -495,6 +495,7 @@ namespace Nethermind.Trie
                 (byte[] key, bool isLeaf) = HexPrefix.FromBytes(valueSpan);
                 if (isLeaf)
                 {
+                    valueSpan = rlpStream.DecodeByteArraySpan();
                     SpanSource buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
                     valueSpan.CopyTo(buffer.Span);
                     _nodeData = new LeafData(key, buffer);
