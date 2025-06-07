@@ -582,7 +582,7 @@ namespace Nethermind.State
                 switch (change.ChangeType)
                 {
                     case ChangeType.JustCache:
-                            break;
+                        break;
                     case ChangeType.Touch:
                     case ChangeType.Update:
                         {
