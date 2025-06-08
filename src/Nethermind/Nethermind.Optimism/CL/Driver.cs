@@ -43,6 +43,7 @@ public class Driver : IDisposable
         _decodingPipeline = decodingPipeline;
         _systemConfigDeriver = new SystemConfigDeriver(engineParameters.SystemConfigProxy);
         _executionEngineManager = executionEngineManager;
+        ulong l2GenesisNumber = chainId == 10 ? 105235063u : 0u;
 
         _derivationPipeline = new DerivationPipeline(
             new PayloadAttributesDeriver(
@@ -50,6 +51,7 @@ public class Driver : IDisposable
                 new DepositTransactionBuilder(chainId, engineParameters)),
             l1Bridge,
             l2GenesisTimestamp,
+            l2GenesisNumber,
             _l2BlockTime,
             chainId,
             logManager);

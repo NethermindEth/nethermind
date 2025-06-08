@@ -20,6 +20,7 @@ public class DerivationPipeline(
     IPayloadAttributesDeriver payloadAttributesDeriver,
     IL1Bridge l1Bridge,
     ulong l2GenesisTimestamp,
+    ulong l2GenesisNumber,
     ulong l2BlockTime,
     ulong chainId,
     ILogManager logManager) : IDerivationPipeline
@@ -30,7 +31,7 @@ public class DerivationPipeline(
         [EnumeratorCancellation] CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(l2Parent);
-        ulong firstBlockNumber = batch.RelTimestamp / l2BlockTime;
+        ulong firstBlockNumber = l2GenesisNumber + batch.RelTimestamp / l2BlockTime;
         if (_logger.IsInfo) _logger.Info($"Processing batch. Block numbers from {firstBlockNumber} to {firstBlockNumber + batch.BlockCount - 1}");
         if (firstBlockNumber - 1 != l2Parent.Number)
         {
