@@ -21,7 +21,8 @@ public static partial class AbiType
             Span<byte> bytes = stackalloc byte[32];
             v.ToBigEndian(bytes);
             w.Write(bytes);
-        }
+        },
+        Size = _ => 32,
     };
 
     public static readonly IAbi<UInt64> UInt64 = new()
@@ -29,6 +30,7 @@ public static partial class AbiType
         Name = "uint64",
         Read = (ref BinarySpanReader r) => (UInt64)UInt256.Read(ref r),
         Write = (ref BinarySpanWriter w, UInt64 v) => UInt256.Write(ref w, v),
+        Size = _ => 32,
     };
 
     public static readonly IAbi<UInt32> UInt32 = new()
@@ -36,6 +38,7 @@ public static partial class AbiType
         Name = "uint32",
         Read = (ref BinarySpanReader r) => (UInt32)UInt256.Read(ref r),
         Write = (ref BinarySpanWriter w, UInt32 v) => UInt256.Write(ref w, v),
+        Size = _ => 32,
     };
 
     public static readonly IAbi<UInt16> UInt16 = new()
@@ -43,6 +46,7 @@ public static partial class AbiType
         Name = "uint16",
         Read = (ref BinarySpanReader r) => (UInt16)UInt256.Read(ref r),
         Write = (ref BinarySpanWriter w, UInt16 v) => UInt256.Write(ref w, v),
+        Size = _ => 32,
     };
 
     public static readonly IAbi<Byte> UInt8 = new()
@@ -50,20 +54,23 @@ public static partial class AbiType
         Name = "uint8",
         Read = (ref BinarySpanReader r) => (Byte)UInt256.Read(ref r),
         Write = (ref BinarySpanWriter w, Byte v) => UInt256.Write(ref w, v),
+        Size = _ => 32,
     };
 
     public static readonly IAbi<Boolean> Bool = new()
     {
         Name = "bool",
         Read = (ref BinarySpanReader r) => UInt256.Read(ref r) != 0,
-        Write = (ref BinarySpanWriter w, Boolean v) => UInt256.Write(ref w, v ? 1u : 0u)
+        Write = (ref BinarySpanWriter w, Boolean v) => UInt256.Write(ref w, v ? 1u : 0u),
+        Size = _ => 32,
     };
 
     public static IAbi<T[]> Array<T>(IAbi<T> elements) => new()
     {
         Name = $"{elements.Name}[]",
         Read = (ref BinarySpanReader r) => throw new NotImplementedException(),
-        Write = (ref BinarySpanWriter w, T[] array) => throw new NotImplementedException()
+        Write = (ref BinarySpanWriter w, T[] array) => throw new NotImplementedException(),
+        Size = _ => throw new NotImplementedException(),
     };
 
     public static IAbi<T[]> Array<T>(IAbi<T> elements, int length) => new()
@@ -86,6 +93,18 @@ public static partial class AbiType
             {
                 elements.Write(ref w, item);
             }
+        },
+        Size = array =>
+        {
+            if (array.Length != length) throw new AbiException();
+
+            int size = 0;
+            foreach (var item in array)
+            {
+                size += elements.Size(item);
+            }
+
+            return size;
         }
     };
 
@@ -103,6 +122,13 @@ public static partial class AbiType
 
             UInt256.Write(ref w, (UInt256)length);
             w.WritePadded(bytes);
+        },
+        Size = bytes =>
+        {
+            var lengthSize = 32;
+            var bytesSize = Math.PadTo32(bytes.Length);
+
+            return lengthSize + bytesSize;
         }
     };
 
@@ -114,6 +140,12 @@ public static partial class AbiType
         {
             if (bytes.Length != length) throw new AbiException();
             w.WritePadded(bytes);
+        },
+        Size = bytes =>
+        {
+            var bytesLength = Math.PadTo32(bytes.Length);
+
+            return bytesLength;
         }
     };
 
@@ -134,6 +166,14 @@ public static partial class AbiType
 
             UInt256.Write(ref w, (UInt256)length);
             w.WritePadded(buffer);
+        },
+        Size = v =>
+        {
+            var lengthSize = 32;
+            var byteCount = Encoding.UTF8.GetByteCount(v);
+            var byteSize = Math.PadTo32(byteCount);
+
+            return lengthSize + byteSize;
         }
     };
 }
@@ -147,7 +187,6 @@ public static partial class AbiType
 // Tuples
 public static partial class AbiType
 {
-
     public static IAbi<T> Tuple<T>(IAbi<T> abi) => new()
     {
         Name = $"({abi})",
@@ -159,7 +198,8 @@ public static partial class AbiType
         Write = (ref BinarySpanWriter w, T v) =>
         {
             abi.Write(ref w, v);
-        }
+        },
+        Size = v => abi.Size(v)
     };
 
     public static IAbi<(T1, T2)> Tuple<T1, T2>(IAbi<T1> abi1, IAbi<T2> abi2) => new()
@@ -175,7 +215,8 @@ public static partial class AbiType
         {
             abi1.Write(ref w, v.Item1);
             abi2.Write(ref w, v.Item2);
-        }
+        },
+        Size = (v) => abi1.Size(v.Item1) + abi2.Size(v.Item2)
     };
 
     public static IAbi<(T1, T2, T3)> Tuple<T1, T2, T3>(IAbi<T1> abi1, IAbi<T2> abi2, IAbi<T3> arg3) => new()
@@ -193,6 +234,7 @@ public static partial class AbiType
             abi1.Write(ref w, v.Item1);
             abi2.Write(ref w, v.Item2);
             arg3.Write(ref w, v.Item3);
-        }
+        },
+        Size = (v) => abi1.Size(v.Item1) + abi2.Size(v.Item2) + arg3.Size(v.Item3)
     };
 }

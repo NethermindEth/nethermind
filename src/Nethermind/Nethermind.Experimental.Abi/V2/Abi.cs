@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Experimental.Abi.V2;
@@ -9,17 +10,19 @@ public class AbiException : Exception;
 
 public static class Abi
 {
-    private const int DefaultBufferSize = 4096;
-
     public static byte[] Encode<T>(AbiSignature<T> signature, T arg)
     {
-        Span<byte> buffer = stackalloc byte[DefaultBufferSize];
+        var contentSize = signature.Abi.Size(arg);
+
+        byte[] buffer = new byte[AbiSignature.MethodIdLength + contentSize];
         var w = new BinarySpanWriter(buffer);
 
         w.Write(signature.MethodId());
         signature.Abi.Write(ref w, arg);
 
-        return buffer.Slice(0, w.Written).ToArray();
+        Debug.Assert(w.Written == buffer.Length, "Abi encoding did not write the expected number of bytes");
+
+        return buffer;
     }
 
     public static T Decode<T>(AbiSignature<T> signature, byte[] source)
