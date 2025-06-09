@@ -5,16 +5,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Data;
-using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
-using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
@@ -77,8 +74,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
         if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
-        ITxFilter auRaTxFilter = _api.TxAuRaFilterBuilders.CreateAuRaTxFilter(
-            new ServiceTxFilter(_api.SpecProvider));
+        ITxFilter auRaTxFilter = _api.TxAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter());
 
         return NewAuraBlockProcessor(auRaTxFilter, preWarmer, transactionProcessor, worldState);
     }

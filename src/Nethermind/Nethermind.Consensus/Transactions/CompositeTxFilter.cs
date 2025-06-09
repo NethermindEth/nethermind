@@ -17,11 +17,11 @@ namespace Nethermind.Consensus.Transactions
             _txFilters = txFilters?.Where(static f => f is not null).ToArray() ?? [];
         }
 
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
         {
             for (int i = 0; i < _txFilters.Length; i++)
             {
-                AcceptTxResult isAllowed = _txFilters[i].IsAllowed(tx, parentHeader, spec);
+                AcceptTxResult isAllowed = _txFilters[i].IsAllowed(tx, parentHeader, currentSpec);
                 if (!isAllowed)
                 {
                     return isAllowed;

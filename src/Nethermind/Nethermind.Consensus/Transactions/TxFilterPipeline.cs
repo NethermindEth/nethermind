@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Transactions
             _filters.Add(txFilter);
         }
 
-        public bool Execute(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
+        public bool Execute(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
         {
             if (_filters.Count == 0)
             {
@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.Transactions
 
             foreach (ITxFilter filter in _filters)
             {
-                AcceptTxResult isAllowed = filter.IsAllowed(tx, parentHeader, spec);
+                AcceptTxResult isAllowed = filter.IsAllowed(tx, parentHeader, currentSpec);
                 if (!isAllowed)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Rejected tx ({isAllowed}) {tx.ToShortString()}");

@@ -36,7 +36,7 @@ namespace Nethermind.AuRa.Test.Transactions
             {
                 MinGasPrice = UInt256.One
             };
-            IMinGasPriceTxFilter minGasPriceFilter = new MinGasPriceTxFilter(blocksConfig, Substitute.For<ISpecProvider>());
+            IMinGasPriceTxFilter minGasPriceFilter = new MinGasPriceTxFilter(blocksConfig);
             IDictionaryContractDataStore<TxPriorityContract.Destination> dictionaryContractDataStore = Substitute.For<IDictionaryContractDataStore<TxPriorityContract.Destination>>();
             dictionaryContractDataStore.TryGetValue(
                     Arg.Any<BlockHeader>(),

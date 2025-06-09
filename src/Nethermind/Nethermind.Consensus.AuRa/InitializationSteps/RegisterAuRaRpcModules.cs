@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -139,7 +138,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
             IBlockValidator blockValidator, IRewardCalculator rewardCalculator, IReceiptStorage receiptStorage,
             ISpecProvider specProvider, ILogManager logManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
         {
-            ITxFilter auRaTxFilter = new ServiceTxFilter(specProvider);
+            ITxFilter auRaTxFilter = new ServiceTxFilter();
 
             var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
             IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = chainSpecAuRa.RewriteBytecode;
@@ -167,7 +166,7 @@ public class RegisterAuRaRpcModules : RegisterRpcModules
         private AuRaContractGasLimitOverride? GetGasLimitCalculator()
         {
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            var blockGasLimitContractTransitions = _parameters.BlockGasLimitContractTransitions;
+            IDictionary<long, Address> blockGasLimitContractTransitions = _parameters.BlockGasLimitContractTransitions;
 
             if (blockGasLimitContractTransitions?.Any() == true)
             {

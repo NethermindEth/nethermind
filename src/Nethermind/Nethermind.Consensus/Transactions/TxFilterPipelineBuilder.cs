@@ -10,7 +10,7 @@ namespace Nethermind.Consensus.Transactions
 {
     public class TxFilterPipelineBuilder
     {
-        private readonly ITxFilterPipeline _filterPipeline;
+        private readonly TxFilterPipeline _filterPipeline;
 
         public static ITxFilterPipeline CreateStandardFilteringPipeline(
             ILogManager logManager,
@@ -33,13 +33,13 @@ namespace Nethermind.Consensus.Transactions
 
         public TxFilterPipelineBuilder WithMinGasPriceFilter(IBlocksConfig blocksConfig, ISpecProvider specProvider)
         {
-            _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(blocksConfig, specProvider));
+            _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(blocksConfig));
             return this;
         }
 
         public TxFilterPipelineBuilder WithBaseFeeFilter(ISpecProvider specProvider)
         {
-            _filterPipeline.AddTxFilter(new BaseFeeTxFilter(specProvider));
+            _filterPipeline.AddTxFilter(new BaseFeeTxFilter());
             return this;
         }
 

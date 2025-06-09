@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -9,52 +10,40 @@ using Nethermind.TxPool;
 using System;
 using System.Collections.Generic;
 
-namespace Nethermind.Consensus.Transactions
+namespace Nethermind.Consensus.Transactions;
+
+public class FilteredTxSource<T>(ITxSource innerSource, ITxFilter txFilter, ILogManager logManager, ISpecProvider specProvider, IBlocksConfig? blocksConfig) : ITxSource where T : Transaction
 {
-    public class FilteredTxSource<T> : ITxSource where T : Transaction
+    private readonly ILogger _logger = logManager?.GetClassLogger<FilteredTxSource<T>>() ?? throw new ArgumentNullException(nameof(logManager));
+
+    public bool SupportsBlobs => innerSource.SupportsBlobs;
+
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parentHeader, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
     {
-        private readonly ITxSource _innerSource;
-        private readonly ITxFilter _txFilter;
-        private readonly ISpecProvider _specProvider;
-        private readonly ILogger _logger;
+        IReleaseSpec currentSpec = NextBlockSpecHelper.GetSpec(specProvider, parentHeader, payloadAttributes, blocksConfig);
 
-        public bool SupportsBlobs => _innerSource.SupportsBlobs;
-
-        public FilteredTxSource(ITxSource innerSource, ITxFilter txFilter, ILogManager logManager, ISpecProvider specProvider)
+        foreach (Transaction tx in innerSource.GetTransactions(parentHeader, gasLimit, payloadAttributes, filterSource))
         {
-            _innerSource = innerSource;
-            _txFilter = txFilter;
-            _specProvider = specProvider;
-            _logger = logManager?.GetClassLogger<FilteredTxSource<T>>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
-        {
-            IReleaseSpec spec = payloadAttributes is not null ? _specProvider.GetSpec(parent.Number + 1, payloadAttributes.Timestamp) : _specProvider.GetSpec(parent);
-
-            foreach (Transaction tx in _innerSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource))
+            if (tx is T)
             {
-                if (tx is T)
+                AcceptTxResult acceptTxResult = txFilter.IsAllowed(tx, parentHeader, currentSpec);
+                if (acceptTxResult)
                 {
-                    AcceptTxResult acceptTxResult = _txFilter.IsAllowed(tx, parent, spec);
-                    if (acceptTxResult)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");
-                        yield return tx;
-                    }
-                    else
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Rejecting ({acceptTxResult}) {tx.ToShortString()}");
-                    }
+                    if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");
+                    yield return tx;
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block, skipped validation for {tx.GetType()}.");
-                    yield return tx;
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting ({acceptTxResult}) {tx.ToShortString()}");
                 }
             }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block, skipped validation for {tx.GetType()}.");
+                yield return tx;
+            }
         }
-
-        public override string ToString() => $"{nameof(FilteredTxSource<T>)} [ {_innerSource} ]";
     }
+
+    public override string ToString() => $"{nameof(FilteredTxSource<T>)} [ {innerSource} ]";
 }

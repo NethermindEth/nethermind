@@ -350,7 +350,7 @@ public class StartBlockProducerAuRa(
         if (txPermissionFilter is not null)
         {
             // we now only need to filter generated transactions here, as regular ones are filtered on TxPoolTxSource filter based on CreateTxSourceFilter method
-            txSource = new FilteredTxSource<GeneratedTransaction>(txSource, txPermissionFilter, logManager, specProvider);
+            txSource = new FilteredTxSource<GeneratedTransaction>(txSource, txPermissionFilter, logManager, specProvider, blocksConfig);
         }
 
         return txSource;

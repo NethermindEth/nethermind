@@ -9,6 +9,6 @@ namespace Nethermind.Consensus.Transactions
 {
     public interface ITxFilter
     {
-        AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec);
+        AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec);
     }
 }

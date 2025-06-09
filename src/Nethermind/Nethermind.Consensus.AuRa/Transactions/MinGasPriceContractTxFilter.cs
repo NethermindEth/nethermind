@@ -23,16 +23,16 @@ namespace Nethermind.Consensus.AuRa.Transactions
         }
 
 
-        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
         {
-            AcceptTxResult isAllowed = _minGasPriceFilter.IsAllowed(tx, parentHeader, spec);
+            AcceptTxResult isAllowed = _minGasPriceFilter.IsAllowed(tx, parentHeader, currentSpec);
             if (!isAllowed)
             {
                 return isAllowed;
             }
             else if (_minGasPrices.TryGetValue(parentHeader, tx, out TxPriorityContract.Destination @override))
             {
-                return _minGasPriceFilter.IsAllowed(tx, parentHeader, @override.Value);
+                return _minGasPriceFilter.IsAllowed(tx, parentHeader, @override.Value, currentSpec);
             }
 
             return AcceptTxResult.Accepted;
