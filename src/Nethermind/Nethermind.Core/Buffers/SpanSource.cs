@@ -55,7 +55,7 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
                     : objSize + MemorySizes.ArrayOverhead + array.Length;
             }
 
-            return objSize + Unsafe.As<CappedArraySource>(obj).MemorySize;
+            return obj is CappedArraySource capped ? objSize + capped.MemorySize : 0;
         }
     }
 
@@ -71,24 +71,6 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
         }
     }
 
-    public bool SequenceEqual(ReadOnlySpan<byte> other)
-    {
-        var obj = _obj;
-        if (obj is byte[] array)
-            return array.AsSpan().SequenceEqual(other);
-
-        return Unsafe.As<CappedArraySource>(obj).SequenceEqual(other);
-    }
-
-    public int CommonPrefixLength(ReadOnlySpan<byte> other)
-    {
-        var obj = _obj;
-        if (obj is byte[] array)
-            return array.AsSpan().CommonPrefixLength(other);
-
-        return Unsafe.As<CappedArraySource>(obj).CommonPrefixLength(other);
-    }
-
     public Span<byte> Span
     {
         get
@@ -101,7 +83,11 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
             if (obj is byte[] array)
                 return array.AsSpan();
 
-            return Unsafe.As<CappedArraySource>(obj).Span;
+            if (obj is CappedArraySource capped)
+                return capped.Span;
+
+            return Span<byte>.Empty;
+            //return Unsafe.As<CappedArraySource>(obj).Span;
         }
     }
 
@@ -182,8 +168,6 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
         public int Length => Capped.Length;
 
         public bool SequenceEqual(ReadOnlySpan<byte> other) => Capped.AsSpan().SequenceEqual(other);
-
-        public int CommonPrefixLength(ReadOnlySpan<byte> other) => Capped.AsSpan().CommonPrefixLength(other);
 
         public Span<byte> Span => Capped.AsSpan();
         public int MemorySize => MemorySizes.SmallObjectOverhead +
