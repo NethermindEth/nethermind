@@ -9,7 +9,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Bytes = Nethermind.Core.Extensions.Bytes;
@@ -95,19 +94,6 @@ public class WrappedEthTests(bool useIlEvm) : IlVirtualMachineTestsBase(useIlEvm
         ReadOnlySpan<byte> read = TestState.Get(cell);
         UInt256 after = new UInt256(read);
         after.Should().Be(expected);
-    }
-
-    private void AssertIlevmCalls()
-    {
-        if (UseIlEvm)
-        {
-
-            Metrics.IlvmAotPrecompiledCalls.Should().BeGreaterThan(0, "The WrappedEth contract should be executed by the IL EVM");
-        }
-        else
-        {
-            Metrics.IlvmAotPrecompiledCalls.Should().Be(0, "The WrappedEth contract should not be executed by the IL EVM");
-        }
     }
 
     internal override byte[] Bytecode => Bytes.FromHexString(
