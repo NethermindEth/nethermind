@@ -34,5 +34,9 @@ public class Dynamics
             "776f726c64000000000000000000000000000000000000000000000000000000"); // "world"
 
         encoded.Should().BeEquivalentTo(expected);
+
+        (string a, string b) = V2.Abi.Decode(signature, encoded);
+        a.Should().Be("hello");
+        b.Should().Be("world");
     }
 }
