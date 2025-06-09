@@ -27,7 +27,7 @@ public class TransactionProcessorFeeTests
 {
     private TestSpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
-    private TransactionProcessor _transactionProcessor;
+    private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
     private OverridableReleaseSpec _spec;
 

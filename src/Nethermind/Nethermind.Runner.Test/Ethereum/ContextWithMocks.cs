@@ -112,7 +112,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.Wallet = Substitute.For<IWallet>();
             api.BlockTree = Substitute.For<IBlockTree>();
             api.DbProvider = TestMemDbProvider.Init();
-            api.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
             api.ReceiptStorage = Substitute.For<IReceiptStorage>();
             api.ReceiptFinder = Substitute.For<IReceiptFinder>();
             api.TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();

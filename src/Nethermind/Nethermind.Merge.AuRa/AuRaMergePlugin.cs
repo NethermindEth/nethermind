@@ -51,11 +51,6 @@ namespace Nethermind.Merge.AuRa
             }
         }
 
-        public override IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
-        {
-            return base.InitBlockProducer(consensusPlugin, txSource);
-        }
-
         protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()
             => new AuRaPostMergeBlockProducerFactory(
                 _api.SpecProvider!,

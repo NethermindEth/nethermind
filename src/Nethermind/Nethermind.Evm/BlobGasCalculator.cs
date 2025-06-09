@@ -119,7 +119,7 @@ public static class BlobGasCalculator
         {
             TryCalculateFeePerBlobGas(parentBlockHeader, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
             UInt256 floorCost = Eip7918Constants.BlobBaseCost * parentBlockHeader.BaseFeePerGas;
-            UInt256 targetCost = targetBlobGasPerBlock * feePerBlobGas;
+            UInt256 targetCost = Eip4844Constants.GasPerBlob * feePerBlobGas;
 
             // if below floor cost then increase excess blob gas
             if (floorCost > targetCost)

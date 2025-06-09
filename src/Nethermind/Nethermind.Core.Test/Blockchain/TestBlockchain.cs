@@ -297,9 +297,9 @@ public class TestBlockchain : IDisposable
             : new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
     }
 
-    protected virtual IBlockProducer CreateTestBlockProducer(ITxSource? additionalTxSource = null)
+    protected virtual IBlockProducer CreateTestBlockProducer()
     {
-        BlockProducerEnv env = BlockProducerEnvFactory.Create(additionalTxSource);
+        BlockProducerEnv env = BlockProducerEnvFactory.Create();
         return new TestBlockProducer(
             env.TxSource,
             env.ChainProcessor,

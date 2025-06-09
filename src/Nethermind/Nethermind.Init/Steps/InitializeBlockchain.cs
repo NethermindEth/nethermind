@@ -30,7 +30,6 @@ using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -38,7 +37,6 @@ using Nethermind.Wallet;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(
-        typeof(InitializeStateDb),
         typeof(InitializePlugins),
         typeof(InitializeBlockTree),
         typeof(SetupKeyStore),

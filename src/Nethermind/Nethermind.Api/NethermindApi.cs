@@ -131,7 +131,7 @@ namespace Nethermind.Api
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }
-        public IEthereumEcdsa? EthereumEcdsa { get; set; }
+        public IEthereumEcdsa EthereumEcdsa => Context.Resolve<IEthereumEcdsa>();
         public IFileSystem FileSystem { get; set; } = new FileSystem();
         public IFilterStore? FilterStore { get; set; }
         public IFilterManager? FilterManager { get; set; }
