@@ -13,6 +13,7 @@ using Nethermind.Core.Extensions;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Collections;
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeInfo : IThreadPoolWorkItem
@@ -29,8 +30,19 @@ namespace Nethermind.Evm.CodeAnalysis
             if (Codehash is null || vmConfig.IlEvmEnabledMode == ILMode.NO_ILVM || !IlInfo.IsNotProcessed)
                 return;
 
+
             if (MachineCode.Length < vmConfig.IlEvmBytecodeMinLength
                 || MachineCode.Length > (vmConfig.IlEvmBytecodeMaxLength ?? spec.MaxCodeSize)) return;
+
+            if(vmConfig.IlEvmAllowedContracts.Length != 0)
+            {
+                if(Array.BinarySearch(
+                    vmConfig.IlEvmAllowedContracts,
+                    Codehash.Value.ToString (),
+                    StringComparer.OrdinalIgnoreCase) < 0) {
+                    return;
+                }
+            }
 
             if(Interlocked.Increment(ref _callCount) != vmConfig.IlEvmAnalysisThreshold)
                 return;

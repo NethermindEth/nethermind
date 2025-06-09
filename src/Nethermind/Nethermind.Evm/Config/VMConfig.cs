@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.CodeAnalysis.IL;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,7 +15,7 @@ namespace Nethermind.Evm.Config;
 public class VMConfig : IVMConfig
 {
     public bool IsILEvmEnabled { get; set; } = false;
-    public int IlEvmEnabledMode { get; set; } = 0;
+    public ILMode IlEvmEnabledMode { get; set; } = ILMode.NO_ILVM;
     public int IlEvmAnalysisThreshold { get; set; } = 32;
     public bool IsIlEvmAggressiveModeEnabled { get; set; } = false;
     public int IlEvmAnalysisQueueMaxSize { get; set; } = 8;
@@ -24,4 +26,5 @@ public class VMConfig : IVMConfig
     public float IlEvmAnalysisCoreUsage { get; set; } = 0.0f;
     public int? IlEvmBytecodeMaxLength { get; set; } = null;
     public int IlEvmBytecodeMinLength { get; set; } = 16;
+    public string[] IlEvmAllowedContracts { get; set; } = Array.Empty<string>();
 }

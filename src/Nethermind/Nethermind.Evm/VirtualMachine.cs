@@ -104,11 +104,15 @@ public class VirtualMachine : IVirtualMachine
             case ILMode.NO_ILVM when logger.IsTrace:
                 _evm = new VirtualMachine<IsTracing, NotOptimizing>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
                 break;
-            case ILMode.FULL_AOT_MODE when !logger.IsTrace:
-                _evm = new VirtualMachine<NotTracing, IsPrecompiling>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
-                break;
-            case ILMode.FULL_AOT_MODE when logger.IsTrace:
-                _evm = new VirtualMachine<IsTracing, IsPrecompiling>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
+            default:
+                if (!logger.IsTrace)
+                {
+                    _evm = new VirtualMachine<NotTracing, IsPrecompiling>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
+                }
+                else
+                {
+                    _evm = new VirtualMachine<IsTracing, IsPrecompiling>(blockhashProvider, codeInfoRepository, specProvider, _vmConfig, logger);
+                }
                 break;
         }
     }
@@ -688,7 +692,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 _state.IncrementNonce(env.ExecutingAccount);
             }
 
-            if (typeof(IsPrecompiling) == typeof(TOptimizing))
+            if (typeof(IsPrecompiling) == typeof(TOptimizing) && _vmConfig.IlEvmEnabledMode is ILMode.DYNAMIC_AOT_MODE)
             {
 #if ILVM_TESTING
                 if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed && vmState.Env.CodeInfo.Codehash is not null && vmState.Env.CodeInfo.MachineCode.Length < 24.KB())

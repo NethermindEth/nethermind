@@ -128,11 +128,11 @@ public static class IlAnalyzer
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    public static void Analyse(CodeInfo codeInfo, IlevmMode mode, IVMConfig vmConfig, ILogger logger)
+    public static void Analyse(CodeInfo codeInfo, ILMode mode, IVMConfig vmConfig, ILogger logger)
     {
         switch (mode)
         {
-            case ILMode.FULL_AOT_MODE:
+            case ILMode.DYNAMIC_AOT_MODE:
                 if (AotContractsRepository.TryGetIledCode(codeInfo.Codehash.Value, out ILExecutionStep? contractDelegate))
                 {
                     codeInfo.IlInfo.PrecompiledContract = contractDelegate;

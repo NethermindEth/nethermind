@@ -14,6 +14,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 using System.IO;
 using System.Linq;
@@ -34,6 +35,7 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
         SpecProvider = new TestSpecProvider(spec);
         Setup();
     }
+    protected override ISpecProvider SpecProvider { get; set; } = new CustomSpecProvider((new ForkActivation(0, 0),Prague.Instance));
 
     public IlVirtualMachineTestsBase(bool useIlEVM) 
     {
@@ -41,7 +43,7 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
 
         _config = new VMConfig
         {
-            IlEvmEnabledMode = ILMode.FULL_AOT_MODE,
+            IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
             IlEvmAnalysisThreshold = 1,
             IlEvmAnalysisQueueMaxSize = 1,
             IlEvmContractsPerDllCount = 1,
@@ -96,7 +98,7 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
     {
         if(UseIlEvm && forceAnalysis)
         {
-            ForceRunAnalysis(tx.To, ILMode.FULL_AOT_MODE);
+            ForceRunAnalysis(tx.To, ILMode.DYNAMIC_AOT_MODE);
         }
         Execute(fork ?? MainnetSpecProvider.PragueActivation, tx);
     }
@@ -110,13 +112,13 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
         TestState.InsertCode(address, hashcode, bytecode, Spec);
         return address;
     }
-    public void ForceRunAnalysis(Address address, int mode)
+    public void ForceRunAnalysis(Address address, ILMode mode)
     {
         var codeinfo = CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance, out _);
 
-        if (mode.HasFlag(ILMode.FULL_AOT_MODE))
+        if (mode.HasFlag(ILMode.DYNAMIC_AOT_MODE))
         {
-            IlAnalyzer.Analyse(codeinfo, ILMode.FULL_AOT_MODE, _config, NullLogger.Instance);
+            IlAnalyzer.Analyse(codeinfo, ILMode.DYNAMIC_AOT_MODE, _config, NullLogger.Instance);
         }
 
         codeinfo.IlInfo.AnalysisPhase = AnalysisPhase.Completed;

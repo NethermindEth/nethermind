@@ -24,7 +24,7 @@ public interface IVMConfig : IConfig
     [ConfigItem(
         Description = "Set IL-EVM Activated Mode : 0- Il-evm is turned off 1- Pattern mode, 2- Precompilation mode",
         DefaultValue = "0")]
-    public int IlEvmEnabledMode { get; set; }
+    public ILMode IlEvmEnabledMode { get; set; }
 
     [ConfigItem(
         Description = "Threshold for enabling optimizations for a contract",
@@ -71,6 +71,11 @@ public interface IVMConfig : IConfig
             DefaultValue = "32")]
     public int IlEvmBytecodeMinLength { get; set; }
 
+
+    [ConfigItem(
+            Description = "Sets allowed contracts",
+            DefaultValue = "[]")]
+    public string[] IlEvmAllowedContracts { get; set; }
 
     public bool IsVmOptimizationEnabled => IlEvmEnabledMode != ILMode.NO_ILVM;
 }
