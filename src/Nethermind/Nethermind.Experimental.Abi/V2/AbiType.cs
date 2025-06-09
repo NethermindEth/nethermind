@@ -206,6 +206,7 @@ public static partial class AbiType
     public static IAbi<(T1, T2)> Tuple<T1, T2>(IAbi<T1> abi1, IAbi<T2> abi2) => new()
     {
         Name = $"({abi1.Name},{abi2.Name})",
+        IsDynamic = abi1.IsDynamic || abi2.IsDynamic,
         Read = (ref BinarySpanReader r) =>
         {
             var rr = new BinarySpanReader(r.Span[r.Position..]);
