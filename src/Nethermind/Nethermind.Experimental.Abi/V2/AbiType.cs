@@ -113,7 +113,7 @@ public static partial class AbiType
         Name = $"bytes",
         Read = (ref BinarySpanReader r) =>
         {
-            int length = (int)UInt256.Read(ref r); // TODO: Use `UInt256` when dealing with lengths
+            int length = (int)UInt256.Read(ref r);
             return r.ReadBytesPadded(length).ToArray();
         },
         Write = (ref BinarySpanWriter w, byte[] bytes) =>
@@ -155,7 +155,7 @@ public static partial class AbiType
         IsDynamic = true,
         Read = (ref BinarySpanReader r) =>
         {
-            int length = (int)UInt256.Read(ref r); // TODO: Use `UInt256` when dealing with lengths
+            int length = (int)UInt256.Read(ref r);
             var bytes = r.ReadBytesPadded(length);
             return Encoding.UTF8.GetString(bytes);
         },
