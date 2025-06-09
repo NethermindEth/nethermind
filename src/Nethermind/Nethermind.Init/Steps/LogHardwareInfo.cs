@@ -3,23 +3,18 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Core.Cpu;
+using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Init.Steps;
 
-public class LogHardwareInfo : IStep
+public class LogHardwareInfo(ILogManager logManager) : IStep
 {
-    private readonly ILogger _logger;
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public bool MustInitialize => false;
-
-    public LogHardwareInfo(INethermindApi api)
-    {
-        _logger = api.LogManager.GetClassLogger();
-    }
 
     public Task Execute(CancellationToken cancellationToken)
     {

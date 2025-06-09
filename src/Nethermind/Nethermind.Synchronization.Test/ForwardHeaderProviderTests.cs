@@ -327,7 +327,7 @@ public partial class ForwardHeaderProviderTests
         public byte ProtocolVersion { get; } = default;
         public Hash256 HeadHash { get; set; } = headHash ?? Keccak.Zero;
         public long HeadNumber { get; set; } = number;
-        public UInt256 TotalDifficulty { get; set; } = totalDiff ?? UInt256.MaxValue;
+        public UInt256? TotalDifficulty { get; set; } = totalDiff ?? UInt256.MaxValue;
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
@@ -460,13 +460,7 @@ public partial class ForwardHeaderProviderTests
 
         public void ConfigureBestPeer(PeerInfo peerInfo)
         {
-            IPeerAllocationStrategy peerAllocationStrategy = Substitute.For<IPeerAllocationStrategy>();
-
-            peerAllocationStrategy
-                .Allocate(Arg.Any<PeerInfo?>(), Arg.Any<IEnumerable<PeerInfo>>(), Arg.Any<INodeStatsManager>(), Arg.Any<IBlockTree>())
-                .Returns(peerInfo);
-            SyncPeerAllocation peerAllocation = new(peerAllocationStrategy, AllocationContexts.Blocks, null);
-            peerAllocation.AllocateBestPeer(new List<PeerInfo>(), Substitute.For<INodeStatsManager>(), BlockTree);
+            SyncPeerAllocation peerAllocation = new(peerInfo, AllocationContexts.Blocks, null);
 
             PeerPool
                 .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -533,7 +527,7 @@ public partial class ForwardHeaderProviderTests
         public Hash256 HeadHash { get; set; } = null!;
         public PublicKey Id => Node.Id;
         public long HeadNumber { get; set; }
-        public UInt256 TotalDifficulty { get; set; }
+        public UInt256? TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 

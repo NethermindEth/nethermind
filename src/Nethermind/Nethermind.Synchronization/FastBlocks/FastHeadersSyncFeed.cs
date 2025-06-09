@@ -24,7 +24,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SyncLimits;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
@@ -88,6 +88,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected virtual long TotalBlocks => _blockTree.SyncPivot.BlockNumber;
 
         public override bool IsFinished => AllHeadersDownloaded;
+        public override string FeedName => nameof(HeadersSyncFeed);
         private bool AnyHeaderDownloaded => LowestInsertedBlockHeader is not null;
 
         private long HeadersInQueue
@@ -655,7 +656,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             UInt256? totalDifficulty = nextHeaderTotalDifficulty;
-            foreach (var blockHeader in headersToAdd)
+            foreach (var blockHeader in headersToAdd.AsSpan())
             {
                 blockHeader.TotalDifficulty = totalDifficulty;
                 totalDifficulty = DetermineParentTotalDifficulty(blockHeader);

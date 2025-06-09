@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.Processing
@@ -52,6 +53,7 @@ namespace Nethermind.Consensus.Processing
         {
             TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default);
             event EventHandler<TxProcessedEventArgs> TransactionProcessed;
+            void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
         }
     }
 }

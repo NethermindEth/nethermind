@@ -5,6 +5,8 @@ using System;
 using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -42,10 +44,8 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
             foreach (Transaction tx in blockBody.Transactions)
             {
                 Hash256? _ = tx.Hash; // Just need to trigger hash calculation
-                if (tx.Data is not null)
-                {
-                    tx.Data = tx.Data.Value.ToArray();
-                }
+                // Disconnect from any backing
+                tx.Data = tx.Data.ToArray();
             }
         }
 

@@ -29,6 +29,7 @@ public class OptimismHeaderValidator(
     IPoSSwitcher poSSwitcher,
     IBlockTree blockTree,
     ISealValidator sealValidator,
+    IOptimismSpecHelper specHelper,
     ISpecProvider specProvider,
     ILogManager logManager)
     : MergeHeaderValidator(
@@ -38,8 +39,7 @@ public class OptimismHeaderValidator(
 {
     public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {
-        IReleaseSpec spec = _specProvider.GetSpec(header);
-        if (spec.IsOpHoloceneEnabled)
+        if (specHelper.IsHolocene(header))
         {
             if (!header.TryDecodeEIP1559Parameters(out var parameters, out var decodeError))
             {
@@ -57,5 +57,24 @@ public class OptimismHeaderValidator(
         return base.Validate(header, parent, isUncle, out error);
     }
 
+    protected override bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+    {
+        if (specHelper.IsIsthmus(header))
+        {
+            if (header.RequestsHash != OptimismPostMergeBlockProducer.PostIsthmusRequestHash)
+            {
+                error = ErrorMessages.RequestHashShouldBeOfShaOfEmpty;
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
+
+    private static class ErrorMessages
+    {
+        public static readonly string RequestHashShouldBeOfShaOfEmpty = $"{nameof(BlockHeader.RequestsHash)} should be {OptimismPostMergeBlockProducer.PostIsthmusRequestHash} for post-Isthmus blocks";
+    }
 }

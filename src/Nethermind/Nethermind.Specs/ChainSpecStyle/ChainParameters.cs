@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -133,9 +133,16 @@ public class ChainParameters
     public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
     public ulong? OpHoloceneTransitionTimestamp { get; set; }
-    public ulong? Eip7623TransitionTimestamp { get; set; }
+    public ulong? OpIsthmusTransitionTimestamp { get; set; }
 
-    public Dictionary<string, ChainSpecBlobCountJson> BlobSchedule { get; set; } = [];
+    public ulong? Eip7623TransitionTimestamp { get; set; }
+    public ulong? Eip7594TransitionTimestamp { get; set; }
+    public ulong? Eip7823TransitionTimestamp { get; set; }
+    public ulong? Eip7883TransitionTimestamp { get; set; }
+    public ulong? Eip7825TransitionTimestamp { get; set; }
+    public ulong? Eip7918TransitionTimestamp { get; set; }
+
+    public SortedSet<BlobScheduleSettings>? BlobSchedule { get; set; } = [];
 
     #region EIP-4844 parameters
     /// <summary>

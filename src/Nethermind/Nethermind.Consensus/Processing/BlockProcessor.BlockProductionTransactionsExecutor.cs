@@ -74,6 +74,9 @@ namespace Nethermind.Consensus.Processing
                 remove => txPicker.AddingTransaction -= value;
             }
 
+            public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+                => _transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
                 BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default)
             {
@@ -90,13 +93,12 @@ namespace Nethermind.Consensus.Processing
 
                 HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
                 int i = 0;
-                BlockExecutionContext blkCtx = new(block.Header, spec);
                 foreach (Transaction currentTx in transactions)
                 {
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
-                    TxAction action = ProcessTransaction(block, in blkCtx, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
+                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
                     if (action == TxAction.Stop) break;
 
                     consideredTx.Add(currentTx);
@@ -120,7 +122,6 @@ namespace Nethermind.Consensus.Processing
 
             private TxAction ProcessTransaction(
                 Block block,
-                in BlockExecutionContext blkCtx,
                 Transaction currentTx,
                 int index,
                 BlockReceiptsTracer receiptsTracer,
@@ -135,7 +136,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    TransactionResult result = _transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, stateProvider);
+                    TransactionResult result = _transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
                     if (result)
                     {

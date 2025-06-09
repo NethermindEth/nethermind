@@ -34,34 +34,12 @@ public class PsudoNetworkModule() : Module
 
         builder
             .AddSingleton<IFullStateFinder, FullStateFinder>()
-            .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
             .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
 
-            .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
-            .AddSingleton<ISessionMonitor, SessionMonitor>()
-            .AddSingleton<IRlpxHost, RlpxHost>()
-            .AddSingleton<IHandshakeService, HandshakeService>()
-
-            .AddSingleton<IMessageSerializationService, ICryptoRandom, ISpecProvider>((cryptoRandom, specProvider) =>
-            {
-                var serializationService = new MessageSerializationService();
-
-                Eip8MessagePad eip8Pad = new(cryptoRandom);
-                serializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
-                serializationService.Register(new AckEip8MessageSerializer(eip8Pad));
-                serializationService.Register(System.Reflection.Assembly.GetAssembly(typeof(HelloMessageSerializer))!);
-                ReceiptsMessageSerializer receiptsMessageSerializer = new(specProvider);
-                serializationService.Register(receiptsMessageSerializer);
-                serializationService.Register(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
-
-                return serializationService;
-            })
-
-
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
             .AddSingleton<IPooledTxsRequestor, PooledTxsRequestor>()
-            .AddSingleton<ForkInfo>()
+            .AddSingleton<IForkInfo, ForkInfo>()
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
 

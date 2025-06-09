@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -8,7 +8,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Flashbots.Data;
 using Nethermind.Flashbots.Modules.Flashbots;
@@ -25,19 +24,15 @@ namespace Nethermind.Flashbots.Test;
 
 public partial class FlashbotsModuleTests
 {
-    private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
-    private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
-
     [Test]
     public virtual async Task TestValidateBuilderSubmissionV3()
     {
         using EngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
-        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = CreateReadOnlyTxProcessingEnvFactory(chain);
-        IFlashbotsRpcModule rpc = CreateFlashbotsModule(chain, readOnlyTxProcessingEnvFactory);
+        IFlashbotsRpcModule rpc = CreateFlashbotsModule(chain);
 
         Block block = CreateBlock(chain);
 
-        GetPayloadV3Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block));
+        GetPayloadV3Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), false);
 
         BuilderBlockValidationRequest BlockRequest = new(
             new BidTrace(
@@ -82,7 +77,7 @@ public partial class FlashbotsModuleTests
 
         Hash256 prevRandao = Keccak.Zero;
 
-        Hash256 expectedBlockHash = new("0x479f7c9b7389e9ff3f443b99c3cd4b90f9b7feef5f41d714edb59de6b3e7ac02");
+        Hash256 expectedBlockHash = new("0x961f11bf7889f09f3ada48da02506d1459310c0386c328d8cf760a7a20d92dd5");
         string stateRoot = "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154";
 
         return new(

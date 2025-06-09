@@ -50,6 +50,11 @@ namespace Nethermind.Blockchain.Filters
             throw new InvalidOperationException($"{nameof(NullFilterStore)} does not support filter creation");
         }
 
+        public void RefreshFilter(int filterId)
+        {
+            throw new InvalidOperationException($"{nameof(NullFilterStore)} does not support filter refreshing");
+        }
+
         public FilterType GetFilterType(int filterId)
         {
             throw new InvalidOperationException($"{nameof(NullFilterStore)} does not support filter creation");
@@ -65,5 +70,7 @@ namespace Nethermind.Blockchain.Filters
             add { }
             remove { }
         }
+
+        public void Dispose() { }
     }
 }

@@ -3,17 +3,15 @@
 
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
-    public interface IDiscoveryApp : INodeSource
+    public interface IDiscoveryApp : INodeSource, IStoppableService
     {
-        void Initialize(PublicKey masterPublicKey);
         void InitializeChannel(IChannel channel);
         Task StartAsync();
-        Task StopAsync();
         void AddNodeToDiscovery(Node node);
     }
 }

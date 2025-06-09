@@ -18,6 +18,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -53,9 +54,8 @@ namespace Nethermind.TxPool.Test
             _logManager = LimboLogs.Instance;
             _specProvider = MainnetSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
-            var trieStore = new TrieStore(new MemDb(), _logManager);
-            var codeDb = new MemDb();
-            _stateProvider = new WorldState(trieStore, codeDb, _logManager);
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            _stateProvider = worldStateManager.GlobalWorldState;
             _blockTree = Substitute.For<IBlockTree>();
             Block block = Build.A.Block.WithNumber(10000000 - 1).TestObject;
             _blockTree.Head.Returns(block);
@@ -407,6 +407,24 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.GetPendingTransactionsCount().Should().Be(0);
             result.Should().Be(AcceptTxResult.GasLimitExceeded);
+        }
+
+        [Test]
+        public void should_ignore_tx_gas_limit_exceeded_for_eip7825()
+        {
+            ISpecProvider specProvider = new OverridableSpecProvider(
+                new TestSpecProvider(London.Instance),
+                static r => new OverridableReleaseSpec(r) { IsEip7825Enabled = true });
+
+            var config = new TxPoolConfig { GasLimit = long.MaxValue };
+            _txPool = CreatePool(config, specProvider);
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactionsCount().Should().Be(0);
+            result.Should().Be(AcceptTxResult.Invalid);
         }
 
         [TestCase(4, 0, nameof(AcceptTxResult.FeeTooLow))]
@@ -2114,29 +2132,39 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult result = _txPool.SubmitTx(setCodeTx, TxHandlingOptions.PersistentBroadcast);
             result.Should().Be(AcceptTxResult.Accepted);
 
-            Transaction firstTx = Build.A.Transaction
+            //Submit a replacement tx of each type with current nonce
+            foreach (byte type in ((byte[])Enum.GetValues(typeof(TxType))))
+            {
+                UInt256 feeCap;
+                1.GWei().Multiply((UInt256)type, out feeCap);
+                TransactionBuilder<Transaction> builder = Build.A.Transaction
                 .WithNonce(0)
-                .WithType(TxType.EIP1559)
-                .WithMaxFeePerGas(20.GWei())
-                .WithMaxPriorityFeePerGas(20.GWei())
-                .WithGasLimit(GasCostOf.Transaction)
-                .WithTo(TestItem.AddressB)
-                .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
-
-            result = _txPool.SubmitTx(firstTx, TxHandlingOptions.PersistentBroadcast);
-            result.Should().Be(AcceptTxResult.Accepted);
-
-            Transaction secondTx = Build.A.Transaction
-                .WithNonce(0)
-                .WithType(TxType.Legacy)
-                .WithMaxFeePerGas(25.GWei())
-                .WithMaxPriorityFeePerGas(25.GWei())
+                .WithType((TxType)type)
+                .WithMaxFeePerGas(feeCap)
+                .WithMaxPriorityFeePerGas(feeCap)
                 .WithGasLimit(100_000)
-                .WithTo(TestItem.AddressB)
-                .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
+                .WithTo(TestItem.AddressB);
+                switch ((TxType)type)
+                {
+                    case TxType.Legacy:
+                        break;
+                    case TxType.EIP1559:
+                        break;
+                    case TxType.Blob:
+                        //Blob tx are not allowed when another type is already in the pool
+                        continue;
+                    case TxType.SetCode:
+                        builder.WithAuthorizationCodeIfAuthorizationListTx();
+                        break;
+                    case TxType.DepositTx:
+                        continue;
+                }
+                builder.SignedAndResolved(_ethereumEcdsa, signer);
 
-            result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
-            result.Should().Be(AcceptTxResult.Accepted);
+                //Signer submits a tx of all every type with current nonce
+                result = _txPool.SubmitTx(builder.TestObject, TxHandlingOptions.PersistentBroadcast);
+                result.Should().Be(AcceptTxResult.Accepted);
+            }
         }
 
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
@@ -2208,6 +2236,13 @@ namespace Nethermind.TxPool.Test
         {
             var specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Prague.Instance);
+            return specProvider;
+        }
+
+        private static ISpecProvider GetOsakaSpecProvider()
+        {
+            var specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
             return specProvider;
         }
 

@@ -14,6 +14,5 @@ namespace Nethermind.Consensus
         public IBlockchainProcessor ChainProcessor { get; set; }
         public IWorldState ReadOnlyStateProvider { get; set; }
         public ITxSource TxSource { get; set; }
-        public ReadOnlyTxProcessingEnv ReadOnlyTxProcessingEnv { get; set; }
     }
 }

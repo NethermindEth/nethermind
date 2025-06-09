@@ -6,6 +6,7 @@ using System.Threading;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -24,19 +25,19 @@ public class OptimismBlockProcessor : BlockProcessor
     private readonly Create2DeployerContractRewriter? _contractRewriter;
 
     public OptimismBlockProcessor(
-        ISpecProvider? specProvider,
-        IBlockValidator? blockValidator,
-        IRewardCalculator? rewardCalculator,
-        IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-        IWorldState? stateProvider,
-        IReceiptStorage? receiptStorage,
-        ITransactionProcessor transactionProcessor,
-        IBlockhashStore? blockhashStore,
-        IBeaconBlockRootHandler? beaconBlockRootHandler,
-        ILogManager? logManager,
+        ISpecProvider specProvider,
+        IBlockValidator blockValidator,
+        IRewardCalculator rewardCalculator,
+        IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
+        IWorldState stateProvider,
+        IReceiptStorage receiptStorage,
+        IBlockhashStore blockhashStore,
+        IBeaconBlockRootHandler beaconBlockRootHandler,
+        ILogManager logManager,
         IOptimismSpecHelper opSpecHelper,
         Create2DeployerContractRewriter contractRewriter,
-        IWithdrawalProcessor? withdrawalProcessor = null,
+        IWithdrawalProcessor withdrawalProcessor,
+        IExecutionRequestsProcessor executionRequestsProcessor,
         IBlockCachePreWarmer? preWarmer = null)
         : base(
             specProvider,
@@ -45,12 +46,11 @@ public class OptimismBlockProcessor : BlockProcessor
             blockTransactionsExecutor,
             stateProvider,
             receiptStorage,
-            transactionProcessor,
             beaconBlockRootHandler,
             blockhashStore,
             logManager,
             withdrawalProcessor,
-            ReceiptsRootCalculator.Instance,
+            executionRequestsProcessor,
             preWarmer)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);

@@ -20,6 +20,8 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong? CanyonTimestamp { get; set; }
 
+    public ulong? DeltaTimestamp { get; set; }
+
     public ulong? EcotoneTimestamp { get; set; }
 
     public ulong? FjordTimestamp { get; set; }
@@ -27,6 +29,8 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong? GraniteTimestamp { get; set; }
 
     public ulong? HoloceneTimestamp { get; set; }
+
+    public ulong? IsthmusTimestamp { get; set; }
 
     public Address? L1FeeRecipient { get; set; }
 

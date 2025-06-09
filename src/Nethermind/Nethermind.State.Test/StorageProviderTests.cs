@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Specs.Forks;
@@ -399,9 +400,9 @@ public class StorageProviderTests
 
         snapshots.Should().Equal(
             Snapshot.Empty,
-            new Snapshot(Snapshot.EmptyPosition, new Snapshot.Storage(0, Snapshot.EmptyPosition)),
-            new Snapshot(Snapshot.EmptyPosition, new Snapshot.Storage(1, 0)),
-            new Snapshot(Snapshot.EmptyPosition, new Snapshot.Storage(1, 1))
+            new Snapshot(new Snapshot.Storage(0, Snapshot.EmptyPosition), Snapshot.EmptyPosition),
+            new Snapshot(new Snapshot.Storage(1, 0), Snapshot.EmptyPosition),
+            new Snapshot(new Snapshot.Storage(1, 1), Snapshot.EmptyPosition)
         );
 
         _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray());
@@ -435,7 +436,7 @@ public class StorageProviderTests
 
         public Context(PreBlockCaches preBlockCaches = null)
         {
-            StateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
+            StateProvider = new WorldState(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), Substitute.For<IDb>(), LogManager, preBlockCaches);
             StateProvider.CreateAccount(Address1, 0);
             StateProvider.CreateAccount(Address2, 0);
             StateProvider.Commit(Frontier.Instance);

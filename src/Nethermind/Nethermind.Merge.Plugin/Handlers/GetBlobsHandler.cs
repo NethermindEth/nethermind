@@ -31,7 +31,7 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerab
 
         foreach (byte[] requestedBlobVersionedHash in request)
         {
-            if (txPool.TryGetBlobAndProof(requestedBlobVersionedHash, out byte[]? blob, out byte[]? proof))
+            if (txPool.TryGetBlobAndProofV0(requestedBlobVersionedHash, out byte[]? blob, out byte[]? proof))
             {
                 Metrics.NumberOfSentBlobs++;
                 yield return new BlobAndProofV1(blob, proof);
@@ -45,11 +45,11 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerab
 
         if (allBlobsAvailable)
         {
-            Metrics.NumberOfGetBlobsSuccesses++;
+            Metrics.GetBlobsRequestsSuccessTotal++;
         }
         else
         {
-            Metrics.NumberOfGetBlobsFailures++;
+            Metrics.GetBlobsRequestsFailureTotal++;
         }
     }
 }

@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Test.Data;
@@ -30,9 +31,9 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             byte[] e = Bytes.FromHexString("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
-            TrieStore trieStore = new(memDb, LimboLogs.Instance);
-            StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            IScopedTrieStore scopedTrieStore = new RawScopedTrieStore(memDb);
+            StateTree tree = new(scopedTrieStore, LimboLogs.Instance);
+            StorageTree storageTree = new(new RawScopedTrieStore(memDb, TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
@@ -63,9 +64,9 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             byte[] e = Bytes.FromHexString("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
-            TrieStore trieStore = new(memDb, LimboLogs.Instance);
-            StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            IScopedTrieStore scopedTrieStore = new RawScopedTrieStore(memDb);
+            StateTree tree = new(scopedTrieStore, LimboLogs.Instance);
+            StorageTree storageTree = new(new RawScopedTrieStore(memDb, TestItem.AddressA.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));

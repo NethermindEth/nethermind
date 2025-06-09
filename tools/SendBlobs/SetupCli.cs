@@ -1,73 +1,72 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Cli;
-using Nethermind.Cli.Console;
 using Nethermind.Consensus;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using System.CommandLine;
-using Ethereum.Test.Base;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.JsonRpc.Client;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs;
 
 namespace SendBlobs;
 internal static class SetupCli
 {
-    public static void SetupExecute(CliRootCommand command)
+    public static void SetupExecute(RootCommand command)
     {
-        CliOption<string> rpcUrlOption = new("--rpcurl")
+        Option<string> rpcUrlOption = new("--rpcurl")
         {
             Description = "The URL of the JSON RPC server",
             HelpName = "URL",
             Required = true
         };
-        CliOption<string> blobTxOption = new("--bloboptions")
+        Option<string> blobTxOption = new("--bloboptions")
         {
             Description = "Options in format '10x1-2', '2x5-5' etc. for the blobs",
             HelpName = "options"
         };
-        CliOption<string> privateKeyOption = new("--privatekey")
+        Option<string> privateKeyOption = new("--privatekey")
         {
             Description = "The key to use for sending blobs",
             HelpName = "key"
         };
-        CliOption<string> privateKeyFileOption = new("--keyfile")
+        Option<string> privateKeyFileOption = new("--keyfile")
         {
             Description = "File containing private keys that each blob tx will be send from",
             HelpName = "path"
         };
-        CliOption<string> receiverOption = new("--receiveraddress")
+        Option<string> receiverOption = new("--receiveraddress")
         {
             Description = "Receiver address of the blobs",
             HelpName = "address",
             Required = true
         };
-        CliOption<ulong?> maxFeePerDataGasOptionObsolete = new("--maxfeeperdatagas")
+        Option<ulong?> maxFeePerDataGasOptionObsolete = new("--maxfeeperdatagas")
         {
             Description = "Set the maximum fee per blob data",
             HelpName = "fee"
         };
-        CliOption<ulong?> maxFeePerBlobGasOption = new("--maxfeeperblobgas")
+        Option<ulong?> maxFeePerBlobGasOption = new("--maxfeeperblobgas")
         {
             Description = "Set the maximum fee per blob data",
             HelpName = "fee"
         };
-        CliOption<ulong> feeMultiplierOption = new("--feemultiplier")
+        Option<ulong> feeMultiplierOption = new("--feemultiplier")
         {
             DefaultValueFactory = r => 1UL,
             Description = "A multiplier to use for gas fees",
             HelpName = "value"
         };
-        CliOption<ulong> maxPriorityFeeGasOption = new("--maxpriorityfee")
+        Option<ulong> maxPriorityFeeGasOption = new("--maxpriorityfee")
         {
             Description = "The maximum priority fee for each transaction",
             HelpName = "fee"
         };
-        CliOption<bool> waitOption = new("--wait") { Description = "Wait for tx inclusion" };
-        CliOption<string> forkOption = new("--fork") { Description = "Specify fork for MaxBlobCount, TargetBlobCount" };
+        Option<bool> waitOption = new("--wait") { Description = "Wait for tx inclusion" };
+        Option<string> forkOption = new("--fork") { Description = "Specify fork for MaxBlobCount, TargetBlobCount" };
 
         command.Add(rpcUrlOption);
         command.Add(blobTxOption);
@@ -98,7 +97,7 @@ internal static class SetupCli
             }
 
             string? fork = parseResult.GetValue(forkOption);
-            IReleaseSpec spec = fork is null ? Prague.Instance : JsonToEthereumTest.ParseSpec(fork);
+            IReleaseSpec spec = fork is null ? Prague.Instance : SpecNameParser.Parse(fork);
 
             BlobSender sender = new(parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance);
             return sender.SendRandomBlobs(
@@ -108,7 +107,8 @@ internal static class SetupCli
                 parseResult.GetValue(maxFeePerBlobGasOption) ?? parseResult.GetValue(maxFeePerDataGasOptionObsolete),
                 parseResult.GetValue(feeMultiplierOption),
                 parseResult.GetValue(maxPriorityFeeGasOption),
-                parseResult.GetValue(waitOption), spec);
+                parseResult.GetValue(waitOption),
+                spec);
         });
     }
 
@@ -150,40 +150,40 @@ internal static class SetupCli
         return returnRemainder ? line[(i + 1)..] : line[..i];
     }
 
-    public static void SetupDistributeCommand(CliCommand root)
+    public static void SetupDistributeCommand(Command root)
     {
-        CliCommand command = new("distribute")
+        Command command = new("distribute")
         {
             Description = "Distribute funds from an address to a number of new addresses"
         };
-        CliOption<string> rpcUrlOption = new("--rpcurl")
+        Option<string> rpcUrlOption = new("--rpcurl")
         {
             Description = "The URL of the JSON RPC server",
             HelpName = "URL",
             Required = true
         };
-        CliOption<string> privateKeyOption = new("--privatekey")
+        Option<string> privateKeyOption = new("--privatekey")
         {
             Description = "The private key to distribute funds from",
             HelpName = "key",
             Required = true,
         };
-        CliOption<uint> keyNumberOption = new("--number")
+        Option<uint> keyNumberOption = new("--number")
         {
             Description = "The number of new addresses/keys to make",
             HelpName = "value"
         };
-        CliOption<string> keyFileOption = new("--keyfile")
+        Option<string> keyFileOption = new("--keyfile")
         {
             Description = "File where the newly generated keys are written",
             HelpName = "path"
         };
-        CliOption<UInt256> maxPriorityFeeGasOption = new("--maxpriorityfee")
+        Option<UInt256> maxPriorityFeeGasOption = new("--maxpriorityfee")
         {
             Description = "The maximum priority fee for each transaction",
             HelpName = "fee"
         };
-        CliOption<UInt256> maxFeeOption = new("--maxfee")
+        Option<UInt256> maxFeeOption = new("--maxfee")
         {
             Description = "The maxFeePerGas fee paid for each transaction",
             HelpName = "fee"
@@ -197,17 +197,18 @@ internal static class SetupCli
         command.Add(maxFeeOption);
         command.SetAction(async (parseResult, cancellationToken) =>
         {
-            INodeManager nodeManager = InitNodeManager(
-                parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance.GetClassLogger());
+            IJsonRpcClient rpcClient = InitRpcClient(
+                parseResult.GetValue(rpcUrlOption)!,
+                SimpleConsoleLogManager.Instance.GetClassLogger());
 
-            string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
+            string? chainIdString = await rpcClient.Post<string>("eth_chainId") ?? "1";
             ulong chainId = HexConvert.ToUInt64(chainIdString);
 
             Signer signer = new(chainId, new PrivateKey(parseResult.GetValue(privateKeyOption)!),
                 SimpleConsoleLogManager.Instance);
 
-            FundsDistributor distributor = new FundsDistributor(
-                nodeManager, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
+            FundsDistributor distributor = new(
+                rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
             IEnumerable<string> hashes = await distributor.DitributeFunds(
                 signer,
                 parseResult.GetValue(keyNumberOption),
@@ -218,35 +219,35 @@ internal static class SetupCli
         root.Add(command);
     }
 
-    public static void SetupReclaimCommand(CliCommand root)
+    public static void SetupReclaimCommand(Command root)
     {
-        CliCommand command = new("reclaim")
+        Command command = new("reclaim")
         {
             Description = "Reclaim funds distributed from the 'distribute' command"
         };
-        CliOption<string> rpcUrlOption = new("--rpcurl")
+        Option<string> rpcUrlOption = new("--rpcurl")
         {
             Description = "The URL of the JSON RPC server",
             HelpName = "URL",
             Required = true
         };
-        CliOption<string> receiverOption = new("--receiveraddress")
+        Option<string> receiverOption = new("--receiveraddress")
         {
             Description = "The address to send the funds to",
             HelpName = "address",
             Required = true,
         };
-        CliOption<string> keyFileOption = new("--keyfile")
+        Option<string> keyFileOption = new("--keyfile")
         {
             Description = "File of the private keys to reclaim from",
             HelpName = "path"
         };
-        CliOption<UInt256> maxPriorityFeeGasOption = new("--maxpriorityfee")
+        Option<UInt256> maxPriorityFeeGasOption = new("--maxpriorityfee")
         {
             Description = "The maximum priority fee for each transaction",
             HelpName = "fee"
         };
-        CliOption<UInt256> maxFeeOption = new("--maxfee")
+        Option<UInt256> maxFeeOption = new("--maxfee")
         {
             Description = "The maxFeePerGas fee paid for each transaction",
             HelpName = "fee"
@@ -258,81 +259,78 @@ internal static class SetupCli
         command.Add(maxFeeOption);
         command.SetAction(async (parseResult, cancellationToken) =>
         {
-            INodeManager nodeManager = InitNodeManager(parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance.GetClassLogger());
+            IJsonRpcClient rpcClient = InitRpcClient(
+                parseResult.GetValue(rpcUrlOption)!,
+                SimpleConsoleLogManager.Instance.GetClassLogger());
 
-            string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
+            string? chainIdString = await rpcClient.Post<string>("eth_chainId") ?? "1";
             ulong chainId = HexConvert.ToUInt64(chainIdString);
 
-            FundsDistributor distributor = new(nodeManager, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
+            FundsDistributor distributor = new(rpcClient, chainId, parseResult.GetValue(keyFileOption), SimpleConsoleLogManager.Instance);
             IEnumerable<string> hashes = await distributor.ReclaimFunds(
                 new(parseResult.GetValue(receiverOption)!),
                 parseResult.GetValue(maxFeeOption),
                 parseResult.GetValue(maxPriorityFeeGasOption));
         });
-
         root.Add(command);
     }
 
-    public static INodeManager InitNodeManager(string rpcUrl, ILogger logger)
-    {
-        ICliConsole cliConsole = new CliConsole();
-        IJsonSerializer serializer = new EthereumJsonSerializer();
-        OneLoggerLogManager logManager = new OneLoggerLogManager(logger);
-        ICliEngine engine = new CliEngine(cliConsole);
-        INodeManager nodeManager = new NodeManager(engine, serializer, cliConsole, logManager);
-        nodeManager.SwitchUri(new Uri(rpcUrl));
-        return nodeManager;
-    }
+    public static IJsonRpcClient InitRpcClient(string rpcUrl, ILogger logger) =>
+        new BasicJsonRpcClient(
+            new Uri(rpcUrl),
+            new EthereumJsonSerializer(),
+            new OneLoggerLogManager(logger)
+        );
 
-    public static void SetupSendFileCommand(CliCommand root)
+    public static void SetupSendFileCommand(Command root)
     {
-        CliCommand command = new("send")
+        Command command = new("send")
         {
             Description = "Sends a file"
         };
-        CliOption<string> fileOption = new("--file")
+        Option<string> fileOption = new("--file")
         {
             Description = "File to send as is",
             HelpName = "path",
             Required = true
         };
-        CliOption<string> rpcUrlOption = new("--rpcurl")
+        Option<string> rpcUrlOption = new("--rpcurl")
         {
             Description = "The URL of the JSON RPC server",
             HelpName = "URL",
             Required = true
         };
-        CliOption<string> privateKeyOption = new("--privatekey")
+        Option<string> privateKeyOption = new("--privatekey")
         {
             Description = "The key to use for sending blobs",
             HelpName = "key",
             Required = true,
         };
-        CliOption<string> receiverOption = new("--receiveraddress")
+        Option<string> receiverOption = new("--receiveraddress")
         {
             Description = "Receiver address of the blobs",
             HelpName = "address",
             Required = true,
         };
-        CliOption<UInt256> maxFeePerBlobGasOption = new("--maxfeeperblobgas")
+        Option<UInt256> maxFeePerBlobGasOption = new("--maxfeeperblobgas")
         {
             DefaultValueFactory = r => 1000,
             Description = "Set the maximum fee per blob data",
             HelpName = "fee"
         };
-        CliOption<ulong> feeMultiplierOption = new("--feemultiplier")
+        Option<ulong> feeMultiplierOption = new("--feemultiplier")
         {
             DefaultValueFactory = r => 1UL,
             Description = "A multiplier to use for gas fees",
             HelpName = "value"
         };
-        CliOption<UInt256?> maxPriorityFeeGasOption = new("--maxpriorityfee")
+        Option<UInt256?> maxPriorityFeeGasOption = new("--maxpriorityfee")
         {
             Description = "The maximum priority fee for each transaction",
             HelpName = "fee"
         };
-        CliOption<bool> waitOption = new("--wait") { Description = "Wait for tx inclusion" };
-        CliOption<string> forkOption = new("--fork") { Description = "Specify fork for MaxBlobCount, TargetBlobCount" };
+        Option<bool> waitOption = new("--wait") { Description = "Wait for tx inclusion" };
+        Option<string> forkOption = new("--fork") { Description = "Specify fork for max blob count, target blob count, proof type" };
 
         command.Add(fileOption);
         command.Add(rpcUrlOption);
@@ -350,7 +348,7 @@ internal static class SetupCli
             BlobSender sender = new(parseResult.GetValue(rpcUrlOption)!, SimpleConsoleLogManager.Instance);
 
             string? fork = parseResult.GetValue(forkOption);
-            IReleaseSpec spec = fork is null ? Prague.Instance : JsonToEthereumTest.ParseSpec(fork);
+            IReleaseSpec spec = fork is null ? Prague.Instance : SpecNameParser.Parse(fork);
 
             return sender.SendData(
                 data,

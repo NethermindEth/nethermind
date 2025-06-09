@@ -23,7 +23,7 @@ public static class CodeInfoFactory
         return codeInfo;
     }
 
-    public static bool CreateInitCodeInfo(Memory<byte> data, IReleaseSpec spec, [NotNullWhen(true)] out ICodeInfo? codeInfo, out Memory<byte> extraCallData)
+    public static bool CreateInitCodeInfo(ReadOnlyMemory<byte> data, IReleaseSpec spec, [NotNullWhen(true)] out ICodeInfo? codeInfo, out ReadOnlyMemory<byte> extraCallData)
     {
         extraCallData = default;
         if (spec.IsEofEnabled && data.Span.StartsWith(EofValidator.MAGIC))
