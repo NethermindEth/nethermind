@@ -23,7 +23,7 @@ namespace Nethermind.Api
         (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
 
         IGrpcServer? GrpcServer { get; set; }
-        IIPResolver? IpResolver { get; set; }
+        IIPResolver IpResolver { get; }
         IMessageSerializationService MessageSerializationService { get; }
         IGossipPolicy GossipPolicy { get; set; }
         IPeerManager? PeerManager { get; }

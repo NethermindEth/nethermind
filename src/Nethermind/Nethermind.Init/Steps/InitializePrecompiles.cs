@@ -12,30 +12,34 @@ using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps;
 
-public class InitializePrecompiles : IStep
+public class InitializePrecompiles(ISpecProvider specProvider, IInitConfig initConfig, ILogManager logManager) : IStep
 {
-    private readonly INethermindApi _api;
-
-    public InitializePrecompiles(INethermindApi api)
-    {
-        _api = api;
-    }
-
+    private static SemaphoreSlim _setupLock = new(1);
+    private static bool _wasSetup = false;
     public async Task Execute(CancellationToken cancellationToken)
     {
-        if (_api.SpecProvider!.GetFinalSpec().IsEip4844Enabled)
+        if (specProvider!.GetFinalSpec().IsEip4844Enabled)
         {
-            ILogger logger = _api.LogManager.GetClassLogger<InitializePrecompiles>();
-            IInitConfig initConfig = _api.Config<IInitConfig>();
+            ILogger logger = logManager.GetClassLogger<InitializePrecompiles>();
 
+            await _setupLock.WaitAsync(cancellationToken);
             try
             {
-                await KzgPolynomialCommitments.InitializeAsync(logger, initConfig.KzgSetupPath);
+                if (!_wasSetup)
+                {
+                    await KzgPolynomialCommitments.InitializeAsync(logger, initConfig.KzgSetupPath);
+                    _wasSetup = true;
+                }
             }
             catch (Exception e)
             {
-                if (logger.IsError) logger.Error($"Couldn't initialize {nameof(KzgPolynomialCommitments)} precompile", e);
+                if (logger.IsError)
+                    logger.Error($"Couldn't initialize {nameof(KzgPolynomialCommitments)} precompile", e);
                 throw;
+            }
+            finally
+            {
+                _setupLock.Release();
             }
         }
     }

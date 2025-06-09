@@ -24,6 +24,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 
@@ -61,14 +62,9 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+        public IBlockProducer InitBlockProducer()
         {
-            if (_nethermindApi is not null)
-            {
-                return BlockProducerStarter!.BuildProducer(additionalTxSource);
-            }
-
-            return null;
+            return BlockProducerStarter!.BuildProducer();
         }
 
         public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
@@ -84,7 +80,6 @@ namespace Nethermind.Consensus.AuRa
             yield return typeof(InitializeBlockchainAuRa);
             yield return typeof(LoadGenesisBlockAuRa);
             yield return typeof(RegisterAuRaRpcModules);
-            yield return typeof(StartBlockProcessorAuRa);
         }
 
         public IModule Module => new AuraModule(chainSpec);
@@ -130,6 +125,8 @@ namespace Nethermind.Consensus.AuRa
             {
                 builder.AddSingleton<IHeaderValidator, AuRaHeaderValidator>();
             }
+
+            if (Rlp.GetStreamDecoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
         }
     }
 }

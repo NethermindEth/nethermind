@@ -181,7 +181,7 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
                     {
                         worldState.WarmUp(tx.AccessList); // eip-2930
                     }
-                    TransactionResult result = state.Scope.TransactionProcessor.Warmup(tx, in state.BlockContext, NullTxTracer.Instance);
+                    TransactionResult result = state.Scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
                     if (state.Logger.IsTrace) state.Logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
                 }
                 catch (Exception ex) when (ex is EvmException or OverflowException)
@@ -360,7 +360,6 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
         public readonly Block Block = block;
         public readonly Hash256 StateRoot = stateRoot;
         public readonly IReleaseSpec Spec = spec;
-        public readonly BlockExecutionContext blkCtx = new BlockExecutionContext(block.Header, spec);
 
         public BlockState InitThreadState()
         {
@@ -376,7 +375,6 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
         public readonly IReadOnlyTxProcessorSource Env;
         public readonly IReadOnlyTxProcessingScope Scope;
 
-        public ref readonly BlockExecutionContext BlockContext => ref Src.blkCtx;
         public ref readonly ILogger Logger => ref Src.PreWarmer._logger;
         public IReleaseSpec Spec => Src.Spec;
         public Block Block => Src.Block;
@@ -386,6 +384,7 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
             Src = src;
             Env = src.PreWarmer._envPool.Get();
             Scope = Env.Build(src.StateRoot);
+            Scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(Block.Header, Spec));
         }
 
         public void Dispose()

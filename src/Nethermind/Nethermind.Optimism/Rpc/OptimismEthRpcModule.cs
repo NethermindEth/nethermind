@@ -22,6 +22,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
@@ -51,6 +52,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
+        IProtocolsManager protocolsManager,
         ulong? secondsPerSlot,
 
         IJsonRpcClient? sequencerRpcClient,
@@ -70,6 +72,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
        gasPriceOracle,
        ethSyncingInfo,
        feeHistoryOracle,
+       protocolsManager,
        secondsPerSlot)
     {
         _sequencerRpcClient = sequencerRpcClient;

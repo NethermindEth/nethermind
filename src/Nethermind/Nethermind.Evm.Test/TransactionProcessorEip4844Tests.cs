@@ -26,16 +26,15 @@ internal class TransactionProcessorEip4844Tests
 {
     private ISpecProvider _specProvider = null!;
     private IEthereumEcdsa _ethereumEcdsa = null!;
-    private TransactionProcessor _transactionProcessor = null!;
+    private ITransactionProcessor _transactionProcessor = null!;
     private IWorldState _stateProvider = null!;
 
     [SetUp]
     public void Setup()
     {
-        MemDb stateDb = new();
         _specProvider = new TestSpecProvider(Cancun.Instance);
-        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
         CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);

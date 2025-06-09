@@ -27,6 +27,9 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+
+using static Nethermind.Consensus.Processing.IBlockProcessor;
+
 using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
@@ -35,7 +38,7 @@ public partial class BlockProcessor(
     ISpecProvider specProvider,
     IBlockValidator blockValidator,
     IRewardCalculator rewardCalculator,
-    IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
+    IBlockTransactionsExecutor blockTransactionsExecutor,
     IWorldState stateProvider,
     IReceiptStorage receiptStorage,
     IBeaconBlockRootHandler beaconBlockRootHandler,
@@ -310,13 +313,13 @@ public partial class BlockProcessor(
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        var blkCtx = new BlockExecutionContext(block.Header, spec);
+        blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
-        StoreBeaconRoot(block, in blkCtx, spec);
+        StoreBeaconRoot(block, spec);
         blockHashStore.ApplyBlockhashStateChanges(header);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, in blkCtx, options, ReceiptsTracer, spec, token);
+        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec, token);
 
         _stateProvider.Commit(spec, commitRoots: false);
 
@@ -336,7 +339,7 @@ public partial class BlockProcessor(
         // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
         _stateProvider.Commit(spec, commitRoots: false);
 
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, in blkCtx, receipts, spec);
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
@@ -379,11 +382,11 @@ public partial class BlockProcessor(
             });
     }
 
-    private void StoreBeaconRoot(Block block, in BlockExecutionContext blkCtx, IReleaseSpec spec)
+    private void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
         try
         {
-            beaconBlockRootHandler.StoreBeaconRoot(block, in blkCtx, spec, NullTxTracer.Instance);
+            beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         }
         catch (Exception e)
         {

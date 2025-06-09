@@ -54,7 +54,7 @@ public class SyncDispatcherTests
         private class MockSyncPeer(string clientId, UInt256 totalDifficulty) : BaseSyncPeerMock
         {
             public override string ClientId => clientId;
-            public override UInt256 TotalDifficulty => totalDifficulty;
+            public override UInt256? TotalDifficulty => totalDifficulty;
         }
 
         public void Free(SyncPeerAllocation syncPeerAllocation)

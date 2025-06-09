@@ -19,6 +19,7 @@ namespace Nethermind.Evm;
 /// </summary>
 internal static partial class EvmInstructions
 {
+    private static readonly ReadOnlyMemory<byte> _emptyMemory = default;
     /// <summary>
     /// Interface for CREATE opcode types.
     /// Implementations must specify the <see cref="ExecutionType"/> to distinguish between CREATE and CREATE2.
@@ -225,31 +226,27 @@ internal static partial class EvmInstructions
 
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.
-        ExecutionEnvironment callEnv = new
-        (
-            txExecutionContext: in env.TxExecutionContext,
-            callDepth: env.CallDepth + 1,
-            caller: env.ExecutingAccount,
-            executingAccount: contractAddress,
-            codeSource: null,
+        ExecutionEnvironment callEnv = new(
             codeInfo: codeinfo,
-            inputData: default,
-            transferValue: value,
-            value: value
-        );
+            executingAccount: contractAddress,
+            caller: env.ExecutingAccount,
+            codeSource: null,
+            callDepth: env.CallDepth + 1,
+            transferValue: in value,
+            value: in value,
+            inputData: in _emptyMemory);
 
         // Rent a new frame to run the initialization code in the new execution environment.
         vm.ReturnData = EvmState.RentFrame(
-            callGas,
+            gasAvailable: callGas,
             outputDestination: 0,
             outputLength: 0,
-            TOpCreate.ExecutionType,
+            executionType: TOpCreate.ExecutionType,
             isStatic: vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: accountExists,
-            in snapshot,
             env: in callEnv,
-            in vm.EvmState.AccessTracker
-        );
+            stateForAccessLists: in vm.EvmState.AccessTracker,
+            snapshot: in snapshot);
     None:
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

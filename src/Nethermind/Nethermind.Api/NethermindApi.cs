@@ -131,7 +131,7 @@ namespace Nethermind.Api
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }
-        public IEthereumEcdsa? EthereumEcdsa { get; set; }
+        public IEthereumEcdsa EthereumEcdsa => Context.Resolve<IEthereumEcdsa>();
         public IFileSystem FileSystem { get; set; } = new FileSystem();
         public IFilterStore? FilterStore { get; set; }
         public IFilterManager? FilterManager { get; set; }
@@ -143,7 +143,7 @@ namespace Nethermind.Api
         public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
             new BuildBlocksWhenRequested();
 
-        public IIPResolver? IpResolver { get; set; }
+        public IIPResolver IpResolver => Context.Resolve<IIPResolver>();
         public IJsonSerializer EthereumJsonSerializer => _dependencies.JsonSerializer;
         public IKeyStore? KeyStore { get; set; }
         public ILogFinder? LogFinder { get; set; }
@@ -189,7 +189,7 @@ namespace Nethermind.Api
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
         public IBlockFinalizationManager? FinalizationManager { get; set; }
 
-        public IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
+        public IBlockProducerEnvFactory BlockProducerEnvFactory => Context.Resolve<IBlockProducerEnvFactory>();
         public IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
         public IGasPriceOracle GasPriceOracle => Context.Resolve<IGasPriceOracle>();
 
