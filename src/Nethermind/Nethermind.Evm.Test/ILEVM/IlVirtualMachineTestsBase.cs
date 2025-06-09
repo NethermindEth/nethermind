@@ -24,7 +24,7 @@ namespace Nethermind.Evm.Test.ILEVM;
 public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
 {
     internal bool UseIlEvm { get; init; }
-    internal virtual byte[]? Bytecode { get; set; } 
+    internal virtual byte[]? Bytecode { get; set; }
 
 
     protected IVMConfig _config;
@@ -35,7 +35,7 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
         Setup();
     }
 
-    public IlVirtualMachineTestsBase(bool useIlEVM) 
+    public IlVirtualMachineTestsBase(bool useIlEVM)
     {
         UseIlEvm = useIlEVM;
 
@@ -129,6 +129,19 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
             TestState.Commit(Spec);
             TestState.RecalculateStateRoot();
             return TestState.StateRoot;
+        }
+    }
+
+    [TearDown]
+    protected void AssertIlevmCalls()
+    {
+        if (UseIlEvm)
+        {
+            Metrics.IlvmAotPrecompiledCalls.Should().BeGreaterThan(0, "The WrappedEth contract should be executed by the IL EVM");
+        }
+        else
+        {
+            Metrics.IlvmAotPrecompiledCalls.Should().Be(0, "The WrappedEth contract should not be executed by the IL EVM");
         }
     }
 }
