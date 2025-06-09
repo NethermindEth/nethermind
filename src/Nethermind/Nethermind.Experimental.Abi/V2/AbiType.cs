@@ -208,37 +208,39 @@ public static partial class AbiType
         Name = $"({abi1.Name},{abi2.Name})",
         Read = (ref BinarySpanReader r) =>
         {
+            var rr = new BinarySpanReader(r.Span[r.Position..]);
+
             T1 arg1;
             if (abi1.IsDynamic)
             {
-                var currentPosition = r.Position;
-                UInt256 offset = UInt256.Read(ref r);
-                r.Position = (int)offset;
+                var currentPosition = rr.Position;
+                UInt256 offset = UInt256.Read(ref rr);
+                rr.Position = (int)offset;
 
-                arg1 = abi1.Read(ref r);
+                arg1 = abi1.Read(ref rr);
 
-                r.Position = currentPosition + 32;
+                rr.Position = currentPosition + 32;
             }
             else
             {
-                arg1 = abi1.Read(ref r);
+                arg1 = abi1.Read(ref rr);
             }
 
             T2 arg2;
             if (abi2.IsDynamic)
             {
-                var currentPosition = r.Position;
-                UInt256 offset = UInt256.Read(ref r);
-                r.Position = (int)offset;
+                var currentPosition = rr.Position;
+                UInt256 offset = UInt256.Read(ref rr);
+                rr.Position = (int)offset;
 
-                arg2 = abi2.Read(ref r);
-
-                r.Position = currentPosition + 32;
+                arg2 = abi2.Read(ref rr);
             }
             else
             {
-                arg2 = abi2.Read(ref r);
+                arg2 = abi2.Read(ref rr);
             }
+
+            r.Position += rr.Position;
 
             return (arg1, arg2);
         },
