@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/radius_testnet-sepolia.json.zst",
+    "GenesisHash": "0x5ef69a0280793403064cafbb45a27371eb72baccb997e79bb7041785ecb6a799",
+    "BaseDbPath": "nethermind_db/radius_testnet-sepolia",
+    "LogFileName": "radius_testnet-sepolia.log"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "FastSyncCatchUpHeightDelta": "10000000000"
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Port": 8545,
+    "EnginePort": 8551
+  },
+  "Pruning": {
+    "PruningBoundary": 192
+  },
+  "Blocks": {
+    "SecondsPerSlot": 2
+  },
+  "Merge": {
+    "Enabled": true
+  },
+  "Optimism": {
+    "SequencerUrl": "dev-secure.rpc.theradius.xyz"
+  }
+}

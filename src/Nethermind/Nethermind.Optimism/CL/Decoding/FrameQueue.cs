@@ -8,9 +8,11 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL.Decoding;
 
-public class FrameQueue(ILogger logger) : IFrameQueue
+public class FrameQueue(ILogManager logManager) : IFrameQueue
 {
-    private readonly List<byte> _frameData = new();
+    private readonly List<byte> _frameData = [];
+    private readonly ILogger _logger = logManager.GetClassLogger();
+
     private Frame? _latestFrame;
 
     // https://specs.optimism.io/protocol/holocene/derivation.html#frame-queue
@@ -23,7 +25,7 @@ public class FrameQueue(ILogger logger) : IFrameQueue
             if (_latestFrame is null || _latestFrame.Value.FrameNumber + 1 != frame.FrameNumber ||
                 _latestFrame.Value.IsLast || _latestFrame.Value.ChannelId != frame.ChannelId)
             {
-                if (logger.IsWarn) logger.Warn($"Got out of order frame. Number {frame.FrameNumber}, ChannelId {frame.ChannelId}");
+                if (_logger.IsWarn) _logger.Warn($"Got out of order frame. Number {frame.FrameNumber}, ChannelId {frame.ChannelId}");
                 return null;
             }
         }
@@ -33,7 +35,7 @@ public class FrameQueue(ILogger logger) : IFrameQueue
             // all previous frames for the same channel are dropped and this new first frame remains in the queue.
             if (_latestFrame is not null && !_latestFrame.Value.IsLast)
             {
-                if (logger.IsWarn) logger.Warn($"Previous frame is dropped. New ChannelId {frame.ChannelId}");
+                if (_logger.IsWarn) _logger.Warn($"Previous frame is dropped. New ChannelId {frame.ChannelId}");
                 _frameData.Clear();
             }
         }
@@ -47,11 +49,16 @@ public class FrameQueue(ILogger logger) : IFrameQueue
             _frameData.Clear();
 
             var rlp = new Rlp.ValueDecoderContext(decodedChannel.Span);
-            var batchData = rlp.DecodeByteArrayMemory()!.Value;
+            var batchData = rlp.DecodeByteArrayMemory();
             var batches = BatchDecoder.DecodeSpanBatches(batchData).ToArray();
             return batches;
         }
 
         return null;
+    }
+    public void Clear()
+    {
+        _latestFrame = null;
+
     }
 }

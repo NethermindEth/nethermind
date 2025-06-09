@@ -140,7 +140,7 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
 
         try
         {
-            BlockState blockState = new(this, block, stateRoot, spec);
+            BlockStateSource blockState = new(this, block, stateRoot, spec);
             ParallelUnbalancedWork.For(
                 0,
                 block.Transactions.Length,
@@ -181,8 +181,8 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
                     {
                         worldState.WarmUp(tx.AccessList); // eip-2930
                     }
-                    TransactionResult result = state.Scope.TransactionProcessor.Warmup(tx, new BlockExecutionContext(state.BlockHeader, state.Spec), NullTxTracer.Instance);
-                    if (state.PreWarmer._logger.IsTrace) state.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
+                    TransactionResult result = state.Scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+                    if (state.Logger.IsTrace) state.Logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
                 }
                 catch (Exception ex) when (ex is EvmException or OverflowException)
                 {
@@ -190,12 +190,12 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
                 }
                 catch (Exception ex)
                 {
-                    if (state.PreWarmer._logger.IsDebug) state.PreWarmer._logger.Error($"DEBUG/ERROR Error pre-warming cache {tx?.Hash}", ex);
+                    if (state.Logger.IsDebug) state.Logger.Error($"DEBUG/ERROR Error pre-warming cache {tx?.Hash}", ex);
                 }
 
                 return state;
             },
-            BlockState.FinallyAction);
+            BlockStateSource.FinallyAction);
         }
         catch (OperationCanceledException)
         {
@@ -352,7 +352,7 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private readonly struct BlockState(BlockCachePreWarmer preWarmer, Block block, Hash256 stateRoot, IReleaseSpec spec, IReadOnlyTxProcessorSource env = null, IReadOnlyTxProcessingScope scope = null)
+    private class BlockStateSource(BlockCachePreWarmer preWarmer, Block block, Hash256 stateRoot, IReleaseSpec spec)
     {
         public static Action<BlockState> FinallyAction { get; } = DisposeThreadState;
 
@@ -360,24 +360,38 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
         public readonly Block Block = block;
         public readonly Hash256 StateRoot = stateRoot;
         public readonly IReleaseSpec Spec = spec;
-        public readonly BlockHeader BlockHeader => Block.Header;
-        public readonly IReadOnlyTxProcessorSource Env = env;
-        public readonly IReadOnlyTxProcessingScope Scope = scope;
 
         public BlockState InitThreadState()
         {
-            IReadOnlyTxProcessorSource env = PreWarmer._envPool.Get();
-            IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
-            return new(PreWarmer, Block, StateRoot, Spec, env, scope);
+            return new(this);
+        }
+
+        private static void DisposeThreadState(BlockState state) => state.Dispose();
+    }
+
+    private readonly struct BlockState
+    {
+        private readonly BlockStateSource Src;
+        public readonly IReadOnlyTxProcessorSource Env;
+        public readonly IReadOnlyTxProcessingScope Scope;
+
+        public ref readonly ILogger Logger => ref Src.PreWarmer._logger;
+        public IReleaseSpec Spec => Src.Spec;
+        public Block Block => Src.Block;
+
+        public BlockState(BlockStateSource src)
+        {
+            Src = src;
+            Env = src.PreWarmer._envPool.Get();
+            Scope = Env.Build(src.StateRoot);
+            Scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(Block.Header, Spec));
         }
 
         public void Dispose()
         {
             Scope.Dispose();
-            PreWarmer._envPool.Return(Env);
+            Src.PreWarmer._envPool.Return(Env);
         }
-
-        private static void DisposeThreadState(BlockState state) => state.Dispose();
     }
 }
 

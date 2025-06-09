@@ -82,10 +82,7 @@ public partial class ShardBlobTxDecoderTests
 
         if (decoded is { NetworkWrapper: ShardBlobNetworkWrapper wrapper })
         {
-            Assert.That(KzgPolynomialCommitments.AreProofsValid(
-                wrapper.Blobs,
-                wrapper.Commitments,
-                wrapper.Proofs));
+            Assert.That(IBlobProofsManager.For(wrapper.Version).ValidateProofs(wrapper));
         }
 
         Rlp encoded = _txDecoder.Encode(decoded!, rlpBehaviors);

@@ -51,43 +51,44 @@ public class GenesisLoader(
     }
 
     private void Preallocate(Block genesis)
-    {
-        foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(static a => a.Key))
         {
-            _stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce);
-
-            if (allocation.Code is not null)
+            _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(genesis.Header, specProvider.GetSpec(genesis.Header)));
+            foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(static a => a.Key))
             {
-                _stateProvider.InsertCode(address, allocation.Code, _specProvider.GenesisSpec, true);
-            }
+                _stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce);
 
-            if (allocation.Storage is not null)
-            {
-                foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
+                if (allocation.Code is not null)
                 {
-                    _stateProvider.Set(new StorageCell(address, storage.Key),
-                        storage.Value.WithoutLeadingZeros().ToArray());
+                    _stateProvider.InsertCode(address, allocation.Code, _specProvider.GenesisSpec, true);
                 }
-            }
 
-            if (allocation.Constructor is not null)
-            {
-                Transaction constructorTransaction = new SystemTransaction()
+                if (allocation.Storage is not null)
                 {
-                    SenderAddress = address,
-                    Data = allocation.Constructor,
-                    GasLimit = genesis.GasLimit
-                };
+                    foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
+                    {
+                        _stateProvider.Set(new StorageCell(address, storage.Key),
+                            storage.Value.WithoutLeadingZeros().ToArray());
+                    }
+                }
 
-                CallOutputTracer outputTracer = new();
-                _transactionProcessor.Execute(constructorTransaction, new BlockExecutionContext(genesis.Header, specProvider.GetSpec(genesis.Header)), outputTracer);
-
-                if (outputTracer.StatusCode != StatusCode.Success)
+                if (allocation.Constructor is not null)
                 {
-                    throw new InvalidOperationException(
-                        $"Failed to initialize constructor for address {address}. Error: {outputTracer.Error}");
+                    Transaction constructorTransaction = new SystemTransaction()
+                    {
+                        SenderAddress = address,
+                        Data = allocation.Constructor,
+                        GasLimit = genesis.GasLimit
+                    };
+
+                    CallOutputTracer outputTracer = new();
+                    _transactionProcessor.Execute(constructorTransaction, outputTracer);
+
+                    if (outputTracer.StatusCode != StatusCode.Success)
+                    {
+                        throw new InvalidOperationException(
+                            $"Failed to initialize constructor for address {address}. Error: {outputTracer.Error}");
+                    }
                 }
             }
         }
-    }
 }

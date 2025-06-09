@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
 
-internal class NullCommitter : ICommitter, IBlockCommitter
+public class NullCommitter : ICommitter, IBlockCommitter
 {
     public static NullCommitter Instance = new NullCommitter();
 
@@ -17,5 +17,4 @@ internal class NullCommitter : ICommitter, IBlockCommitter
     public void Dispose() { }
 
     public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) { }
-    public ICommitter GetTrieCommitter(Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => this;
 }

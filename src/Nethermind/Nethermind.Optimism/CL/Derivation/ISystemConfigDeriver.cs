@@ -52,8 +52,8 @@ public record SystemConfig
     /// process any EIP_1559_PARAMS system config update events.
     /// </summary>
     public byte[] EIP1559Params { get; init; } = new byte[32];
-    public uint BlobBaseFeeScalar => BinaryPrimitives.ReadUInt32BigEndian(Scalar[24..28]);
-    public uint BaseFeeScalar => BinaryPrimitives.ReadUInt32BigEndian(Scalar[28..32]);
+    public uint BlobBaseFeeScalar => BinaryPrimitives.ReadUInt32BigEndian(Scalar.AsSpan(24, 4));
+    public uint BaseFeeScalar => BinaryPrimitives.ReadUInt32BigEndian(Scalar.AsSpan(28, 4));
 
     public virtual bool Equals(SystemConfig? other)
     {
@@ -73,4 +73,13 @@ public record SystemConfig
     {
         return $"BatcherAddress: {BatcherAddress}, GasLimit: {GasLimit}, Overhead: {Overhead.ToHexString()}, Scalar: {Scalar.ToHexString()}, EIP1559Params: {EIP1559Params.ToHexString()}";
     }
+
+    public static readonly SystemConfig Empty = new()
+    {
+        BatcherAddress = Address.Zero,
+        EIP1559Params = [],
+        GasLimit = 0,
+        Overhead = [],
+        Scalar = []
+    };
 }

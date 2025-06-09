@@ -23,6 +23,7 @@ using Nethermind.State;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -49,7 +50,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Hash256 parentHash, PrivateKey from,
-            Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0)
+            Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0, IReleaseSpec? spec = null)
         {
             Transaction BuildTransaction(uint index, AccountStruct senderAccount)
             {
@@ -64,7 +65,7 @@ namespace Nethermind.Merge.Plugin.Test
 
                 if (blobCountPerTx != 0)
                 {
-                    builder = builder.WithShardBlobTxTypeAndFields(blobCountPerTx);
+                    builder = builder.WithShardBlobTxTypeAndFields(blobCountPerTx, spec: spec);
                 }
                 else
                 {
@@ -140,13 +141,17 @@ namespace Nethermind.Merge.Plugin.Test
             Block? block = blockRequestV4.TryGetBlock().Block;
 
             var beaconBlockRootHandler = new BeaconBlockRootHandler(chain.TxProcessor, chain.WorldStateManager.GlobalWorldState);
-            beaconBlockRootHandler.StoreBeaconRoot(block!, chain.SpecProvider.GetSpec(block!.Header), NullTxTracer.Instance);
+
+            IReleaseSpec spec = chain.SpecProvider.GetSpec(block!.Header);
+            chain.TxProcessor.SetBlockExecutionContext(new BlockExecutionContext(block!.Header, spec));
+            beaconBlockRootHandler.StoreBeaconRoot(block!, spec, NullTxTracer.Instance);
             IWorldState globalWorldState = chain.WorldStateManager.GlobalWorldState;
             Snapshot before = globalWorldState.TakeSnapshot();
             var blockHashStore = new BlockhashStore(chain.SpecProvider, globalWorldState);
             blockHashStore.ApplyBlockhashStateChanges(block!.Header);
 
-            chain.ExecutionRequestsProcessor?.ProcessExecutionRequests(block!, globalWorldState, [], chain.SpecProvider.GenesisSpec);
+            chain.TxProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, chain.SpecProvider.GenesisSpec));
+            chain.MainExecutionRequestsProcessor.ProcessExecutionRequests(block!, globalWorldState, [], chain.SpecProvider.GenesisSpec);
 
             globalWorldState.Commit(chain.SpecProvider.GenesisSpec);
             globalWorldState.RecalculateStateRoot();

@@ -1,0 +1,29 @@
+<Project>
+  
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <EnableNUnitRunner>true</EnableNUnitRunner>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <PropertyGroup Label="DotnetTest">
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit.Analyzers">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="NUnit3TestAdapter" />
+  </ItemGroup>
+
+  <!-- Must be removed when https://youtrack.jetbrains.com/issue/RSRP-498837 is fixed -->
+  <ItemGroup Condition="$(ContinuousIntegrationBuild) != 'true' AND $(BuildingInsideVisualStudio) != 'true'">
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+  </ItemGroup>
+  
+</Project>

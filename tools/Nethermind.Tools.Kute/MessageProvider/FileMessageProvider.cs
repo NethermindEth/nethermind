@@ -21,8 +21,8 @@ public class FileMessageProvider : IMessageProvider<string>
             if (pathInfo.Attributes.HasFlag(FileAttributes.Directory))
             {
                 return Directory.GetFiles(_filePath)
+                    .OrderBy(filePath => filePath, StringComparer.OrdinalIgnoreCase)
                     .Select(filePath => new FileInfo(filePath))
-                    .OrderBy(info => info.LastWriteTime)
                     .ToAsyncEnumerable()
                     .SelectMany(info => File.ReadLinesAsync(info.FullName));
             }

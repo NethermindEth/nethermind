@@ -80,9 +80,8 @@ public class MergeSynchronizerModule : Module
         builder
             .AddSingleton<ISynchronizer, MergeSynchronizer>()
             .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
-            .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, MergeBlocksSyncPeerAllocationStrategyFactory>()
-            .AddScoped<BlockDownloader, MergeBlockDownloader>()
-            .AddScoped<IForwardHeaderProvider, PosForwardHeaderProvider>()
+            .AddSingleton<BlockDownloader, MergeBlockDownloader>()
+            .AddSingleton<IForwardHeaderProvider, PosForwardHeaderProvider>()
 
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<HeadersSyncBatch>>(nameof(BeaconHeadersSyncFeed), ConfigureBeaconHeader);
     }

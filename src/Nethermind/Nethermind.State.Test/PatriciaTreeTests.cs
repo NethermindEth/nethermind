@@ -4,6 +4,7 @@
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -100,8 +101,8 @@ namespace Nethermind.Store.Test
         private IScopedTrieStore CreateTrieStore(IDb db = null)
         {
             db ??= new MemDb();
-            return useFullTrieStore ?
-                new TrieStore(db, LimboLogs.Instance).GetTrieStore(null)
+            return useFullTrieStore
+                ? TestTrieStoreFactory.Build(db, LimboLogs.Instance).GetTrieStore(null)
                 : new RawScopedTrieStore(new NodeStorage(db), null);
         }
     }
