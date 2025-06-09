@@ -6,20 +6,20 @@ namespace Nethermind.Experimental.Abi.V2;
 public ref struct BinarySpanReader
 {
     private readonly ReadOnlySpan<byte> _span;
-    private int _position;
+    public int Position { get; set; }
 
     public BinarySpanReader(ReadOnlySpan<byte> span)
     {
         _span = span;
-        _position = 0;
+        Position = 0;
     }
 
     public ReadOnlySpan<byte> ReadBytes(int count)
     {
-        if (_position + count > _span.Length) throw new ArgumentOutOfRangeException(nameof(count));
-        var result = _span.Slice(_position, count);
+        if (Position + count > _span.Length) throw new ArgumentOutOfRangeException(nameof(count));
+        var result = _span.Slice(Position, count);
 
-        _position += count;
+        Position += count;
         return result;
     }
 
@@ -27,7 +27,7 @@ public ref struct BinarySpanReader
     {
         ReadOnlySpan<byte> bytes = ReadBytes(length);
         var padding = Math.PadTo32(length) - length;
-        _position += padding;
+        Position += padding;
 
         return bytes;
     }
@@ -35,22 +35,20 @@ public ref struct BinarySpanReader
 
 public ref struct BinarySpanWriter
 {
-    private readonly Span<byte> _span;
-    private int _position;
-
-    public int Written => _position;
+    public readonly Span<byte> Span { get; }
+    public int Position { get; set; }
 
     public BinarySpanWriter(Span<byte> span)
     {
-        _span = span;
-        _position = 0;
+        Span = span;
+        Position = 0;
     }
 
     public void Write(scoped ReadOnlySpan<byte> bytes)
     {
-        if (_position + bytes.Length > _span.Length) throw new ArgumentOutOfRangeException(nameof(bytes));
-        bytes.CopyTo(_span.Slice(_position));
-        _position += bytes.Length;
+        if (Position + bytes.Length > Span.Length) throw new ArgumentOutOfRangeException(nameof(bytes));
+        bytes.CopyTo(Span.Slice(Position));
+        Position += bytes.Length;
     }
 
     public void WritePadded(scoped ReadOnlySpan<byte> bytes)
@@ -58,7 +56,7 @@ public ref struct BinarySpanWriter
         Write(bytes);
 
         int padding = Math.PadTo32(bytes.Length) - bytes.Length;
-        _position += padding;
+        Position += padding;
     }
 }
 
