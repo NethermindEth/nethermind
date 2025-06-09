@@ -30,12 +30,6 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
         _obj = array;
     }
 
-    // TODO: if TinyArray used, casting should be done to ISpanSource not CappedArraySource.
-    // public SpanSource(ISpanSource source)
-    // {
-    //     _obj = source;
-    // }
-
     public SpanSource(CappedArray<byte> capped)
     {
         _obj = new CappedArraySource(capped);
@@ -43,7 +37,6 @@ public readonly struct SpanSource : ISpanSource, IEquatable<SpanSource>
 
     public static implicit operator SpanSource(byte[] bytes) => new(bytes);
 
-    // TODO: make it correct
     public int MemorySize
     {
         get
