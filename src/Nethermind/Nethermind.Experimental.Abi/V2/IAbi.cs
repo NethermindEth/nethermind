@@ -5,7 +5,6 @@ namespace Nethermind.Experimental.Abi.V2;
 
 public delegate T IAbiReadFunc<out T>(ref BinarySpanReader r);
 public delegate void IAbiWriteAction<in T>(ref BinarySpanWriter w, T value);
-
 public delegate int IAbiSizeFunc<in T>(T value);
 
 public class IAbi<T>
