@@ -39,9 +39,10 @@ namespace Nethermind.Evm.CodeAnalysis
                 if(Array.BinarySearch(
                     vmConfig.IlEvmAllowedContracts,
                     Codehash.Value.ToString (),
-                    StringComparer.OrdinalIgnoreCase) < 0) {
-                    return;
+                    StringComparer.OrdinalIgnoreCase) >= 0) {
+                    IlAnalyzer.Enqueue(this, vmConfig, logger);
                 }
+                return;
             }
 
             if(Interlocked.Increment(ref _callCount) != vmConfig.IlEvmAnalysisThreshold)
