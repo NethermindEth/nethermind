@@ -152,6 +152,7 @@ public static partial class AbiType
     public static IAbi<String> String => new()
     {
         Name = $"string",
+        IsDynamic = true,
         Read = (ref BinarySpanReader r) =>
         {
             int length = (int)UInt256.Read(ref r); // TODO: Use `UInt256` when dealing with lengths
@@ -207,16 +208,93 @@ public static partial class AbiType
         Name = $"({abi1.Name},{abi2.Name})",
         Read = (ref BinarySpanReader r) =>
         {
-            T1 arg1 = abi1.Read(ref r);
-            T2 arg2 = abi2.Read(ref r);
+            T1 arg1;
+            if (abi1.IsDynamic)
+            {
+                var currentPosition = r.Position;
+                UInt256 offset = UInt256.Read(ref r);
+                r.Position = (int)offset;
+
+                arg1 = abi1.Read(ref r);
+
+                r.Position = currentPosition + 32;
+            }
+            else
+            {
+                arg1 = abi1.Read(ref r);
+            }
+
+            T2 arg2;
+            if (abi2.IsDynamic)
+            {
+                var currentPosition = r.Position;
+                UInt256 offset = UInt256.Read(ref r);
+                r.Position = (int)offset;
+
+                arg2 = abi2.Read(ref r);
+
+                r.Position = currentPosition + 32;
+            }
+            else
+            {
+                arg2 = abi2.Read(ref r);
+            }
+
             return (arg1, arg2);
         },
         Write = (ref BinarySpanWriter w, (T1, T2) v) =>
         {
-            abi1.Write(ref w, v.Item1);
-            abi2.Write(ref w, v.Item2);
+            var ww = new BinarySpanWriter(w.Span[w.Position..]);
+
+            Span<int> offsets = stackalloc int[2];
+            if (abi1.IsDynamic)
+            {
+                offsets[0] = ww.Position;
+                ww.Position += 32;
+            }
+            else
+            {
+                abi1.Write(ref ww, v.Item1);
+            }
+
+            if (abi2.IsDynamic)
+            {
+                offsets[1] = ww.Position;
+                ww.Position += 32;
+            }
+            else
+            {
+                abi2.Write(ref ww, v.Item2);
+            }
+
+            if (abi1.IsDynamic)
+            {
+                var currentPosition = ww.Position;
+                ww.Position = offsets[0];
+                UInt256.Write(ref ww, (UInt256)currentPosition);
+                ww.Position = currentPosition;
+
+                abi1.Write(ref ww, v.Item1);
+            }
+            if (abi2.IsDynamic)
+            {
+                var currentPosition = ww.Position;
+                ww.Position = offsets[1];
+                UInt256.Write(ref ww, (UInt256)currentPosition);
+                ww.Position = currentPosition;
+
+                abi2.Write(ref ww, v.Item2);
+            }
+
+            w.Position += ww.Position;
         },
-        Size = (v) => abi1.Size(v.Item1) + abi2.Size(v.Item2)
+        Size = (v) =>
+        {
+            var size1 = (abi1.IsDynamic ? 32 : 0) + abi1.Size(v.Item1);
+            var size2 = (abi2.IsDynamic ? 32 : 0) + abi2.Size(v.Item2);
+
+            return size1 + size2;
+        }
     };
 
     public static IAbi<(T1, T2, T3)> Tuple<T1, T2, T3>(IAbi<T1> abi1, IAbi<T2> abi2, IAbi<T3> arg3) => new()
