@@ -11,6 +11,7 @@ public delegate int IAbiSizeFunc<in T>(T value);
 public class IAbi<T>
 {
     public required string Name { get; init; }
+    public bool IsDynamic { get; init; } = false;
     public required IAbiReadFunc<T> Read { get; init; }
     public required IAbiWriteAction<T> Write { get; init; }
     public required IAbiSizeFunc<T> Size { get; init; }
