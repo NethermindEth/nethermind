@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -10,7 +11,7 @@ using Nethermind.State;
 
 namespace Nethermind.Optimism.Rpc;
 
-public class AutoOptimismTraceModuleFactory(IWorldStateManager worldStateManager, ILifetimeScope rootLifetimeScope) : AutoTraceModuleFactory(worldStateManager, rootLifetimeScope)
+public class AutoOptimismTraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : AutoTraceModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)
 {
     protected override ContainerBuilder ConfigureCommonBlockProcessing(
         ContainerBuilder builder,

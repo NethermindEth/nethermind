@@ -15,7 +15,7 @@ using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
-public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, ILifetimeScope rootLifetimeScope) : ModuleFactoryBase<ITraceRpcModule>
+public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : ModuleFactoryBase<ITraceRpcModule>
 {
 
     protected virtual ContainerBuilder ConfigureCommonBlockProcessing(
@@ -41,8 +41,10 @@ public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, ILifet
     public override ITraceRpcModule Create()
     {
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
-        IOverridableCodeInfoRepository codeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
+        IOverridableCodeInfoRepository codeInfoRepository = new OverridableCodeInfoRepository(codeInfoRepositoryFunc());
 
+        // Note: The processing block has no concern with override's and scoping. As far as its concern, a standard
+        // world state and code info repository is used.
         ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             ConfigureCommonBlockProcessing(builder, codeInfoRepository, overridableScope.WorldState, IBlockProcessor.IBlockTransactionsExecutor.Rpc));
         ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
@@ -52,17 +54,20 @@ public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, ILifet
         {
             builder
                 .AddScoped<IOverridableWorldScope>(overridableScope)
-                .AddScoped<IOverridableWorldState>(overridableScope.WorldState)
-                .AddScoped<IWorldState>(overridableScope.WorldState)
                 .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository)
+
+                // TODO: Remove these two
+                .AddScoped<IWorldState>(overridableScope.WorldState)
                 .AddScoped<ICodeInfoRepository>(codeInfoRepository)
+
                 .AddScoped<IOverridableTxProcessorSource, AutoOverridableTxProcessingEnv>()
-                .AddScoped<IReadOnlyTxProcessingScope, IOverridableTxProcessorSource>((src) => src.Build(Keccak.EmptyTreeHash))
-                .AddScoped<ITracer, IReadOnlyTxProcessingScope>((scope) => new Tracer(
-                    scope,
-                    rpcProcessingScope.Resolve<IBlockchainProcessor>(),
-                    validationProcessingScope.Resolve<IBlockchainProcessor>(),
-                    traceOptions: ProcessingOptions.TraceTransactions));
+                .AddScoped<ITracerEnv, IOverridableTxProcessorSource>((scope) => new TracerEnv(new Tracer(
+                        overridableScope.WorldState,
+                        rpcProcessingScope.Resolve<IBlockchainProcessor>(),
+                        validationProcessingScope.Resolve<IBlockchainProcessor>(),
+                        traceOptions: ProcessingOptions.TraceTransactions),
+                    scope))
+                ;
         });
 
         traceRpcLifetimeScope.Disposer.AddInstanceForAsyncDisposal(rpcProcessingScope);

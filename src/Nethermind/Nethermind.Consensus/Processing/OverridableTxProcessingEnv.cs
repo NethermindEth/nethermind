@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,7 +22,8 @@ public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
     protected ILogManager LogManager { get; }
 
     private readonly Lazy<ITransactionProcessor> _transactionProcessorLazy;
-    protected IOverridableWorldState StateProvider { get; }
+    protected IOverridableWorldScope WorldScope { get; }
+    protected IWorldState StateProvider => WorldScope.WorldState;
     protected OverridableCodeInfoRepository CodeInfoRepository { get; }
     protected IVirtualMachine Machine { get; }
     protected ITransactionProcessor TransactionProcessor => _transactionProcessorLazy.Value;
@@ -39,7 +39,7 @@ public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
         StateReader = overridableScope.GlobalStateReader;
         BlockTree = readOnlyBlockTree;
         LogManager = logManager;
-        StateProvider = overridableScope.WorldState;
+        WorldScope = overridableScope;
         IBlockhashProvider blockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
 
         CodeInfoRepository = new(new CodeInfoRepository());
@@ -52,7 +52,7 @@ public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
 
     IOverridableTxProcessingScope IOverridableTxProcessorSource.Build(Hash256 stateRoot) => Build(stateRoot);
 
-    public OverridableTxProcessingScope Build(Hash256 stateRoot) => new(CodeInfoRepository, TransactionProcessor, StateProvider, stateRoot);
+    public OverridableTxProcessingScope Build(Hash256 stateRoot) => new(CodeInfoRepository, TransactionProcessor, WorldScope, stateRoot);
 
     IOverridableTxProcessingScope IOverridableTxProcessorSource.BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
     {
@@ -66,11 +66,11 @@ public class OverridableTxProcessingEnv : IOverridableTxProcessorSource
     }
 }
 
-public class AutoOverridableTxProcessingEnv(IOverridableCodeInfoRepository codeInfoRepository, ITransactionProcessor transactionProcessor, IOverridableWorldState worldState, ISpecProvider specProvider) : IOverridableTxProcessorSource
+public class AutoOverridableTxProcessingEnv(IOverridableCodeInfoRepository codeInfoRepository, ITransactionProcessor transactionProcessor, IOverridableWorldScope overrideWorldScope, ISpecProvider specProvider) : IOverridableTxProcessorSource
 {
     public IOverridableTxProcessingScope Build(Hash256 stateRoot)
     {
-        return new OverridableTxProcessingScope(codeInfoRepository, transactionProcessor, worldState, stateRoot);
+        return new OverridableTxProcessingScope(codeInfoRepository, transactionProcessor, overrideWorldScope, stateRoot);
     }
 
     public IOverridableTxProcessingScope BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)

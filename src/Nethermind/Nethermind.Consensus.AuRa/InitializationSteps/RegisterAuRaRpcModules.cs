@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
@@ -183,7 +184,7 @@ public class AuRaBlockProcessorFactory : IAuRaBlockProcessorFactory
             contractRewriter, preWarmer);
 }
 
-public class AutoAuRaTraceModuleFactory(IWorldStateManager worldStateManager, ILifetimeScope rootLifetimeScope) : AutoTraceModuleFactory(worldStateManager, rootLifetimeScope)
+public class AutoAuRaTraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : AutoTraceModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)
 {
     protected override ContainerBuilder ConfigureCommonBlockProcessing(
         ContainerBuilder builder,
