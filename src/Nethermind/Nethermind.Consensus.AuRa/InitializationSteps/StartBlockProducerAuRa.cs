@@ -272,7 +272,6 @@ public class StartBlockProducerAuRa(
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = scope.WorldState,
                 TxSource = CreateTxSourceForProducer(additionalTxSource),
-                ReadOnlyTxProcessingEnv = readOnlyTxProcessingEnvFactory.Create(),
             };
         }
 

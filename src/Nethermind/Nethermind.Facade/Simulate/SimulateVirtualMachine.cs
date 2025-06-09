@@ -36,4 +36,14 @@ public class SimulateVirtualMachine(IVirtualMachine virtualMachine) : IVirtualMa
                 return false;
         }
     }
+
+    public ref readonly BlockExecutionContext BlockExecutionContext => ref virtualMachine.BlockExecutionContext;
+
+    public ref readonly TxExecutionContext TxExecutionContext => ref virtualMachine.TxExecutionContext;
+
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        => virtualMachine.SetBlockExecutionContext(blockExecutionContext);
+
+    public void SetTxExecutionContext(in TxExecutionContext txExecutionContext)
+        => virtualMachine.SetTxExecutionContext(txExecutionContext);
 }

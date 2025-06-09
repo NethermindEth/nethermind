@@ -26,11 +26,6 @@ public struct StackAccessTracker : IDisposable
     private int _destroyListSnapshots;
     private int _logsSnapshots;
 
-    public StackAccessTracker(in StackAccessTracker accessTracker)
-    {
-        _trackingState = accessTracker._trackingState;
-    }
-
     public StackAccessTracker()
     {
         _trackingState = TrackingState.RentState();
@@ -84,10 +79,10 @@ public struct StackAccessTracker : IDisposable
 
     public readonly void Restore()
     {
-        _trackingState.Logs.Restore(_logsSnapshots);
-        _trackingState.DestroyList.Restore(_destroyListSnapshots);
         _trackingState.AccessedAddresses.Restore(_addressesSnapshots);
         _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
+        _trackingState.DestroyList.Restore(_destroyListSnapshots);
+        _trackingState.Logs.Restore(_logsSnapshots);
     }
 
     public void Dispose()

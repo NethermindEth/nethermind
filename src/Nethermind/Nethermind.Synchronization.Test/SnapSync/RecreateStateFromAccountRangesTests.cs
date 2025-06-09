@@ -52,8 +52,7 @@ public class RecreateStateFromAccountRangesTests
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
         MemDb db = new();
-        TrieStore fullStore = TestTrieStoreFactory.Build(db, LimboLogs.Instance);
-        IScopedTrieStore store = fullStore.GetTrieStore(null);
+        IScopedTrieStore store = new RawScopedTrieStore(db);
         StateTree tree = new(store, LimboLogs.Instance);
 
         IList<TrieNode> nodes = new List<TrieNode>();

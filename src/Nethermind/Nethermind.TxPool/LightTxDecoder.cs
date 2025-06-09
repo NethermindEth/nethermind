@@ -14,7 +14,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.SenderAddress)
                + Rlp.LengthOf(tx.Nonce)
                + Rlp.LengthOf(tx.Hash)
-               + Rlp.LengthOf(tx.Value)
+               + Rlp.LengthOf(in tx.ValueRef)
                + Rlp.LengthOf(tx.GasLimit)
                + Rlp.LengthOf(tx.GasPrice)
                + Rlp.LengthOf(tx.DecodedMaxFeePerGas)
@@ -33,7 +33,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         rlpStream.Encode(tx.SenderAddress);
         rlpStream.Encode(tx.Nonce);
         rlpStream.Encode(tx.Hash);
-        rlpStream.Encode(tx.Value);
+        rlpStream.Encode(in tx.ValueRef);
         rlpStream.Encode(tx.GasLimit);
         rlpStream.Encode(tx.GasPrice);
         rlpStream.Encode(tx.DecodedMaxFeePerGas);

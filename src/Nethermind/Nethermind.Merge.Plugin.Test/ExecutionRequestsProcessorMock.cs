@@ -45,7 +45,7 @@ public class ExecutionRequestsProcessorMock : IExecutionRequestsProcessor
         }
     }
 
-    public void ProcessExecutionRequests(Block block, IWorldState state, in BlockExecutionContext blkCtx, TxReceipt[] receipts, IReleaseSpec spec)
+    public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
     {
         if (block.IsGenesis)
             return;

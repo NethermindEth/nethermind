@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -73,6 +74,8 @@ namespace Nethermind.Init.Steps
                 IEnode enode = set.Enode = new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
 
                 get.LogManager.SetGlobalVariable("enode", enode.ToString());
+
+                _api.ChainSpec.Bootnodes = _api.ChainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(nodeKey.PublicKey) ?? false).ToArray() ?? [];
             }, cancellationToken);
         }
     }

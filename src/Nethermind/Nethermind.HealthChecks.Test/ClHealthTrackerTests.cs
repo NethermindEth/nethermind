@@ -16,7 +16,12 @@ public class ClHealthTrackerTests
     public async Task ClHealthRequestsTracker_multiple_requests()
     {
         ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
-        await using ClHealthRequestsTracker healthTracker = new(timestamper, 300, NullLogger.Instance);
+        await using ClHealthRequestsTracker healthTracker = new(
+            timestamper,
+            new HealthChecksConfig()
+            {
+                MaxIntervalClRequestTime = 300
+            }, LimboLogs.Instance);
 
         healthTracker.CheckClAlive().Should().BeTrue();
 

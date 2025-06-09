@@ -34,7 +34,6 @@ public class PsudoNetworkModule() : Module
 
         builder
             .AddSingleton<IFullStateFinder, FullStateFinder>()
-            .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
             .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
 

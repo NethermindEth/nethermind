@@ -11,5 +11,5 @@ namespace Nethermind.Blockchain.BeaconBlockRoot;
 public interface IBeaconBlockRootHandler : IHasAccessList
 {
     (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true);
-    void StoreBeaconRoot(Block block, in BlockExecutionContext blkCtx, IReleaseSpec spec, ITxTracer tracer);
+    void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer);
 }

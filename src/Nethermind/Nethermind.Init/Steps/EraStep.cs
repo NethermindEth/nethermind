@@ -8,18 +8,14 @@ using Nethermind.Era1;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeBlockchain), typeof(LoadGenesisBlock))]
-public class EraStep : IStep
+[RunnerStepDependencies(
+    dependencies: [typeof(InitializeBlockchain), typeof(LoadGenesisBlock)],
+    dependents: [typeof(InitializeNetwork)]
+)]
+public class EraStep(EraCliRunner eraCliRunner) : IStep
 {
-    private readonly EraCliRunner _eraCliRunner;
-
-    public EraStep(EraCliRunner eraCliRunner)
-    {
-        _eraCliRunner = eraCliRunner;
-    }
-
     public async Task Execute(CancellationToken cancellationToken)
     {
-        await _eraCliRunner.Run(cancellationToken);
+        await eraCliRunner.Run(cancellationToken);
     }
 }

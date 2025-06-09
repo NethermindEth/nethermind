@@ -86,14 +86,12 @@ public class CliqueBlockProducerTests
             _blockEvents.Add(privateKey, newHeadBlockEvent);
 
             MemDb blocksDb = new();
-            MemDb stateDb = new();
-            MemDb codeDb = new();
 
             ISpecProvider specProvider = SepoliaSpecProvider.Instance;
 
-            var trieStore = TestTrieStoreFactory.Build(stateDb, nodeLogManager);
-            StateReader stateReader = new(trieStore, codeDb, nodeLogManager);
-            WorldState stateProvider = new(trieStore, codeDb, nodeLogManager);
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            IStateReader stateReader = worldStateManager.GlobalStateReader;
+            IWorldState stateProvider = worldStateManager.GlobalWorldState;
             stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
             SepoliaSpecProvider testnetSpecProvider = SepoliaSpecProvider.Instance;
 
@@ -165,9 +163,7 @@ public class CliqueBlockProducerTests
             BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
             processor.Start();
 
-            IReadOnlyTrieStore minerTrieStore = trieStore.AsReadOnly();
-
-            WorldState minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
+            IWorldState minerStateProvider = worldStateManager.CreateResettableWorldState();
 
             if (finalSpec.WithdrawalsEnabled)
             {

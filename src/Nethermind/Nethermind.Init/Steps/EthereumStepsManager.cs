@@ -6,11 +6,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.ExceptionServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Logging;
 
@@ -55,8 +53,7 @@ namespace Nethermind.Init.Steps
 
         private List<Task> CreateAndExecuteSteps(CancellationToken cancellationToken)
         {
-            Dictionary<Type, List<StepWrapper>> stepBaseTypeMap = [];
-            Dictionary<Type, StepInfo> stepInfoMap = [];
+            Dictionary<Type, StepWrapper> stepInfoMap = [];
 
             foreach (StepInfo stepInfo in _loader.ResolveStepsImplementations().ToList())
             {
@@ -71,35 +68,48 @@ namespace Nethermind.Init.Steps
                     return step;
                 };
 
-                stepInfoMap.Add(stepInfo.StepType, stepInfo);
-                ref List<StepWrapper>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(stepBaseTypeMap, stepInfo.StepBaseType, out bool keyExists);
-                list ??= new List<StepWrapper>();
-                list.Add(new StepWrapper(stepFactory, stepInfo));
+                Debug.Assert(!stepInfoMap.ContainsKey(stepInfo.StepBaseType), "Resolve steps implementations should have deduplicated step by base type");
+                stepInfoMap.Add(stepInfo.StepBaseType, new StepWrapper(stepFactory, stepInfo));
             }
-            List<Task> allRequiredSteps = new();
-            foreach (List<StepWrapper> steps in stepBaseTypeMap.Values)
+
+            foreach (var kv in stepInfoMap)
             {
-                foreach (StepWrapper stepWrapper in steps)
+                StepWrapper stepWrapper = kv.Value;
+                foreach (Type type in stepWrapper.StepInfo.Dependents)
                 {
-                    StepInfo stepInfo = stepInfoMap[stepWrapper.StepInfo.StepType];
-                    Task task = ExecuteStep(stepWrapper, stepInfo, stepBaseTypeMap, cancellationToken);
-                    if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
-                    allRequiredSteps.Add(task);
+                    if (stepInfoMap.TryGetValue(type, out StepWrapper? dependent))
+                    {
+                        dependent.Dependencies.Add(kv.Key);
+                    }
+                    else
+                    {
+                        throw new StepDependencyException(
+                            $"The dependent step {type.Name} for {stepWrapper.StepInfo.StepBaseType.Name} is missing.");
+                    }
                 }
+            }
+
+            List<Task> allRequiredSteps = new();
+            foreach (StepWrapper stepWrapper in stepInfoMap.Values)
+            {
+                StepInfo stepInfo = stepWrapper.StepInfo;
+                Task task = ExecuteStep(stepWrapper, stepInfoMap, cancellationToken);
+                if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
+                allRequiredSteps.Add(task);
             }
             return allRequiredSteps;
         }
 
-        private async Task ExecuteStep(StepWrapper stepWrapper, StepInfo stepInfo, Dictionary<Type, List<StepWrapper>> stepBaseTypeMap, CancellationToken cancellationToken)
+        private async Task ExecuteStep(StepWrapper stepWrapper, Dictionary<Type, StepWrapper> stepBaseTypeMap, CancellationToken cancellationToken)
         {
             long startTime = Stopwatch.GetTimestamp();
             try
             {
                 List<StepWrapper> dependencies = [];
-                foreach (Type type in stepInfo.Dependencies)
+                foreach (Type type in stepWrapper.Dependencies)
                 {
-                    if (!stepBaseTypeMap.TryGetValue(type, out List<StepWrapper>? value))
-                        throw new StepDependencyException($"The dependent step {type.Name} for {stepInfo.StepType.Name} was not created.");
+                    if (!stepBaseTypeMap.TryGetValue(type, out StepWrapper? value))
+                        throw new StepDependencyException($"The dependent step {type.Name} for {stepWrapper.StepInfo.StepBaseType.Name} was not created.");
                     dependencies.AddRange(value);
                 }
                 await stepWrapper.StartExecute(dependencies, cancellationToken);
@@ -159,6 +169,7 @@ namespace Nethermind.Init.Steps
             private IStep? _step;
             public IStep Step => _step ??= stepFactory();
             public Task StepTask => _taskCompletedSource.Task;
+            public List<Type> Dependencies = new(stepInfo.Dependencies);
 
             private TaskCompletionSource _taskCompletedSource = new TaskCompletionSource();
 

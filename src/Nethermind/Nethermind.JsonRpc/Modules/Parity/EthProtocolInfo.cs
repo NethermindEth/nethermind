@@ -12,8 +12,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
         [JsonPropertyName("version")]
         public byte Version { get; set; }
 
-        [JsonPropertyName("difficulty")]
-        public UInt256 Difficulty { get; set; }
+        [JsonPropertyName("difficulty"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public UInt256? Difficulty { get; set; } = UInt256.Zero;
 
         [JsonPropertyName("head")]
         public Hash256 HeadHash { get; set; }

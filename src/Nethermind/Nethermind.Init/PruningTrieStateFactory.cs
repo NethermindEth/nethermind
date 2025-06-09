@@ -76,12 +76,6 @@ public class PruningTrieStateFactory(
             pruningConfig.PruningBoundary = 64;
         }
 
-        if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
-        {
-            if (_logger.IsWarn) _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
-            syncConfig.DownloadBodiesInFastSync = true;
-        }
-
         IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
         IDb stateDb = dbProvider.StateDb;
         IPersistenceStrategy persistenceStrategy;

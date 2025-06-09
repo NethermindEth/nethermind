@@ -528,7 +528,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         StackList<int> stack = SetupRegistry(cell);
         _originalValues[cell] = value;
         stack.Push(_changes.Count);
-        _changes.Add(new Change(ChangeType.JustCache, cell, value));
+        _changes.Add(new Change(in cell, value, ChangeType.JustCache));
     }
 
     private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, ChangeTrace> trace)

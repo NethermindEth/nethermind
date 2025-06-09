@@ -51,7 +51,6 @@ public static class NettyMemoryEstimator
     typeof(SetupKeyStore),
     typeof(ResolveIps),
     typeof(InitializePlugins),
-    typeof(EraStep),
     typeof(InitializeBlockchain))]
 public class InitializeNetwork : IStep
 {

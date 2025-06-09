@@ -84,9 +84,6 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             preWarmer: preWarmer);
     }
 
-    protected override IHealthHintService CreateHealthHintService() =>
-        new ManualHealthHintService(_blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint);
-
     protected override IBlockProductionPolicy CreateBlockProductionPolicy() => AlwaysStartBlockProductionPolicy.Instance;
 
     protected override ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider) =>

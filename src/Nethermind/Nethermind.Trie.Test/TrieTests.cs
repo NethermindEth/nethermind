@@ -728,8 +728,8 @@ namespace Nethermind.Trie.Test
                     ? No.Pruning
                     : Prune.WhenCacheReaches(dirtyNodeSize);
 
-                return TestTrieStoreFactory.Build(
-                    new MemDb(),
+                return new TrieStore(
+                    new NodeStorage(new MemDb()),
                     pruneStrategy,
                     Persist.EveryNBlock(PersistEveryN),
                     new PruningConfig()
@@ -1074,8 +1074,8 @@ namespace Nethermind.Trie.Test
 
             Queue<Hash256> rootQueue = new();
 
-            using TrieStore trieStore = trieStoreConfigurations.CreateTrieStore();
-            WorldState stateProvider = new WorldState(trieStore, new MemDb(), _logManager);
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            IWorldState stateProvider = worldStateManager.GlobalWorldState;
 
             Account[] accounts = new Account[accountsCount];
             Address[] addresses = new Address[accountsCount];
@@ -1110,7 +1110,8 @@ namespace Nethermind.Trie.Test
 
                         if (stateProvider.AccountExists(address))
                         {
-                            Account existing = stateProvider.GetAccount(address);
+                            stateProvider.TryGetAccount(address, out AccountStruct existingStruct);
+                            Account existing = new Account(existingStruct.Nonce, existingStruct.Balance, new Hash256(existingStruct.StorageRoot), new Hash256(existingStruct.CodeHash));
                             if (existing.Balance != account.Balance)
                             {
                                 if (account.Balance > existing.Balance)

@@ -23,6 +23,10 @@ public class AssertionsSetup
                     .Using<Memory<byte>>(static context =>
                         context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray()))
                     .WhenTypeIs<Memory<byte>>();
+                options
+                    .Using<ReadOnlyMemory<byte>>(static context =>
+                        context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray()))
+                    .WhenTypeIs<ReadOnlyMemory<byte>>();
                 return options;
             });
     }

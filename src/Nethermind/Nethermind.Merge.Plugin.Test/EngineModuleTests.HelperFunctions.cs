@@ -143,14 +143,15 @@ namespace Nethermind.Merge.Plugin.Test
             var beaconBlockRootHandler = new BeaconBlockRootHandler(chain.TxProcessor, chain.WorldStateManager.GlobalWorldState);
 
             IReleaseSpec spec = chain.SpecProvider.GetSpec(block!.Header);
-            var blkCtx = new BlockExecutionContext(block!.Header, spec);
-            beaconBlockRootHandler.StoreBeaconRoot(block!, in blkCtx, spec, NullTxTracer.Instance);
+            chain.TxProcessor.SetBlockExecutionContext(new BlockExecutionContext(block!.Header, spec));
+            beaconBlockRootHandler.StoreBeaconRoot(block!, spec, NullTxTracer.Instance);
             IWorldState globalWorldState = chain.WorldStateManager.GlobalWorldState;
             Snapshot before = globalWorldState.TakeSnapshot();
             var blockHashStore = new BlockhashStore(chain.SpecProvider, globalWorldState);
             blockHashStore.ApplyBlockhashStateChanges(block!.Header);
 
-            chain.MainExecutionRequestsProcessor.ProcessExecutionRequests(block!, globalWorldState, new BlockExecutionContext(block.Header, chain.SpecProvider.GenesisSpec), [], chain.SpecProvider.GenesisSpec);
+            chain.TxProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, chain.SpecProvider.GenesisSpec));
+            chain.MainExecutionRequestsProcessor.ProcessExecutionRequests(block!, globalWorldState, [], chain.SpecProvider.GenesisSpec);
 
             globalWorldState.Commit(chain.SpecProvider.GenesisSpec);
             globalWorldState.RecalculateStateRoot();

@@ -10,35 +10,26 @@ public static class MemoryExtensions
     /// </summary>
     /// <param name="memory"></param>
     /// <returns></returns>
-    public static byte[]? AsArray(this in Memory<byte>? memory)
-    {
-        if (memory is null) return null;
-
-        return memory.Value.AsArray();
-    }
-
     public static byte[] AsArray(this in Memory<byte> memory)
     {
-        if (
-            MemoryMarshal.TryGetArray(memory, out ArraySegment<byte> segment) &&
+        if (memory.Length == 0) return Array.Empty<byte>();
+
+        if (MemoryMarshal.TryGetArray(memory, out ArraySegment<byte> segment) &&
             segment.Offset == 0 && segment.Count == segment.Array!.Length
         ) return segment.Array;
 
         return memory.Span.ToArray();
     }
 
-    public static Memory<T> TakeAndMove<T>(this ref Memory<T> memory, int length)
+    public static byte[] AsArray(this in ReadOnlyMemory<byte> memory)
     {
-        var m = memory[..length];
-        memory = memory[length..];
-        return m;
-    }
+        if (memory.Length == 0) return Array.Empty<byte>();
 
-    public static ReadOnlyMemory<T> TakeAndMove<T>(this ref ReadOnlyMemory<T> memory, int length)
-    {
-        var m = memory[..length];
-        memory = memory[length..];
-        return m;
+        if (MemoryMarshal.TryGetArray(memory, out ArraySegment<byte> segment) &&
+            segment.Offset == 0 && segment.Count == segment.Array!.Length
+        ) return segment.Array;
+
+        return memory.Span.ToArray();
     }
 
     public static void Clear<T>(this ref Memory<T> memory)

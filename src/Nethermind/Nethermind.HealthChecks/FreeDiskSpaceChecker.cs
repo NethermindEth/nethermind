@@ -5,7 +5,9 @@ using System;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Microsoft.Extensions.Hosting;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -23,14 +25,14 @@ namespace Nethermind.HealthChecks
         private readonly double _checkPeriodMinutes;
 
         public FreeDiskSpaceChecker(IHealthChecksConfig healthChecksConfig,
-            IDriveInfo[] drives,
+            [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives,
             ITimerFactory timerFactory,
             IProcessExitSource processExitSource,
-            ILogger logger,
+            ILogManager logManager,
             double checkPeriodMinutes = 1)
         {
             _healthChecksConfig = healthChecksConfig;
-            _logger = logger;
+            _logger = logManager.GetClassLogger<FreeDiskSpaceChecker>();
             _drives = drives;
             _processExitSource = processExitSource;
             _checkPeriodMinutes = checkPeriodMinutes;

@@ -42,11 +42,7 @@ public abstract class PrecompileTests<T> where T : PrecompileTests<T>, IPrecompi
         using (Assert.EnterMultipleScope())
         {
             Assert.That(success, Is.EqualTo(testCase.ExpectedError is null));
-
-            if (testCase.Expected is not null)
-            {
-                Assert.That(output, Is.EquivalentTo(testCase.Expected));
-            }
+            Assert.That(output, Is.EquivalentTo(testCase.Expected ?? []));
 
             if (testCase.Gas is not null)
             {

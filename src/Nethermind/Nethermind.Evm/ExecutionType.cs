@@ -50,7 +50,7 @@ namespace Nethermind.Evm
     }
 
     // ReSharper disable InconsistentNaming IdentifierTypo
-    public enum ExecutionType
+    public enum ExecutionType : byte
     {
         TRANSACTION,
         CALL,

@@ -24,8 +24,8 @@ public class BlockhashProviderTests
 {
     private static IWorldState CreateWorldState()
     {
-        var trieStore = TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
-        var worldState = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        IWorldState worldState = worldStateManager.GlobalWorldState;
         worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
         worldState.Commit(Frontier.Instance);
         return worldState;

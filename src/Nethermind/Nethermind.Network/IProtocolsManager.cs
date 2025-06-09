@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -13,7 +14,8 @@ namespace Nethermind.Network
     {
         void AddSupportedCapability(Capability capability);
         void RemoveSupportedCapability(Capability capability);
-        void SendNewCapability(Capability capability);
+        void SendNewCapability(Capability capability); // TODO: remove as unused?
         void AddProtocol(string code, Func<ISession, IProtocolHandler> factory);
+        int GetHighestProtocolVersion(string protocol);
     }
 }

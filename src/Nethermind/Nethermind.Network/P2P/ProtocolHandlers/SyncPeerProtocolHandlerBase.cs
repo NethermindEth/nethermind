@@ -35,7 +35,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public static readonly ulong SoftOutgoingMessageSizeLimit = (ulong)2.MB();
         public Node Node => Session?.Node;
         public string ClientId => Node?.ClientId;
-        public UInt256 TotalDifficulty { get; set; }
+        public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
         public PublicKey Id => Node.Id;
         string ITxPoolPeer.Enode => Node?.ToString();
 

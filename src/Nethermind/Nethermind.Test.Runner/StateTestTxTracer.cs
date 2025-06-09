@@ -52,13 +52,12 @@ public class StateTestTxTracer : ITxTracer, IDisposable
 
     public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
     {
-        bool isPostMerge = env.IsPostMerge();
         _gasAlreadySetForCurrentOp = false;
         _traceEntry = new StateTestTxTraceEntry();
         _traceEntry.Pc = pc + env.CodeInfo.PcOffset();
         _traceEntry.Section = codeSection;
         _traceEntry.Operation = (byte)opcode;
-        _traceEntry.OperationName = opcode.GetName(isPostMerge);
+        _traceEntry.OperationName = opcode.GetName();
         _traceEntry.Gas = gas;
         _traceEntry.Depth = env.GetGethTraceDepth();
         _traceEntry.FunctionDepth = functionDepth;

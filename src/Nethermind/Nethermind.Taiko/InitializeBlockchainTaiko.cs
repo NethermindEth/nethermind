@@ -69,8 +69,5 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
             preWarmer: preWarmer);
     }
 
-    protected override IHealthHintService CreateHealthHintService() =>
-        new ManualHealthHintService(_blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint);
-
     protected override IBlockProductionPolicy CreateBlockProductionPolicy() => NeverStartBlockProductionPolicy.Instance;
 }

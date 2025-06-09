@@ -10,11 +10,11 @@ namespace Nethermind.Synchronization;
 /// </summary>
 public interface IBetterPeerStrategy
 {
-    int Compare(in (UInt256 TotalDifficulty, long Number) valueX, in (UInt256 TotalDifficulty, long Number) valueY);
+    int Compare(in (UInt256? TotalDifficulty, long Number) valueX, in (UInt256? TotalDifficulty, long Number) valueY);
 
-    bool IsBetterThanLocalChain(in (UInt256 TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestBlock);
+    bool IsBetterThanLocalChain(in (UInt256? TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestBlock);
 
-    bool IsDesiredPeer(in (UInt256 TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestHeader);
+    bool IsDesiredPeer(in (UInt256? TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestHeader);
 
     bool IsLowerThanTerminalTotalDifficulty(UInt256 totalDifficulty) => true;
 }

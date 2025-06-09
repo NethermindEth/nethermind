@@ -67,7 +67,7 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         From = transaction.SenderAddress;
         Gas = transaction.GasLimit;
         Value = transaction.Value;
-        Input = transaction.Data.AsArray() ?? [];
+        Input = transaction.Data.AsArray();
         GasPrice = transaction.GasPrice;
         ChainId = transaction.ChainId;
 

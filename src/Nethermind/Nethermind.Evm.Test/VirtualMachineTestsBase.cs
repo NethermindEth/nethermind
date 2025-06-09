@@ -62,10 +62,10 @@ public abstract class VirtualMachineTestsBase
     {
         ILogManager logManager = GetLogManager();
 
-        IDb codeDb = new MemDb();
         _stateDb = new MemDb();
-        ITrieStore trieStore = TestTrieStoreFactory.Build(_stateDb, logManager);
-        TestState = new WorldState(trieStore, codeDb, logManager);
+        IDbProvider dbProvider = TestMemDbProvider.Init();
+        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, logManager);
+        TestState = worldStateManager.GlobalWorldState;
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         CodeInfoRepository = new CodeInfoRepository();
