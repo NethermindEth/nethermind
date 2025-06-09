@@ -5,19 +5,19 @@ namespace Nethermind.Experimental.Abi.V2;
 
 public ref struct BinarySpanReader
 {
-    private readonly ReadOnlySpan<byte> _span;
+    public ReadOnlySpan<byte> Span { get; }
     public int Position { get; set; }
 
     public BinarySpanReader(ReadOnlySpan<byte> span)
     {
-        _span = span;
+        Span = span;
         Position = 0;
     }
 
     public ReadOnlySpan<byte> ReadBytes(int count)
     {
-        if (Position + count > _span.Length) throw new ArgumentOutOfRangeException(nameof(count));
-        var result = _span.Slice(Position, count);
+        if (Position + count > Span.Length) throw new ArgumentOutOfRangeException(nameof(count));
+        var result = Span.Slice(Position, count);
 
         Position += count;
         return result;
