@@ -197,6 +197,6 @@ namespace Nethermind.Specs.Test
         Array? IReleaseSpec.EvmInstructionsNoTrace { get => _spec.EvmInstructionsNoTrace; set => _spec.EvmInstructionsNoTrace = value; }
         Array? IReleaseSpec.EvmInstructionsTraced { get => _spec.EvmInstructionsTraced; set => _spec.EvmInstructionsTraced = value; }
 
-        public ulong MaxBlobCountPerTx => _spec.MaxBlobCountPerTx;
+        public ulong MaxBlobsPerTx => _spec.MaxBlobsPerTx;
     }
 }

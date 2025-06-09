@@ -103,8 +103,8 @@ namespace Nethermind.Specs
         public ulong TargetBlobCount { get; set; }
         public ulong MaxBlobCount { get; set; }
 
-        private ulong? _maxBlobCountPerTx;
-        public ulong MaxBlobCountPerTx { get => _maxBlobCountPerTx ?? MaxBlobCount; set => _maxBlobCountPerTx = value; }
+        private ulong? _maxBlobsPerTx;
+        public ulong MaxBlobsPerTx { get => _maxBlobsPerTx ?? MaxBlobCount; set => _maxBlobsPerTx = value; }
         public UInt256 BlobBaseFeeUpdateFraction { get; set; }
 
 

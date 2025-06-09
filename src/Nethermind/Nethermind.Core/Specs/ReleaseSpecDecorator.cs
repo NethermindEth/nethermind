@@ -146,5 +146,5 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
 
-    public ulong MaxBlobCountPerTx => spec.MaxBlobCountPerTx;
+    public ulong MaxBlobsPerTx => spec.MaxBlobsPerTx;
 }

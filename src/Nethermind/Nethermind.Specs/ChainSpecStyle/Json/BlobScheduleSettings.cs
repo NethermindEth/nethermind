@@ -12,6 +12,7 @@ public class BlobScheduleSettings : IComparable<BlobScheduleSettings>
     public ulong Target { get; set; }
 
     public ulong Max { get; set; }
+    public ulong? MaxBlobsPerTx { get; set; }
 
     public ulong BaseFeeUpdateFraction { get; set; }
 
