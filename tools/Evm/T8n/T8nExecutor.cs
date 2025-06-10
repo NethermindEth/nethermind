@@ -73,11 +73,11 @@ public static class T8nExecutor
         blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
         blockReceiptsTracer.StartNewBlockTrace(block);
 
-        var blkCtx = new BlockExecutionContext(block.Header, test.Spec);
+        virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(block.Header, test.Spec));
         BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor, stateProvider);
         if (test.ParentBeaconBlockRoot is not null)
         {
-            beaconBlockRootHandler.StoreBeaconRoot(block, in blkCtx, test.Spec, storageTxTracer);
+            beaconBlockRootHandler.StoreBeaconRoot(block, test.Spec, storageTxTracer);
         }
 
         int txIndex = 0;
@@ -100,7 +100,7 @@ public static class T8nExecutor
 
             blockReceiptsTracer.StartNewTxTrace(transaction);
             TransactionResult transactionResult = transactionProcessor
-                .Execute(transaction, in blkCtx, blockReceiptsTracer);
+                .Execute(transaction, blockReceiptsTracer);
             blockReceiptsTracer.EndTxTrace();
 
             transactionExecutionReport.ValidTransactions.Add(transaction);
