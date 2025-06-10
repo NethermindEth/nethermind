@@ -127,6 +127,7 @@ public class RegisterRpcModules : IStep
 
     protected virtual void RegisterDebugRpcModule(IRpcModuleProvider rpcModuleProvider)
     {
+        /*
         StepDependencyException.ThrowIfNull(_api.DbProvider);
         StepDependencyException.ThrowIfNull(_api.BlockPreprocessor);
         StepDependencyException.ThrowIfNull(_api.BlockValidator);
@@ -158,6 +159,8 @@ public class RegisterRpcModules : IStep
             _api.FileSystem,
             _api.LogManager);
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, JsonRpcConfig.Timeout);
+        */
+        rpcModuleProvider.RegisterBoundedByCpuCount(_api.Context.Resolve<IRpcModuleFactory<IDebugRpcModule>>(), JsonRpcConfig.Timeout);
     }
 
     protected ModuleFactoryBase<IEthRpcModule> CreateEthModuleFactory()

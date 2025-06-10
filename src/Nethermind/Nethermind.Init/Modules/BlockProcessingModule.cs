@@ -50,6 +50,7 @@ public class BlockProcessingModule : Module
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
             .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
+            .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardSource, txP) => rewardSource.Get(txP))
 
             // Some plugin replace these implementation. So we name it here.
             .AddKeyedScoped<IBlockProcessor.IBlockTransactionsExecutor, RpcBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Rpc)

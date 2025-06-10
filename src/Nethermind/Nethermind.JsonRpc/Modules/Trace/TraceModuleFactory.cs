@@ -27,7 +27,6 @@ public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, Func<I
     {
         // Note: Not overriding `IReceiptStorage` to null.
         return builder
-            .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardSource, txP) => rewardSource.Get(txP)) // TODO: Check if can move globally
             .AddDecorator<IRewardCalculator, MergeRpcRewardCalculator>() // TODO: Check, what if this is pre merge?
             .AddScoped<IBlockValidator>(Always.Valid) // Why?
             .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()

@@ -20,6 +20,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using DotNetty.Buffers;
+using Nethermind.Config;
 using Nethermind.TxPool;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
@@ -27,27 +28,35 @@ using Nethermind.Facade.Simulate;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
-public class DebugRpcModule : IDebugRpcModule
+public class DebugRpcModule(
+    ILogManager logManager,
+    IDebugBridge debugBridge,
+    IJsonRpcConfig jsonRpcConfig,
+    ISpecProvider specProvider,
+    IBlockchainBridge? blockchainBridge,
+    ulong? secondsPerSlot,
+    IBlockFinder? blockFinder)
+    : IDebugRpcModule
 {
-    private readonly IDebugBridge _debugBridge;
-    private readonly ILogger _logger;
-    private readonly IJsonRpcConfig _jsonRpcConfig;
-    private readonly ISpecProvider _specProvider;
-    private readonly BlockDecoder _blockDecoder;
-    private readonly IBlockchainBridge _blockchainBridge;
-    private readonly ulong _secondsPerSlot;
-    private readonly IBlockFinder _blockFinder;
+    private readonly IDebugBridge _debugBridge = debugBridge ?? throw new ArgumentNullException(nameof(debugBridge));
+    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly IJsonRpcConfig _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+    private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    private readonly BlockDecoder _blockDecoder = new();
+    private readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+    private readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
+    private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
 
-    public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider, IBlockchainBridge? blockchainBridge, ulong? secondsPerSlot, IBlockFinder? blockFinder)
+    public DebugRpcModule(
+        ILogManager logManager,
+        IDebugBridge debugBridge,
+        IJsonRpcConfig jsonRpcConfig,
+        ISpecProvider specProvider,
+        IBlockchainBridge blockchainBridge,
+        IBlocksConfig blocksConfig,
+        IBlockFinder blockFinder)
+        :this(logManager, debugBridge, jsonRpcConfig, specProvider, blockchainBridge, blocksConfig.SecondsPerSlot, blockFinder)
     {
-        _debugBridge = debugBridge ?? throw new ArgumentNullException(nameof(debugBridge));
-        _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
-        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _logger = logManager.GetClassLogger();
-        _blockDecoder = new BlockDecoder();
-        _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
-        _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
-        _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
     }
 
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
@@ -405,7 +414,7 @@ public class DebugRpcModule : IDebugRpcModule
         }
         RlpBehaviors behavior =
             (_specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ?
-            RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
+                RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
         var rlp = receipts.Select(tx => Rlp.Encode(tx, behavior).Bytes);
         return ResultWrapper<byte[][]>.Success(rlp.ToArray());
     }

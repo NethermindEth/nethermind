@@ -12,9 +12,11 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -107,5 +109,32 @@ public class DebugModuleFactory(
             worldStateManager.GlobalStateReader,
             _logManager,
             transactionsExecutor);
+    }
+}
+
+public class AutoDebugModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope): IRpcModuleFactory<IDebugRpcModule>
+{
+    public IDebugRpcModule Create()
+    {
+        IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
+        IOverridableCodeInfoRepository codeInfoRepository = new OverridableCodeInfoRepository(codeInfoRepositoryFunc());
+
+        ILifetimeScope childLifecycle = rootLifetimeScope.BeginLifetimeScope((builder) =>
+        {
+            builder
+                .AddScoped<ChangeableTransactionProcessorAdapter>()
+                .AddScoped(ctx => ctx.ResolveKeyed<IBlockProcessor.IBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Validation))
+                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+                .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+                .AddSingleton<IWorldState>(overridableScope.WorldState)
+                .AddSingleton<ICodeInfoRepository>(codeInfoRepository)
+
+                .AddScoped<IOverridableWorldScope>(overridableScope)
+                .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository)
+                .AddScoped<IOverridableTxProcessorSource, AutoOverridableTxProcessingEnv>()
+                ;
+        });
+
+        return childLifecycle.Resolve<IDebugRpcModule>();
     }
 }

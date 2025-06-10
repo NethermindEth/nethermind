@@ -2,10 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Facade.Eth;
+using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Proof;
@@ -33,6 +38,13 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
             .AddScoped<IProofRpcModule, ProofRpcModule>()
             .AddScoped<ITraceRpcModule, TraceRpcModule>()
+            .AddScoped<IDebugRpcModule, DebugRpcModule>()
+            .AddScoped<IGethStyleTracer, GethStyleTracer>()
+            .AddScoped<IReceiptsMigration, ReceiptMigration>()
+            .AddScoped<IDebugBridge, DebugBridge>()
+            .AddScoped<IReadOnlyDbProvider, IDbProvider>((dbProvider) => dbProvider.AsReadOnly(false))
+
+            .AddScoped<IRpcModuleFactory<IDebugRpcModule>, AutoDebugModuleFactory>()
 
             .RegisterBoundedJsonRpcModule<IProofRpcModule, AutoProofModuleFactory>(2, jsonRpcConfig.Timeout)
             .RegisterBoundedJsonRpcModule<ITraceRpcModule, AutoTraceModuleFactory>(2, jsonRpcConfig.Timeout)
