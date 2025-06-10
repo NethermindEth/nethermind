@@ -99,4 +99,34 @@ public class Dynamics
         b.Should().Be("my");
         c.Should().Be("friends");
     }
+
+    [Test]
+    public void ArrayOfBools()
+    {
+        var signature = new AbiSignature("f")
+            .With(
+                AbiType.Array(AbiType.Bool)
+            );
+
+        var expectedMethodId = Bytes.FromHexString("da095a04");
+        signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
+
+        byte[] encoded = V2.Abi.Encode(signature, [true, false, true]);
+
+        var expected = Bytes.FromHexString(
+            "da095a04" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
+            "0000000000000000000000000000000000000000000000000000000000000003" + // Length of the array
+            "0000000000000000000000000000000000000000000000000000000000000001" + // First element, `true`
+            "0000000000000000000000000000000000000000000000000000000000000000" + // Second element, `false`
+            "0000000000000000000000000000000000000000000000000000000000000001"); // Third element, `true`
+
+        encoded.Should().BeEquivalentTo(expected);
+
+        bool[] decoded = V2.Abi.Decode(signature, encoded);
+        decoded.Length.Should().Be(3);
+        decoded[0].Should().Be(true);
+        decoded[1].Should().Be(false);
+        decoded[2].Should().Be(true);
+    }
 }
