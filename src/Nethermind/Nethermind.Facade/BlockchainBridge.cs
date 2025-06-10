@@ -447,6 +447,7 @@ namespace Nethermind.Facade
             {
                 builder
                     .AddScoped<IWorldState>(overridableScope.WorldState)
+                    .AddScoped<ICodeInfoRepository>(codeInfoRepository)
                     .AddScoped<IOverridableWorldScope>(overridableScope)
                     .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository)
                     .AddScoped<IOverridableTxProcessorSource, AutoOverridableTxProcessingEnv>();
