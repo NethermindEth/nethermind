@@ -26,6 +26,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core.Test;
 using Nethermind.Evm;
 using Nethermind.Facade.Find;
@@ -95,6 +96,8 @@ public class BlockchainBridgeTests
         _blockchainBridge = new BlockchainBridge(
             processingEnv,
             simulateProcessingEnvFactory,
+            _blockTree,
+            worldStateManager.GlobalStateReader,
             _txPool,
             _receiptStorage,
             _filterStore,
@@ -104,7 +107,7 @@ public class BlockchainBridgeTests
             Substitute.For<ILogFinder>(),
             _specProvider,
             new BlocksConfig(),
-            false);
+            new MiningConfig() { Enabled = false });
     }
 
     [TearDown]
@@ -239,6 +242,8 @@ public class BlockchainBridgeTests
         _blockchainBridge = new BlockchainBridge(
             processingEnv,
             simulateProcessingEnv,
+            _blockTree,
+            worldStateManager.GlobalStateReader,
             _txPool,
             _receiptStorage,
             _filterStore,
@@ -248,7 +253,7 @@ public class BlockchainBridgeTests
             Substitute.For<ILogFinder>(),
             _specProvider,
             new BlocksConfig(),
-            false);
+            new MiningConfig() { Enabled = false });
 
         _blockchainBridge.HeadBlock.Should().Be(head);
     }

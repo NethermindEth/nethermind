@@ -24,16 +24,13 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
 using Nethermind.State;
-using Nethermind.Core.Extensions;
 using Nethermind.Config;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
-using System.Linq;
+using Autofac;
 using Nethermind.Consensus;
-using Nethermind.Db;
-using Nethermind.Logging;
 
 namespace Nethermind.Facade
 {
@@ -55,8 +52,11 @@ namespace Nethermind.Facade
         private readonly SimulateBridgeHelper _simulateBridgeHelper;
         private readonly SimulateReadOnlyBlocksProcessingEnvFactory _simulateProcessingEnvFactory;
 
-        public BlockchainBridge(OverridableTxProcessingEnv processingEnv,
+        public BlockchainBridge(
+            IOverridableTxProcessorSource processingEnv,
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
+            IBlockTree blockTree,
+            IStateReader stateReader,
             ITxPool? txPool,
             IReceiptFinder? receiptStorage,
             IFilterStore? filterStore,
@@ -66,11 +66,11 @@ namespace Nethermind.Facade
             ILogFinder? logFinder,
             ISpecProvider specProvider,
             IBlocksConfig blocksConfig,
-            bool isMining)
+            IMiningConfig miningConfig)
         {
             _processingEnv = processingEnv ?? throw new ArgumentNullException(nameof(processingEnv));
-            _blockTree = processingEnv.BlockTree;
-            _stateReader = processingEnv.StateReader;
+            _blockTree = blockTree;
+            _stateReader = stateReader;
             _txPool = txPool ?? throw new ArgumentNullException(nameof(_txPool));
             _receiptFinder = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
@@ -80,7 +80,7 @@ namespace Nethermind.Facade
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blocksConfig = blocksConfig;
-            IsMining = isMining;
+            IsMining = miningConfig.Enabled;
             _simulateProcessingEnvFactory = simulateProcessingEnvFactory ?? throw new ArgumentNullException(nameof(simulateProcessingEnvFactory));
             _simulateBridgeHelper = new SimulateBridgeHelper(_blocksConfig, _specProvider);
         }
@@ -248,7 +248,7 @@ namespace Nethermind.Facade
 
             if (transaction.Nonce == 0)
             {
-                transaction.Nonce = GetNonce(stateRoot, transaction.SenderAddress);
+                transaction.Nonce = scope.StateReader.GetNonce(stateRoot, transaction.SenderAddress);
             }
 
             BlockHeader callHeader = treatBlockHeaderAsParentBlock
@@ -297,11 +297,6 @@ namespace Nethermind.Facade
         public ulong GetChainId()
         {
             return _blockTree.ChainId;
-        }
-
-        private UInt256 GetNonce(Hash256 stateRoot, Address address)
-        {
-            return _stateReader.GetNonce(stateRoot, address);
         }
 
         public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);
@@ -438,55 +433,36 @@ namespace Nethermind.Facade
     }
 
     public class BlockchainBridgeFactory(
-        IReadOnlyBlockTree readOnlyTree,
         IWorldStateManager worldStateManager,
-        ISimulateTransactionProcessorFactory simulateTransactionProcessorFactory,
-        IDbProvider dbProvider,
-        ITxPool txPool,
-        IReceiptFinder receiptFinder,
-        IFilterStore filterStore,
-        IFilterManager filterManager,
-        IEthereumEcdsa ethereumEcdsa,
-        ITimestamper timestamper,
-        ILogFinder logFinder,
-        ISpecProvider specProvider,
-        IMiningConfig miningConfig,
-        IBlocksConfig blocksConfig,
-        ILogManager logManager
+        Func<ICodeInfoRepository> codeInfoRepositoryFunc,
+        ILifetimeScope rootLifetimeScope
     ) : IBlockchainBridgeFactory
     {
         public IBlockchainBridge CreateBlockchainBridge()
         {
-            // TODO: reuse the same trie cache here
-            OverridableTxProcessingEnv txProcessingEnv = new(
-                worldStateManager.CreateOverridableWorldScope(),
-                readOnlyTree,
-                specProvider,
-                logManager);
+            IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
+            IOverridableCodeInfoRepository codeInfoRepository = new OverridableCodeInfoRepository(codeInfoRepositoryFunc());
 
-            SimulateReadOnlyBlocksProcessingEnvFactory simulateReadOnlyBlocksProcessingEnvFactory =
-                new SimulateReadOnlyBlocksProcessingEnvFactory(
-                    worldStateManager,
-                    readOnlyTree,
-                    dbProvider,
-                    specProvider,
-                    simulateTransactionProcessorFactory,
-                    logManager);
+            ILifetimeScope overridableScopeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) =>
+            {
+                builder
+                    .AddScoped<IWorldState>(overridableScope.WorldState)
+                    .AddScoped<IOverridableWorldScope>(overridableScope)
+                    .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository)
+                    .AddScoped<IOverridableTxProcessorSource, AutoOverridableTxProcessingEnv>();
+            });
 
-            return new BlockchainBridge(
-                txProcessingEnv,
-                simulateReadOnlyBlocksProcessingEnvFactory,
-                txPool,
-                receiptFinder,
-                filterStore,
-                filterManager,
-                ethereumEcdsa,
-                timestamper,
-                logFinder,
-                specProvider!,
-                blocksConfig,
-                miningConfig.Enabled
-            );
+            ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) =>
+            {
+                builder
+                    .AddScoped<BlockchainBridge>()
+                    .AddScoped<IOverridableTxProcessorSource>(overridableScopeLifetime.Resolve<IOverridableTxProcessorSource>());
+            });
+
+            blockchainBridgeLifetime.Disposer.AddInstanceForAsyncDisposal(overridableScopeLifetime);
+            rootLifetimeScope.Disposer.AddInstanceForDisposal(blockchainBridgeLifetime);
+
+            return blockchainBridgeLifetime.Resolve<BlockchainBridge>();
         }
     }
 }

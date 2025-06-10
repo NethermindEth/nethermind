@@ -28,6 +28,7 @@ public class OverridableTxProcessingScope : IOverridableTxProcessingScope
     }
 
     public IOverridableCodeInfoRepository CodeInfoRepository { get; }
+    public IStateReader StateReader => _worldScope.GlobalStateReader;
 
     public ITransactionProcessor TransactionProcessor { get; }
 

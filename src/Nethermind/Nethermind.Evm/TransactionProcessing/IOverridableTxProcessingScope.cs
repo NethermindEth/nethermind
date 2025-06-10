@@ -9,4 +9,5 @@ namespace Nethermind.Evm.TransactionProcessing;
 public interface IOverridableTxProcessingScope : IReadOnlyTxProcessingScope
 {
     IOverridableCodeInfoRepository CodeInfoRepository { get; }
+    IStateReader StateReader { get; }
 }
