@@ -3,6 +3,7 @@
 
 using System;
 using System.IO.Abstractions;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -23,73 +24,45 @@ using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
-public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
+public class DebugModuleFactory(
+    IWorldStateManager stateManager,
+    IDbProvider dbProvider,
+    IBlockTree blockTree,
+    IJsonRpcConfig jsonRpcConfig,
+    IBlockchainBridge blockchainBridge,
+    ulong secondsPerSlot,
+    IBlockValidator blockValidator,
+    IBlockPreprocessorStep recoveryStep,
+    IRewardCalculatorSource rewardCalculator,
+    IReceiptStorage receiptStorage,
+    IReceiptsMigration receiptsMigration,
+    IConfigProvider configProvider,
+    ISpecProvider specProvider,
+    ISyncModeSelector syncModeSelector,
+    IBadBlockStore badBlockStore,
+    IFileSystem fileSystem,
+    ILogManager logManager)
+    : ModuleFactoryBase<IDebugRpcModule>
 {
-    private readonly IJsonRpcConfig _jsonRpcConfig;
-    private readonly IBlockchainBridge _blockchainBridge;
-    private readonly ulong _secondsPerSlot;
-    protected readonly IBlockValidator _blockValidator;
-    protected readonly IRewardCalculatorSource _rewardCalculatorSource;
-    protected readonly IReceiptStorage _receiptStorage;
-    private readonly IReceiptsMigration _receiptsMigration;
-    private readonly IConfigProvider _configProvider;
-    protected readonly ISpecProvider _specProvider;
-    protected readonly ILogManager _logManager;
-    protected readonly IBlockPreprocessorStep _recoveryStep;
-    private readonly IReadOnlyDbProvider _dbProvider;
-    protected readonly IReadOnlyBlockTree _blockTree;
-    private readonly ISyncModeSelector _syncModeSelector;
-    private readonly IBadBlockStore _badBlockStore;
-    private readonly IFileSystem _fileSystem;
-    private readonly IWorldStateManager _worldStateManager;
-
-    public DebugModuleFactory(
-        IWorldStateManager worldStateManager,
-        IDbProvider dbProvider,
-        IBlockTree blockTree,
-        IJsonRpcConfig jsonRpcConfig,
-        IBlockchainBridge blockchainBridge,
-        ulong secondsPerSlot,
-        IBlockValidator blockValidator,
-        IBlockPreprocessorStep recoveryStep,
-        IRewardCalculatorSource rewardCalculator,
-        IReceiptStorage receiptStorage,
-        IReceiptsMigration receiptsMigration,
-        IConfigProvider configProvider,
-        ISpecProvider specProvider,
-        ISyncModeSelector syncModeSelector,
-        IBadBlockStore badBlockStore,
-        IFileSystem fileSystem,
-        ILogManager logManager)
-    {
-        _worldStateManager = worldStateManager;
-        _dbProvider = dbProvider.AsReadOnly(false);
-        _blockTree = blockTree.AsReadOnly();
-        _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
-        _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
-        _secondsPerSlot = secondsPerSlot;
-        _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-        _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-        _rewardCalculatorSource = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
-        _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-        _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
-        _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
-        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
-        _badBlockStore = badBlockStore;
-        _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-    }
+    protected readonly IBlockValidator _blockValidator = blockValidator;
+    protected readonly IRewardCalculatorSource _rewardCalculatorSource = rewardCalculator;
+    protected readonly IReceiptStorage _receiptStorage = receiptStorage;
+    protected readonly ISpecProvider _specProvider = specProvider;
+    protected readonly ILogManager _logManager = logManager;
+    protected readonly IBlockPreprocessorStep _recoveryStep = recoveryStep;
+    private readonly IReadOnlyDbProvider _dbProvider = dbProvider.AsReadOnly(false);
+    protected readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
 
     public override IDebugRpcModule Create()
     {
-        IOverridableWorldScope worldStateManager = _worldStateManager.CreateOverridableWorldScope();
+        IOverridableWorldScope worldStateManager = stateManager.CreateOverridableWorldScope();
         OverridableTxProcessingEnv txEnv = new(worldStateManager, _blockTree, _specProvider, _logManager);
 
         IReadOnlyTxProcessingScope scope = txEnv.Build(Keccak.EmptyTreeHash);
 
-        ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor);
-        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = CreateBlockTransactionsExecutor(transactionProcessorAdapter, scope.WorldState);
+        ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor); // It want to execute by default. But sometime, it cchange to
+        ITransactionProcessorAdapter adapter = transactionProcessorAdapter;
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = CreateBlockTransactionsExecutor(adapter, scope.WorldState);
         ReadOnlyChainProcessingEnv chainProcessingEnv = CreateReadOnlyChainProcessingEnv(scope, worldStateManager, transactionsExecutor);
 
         GethStyleTracer tracer = new(
@@ -97,27 +70,27 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             scope.WorldState,
             _receiptStorage,
             _blockTree,
-            _badBlockStore,
+            badBlockStore,
             _specProvider,
             transactionProcessorAdapter,
-            _fileSystem,
+            fileSystem,
             txEnv);
 
         DebugBridge debugBridge = new(
-            _configProvider,
+            configProvider,
             _dbProvider,
             tracer,
             _blockTree,
             _receiptStorage,
-            _receiptsMigration,
+            receiptsMigration,
             _specProvider,
-            _syncModeSelector,
-            _badBlockStore);
+            syncModeSelector,
+            badBlockStore);
 
-        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider, _blockchainBridge, _secondsPerSlot, _blockTree);
+        return new DebugRpcModule(_logManager, debugBridge, jsonRpcConfig, _specProvider, blockchainBridge, secondsPerSlot, _blockTree);
     }
 
-    protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(ChangeableTransactionProcessorAdapter transactionProcessor, IWorldState worldState)
+    protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IWorldState worldState)
         => new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState);
 
     protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
