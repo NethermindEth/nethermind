@@ -1,25 +1,26 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Int256;
+
 namespace Nethermind.Experimental.Abi.V2;
 
 public ref struct BinarySpanReader
 {
-    public ReadOnlySpan<byte> Span { get; }
-    public int Position { get; set; }
+    private readonly ReadOnlySpan<byte> _span;
+    private int _position;
 
     public BinarySpanReader(ReadOnlySpan<byte> span)
     {
-        Span = span;
-        Position = 0;
+        _span = span;
+        _position = 0;
     }
 
     public ReadOnlySpan<byte> ReadBytes(int count)
     {
-        if (Position + count > Span.Length) throw new ArgumentOutOfRangeException(nameof(count));
-        var result = Span.Slice(Position, count);
+        var result = _span.Slice(_position, count);
 
-        Position += count;
+        _position += count;
         return result;
     }
 
@@ -27,28 +28,61 @@ public ref struct BinarySpanReader
     {
         ReadOnlySpan<byte> bytes = ReadBytes(length);
         var padding = Math.PadTo32(length) - length;
-        Position += padding;
+        _position += padding;
 
         return bytes;
+    }
+
+    public void Advance(int bytes)
+    {
+        _position += bytes;
+    }
+
+    public T Scoped<T>(IAbiReadFunc<T> inner)
+    {
+        var reader = new BinarySpanReader(_span[_position..]);
+        T result = inner(ref reader);
+        _position += reader._position;
+        return result;
+    }
+
+    public (T, int) ReadOffset<T>(IAbiReadFunc<T> inner)
+    {
+        var offsetBytes = ReadBytes(32);
+        var restorePosition = _position;
+
+        var offset = new UInt256(offsetBytes, isBigEndian: true);
+
+        _position = (int)offset;
+
+        var valueStart = _position;
+        T result = inner(ref this);
+        var valueEnd = _position;
+        var read = valueEnd - valueStart;
+
+        _position = restorePosition;
+
+        return (result, read);
     }
 }
 
 public ref struct BinarySpanWriter
 {
-    public readonly Span<byte> Span { get; }
-    public int Position { get; set; }
+    private readonly Span<byte> _span;
+    private int _position;
+
+    public readonly int Written => _position;
 
     public BinarySpanWriter(Span<byte> span)
     {
-        Span = span;
-        Position = 0;
+        _span = span;
+        _position = 0;
     }
 
     public void Write(scoped ReadOnlySpan<byte> bytes)
     {
-        if (Position + bytes.Length > Span.Length) throw new ArgumentOutOfRangeException(nameof(bytes));
-        bytes.CopyTo(Span.Slice(Position));
-        Position += bytes.Length;
+        bytes.CopyTo(_span[_position..]);
+        _position += bytes.Length;
     }
 
     public void WritePadded(scoped ReadOnlySpan<byte> bytes)
@@ -56,7 +90,30 @@ public ref struct BinarySpanWriter
         Write(bytes);
 
         int padding = Math.PadTo32(bytes.Length) - bytes.Length;
-        Position += padding;
+        _position += padding;
+    }
+
+    public int Advance(int bytes)
+    {
+        var startPosition = _position;
+        _position += bytes;
+        return startPosition;
+    }
+
+    public void Scoped(IAbiWriteAction inner)
+    {
+        var writer = new BinarySpanWriter(_span[_position..]);
+        inner(ref writer);
+        _position += writer._position;
+    }
+
+    public void WriteOffset(int offset, IAbiWriteAction inner)
+    {
+        Span<byte> offsetLocation = _span[offset..(offset + 32)];
+        var position = (UInt256)_position;
+        position.ToBigEndian(offsetLocation);
+
+        inner(ref this);
     }
 }
 
