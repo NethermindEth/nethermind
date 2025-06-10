@@ -4,7 +4,7 @@
 using System.Text;
 using Nethermind.Int256;
 
-namespace Nethermind.Experimental.Abi.V2;
+namespace Nethermind.Experimental.Abi;
 
 public static partial class AbiType
 {

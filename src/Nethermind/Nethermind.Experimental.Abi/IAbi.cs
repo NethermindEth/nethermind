@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Experimental.Abi.V2;
+namespace Nethermind.Experimental.Abi;
 
 public delegate T IAbiReadFunc<out T>(ref BinarySpanReader r);
 public delegate void IAbiWriteAction(ref BinarySpanWriter w);
