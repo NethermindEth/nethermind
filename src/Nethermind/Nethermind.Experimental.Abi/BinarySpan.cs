@@ -5,6 +5,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.Experimental.Abi;
 
+public delegate T BinarySpanReaderFunc<out T, in TCtx>(TCtx ctx, ref BinarySpanReader r);
+
 public ref struct BinarySpanReader
 {
     private readonly ReadOnlySpan<byte> _span;
@@ -38,15 +40,15 @@ public ref struct BinarySpanReader
         _position += bytes;
     }
 
-    public T Scoped<T>(IAbiReadFunc<T> inner)
+    public T Scoped<T, TCtx>(TCtx ctx, BinarySpanReaderFunc<T, TCtx> inner)
     {
         var reader = new BinarySpanReader(_span[_position..]);
-        T result = inner(ref reader);
+        T result = inner(ctx, ref reader);
         _position += reader._position;
         return result;
     }
 
-    public (T, int) ReadOffset<T>(IAbiReadFunc<T> inner)
+    public (T, int) ReadOffset<T, TCtx>(TCtx ctx, BinarySpanReaderFunc<T, TCtx> inner)
     {
         var offsetBytes = ReadBytes(32);
         var restorePosition = _position;
@@ -56,7 +58,7 @@ public ref struct BinarySpanReader
         _position = (int)offset;
 
         var valueStart = _position;
-        T result = inner(ref this);
+        T result = inner(ctx, ref this);
         var valueEnd = _position;
         var read = valueEnd - valueStart;
 

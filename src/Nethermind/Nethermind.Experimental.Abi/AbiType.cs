@@ -72,15 +72,17 @@ public static partial class AbiType
         Read = (ref BinarySpanReader r) =>
         {
             int length = (int)UInt256.Read(ref r);
-            return r.Scoped((ref BinarySpanReader r) =>
+            return r.Scoped((length, elements), static ((int, IAbi<T>) ctx, ref BinarySpanReader r) =>
             {
+                var (length, elements) = ctx;
+
                 var array = new T[length];
                 if (elements.IsDynamic)
                 {
                     int read = 0;
                     for (int i = 0; i < length; i++)
                     {
-                        (array[i], read) = r.ReadOffset((ref BinarySpanReader r) => elements.Read(ref r));
+                        (array[i], read) = r.ReadOffset(elements, static (IAbi<T> elements, ref BinarySpanReader r) => elements.Read(ref r));
                     }
                     r.Advance(read);
                 }
@@ -252,12 +254,12 @@ public static partial class AbiType
         IsDynamic = abi.IsDynamic,
         Read = (ref BinarySpanReader r) =>
         {
-            return r.Scoped((ref BinarySpanReader r) =>
+            return r.Scoped(abi, static (IAbi<T> abi, ref BinarySpanReader r) =>
             {
                 T arg;
                 if (abi.IsDynamic)
                 {
-                    (arg, int read) = r.ReadOffset((ref BinarySpanReader r) => abi.Read(ref r));
+                    (arg, int read) = r.ReadOffset(abi, static (IAbi<T> abi, ref BinarySpanReader r) => abi.Read(ref r));
                     r.Advance(read);
                 }
                 else
@@ -293,12 +295,14 @@ public static partial class AbiType
         IsDynamic = abi1.IsDynamic || abi2.IsDynamic,
         Read = (ref BinarySpanReader r) =>
         {
-            return r.Scoped((ref BinarySpanReader r) =>
+            return r.Scoped((abi1, abi2), static ((IAbi<T1>, IAbi<T2>) ctx, ref BinarySpanReader r) =>
             {
+                var (abi1, abi2) = ctx;
+
                 T1 arg1;
                 if (abi1.IsDynamic)
                 {
-                    (arg1, _) = r.ReadOffset((ref BinarySpanReader r) => abi1.Read(ref r));
+                    (arg1, _) = r.ReadOffset(abi1, static (IAbi<T1> abi, ref BinarySpanReader r) => abi.Read(ref r));
                 }
                 else
                 {
@@ -308,7 +312,7 @@ public static partial class AbiType
                 T2 arg2;
                 if (abi2.IsDynamic)
                 {
-                    (arg2, int read) = r.ReadOffset((ref BinarySpanReader r) => abi2.Read(ref r));
+                    (arg2, int read) = r.ReadOffset(abi2, static (IAbi<T2> abi, ref BinarySpanReader r) => abi.Read(ref r));
                     r.Advance(read);
                 }
                 else
@@ -361,12 +365,14 @@ public static partial class AbiType
         IsDynamic = abi1.IsDynamic || abi2.IsDynamic || abi3.IsDynamic,
         Read = (ref BinarySpanReader r) =>
         {
-            return r.Scoped((ref BinarySpanReader r) =>
+            return r.Scoped((abi1, abi2, abi3), static ((IAbi<T1>, IAbi<T2>, IAbi<T3>) ctx, ref BinarySpanReader r) =>
             {
+                var (abi1, abi2, abi3) = ctx;
+
                 T1 arg1;
                 if (abi1.IsDynamic)
                 {
-                    (arg1, _) = r.ReadOffset((ref BinarySpanReader r) => abi1.Read(ref r));
+                    (arg1, _) = r.ReadOffset(abi1, static (IAbi<T1> abi, ref BinarySpanReader r) => abi.Read(ref r));
                 }
                 else
                 {
@@ -376,7 +382,7 @@ public static partial class AbiType
                 T2 arg2;
                 if (abi2.IsDynamic)
                 {
-                    (arg2, _) = r.ReadOffset((ref BinarySpanReader r) => abi2.Read(ref r));
+                    (arg2, _) = r.ReadOffset(abi2, static (IAbi<T2> abi, ref BinarySpanReader r) => abi.Read(ref r));
                 }
                 else
                 {
@@ -386,7 +392,7 @@ public static partial class AbiType
                 T3 arg3;
                 if (abi3.IsDynamic)
                 {
-                    (arg3, int read) = r.ReadOffset((ref BinarySpanReader r) => abi3.Read(ref r));
+                    (arg3, int read) = r.ReadOffset(abi3, static (IAbi<T3> abi, ref BinarySpanReader r) => abi.Read(ref r));
                     r.Advance(read);
                 }
                 else
@@ -452,12 +458,14 @@ public static partial class AbiType
         IsDynamic = abi1.IsDynamic || abi2.IsDynamic || abi3.IsDynamic || abi4.IsDynamic,
         Read = (ref BinarySpanReader r) =>
         {
-            return r.Scoped((ref BinarySpanReader r) =>
+            return r.Scoped((abi1, abi2, abi3, abi4), static ((IAbi<T1>, IAbi<T2>, IAbi<T3>, IAbi<T4>) ctx, ref BinarySpanReader r) =>
             {
+                var (abi1, abi2, abi3, abi4) = ctx;
+
                 T1 arg1;
                 if (abi1.IsDynamic)
                 {
-                    (arg1, _) = r.ReadOffset((ref BinarySpanReader r) => abi1.Read(ref r));
+                    (arg1, _) = r.ReadOffset(abi1, static (IAbi<T1> abi, ref BinarySpanReader r) => abi.Read(ref r));
                 }
                 else
                 {
@@ -467,7 +475,7 @@ public static partial class AbiType
                 T2 arg2;
                 if (abi2.IsDynamic)
                 {
-                    (arg2, _) = r.ReadOffset((ref BinarySpanReader r) => abi2.Read(ref r));
+                    (arg2, _) = r.ReadOffset(abi2, static (IAbi<T2> abi, ref BinarySpanReader r) => abi.Read(ref r));
                 }
                 else
                 {
@@ -477,7 +485,7 @@ public static partial class AbiType
                 T3 arg3;
                 if (abi3.IsDynamic)
                 {
-                    (arg3, _) = r.ReadOffset((ref BinarySpanReader r) => abi3.Read(ref r));
+                    (arg3, _) = r.ReadOffset(abi3, static (IAbi<T3> abi, ref BinarySpanReader r) => abi.Read(ref r));
                 }
                 else
                 {
@@ -487,7 +495,7 @@ public static partial class AbiType
                 T4 arg4;
                 if (abi4.IsDynamic)
                 {
-                    (arg4, int read) = r.ReadOffset((ref BinarySpanReader r) => abi4.Read(ref r));
+                    (arg4, int read) = r.ReadOffset(abi4, static (IAbi<T4> abi, ref BinarySpanReader r) => abi.Read(ref r));
                     r.Advance(read);
                 }
                 else
