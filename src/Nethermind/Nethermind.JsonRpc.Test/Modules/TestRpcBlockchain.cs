@@ -49,14 +49,13 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         public IJsonRpcConfig RpcConfig { get; private set; } = new JsonRpcConfig();
         public IEthRpcModule EthRpcModule { get; private set; } = null!;
-        public IDebugRpcModule DebugRpcModule { get; private set; } = null!;
-        public ITraceRpcModule TraceRpcModule { get; private set; } = null!;
+        public IDebugRpcModule DebugRpcModule => Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+        public ITraceRpcModule TraceRpcModule => Container.Resolve<IRpcModuleFactory<ITraceRpcModule>>().Create();
         public IBlockchainBridge Bridge => Container.Resolve<IBlockchainBridge>();
         public ITxSealer TxSealer { get; private set; } = null!;
         public ITxSender TxSender { get; private set; } = null!;
         public IReceiptFinder ReceiptFinder => Container.Resolve<IReceiptFinder>();
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
-        public IOverridableWorldScope OverridableWorldStateManager { get; private set; } = null!;
         public IProtocolsManager ProtocolsManager { get; private set; } = null!;
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
@@ -202,32 +201,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.ProtocolsManager,
             @this.BlocksConfig.SecondsPerSlot);
 
-        /*
-        private readonly Func<TestRpcBlockchain, IDebugRpcModule> _debugRpcModuleBuilder = static @this => new DebugModuleFactory(
-            @this.WorldStateManager,
-            @this.DbProvider,
-            @this.BlockTree,
-            @this.RpcConfig,
-            @this.Bridge,
-            @this.BlocksConfig.SecondsPerSlot,
-            @this.BlockValidator,
-            @this.BlockPreprocessorStep,
-            new RewardCalculator(@this.SpecProvider),
-            @this.ReceiptStorage,
-            Substitute.For<IReceiptsMigration>(),
-            Substitute.For<IConfigProvider>(),
-            @this.SpecProvider,
-            Substitute.For<ISyncModeSelector>(),
-            new BadBlockStore(@this.BlocksDb, 100),
-            new FileSystem(),
-            @this.LogManager).Create();
-            */
-
-        private readonly Func<TestRpcBlockchain, IDebugRpcModule> _debugRpcModuleBuilder = static @this => @this.Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
-
-        private readonly Func<TestRpcBlockchain, ITraceRpcModule> _traceRpcModuleBuilder =
-            static @this => @this.Container.Resolve<IRpcModuleFactory<ITraceRpcModule>>().Create();
-
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
             await base.Build(builder =>
@@ -236,7 +209,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 configurer?.Invoke(builder);
             });
 
-            IOverridableWorldScope overridableWorldStateManager = WorldStateManager.CreateOverridableWorldScope();
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
 
             ITxSigner txSigner = new WalletTxSigner(TestWallet, SpecProvider.ChainId);
@@ -265,9 +237,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             );
 
             EthRpcModule = _ethRpcModuleBuilder(this);
-            TraceRpcModule = _traceRpcModuleBuilder(this);
-            DebugRpcModule = _debugRpcModuleBuilder(this);
-            OverridableWorldStateManager = overridableWorldStateManager;
 
             return this;
         }
