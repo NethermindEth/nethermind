@@ -192,14 +192,39 @@ public static partial class AbiType
     public static IAbi<T> Tuple<T>(IAbi<T> abi) => new()
     {
         Name = $"({abi})",
+        IsDynamic = abi.IsDynamic,
         Read = (ref BinarySpanReader r) =>
         {
-            T arg = abi.Read(ref r);
-            return arg;
+            return r.Scoped((ref BinarySpanReader r) =>
+            {
+                T arg;
+                if (abi.IsDynamic)
+                {
+                    (arg, int read) = r.ReadOffset((ref BinarySpanReader r) => abi.Read(ref r));
+                    r.Advance(read);
+                }
+                else
+                {
+                    arg = abi.Read(ref r);
+                }
+
+                return arg;
+            });
         },
         Write = (ref BinarySpanWriter w, T v) =>
         {
-            abi.Write(ref w, v);
+            w.Scoped((ref BinarySpanWriter w) =>
+            {
+                if (abi.IsDynamic)
+                {
+                    int offset = w.Advance(32);
+                    w.WriteOffset(offset, (ref BinarySpanWriter w) => abi.Write(ref w, v));
+                }
+                else
+                {
+                    abi.Write(ref w, v);
+                }
+            });
         },
         Size = (v) => abi.Size(v)
     };

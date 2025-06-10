@@ -11,6 +11,31 @@ namespace Nethermind.Experimental.Abi.Test;
 public class Dynamics
 {
     [Test]
+    public void String()
+    {
+        var signature = new AbiSignature("f")
+            .With(
+                AbiType.String
+            );
+
+        var expectedMethodId = Bytes.FromHexString("91e145ef");
+        signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
+
+        byte[] encoded = V2.Abi.Encode(signature, "hello");
+
+        var expected = Bytes.FromHexString(
+            "91e145ef" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Location of the data part of the first parameter
+            "0000000000000000000000000000000000000000000000000000000000000005" + // Data part of the first argument
+            "68656c6c6f000000000000000000000000000000000000000000000000000000"); // Contents of the first argument, `"hello"`
+
+        encoded.Should().BeEquivalentTo(expected);
+
+        string decoded = V2.Abi.Decode(signature, encoded);
+        decoded.Should().Be("hello");
+    }
+
+    [Test]
     public void PairOfStrings()
     {
         var signature = new AbiSignature("f")
