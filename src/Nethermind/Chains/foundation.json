@@ -198,7 +198,6 @@
     "eip7251TransitionTimestamp": "0x681b3057",
     "eip7702TransitionTimestamp": "0x681b3057",
     "eip7623TransitionTimestamp": "0x681b3057",
-    "eip7934MaxRlpBlockSize": "0x800000",
     "depositContractAddress": "0x00000000219ab540356cbb839cbe05303d7705fa",
     "terminalTotalDifficulty": "C70D808A128D7380000",
     "blobSchedule": [
