@@ -21,7 +21,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Trie.Pruning;
 using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
@@ -123,6 +122,7 @@ public class AutoDebugModuleFactory(IWorldStateManager worldStateManager, Func<I
         {
             builder
                 .AddScoped<ChangeableTransactionProcessorAdapter>()
+                .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
                 .AddScoped(ctx => ctx.ResolveKeyed<IBlockProcessor.IBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Validation))
                 .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
                 .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)

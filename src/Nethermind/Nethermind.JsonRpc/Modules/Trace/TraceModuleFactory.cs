@@ -31,6 +31,7 @@ public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, Func<I
             .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
             .AddScoped<ICodeInfoRepository>(codeInfoRepository)
             .AddScoped<IWorldState>(worldState)
+            .AddScoped<ITransactionProcessorAdapter, T>()
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor>(ctx => ctx.ResolveKeyed<IBlockProcessor.IBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Validation))
             ;
     }

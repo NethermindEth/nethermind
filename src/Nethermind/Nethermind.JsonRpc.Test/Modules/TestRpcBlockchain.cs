@@ -4,13 +4,10 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -28,25 +25,19 @@ using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Config;
-using Nethermind.Db;
-using Nethermind.Facade.Simulate;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Consensus.Rewards;
-using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Timers;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
-using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -211,6 +202,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.ProtocolsManager,
             @this.BlocksConfig.SecondsPerSlot);
 
+        /*
         private readonly Func<TestRpcBlockchain, IDebugRpcModule> _debugRpcModuleBuilder = static @this => new DebugModuleFactory(
             @this.WorldStateManager,
             @this.DbProvider,
@@ -229,6 +221,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             new BadBlockStore(@this.BlocksDb, 100),
             new FileSystem(),
             @this.LogManager).Create();
+            */
+
+        private readonly Func<TestRpcBlockchain, IDebugRpcModule> _debugRpcModuleBuilder = static @this => @this.Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
 
         private readonly Func<TestRpcBlockchain, ITraceRpcModule> _traceRpcModuleBuilder =
             static @this => @this.Container.Resolve<IRpcModuleFactory<ITraceRpcModule>>().Create();
