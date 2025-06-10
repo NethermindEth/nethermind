@@ -30,9 +30,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
-using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -42,99 +40,47 @@ using Nethermind.Facade;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
-public class RegisterAuRaRpcModules : RegisterRpcModules
+public class AuRaDebugModuleFactory(
+    AuRaNethermindApi api,
+    IWorldStateManager worldStateManager,
+    IDbProvider dbProvider,
+    IBlockTree blockTree,
+    IJsonRpcConfig jsonRpcConfig,
+    IBlockchainBridge blockchainBridge,
+    IBlocksConfig blocksConfig,
+    IBlockValidator blockValidator,
+    IBlockPreprocessorStep recoveryStep,
+    IRewardCalculatorSource rewardCalculator,
+    IReceiptStorage receiptStorage,
+    IReceiptsMigration receiptsMigration,
+    IConfigProvider configProvider,
+    ISpecProvider specProvider,
+    ISyncModeSelector syncModeSelector,
+    IBadBlockStore badBlockStore,
+    IFileSystem fileSystem,
+    ILogManager logManager,
+    IAuRaBlockProcessorFactory factory)
+    : DebugModuleFactory(worldStateManager, dbProvider, blockTree, jsonRpcConfig, blockchainBridge, blocksConfig.SecondsPerSlot, blockValidator, recoveryStep,
+        rewardCalculator, receiptStorage, receiptsMigration, configProvider, specProvider, syncModeSelector,
+        badBlockStore, fileSystem, logManager)
 {
-
-    public RegisterAuRaRpcModules(AuRaNethermindApi api, IAuRaBlockProcessorFactory auRaBlockProcessorFactory, IPoSSwitcher poSSwitcher) : base(api, poSSwitcher)
+    protected override ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
+        IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
     {
-        _api = api;
-        _factory = auRaBlockProcessorFactory;
+        return new AuRaReadOnlyChainProcessingEnv(
+            api,
+            scope,
+            Always.Valid,
+            _recoveryStep,
+            _rewardCalculatorSource.Get(scope.TransactionProcessor),
+            _receiptStorage,
+            _specProvider,
+            _blockTree,
+            worldStateManager.GlobalStateReader,
+            _logManager,
+            transactionsExecutor,
+            factory);
     }
-
-    private static AuRaNethermindApi _api = null!;
-    private readonly IAuRaBlockProcessorFactory _factory;
-
-    protected override void RegisterDebugRpcModule(IRpcModuleProvider rpcModuleProvider)
-    {
-        StepDependencyException.ThrowIfNull(_api.DbProvider);
-        StepDependencyException.ThrowIfNull(_api.BlockPreprocessor);
-        StepDependencyException.ThrowIfNull(_api.BlockValidator);
-        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
-        StepDependencyException.ThrowIfNull(_api.KeyStore);
-        StepDependencyException.ThrowIfNull(_api.BadBlocksStore);
-        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-
-        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
-        ulong secondsPerSlot = blockConfig.SecondsPerSlot;
-
-        AuRaDebugModuleFactory debugModuleFactory = new(
-            _api.WorldStateManager,
-            _api.DbProvider,
-            _api.BlockTree,
-            JsonRpcConfig,
-            _api.CreateBlockchainBridge(),
-            secondsPerSlot,
-            _api.BlockValidator,
-            _api.BlockPreprocessor,
-            _api.RewardCalculatorSource,
-            _api.ReceiptStorage,
-            new ReceiptMigration(_api),
-            _api.ConfigProvider,
-            _api.SpecProvider,
-            _api.SyncModeSelector,
-            _api.BadBlocksStore,
-            _api.FileSystem,
-            _api.LogManager,
-            _factory);
-
-        rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, JsonRpcConfig.Timeout);
-    }
-
-    protected class AuRaDebugModuleFactory(
-        IWorldStateManager worldStateManager,
-        IDbProvider dbProvider,
-        IBlockTree blockTree,
-        IJsonRpcConfig jsonRpcConfig,
-        IBlockchainBridge blockchainBridge,
-        ulong secondsPerSlot,
-        IBlockValidator blockValidator,
-        IBlockPreprocessorStep recoveryStep,
-        IRewardCalculatorSource rewardCalculator,
-        IReceiptStorage receiptStorage,
-        IReceiptsMigration receiptsMigration,
-        IConfigProvider configProvider,
-        ISpecProvider specProvider,
-        ISyncModeSelector syncModeSelector,
-        IBadBlockStore badBlockStore,
-        IFileSystem fileSystem,
-        ILogManager logManager,
-        IAuRaBlockProcessorFactory factory)
-        : DebugModuleFactory(worldStateManager, dbProvider, blockTree, jsonRpcConfig, blockchainBridge, secondsPerSlot, blockValidator, recoveryStep,
-            rewardCalculator, receiptStorage, receiptsMigration, configProvider, specProvider, syncModeSelector,
-            badBlockStore, fileSystem, logManager)
-    {
-        protected override ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
-            IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
-        {
-            return new AuRaReadOnlyChainProcessingEnv(
-                _api,
-                scope,
-                Always.Valid,
-                _recoveryStep,
-                _rewardCalculatorSource.Get(scope.TransactionProcessor),
-                _receiptStorage,
-                _specProvider,
-                _blockTree,
-                worldStateManager.GlobalStateReader,
-                _logManager,
-                transactionsExecutor,
-                factory);
-        }
-    }
-
 }
 
 public interface IAuRaBlockProcessorFactory

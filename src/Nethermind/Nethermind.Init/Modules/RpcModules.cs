@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Tracing;
@@ -48,6 +49,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
             .RegisterBoundedJsonRpcModule<IProofRpcModule, AutoProofModuleFactory>(2, jsonRpcConfig.Timeout)
             .RegisterBoundedJsonRpcModule<ITraceRpcModule, AutoTraceModuleFactory>(2, jsonRpcConfig.Timeout)
+            .RegisterBoundedJsonRpcModule<IDebugRpcModule, AutoDebugModuleFactory>(Environment.ProcessorCount, jsonRpcConfig.Timeout)
             ;
     }
 }

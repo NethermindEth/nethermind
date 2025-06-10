@@ -76,7 +76,6 @@ public class RegisterRpcModules : IStep
 
         RpcLimits.Init(JsonRpcConfig.RequestQueueLimit);
         RegisterEthRpcModule(rpcModuleProvider);
-        RegisterDebugRpcModule(rpcModuleProvider);
 
         PersonalRpcModule personalRpcModule = new(
             _api.EthereumEcdsa,
@@ -123,44 +122,6 @@ public class RegisterRpcModules : IStep
         ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Enabled.OrderBy(static x => x))}");
 
         await Task.CompletedTask;
-    }
-
-    protected virtual void RegisterDebugRpcModule(IRpcModuleProvider rpcModuleProvider)
-    {
-        /*
-        StepDependencyException.ThrowIfNull(_api.DbProvider);
-        StepDependencyException.ThrowIfNull(_api.BlockPreprocessor);
-        StepDependencyException.ThrowIfNull(_api.BlockValidator);
-        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
-        StepDependencyException.ThrowIfNull(_api.KeyStore);
-        StepDependencyException.ThrowIfNull(_api.PeerPool);
-        StepDependencyException.ThrowIfNull(_api.BadBlocksStore);
-        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-
-        DebugModuleFactory debugModuleFactory = new(
-            _api.WorldStateManager,
-            _api.DbProvider,
-            _api.BlockTree,
-            JsonRpcConfig,
-            _api.CreateBlockchainBridge(),
-            _blocksConfig.SecondsPerSlot,
-            _api.BlockValidator,
-            _api.BlockPreprocessor,
-            _api.RewardCalculatorSource,
-            _api.ReceiptStorage,
-            new ReceiptMigration(_api),
-            _api.ConfigProvider,
-            _api.SpecProvider,
-            _api.SyncModeSelector,
-            _api.BadBlocksStore,
-            _api.FileSystem,
-            _api.LogManager);
-        rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, JsonRpcConfig.Timeout);
-        */
-        rpcModuleProvider.RegisterBoundedByCpuCount(_api.Context.Resolve<IRpcModuleFactory<IDebugRpcModule>>(), JsonRpcConfig.Timeout);
     }
 
     protected ModuleFactoryBase<IEthRpcModule> CreateEthModuleFactory()

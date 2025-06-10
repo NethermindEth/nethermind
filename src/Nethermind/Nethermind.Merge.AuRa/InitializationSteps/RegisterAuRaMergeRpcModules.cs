@@ -21,10 +21,6 @@ using Nethermind.State;
 
 namespace Nethermind.Merge.AuRa.InitializationSteps;
 
-public class RegisterAuRaMergeRpcModules(AuRaNethermindApi api, IAuRaBlockProcessorFactory factory, IPoSSwitcher poSSwitcher) : RegisterAuRaRpcModules(api, factory, poSSwitcher)
-{
-}
-
 public class AuRaMergeBlockProcessorFactory : IAuRaBlockProcessorFactory
 {
     public AuRaBlockProcessor Create(ISpecProvider specProvider, IBlockValidator blockValidator,

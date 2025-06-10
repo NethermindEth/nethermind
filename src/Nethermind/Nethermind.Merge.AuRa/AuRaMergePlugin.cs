@@ -71,7 +71,6 @@ namespace Nethermind.Merge.AuRa
         public override IEnumerable<StepInfo> GetSteps()
         {
             yield return typeof(InitializeBlockchainAuRaMerge);
-            yield return typeof(RegisterAuRaMergeRpcModules);
         }
 
         public override IModule Module => new AuraMergeModule();

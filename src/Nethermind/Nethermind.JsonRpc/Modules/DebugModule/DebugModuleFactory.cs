@@ -63,7 +63,7 @@ public class DebugModuleFactory(
 
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor); // It want to execute by default. But sometime, it cchange to
         ITransactionProcessorAdapter adapter = transactionProcessorAdapter;
-        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = CreateBlockTransactionsExecutor(adapter, scope.WorldState);
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(adapter, scope.WorldState);
         ReadOnlyChainProcessingEnv chainProcessingEnv = CreateReadOnlyChainProcessingEnv(scope, worldStateManager, transactionsExecutor);
 
         GethStyleTracer tracer = new(
@@ -90,9 +90,6 @@ public class DebugModuleFactory(
 
         return new DebugRpcModule(_logManager, debugBridge, jsonRpcConfig, _specProvider, blockchainBridge, secondsPerSlot, _blockTree);
     }
-
-    protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IWorldState worldState)
-        => new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState);
 
     protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
         IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
