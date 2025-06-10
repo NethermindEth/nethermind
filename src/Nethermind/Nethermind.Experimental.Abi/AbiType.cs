@@ -128,12 +128,17 @@ public static partial class AbiType
         },
         Size = array =>
         {
-            var offsetSize = 32;
-            var lengthSize = 32;
-            var elementsSize = array.Sum(e => abi.Size(e));
+            const int offsetSize = 32;
+            const int lengthSize = 32;
+
+            var elementsSize = 0;
+            foreach (var e in array)
+            {
+                elementsSize += abi.Size(e);
+            }
 
             return offsetSize + lengthSize + elementsSize;
-        },
+        }
     };
 
     public static IAbi<T[]> Array<T>(IAbi<T> abi, int length) => new()
@@ -174,7 +179,7 @@ public static partial class AbiType
 
     public static IAbi<byte[]> Bytes => new()
     {
-        Name = $"bytes",
+        Name = "bytes",
         IsDynamic = true,
         Read = (ref BinarySpanReader r) =>
         {
@@ -190,8 +195,8 @@ public static partial class AbiType
         },
         Size = bytes =>
         {
-            var offsetSize = 32;
-            var lengthSize = 32;
+            const int offsetSize = 32;
+            const int lengthSize = 32;
             var bytesSize = Math.PadTo32(bytes.Length);
 
             return offsetSize + lengthSize + bytesSize;
@@ -217,7 +222,7 @@ public static partial class AbiType
 
     public static IAbi<String> String => new()
     {
-        Name = $"string",
+        Name = "string",
         IsDynamic = true,
         Read = (ref BinarySpanReader r) =>
         {
@@ -227,17 +232,17 @@ public static partial class AbiType
         },
         Write = (ref BinarySpanWriter w, String v) =>
         {
-            Span<byte> buffer = new byte[Encoding.UTF8.GetByteCount(v)];
+            Span<byte> buffer = stackalloc byte[Encoding.UTF8.GetByteCount(v)];
             Encoding.UTF8.GetBytes(v, buffer);
             int length = buffer.Length;
 
             UInt256.Write(ref w, (UInt256)length);
             w.WritePadded(buffer);
         },
-        Size = (v) =>
+        Size = v =>
         {
-            var offsetSize = 32;
-            var lengthSize = 32;
+            const int offsetSize = 32;
+            const int lengthSize = 32;
             var byteCount = Encoding.UTF8.GetByteCount(v);
             var byteSize = Math.PadTo32(byteCount);
 
