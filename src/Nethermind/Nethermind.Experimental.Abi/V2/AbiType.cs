@@ -286,6 +286,7 @@ public static partial class AbiType
         Size = (v) => abi.Size(v)
     };
 
+    // TODO: Investigate if we can generalize this code to avoid duplication when dealing with tuples of different sizes
     public static IAbi<(T1, T2)> Tuple<T1, T2>(IAbi<T1> abi1, IAbi<T2> abi2) => new()
     {
         Name = $"({abi1.Name},{abi2.Name})",
