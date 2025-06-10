@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -109,6 +110,14 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
         TestState.InsertCode(address, hashcode, bytecode, Spec);
         return address;
     }
+
+    protected void AssertBalance(in StorageCell cell, UInt256 expected)
+    {
+        ReadOnlySpan<byte> read = TestState.Get(cell);
+        UInt256 after = new UInt256(read);
+        after.Should().Be(expected);
+    }
+
     [TearDown]
     protected void AssertIlevmCalls()
     {

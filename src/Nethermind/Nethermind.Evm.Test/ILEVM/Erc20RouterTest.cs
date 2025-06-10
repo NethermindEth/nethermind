@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Test.ILEVM;
 
 // Erc20Router
 //  https://etherscan.io/address/0xeeeeee9ec4769a09a76a83c7bc42b185872860ee#code
-//: permit2:
+// Permit2:
 // https://etherscan.io/address/0x000000000022D473030F116dDEE9F6B43aC78BA3#code
 
 [NonParallelizable]
@@ -51,8 +51,11 @@ public class Erc20RouterTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
     private static readonly byte[] CalledWithDataA = TestItem.RandomDataA;
 
     private static readonly UInt256 CalledWithValueA = new UInt256(1000);
+
     private static UInt256 SenderInitialBalance = 100.Ether();
+
     private static UInt256 RecipientInitialBalance = 100.Ether();
+
     private StorageCell CalledAddressCell = new(CalledAddressA, new UInt256(2, 0, 0, 0));
 
     private byte[] CalledContractA = Prepare.EvmCode
@@ -119,12 +122,10 @@ public class Erc20RouterTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
 
     public static byte[] GenerateMulticall(int n)
     {
-        // Create arrays of length `n` filled with the same A values
         var targets = Enumerable.Repeat(CalledAddressA, n).ToArray();
         var data = Enumerable.Repeat(CalledWithDataA, n).ToArray();
         var values = Enumerable.Repeat(CalledWithValueA, n).ToArray();
 
-        // Call your EncodePermitMulticall function
         byte[] multiCallData = EncodePermitMulticall(
             SenderAddress,
             ([], new UInt256(0), new UInt256(0)),
@@ -143,7 +144,7 @@ public class Erc20RouterTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
     public void PermitMultiCall(int calls)
     {
         UInt256 valuePerCall = CalledWithValueA; // Value per call
-        UInt256 excessValue = 20000;
+        UInt256 excessValue = 20000 * (new UInt256((ulong)calls));
         UInt256 gasLimit = 1000000;
         UInt256 totalValue = (valuePerCall * (new UInt256((ulong)calls))) + excessValue;
 
@@ -164,29 +165,15 @@ public class Erc20RouterTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
 
         ExecuteNoPrepare(block, transaction, NullTxTracer.Instance, Activation, gasLimit.ToLong(), null, true);
 
-        AssertSenderBalance(totalValue, excessValue);
-        AssertBalance(CalledAddressCell, CalledWithValueA * (new UInt256((ulong)calls)));
-    }
-
-    private void AssertSenderBalance(UInt256 totalValue, UInt256 excessValue)
-    {
         var senderBalance = GetAccountBalance(SenderAddress);
 
         // Actual expected balance
         //UInt256 expectedSenderBalance = SenderInitialBalance + RecipientInitialBalance - totalValue - gasLimit + excessValue + new UInt256((ulong)GasRemaining);
 
-        // Work around since ilevm does not  correclty trace gas
-        senderBalance.Should().BeGreaterThanOrEqualTo(SenderInitialBalance + excessValue - totalValue, "The sender's balance should be updated correctly after the call with excess value returned");
+        // Work around since ilevm does not correclty trace gas
+        senderBalance.Should().BeGreaterThanOrEqualTo(SenderInitialBalance + RecipientInitialBalance + excessValue - totalValue - gasLimit, "The sender's balance should be updated correctly after the call with excess value returned");
 
-        //When above is fixed
-        //senderBalance.Should().Be(expectedSenderBalance)
-    }
-
-    private void AssertBalance(in StorageCell cell, UInt256 expected)
-    {
-        ReadOnlySpan<byte> read = TestState.Get(cell);
-        UInt256 after = new UInt256(read);
-        after.Should().Be(expected);
+        AssertBalance(CalledAddressCell, CalledWithValueA * (new UInt256((ulong)calls)));
     }
 
 
