@@ -91,4 +91,37 @@ public class Examples
         b.Should().Be(true);
         c.Should().BeEquivalentTo(new UInt256[] { 1, 2, 3 });
     }
+
+    [Test]
+    public void DynamicF()
+    {
+        var signature = new AbiSignature("f")
+            .With(
+                AbiType.UInt256,
+                AbiType.Array(AbiType.UInt32),
+                AbiType.BytesM(10),
+                AbiType.Bytes);
+
+        var expectedMethodId = Bytes.FromHexString("0x8be65246");
+        signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
+
+        (UInt256, uint[], byte[], byte[]) arguments = ((UInt256)0x123, [0x456, 0x789], "1234567890"u8.ToArray(), "Hello, world!"u8.ToArray());
+        byte[] encoded = V2.Abi.Encode(signature, arguments);
+
+        var expected = Bytes.FromHexString(
+            "0x8be65246" +
+            "0000000000000000000000000000000000000000000000000000000000000123" +
+            "0000000000000000000000000000000000000000000000000000000000000080" +
+            "3132333435363738393000000000000000000000000000000000000000000000" +
+            "00000000000000000000000000000000000000000000000000000000000000e0" +
+            "0000000000000000000000000000000000000000000000000000000000000002" +
+            "0000000000000000000000000000000000000000000000000000000000000456" +
+            "0000000000000000000000000000000000000000000000000000000000000789" +
+            "000000000000000000000000000000000000000000000000000000000000000d" +
+            "48656c6c6f2c20776f726c642100000000000000000000000000000000000000");
+        encoded.Should().BeEquivalentTo(expected);
+
+        var decoded = V2.Abi.Decode(signature, encoded);
+        decoded.Should().BeEquivalentTo(arguments);
+    }
 }
