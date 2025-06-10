@@ -34,18 +34,19 @@ namespace Nethermind.Evm.CodeAnalysis
             if (MachineCode.Length < vmConfig.IlEvmBytecodeMinLength
                 || MachineCode.Length > (vmConfig.IlEvmBytecodeMaxLength ?? spec.MaxCodeSize)) return;
 
-            if(vmConfig.IlEvmAllowedContracts.Length != 0)
+            if (vmConfig.IlEvmAllowedContracts.Length != 0)
             {
-                if(Array.BinarySearch(
+                if (Array.BinarySearch(
                     vmConfig.IlEvmAllowedContracts,
-                    Codehash.Value.ToString (),
-                    StringComparer.OrdinalIgnoreCase) >= 0) {
+                    Codehash.Value.ToString(),
+                    StringComparer.OrdinalIgnoreCase) >= 0)
+                {
                     IlAnalyzer.Enqueue(this, vmConfig, logger);
                 }
                 return;
             }
 
-            if(Interlocked.Increment(ref _callCount) != vmConfig.IlEvmAnalysisThreshold)
+            if (Interlocked.Increment(ref _callCount) != vmConfig.IlEvmAnalysisThreshold)
                 return;
 
             IlAnalyzer.Enqueue(this, vmConfig, logger);
@@ -59,7 +60,7 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             Codehash = codeHash;
 
-            if(codeHash is not null && AotContractsRepository.TryGetIledCode(codeHash.Value, out ILExecutionStep ilCode))
+            if (codeHash is not null && AotContractsRepository.TryGetIledCode(codeHash.Value, out ILExecutionStep ilCode))
             {
                 Metrics.IncrementIlvmAotCacheTouched();
                 IlInfo.PrecompiledContract = ilCode;

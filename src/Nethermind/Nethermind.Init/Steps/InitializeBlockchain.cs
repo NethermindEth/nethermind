@@ -102,7 +102,7 @@ namespace Nethermind.Init.Steps
 #else
             var vmConfig = getApi.VMConfig;
 #endif
-            InitializeIlEvmProcesses(vmConfig );
+            InitializeIlEvmProcesses(vmConfig);
 
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState, getApi.VMConfig);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
@@ -272,7 +272,7 @@ namespace Nethermind.Init.Steps
 
         protected void InitializeIlEvmProcesses(IVMConfig? vMConfig)
         {
-            if(!vMConfig?.IsVmOptimizationEnabled ?? false) return;
+            if (!vMConfig?.IsVmOptimizationEnabled ?? false) return;
 
             IlAnalyzer.StartPrecompilerBackgroundThread(vMConfig!, _api.LogManager.GetClassLogger<AotContractsRepository>());
 
@@ -281,7 +281,7 @@ namespace Nethermind.Init.Steps
             string path = vMConfig!.IlEvmPrecompiledContractsPath;
             if (string.IsNullOrEmpty(path)) return;
 
-            if(Directory.Exists(path))
+            if (Directory.Exists(path))
             {
                 foreach (var file in Directory.GetFiles(path, ".Nethermind.g.c.dll"))
                 {

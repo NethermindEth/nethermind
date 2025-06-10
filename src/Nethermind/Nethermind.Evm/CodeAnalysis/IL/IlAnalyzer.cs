@@ -99,7 +99,7 @@ public static class IlAnalyzer
         {
             Analyse(worklet, config.IlEvmEnabledMode, config, logger);
         }
-        catch(Exception e)
+        catch (Exception e)
         {
             logger.Error($"IlAnalyzer: {worklet.Codehash} failed to analyze error : {e.Message}");
             Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Failed);
@@ -113,7 +113,7 @@ public static class IlAnalyzer
         return Task.CompletedTask;
     }
 
-    public static IEnumerable<(int, Instruction,  OpcodeMetadata)> EnumerateOpcodes(byte[] machineCode, Range? slice = null)
+    public static IEnumerable<(int, Instruction, OpcodeMetadata)> EnumerateOpcodes(byte[] machineCode, Range? slice = null)
     {
         slice ??= 0..machineCode.Length;
         OpcodeMetadata metadata = default;
@@ -138,7 +138,8 @@ public static class IlAnalyzer
                     codeInfo.IlInfo.PrecompiledContract = contractDelegate;
                     Metrics.IncrementIlvmAotCacheTouched();
                     return;
-                } else
+                }
+                else
                 {
                     if (!AnalyseContract(codeInfo, vmConfig, out ContractCompilerMetadata? compilerMetadata))
                     {
@@ -146,7 +147,7 @@ public static class IlAnalyzer
                         return;
                     }
 
-                    if(!TryCompileContract(codeInfo, compilerMetadata.Value, vmConfig))
+                    if (!TryCompileContract(codeInfo, compilerMetadata.Value, vmConfig))
                     {
                         Interlocked.Exchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Failed);
                         return;
@@ -161,7 +162,7 @@ public static class IlAnalyzer
     internal static bool TryCompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig vmConfig)
     {
         Metrics.IncrementIlvmCurrentlyCompiling();
-        if(Precompiler.TryCompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig, SimpleConsoleLogManager.Instance.GetLogger("IlvmLogger"), out ILExecutionStep? contractDelegate))
+        if (Precompiler.TryCompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig, SimpleConsoleLogManager.Instance.GetLogger("IlvmLogger"), out ILExecutionStep? contractDelegate))
         {
             AotContractsRepository.AddIledCode(codeInfo.Codehash.Value, contractDelegate);
             codeInfo.IlInfo.PrecompiledContract = contractDelegate;
@@ -171,7 +172,7 @@ public static class IlAnalyzer
         return false;
     }
 
-    internal static bool AnalyseContract(CodeInfo codeInfo,  IVMConfig config, out ContractCompilerMetadata? compilerMetadata)
+    internal static bool AnalyseContract(CodeInfo codeInfo, IVMConfig config, out ContractCompilerMetadata? compilerMetadata)
     {
         Metrics.IncrementIlvmCurrentlyAnalysing();
 
@@ -182,7 +183,7 @@ public static class IlAnalyzer
         Dictionary<int, int> entryPoints = [];
 
         int startSegment = 0;
-        foreach(var (pc, opcode, metadata) in EnumerateOpcodes(codeAsSpan))
+        foreach (var (pc, opcode, metadata) in EnumerateOpcodes(codeAsSpan))
         {
             if (opcode is Instruction.JUMPDEST)
             {
@@ -205,7 +206,7 @@ public static class IlAnalyzer
             AnalyzeSegment(codeAsSpan, startSegment..codeAsSpan.Length, stackOffsets, gasOffsets, subSegmentData);
         }
 
-        compilerMetadata =  new ContractCompilerMetadata
+        compilerMetadata = new ContractCompilerMetadata
         {
             StackOffsets = stackOffsets,
             StaticGasSubSegmentes = gasOffsets,
@@ -258,7 +259,7 @@ public static class IlAnalyzer
 
                     gasOffsets[costStart] = coststack;
                     subSegmentData[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
-                    
+
                     subsegmentStart = pc;
                     subSegment = new();
                     instructionsIncluded = [op];
@@ -342,7 +343,7 @@ public static class IlAnalyzer
             subSegment.IsReachable = hasJumpdest;
             subSegment.IsFailing = hasInvalidOpcode;
             subSegment.RequiredStack = -subSegment.RequiredStack;
-            subSegment.End = segmentRange.End.Value-1;
+            subSegment.End = segmentRange.End.Value - 1;
             subSegment.Instructions = instructionsIncluded;
             subSegment.RequiresOpcodeCheck = requiresAvailabilityCheck;
             subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;

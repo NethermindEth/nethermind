@@ -2103,7 +2103,7 @@ namespace Nethermind.Evm.Test.ILEVM
                 var response = await httpClient.PostAsync(rpcUrl, content);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
-                if(response.StatusCode is HttpStatusCode.OK)
+                if (response.StatusCode is HttpStatusCode.OK)
                 {
                     using var doc = JsonDocument.Parse(responseContent);
                     var code = doc.RootElement.GetProperty("result").GetString();
@@ -2115,7 +2115,7 @@ namespace Nethermind.Evm.Test.ILEVM
                 }
             }
 
-            if(Precompiler._currentBundleSize > 0)
+            if (Precompiler._currentBundleSize > 0)
             {
                 Precompiler.FlushToDisk(config);
             }

@@ -104,7 +104,7 @@ internal static class EnvirementLoader
         il.LoadArgument(OBJ_SPECPROVIDER_INDEX);
         il.CallVirtual(typeof(ISpecProvider).GetProperty(nameof(ISpecProvider.ChainId), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
 
-        if(loadAddress)
+        if (loadAddress)
         {
             il.StoreLocal(locals.uint64A);
             il.LoadLocalAddress(locals.uint64A);
@@ -146,7 +146,7 @@ internal static class EnvirementLoader
 
         LoadVmState(il, locals, false);
         il.Call(typeof(EvmState).GetProperty(nameof(EvmState.Env), BindingFlags.Public | BindingFlags.Instance).GetMethod);
-        if(!loadAddress)
+        if (!loadAddress)
         {
             il.LoadObject<ExecutionEnvironment>();
         }
@@ -169,10 +169,11 @@ internal static class EnvirementLoader
 
     public static void LoadMachineCode<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        if(loadAddress)
+        if (loadAddress)
         {
             il.LoadArgument(REF_MACHINECODE_INDEX);
-        } else
+        }
+        else
         {
             throw new NotImplementedException("LoadMachineCode without address is not implemented");
         }
@@ -277,7 +278,7 @@ internal static class EnvirementLoader
 
     public static void LoadVmState<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        if(loadAddress)
+        if (loadAddress)
         {
             il.LoadArgumentAddress(REF_EVMSTATE_INDEX);
         }
@@ -297,10 +298,11 @@ internal static class EnvirementLoader
 
     public static void LoadReturnDataBuffer<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        if(loadAddress)
+        if (loadAddress)
         {
             il.LoadArgumentAddress(OBJ_RETURNDATABUFFER_INDEX);
-        } else
+        }
+        else
         {
             il.LoadArgument(OBJ_RETURNDATABUFFER_INDEX);
         }
