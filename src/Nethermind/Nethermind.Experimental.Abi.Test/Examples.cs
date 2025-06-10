@@ -60,7 +60,6 @@ public class Examples
     }
 
     [Test]
-    [Ignore("Missing features in the ABI library")]
     public void Sam()
     {
         var signature = new AbiSignature("sam")
