@@ -38,17 +38,15 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .RegisterSingletonJsonRpcModule<IWeb3RpcModule, Web3RpcModule>()
 
             .AddScoped<IProofRpcModule, ProofRpcModule>()
+            .RegisterBoundedJsonRpcModule<IProofRpcModule, AutoProofModuleFactory>(2, jsonRpcConfig.Timeout)
+
             .AddScoped<ITraceRpcModule, TraceRpcModule>()
-            .AddScoped<IDebugRpcModule, DebugRpcModule>()
+            .RegisterBoundedJsonRpcModule<ITraceRpcModule, AutoTraceModuleFactory>(2, jsonRpcConfig.Timeout)
+
             .AddScoped<IGethStyleTracer, GethStyleTracer>()
             .AddScoped<IReceiptsMigration, ReceiptMigration>()
             .AddScoped<IDebugBridge, DebugBridge>()
-            .AddScoped<IReadOnlyDbProvider, IDbProvider>((dbProvider) => dbProvider.AsReadOnly(false))
-
-            .AddScoped<IRpcModuleFactory<IDebugRpcModule>, AutoDebugModuleFactory>()
-
-            .RegisterBoundedJsonRpcModule<IProofRpcModule, AutoProofModuleFactory>(2, jsonRpcConfig.Timeout)
-            .RegisterBoundedJsonRpcModule<ITraceRpcModule, AutoTraceModuleFactory>(2, jsonRpcConfig.Timeout)
+            .AddScoped<IDebugRpcModule, DebugRpcModule>()
             .RegisterBoundedJsonRpcModule<IDebugRpcModule, AutoDebugModuleFactory>(Environment.ProcessorCount, jsonRpcConfig.Timeout)
             ;
     }

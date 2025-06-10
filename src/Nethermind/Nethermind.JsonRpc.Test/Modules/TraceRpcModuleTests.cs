@@ -63,13 +63,10 @@ public class TraceRpcModuleTests
                 stateRoot = Blockchain.BlockTree.Head!.StateRoot!;
             }
 
-            Factory = Blockchain.Container.Resolve<IRpcModuleFactory<ITraceRpcModule>>();
-
-            TraceRpcModule = Factory.Create();
+            TraceRpcModule = Blockchain.TraceRpcModule;
         }
 
         public ITraceRpcModule TraceRpcModule { get; private set; } = null!;
-        private IRpcModuleFactory<ITraceRpcModule> Factory { get; set; } = null!;
         public IJsonRpcConfig JsonRpcConfig { get; private set; } = null!;
         public TestRpcBlockchain Blockchain { get; set; } = null!;
 

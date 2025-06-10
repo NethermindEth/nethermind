@@ -61,12 +61,11 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
             .Bind<IEcdsa, IEthereumEcdsa>()
+
+            .AddSingleton<SimulateReadOnlyBlocksProcessingEnvFactory>()
             .AddSingleton<IBlockchainBridgeFactory, BlockchainBridgeFactory>()
             .AddScoped<IBlockchainBridge>((ctx) => ctx.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge())
 
-            .AddSingleton<SimulateReadOnlyBlocksProcessingEnvFactory>()
-
-            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((btree) => btree.AsReadOnly())
             .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
             ;
     }

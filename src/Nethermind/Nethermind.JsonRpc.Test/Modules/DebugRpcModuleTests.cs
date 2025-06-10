@@ -39,9 +39,7 @@ public partial class DebugRpcModuleTests
         {
             TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build();
 
-            var factory = blockchain.Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>();
-
-            IDebugRpcModule debugRpcModule = factory.Create();
+            IDebugRpcModule debugRpcModule = blockchain.DebugRpcModule;
 
             return new(blockchain, debugRpcModule);
         }

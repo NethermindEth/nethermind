@@ -17,12 +17,14 @@ public class AutoDebugModuleFactory(IWorldStateManager worldStateManager, Func<I
     protected virtual ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder)
     {
         return builder
-                .AddScoped<ChangeableTransactionProcessorAdapter>()
+
+                // So the debug rpc change the adapter sometime.
                 .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
+
+                // Standard configuration
                 .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
                 .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
                 .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
-                .AddScoped<IOverridableTxProcessorSource, AutoOverridableTxProcessingEnv>()
             ;
     }
 
@@ -37,6 +39,7 @@ public class AutoDebugModuleFactory(IWorldStateManager worldStateManager, Func<I
                 .AddSingleton<IWorldState>(overridableScope.WorldState)
                 .AddSingleton<ICodeInfoRepository>(codeInfoRepository)
 
+                .AddScoped<IOverridableTxProcessorSource, AutoOverridableTxProcessingEnv>()
                 .AddScoped<IOverridableWorldScope>(overridableScope)
                 .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository);
         });
