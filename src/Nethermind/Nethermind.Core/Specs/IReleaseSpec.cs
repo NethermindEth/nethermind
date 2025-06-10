@@ -338,6 +338,7 @@ namespace Nethermind.Core.Specs
         /// Secp256r1 precompile
         /// </summary>
         bool IsRip7212Enabled { get; }
+        bool IsEip7951Enabled { get; }
 
         /// OP Granite
         bool IsOpGraniteEnabled { get; }
