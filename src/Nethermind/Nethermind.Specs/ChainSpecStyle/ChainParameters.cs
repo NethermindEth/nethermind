@@ -162,7 +162,7 @@ public class ChainParameters
     /// </summary>
     public ulong? Eip4844FeeCollectorTransitionTimestamp { get; set; }
 
-    public long? Eip7939TransitionTimestamp { get; set; }
+    public ulong? Eip7939TransitionTimestamp { get; set; }
 
     #endregion
 }

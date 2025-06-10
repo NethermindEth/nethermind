@@ -196,6 +196,6 @@ namespace Nethermind.Specs.Test
 
         Array? IReleaseSpec.EvmInstructionsNoTrace { get => _spec.EvmInstructionsNoTrace; set => _spec.EvmInstructionsNoTrace = value; }
         Array? IReleaseSpec.EvmInstructionsTraced { get => _spec.EvmInstructionsTraced; set => _spec.EvmInstructionsTraced = value; }
-        public bool CLZEnabled => _spec.CLZEnabled;
+        public bool IsEip7939Enabled => _spec.IsEip7939Enabled;
     }
 }

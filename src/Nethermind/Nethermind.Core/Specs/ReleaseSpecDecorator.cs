@@ -145,5 +145,5 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool ValidateReceipts => spec.ValidateReceipts;
     Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
-    public bool CLZEnabled => spec.CLZEnabled;
+    public bool IsEip7939Enabled => spec.IsEip7939Enabled;
 }

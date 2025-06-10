@@ -18,7 +18,7 @@ public class Osaka : Prague
         IsEip7883Enabled = true;
         // IsEip7825Enabled = true;
         IsEip7918Enabled = true;
-        CLZEnabled = true;
+        IsEip7939Enabled = true;
         Released = false;
     }
 
