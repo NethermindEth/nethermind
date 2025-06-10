@@ -27,38 +27,13 @@ namespace Nethermind.Consensus.Processing
     public partial class BlockProcessor
     {
         public class BlockProductionTransactionsExecutor(
-            ITransactionProcessor txProcessor,
+            ITransactionProcessorAdapter transactionProcessor,
             IWorldState stateProvider,
             IBlockProductionTransactionPicker txPicker,
             ILogManager logManager)
             : IBlockProductionTransactionsExecutor
         {
-            private readonly ITransactionProcessorAdapter _transactionProcessor = new BuildUpTransactionProcessorAdapter(txProcessor);
             private readonly ILogger _logger = logManager.GetClassLogger();
-
-            public BlockProductionTransactionsExecutor(
-                IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
-                ISpecProvider specProvider,
-                ILogManager logManager,
-                long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes)
-                : this(
-                    readOnlyTxProcessingEnv.TransactionProcessor,
-                    readOnlyTxProcessingEnv.WorldState,
-                    specProvider,
-                    logManager,
-                    maxTxLengthKilobytes)
-            {
-            }
-
-            public BlockProductionTransactionsExecutor(
-                ITransactionProcessor transactionProcessor,
-                IWorldState stateProvider,
-                ISpecProvider specProvider,
-                ILogManager logManager,
-                long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes) : this(transactionProcessor, stateProvider,
-                new BlockProductionTransactionPicker(specProvider, maxTxLengthKilobytes), logManager)
-            {
-            }
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
@@ -75,7 +50,7 @@ namespace Nethermind.Consensus.Processing
             }
 
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-                => _transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+                => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
                 BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default)
@@ -136,7 +111,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    TransactionResult result = _transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
+                    TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
                     if (result)
                     {

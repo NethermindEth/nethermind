@@ -187,7 +187,7 @@ public class CliqueBlockProducerTests
                 testnetSpecProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, testnetSpecProvider, _logManager),
+                new BlockProcessor.BlockProductionTransactionsExecutor(new BuildUpTransactionProcessorAdapter(minerTransactionProcessor), minerStateProvider, new BlockProcessor.BlockProductionTransactionPicker(testnetSpecProvider, BlocksConfig.DefaultMaxTxKilobytes), _logManager),
                 minerStateProvider,
                 NullReceiptStorage.Instance,
                 new BeaconBlockRootHandler(minerTransactionProcessor, minerStateProvider),
