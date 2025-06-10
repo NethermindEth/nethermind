@@ -13,14 +13,13 @@ namespace Nethermind.Optimism.Rpc;
 
 public class AutoOptimismTraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : AutoTraceModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)
 {
-    protected override ContainerBuilder ConfigureCommonBlockProcessing(
+    protected override ContainerBuilder ConfigureCommonBlockProcessing<T>(
         ContainerBuilder builder,
         ICodeInfoRepository codeInfoRepository,
-        IWorldState worldState,
-        string transactionExecutorName
+        IWorldState worldState
     )
     {
-        return base.ConfigureCommonBlockProcessing(builder, codeInfoRepository, worldState, transactionExecutorName)
+        return base.ConfigureCommonBlockProcessing<T>(builder, codeInfoRepository, worldState)
             .AddScoped<IWithdrawalProcessor>(new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor())); // Why? Is this global all the time
     }
 }

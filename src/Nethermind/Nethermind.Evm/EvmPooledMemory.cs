@@ -199,6 +199,10 @@ public struct EvmPooledMemory : IEvmMemory
             return default;
         }
 
+        if (location >= Size)
+        {
+            return default;
+        }
         UInt256 largeSize = location + length;
         if (largeSize > _memory.Length)
         {
@@ -336,6 +340,7 @@ public struct EvmPooledMemory : IEvmMemory
 
     private void UpdateSize(ulong length, bool rentIfNeeded = true)
     {
+        const int MinRentSize = 1_024;
         Length = length;
 
         if (Length > Size)
@@ -348,7 +353,7 @@ public struct EvmPooledMemory : IEvmMemory
         {
             if (_memory is null)
             {
-                _memory = ArrayPool<byte>.Shared.Rent((int)Size);
+                _memory = ArrayPool<byte>.Shared.Rent((int)Math.Max(Size, MinRentSize));
                 Array.Clear(_memory, 0, (int)Size);
             }
             else

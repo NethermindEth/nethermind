@@ -56,7 +56,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
     }
 
-    public void ProcessExecutionRequests(Block block, IWorldState state, in BlockExecutionContext blkCtx, TxReceipt[] receipts, IReleaseSpec spec)
+    public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
     {
         if (!spec.RequestsEnabled || block.IsGenesis)
             return;
@@ -67,13 +67,13 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         if (spec.WithdrawalRequestsEnabled)
         {
-            ReadRequests(block, state, in blkCtx, spec.Eip7002ContractAddress, requests, _withdrawalTransaction, ExecutionRequestType.WithdrawalRequest,
+            ReadRequests(block, state, spec.Eip7002ContractAddress, requests, _withdrawalTransaction, ExecutionRequestType.WithdrawalRequest,
                 BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
         }
 
         if (spec.ConsolidationRequestsEnabled)
         {
-            ReadRequests(block, state, in blkCtx, spec.Eip7251ContractAddress, requests, _consolidationTransaction, ExecutionRequestType.ConsolidationRequest,
+            ReadRequests(block, state, spec.Eip7251ContractAddress, requests, _consolidationTransaction, ExecutionRequestType.ConsolidationRequest,
                 BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
         }
 
@@ -147,7 +147,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         }
     }
 
-    private void ReadRequests(Block block, IWorldState state, in BlockExecutionContext blkCtx, Address contractAddress, ArrayPoolList<byte[]> requests,
+    private void ReadRequests(Block block, IWorldState state, Address contractAddress, ArrayPoolList<byte[]> requests,
         Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError)
     {
         if (!state.HasCode(contractAddress))
@@ -157,7 +157,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         CallOutputTracer tracer = new();
 
-        _transactionProcessor.Execute(systemTx, in blkCtx, tracer);
+        _transactionProcessor.Execute(systemTx, tracer);
 
         if (tracer.StatusCode == StatusCode.Failure)
         {

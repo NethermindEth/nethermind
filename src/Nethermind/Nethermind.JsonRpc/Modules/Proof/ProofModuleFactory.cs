@@ -30,8 +30,9 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     .AddScoped<IWorldState>(txProcessingEnv.WorldState)
                     .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
                     .AddScoped<IBlockProcessor.IBlockTransactionsExecutor>(ctx =>
-                        ctx.ResolveKeyed<IBlockProcessor.IBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Rpc)
+                        ctx.ResolveKeyed<IBlockProcessor.IBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Validation)
                     )
+                    .AddScoped<ITransactionProcessorAdapter, TraceTransactionProcessorAdapter>()
                     .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
                     .AddScoped<IRewardCalculator>(NoBlockRewards.Instance)
                     .AddScoped<IBlockValidator>(Always.Valid) // Why?

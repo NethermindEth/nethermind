@@ -299,7 +299,6 @@ public class TaikoModule : Module
             .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>
                 new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))
 
-            .AddKeyedScoped<IBlockProcessor.IBlockTransactionsExecutor, TaikoRpcBlockTransactionExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Rpc)
             .AddKeyedScoped<IBlockProcessor.IBlockTransactionsExecutor, TaikoBlockValidationTransactionExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Validation)
             ;
     }

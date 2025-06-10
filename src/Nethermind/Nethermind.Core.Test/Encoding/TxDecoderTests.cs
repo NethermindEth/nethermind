@@ -134,7 +134,7 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void ValueDecoderContext_DecodeWithMemorySlice_ShouldUseSameBuffer((Transaction Tx, string Description) testCase)
         {
-            if (!testCase.Tx.Data.HasValue || testCase.Tx.Data.Value.Length == 0) return;
+            if (testCase.Tx.Data.Length == 0) return;
 
             RlpStream rlpStream = new(10000);
             _txDecoder.Encode(rlpStream, testCase.Tx);
@@ -143,11 +143,11 @@ namespace Nethermind.Core.Test.Encoding
             rlpStream.Position = 0;
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
 
-            byte[] data1 = decoded!.Data!.Value.ToArray();
+            byte[] data1 = decoded!.Data.ToArray();
             data1.AsSpan().Fill(1);
             rlpStream.Data.AsSpan().Fill(1);
 
-            decoded.Data.Value.ToArray().Should().BeEquivalentTo(data1);
+            decoded.Data.ToArray().Should().BeEquivalentTo(data1);
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]
