@@ -129,4 +129,40 @@ public class Dynamics
         decoded[1].Should().Be(false);
         decoded[2].Should().Be(true);
     }
+
+    [Test]
+    public void ArrayOfStrings()
+    {
+        var signature = new AbiSignature("f")
+            .With(
+                AbiType.Array(AbiType.String)
+            );
+
+        var expectedMethodId = Bytes.FromHexString("e9cc8780");
+        signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
+
+        byte[] encoded = V2.Abi.Encode(signature, ["hello", "my", "friends"]);
+
+        var expected = Bytes.FromHexString(
+            "e9cc8780" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
+            "0000000000000000000000000000000000000000000000000000000000000003" + // Length of the array
+            "0000000000000000000000000000000000000000000000000000000000000060" + // Offset to first string
+            "00000000000000000000000000000000000000000000000000000000000000a0" + // Offset to second string
+            "00000000000000000000000000000000000000000000000000000000000000e0" + // Offset to third string
+            "0000000000000000000000000000000000000000000000000000000000000005" + // Data part of the first argument
+            "68656c6c6f000000000000000000000000000000000000000000000000000000" + // Contents of the first argument, "hello"
+            "0000000000000000000000000000000000000000000000000000000000000002" + // Data part of the second argument
+            "6d79000000000000000000000000000000000000000000000000000000000000" + // Contents of the second argument, "my"
+            "0000000000000000000000000000000000000000000000000000000000000007" + // Data part of the third argument
+            "667269656e647300000000000000000000000000000000000000000000000000"); // Contents of the third argument, "friends"
+
+        encoded.Should().BeEquivalentTo(expected);
+
+        string[] decoded = V2.Abi.Decode(signature, encoded);
+        decoded.Length.Should().Be(3);
+        decoded[0].Should().Be("hello");
+        decoded[1].Should().Be("my");
+        decoded[2].Should().Be("friends");
+    }
 }
