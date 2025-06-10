@@ -11,7 +11,8 @@ public record AbiSignature(string Name)
     public const int MethodIdLength = 4;
 
     // TODO: Come up with a better name for this family of methods
-    public AbiSignature<T> With<T>(IAbi<T> abi) => new(Name, AbiType.Tuple(abi));
+    public AbiSignature<T> With<T>(IAbi<T> abi) =>
+        new(Name, AbiType.Tuple(abi));
 
     public AbiSignature<(T1, T2)> With<T1, T2>(IAbi<T1> abi1, IAbi<T2> abi2) =>
         new(Name, AbiType.Tuple(abi1, abi2));
