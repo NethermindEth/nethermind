@@ -4,7 +4,7 @@
 using System.Diagnostics;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Experimental.Abi.V2;
+namespace Nethermind.Experimental.Abi;
 
 public class AbiException : Exception;
 

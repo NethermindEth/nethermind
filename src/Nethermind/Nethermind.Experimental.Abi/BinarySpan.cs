@@ -3,7 +3,7 @@
 
 using Nethermind.Int256;
 
-namespace Nethermind.Experimental.Abi.V2;
+namespace Nethermind.Experimental.Abi;
 
 public ref struct BinarySpanReader
 {

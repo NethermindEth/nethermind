@@ -4,7 +4,7 @@
 using System.Text;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Experimental.Abi.V2;
+namespace Nethermind.Experimental.Abi;
 
 public record AbiSignature(string Name)
 {
