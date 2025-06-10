@@ -85,7 +85,7 @@ public class BlockValidator(
 
         if (block.EncodedSize is not null && block.EncodedSize > Eip7934Constants.MaxRlpBlockSize)
         {
-            errorMessage = $"Block size exceed maximum allowed value of {Eip7934Constants.MaxRlpBlockSize} bytes.";
+            errorMessage = BlockErrorMessages.ExceededBlockSizeLimit(Eip7934Constants.MaxRlpBlockSize);
             return false;
         }
 

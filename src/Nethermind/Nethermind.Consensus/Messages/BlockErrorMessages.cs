@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Messages;
+
 public static class BlockErrorMessages
 {
     public static string ExceededUncleLimit(int maxUncleCount) =>
@@ -143,4 +144,7 @@ public static class BlockErrorMessages
 
     public static string InvalidDepositEventLayout(string error) =>
         $"DepositsInvalid: Invalid deposit event layout: {error}";
+
+    public static string ExceededBlockSizeLimit(int limit) =>
+        $"ExceededBlockSizeLimit: Exceeded block size limit of {limit} bytes.";
 }
