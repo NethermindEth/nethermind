@@ -33,7 +33,7 @@ using Word = Vector256<byte>;
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
-public sealed unsafe partial class VirtualMachine(
+public unsafe partial class VirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     ILogManager? logManager) : IVirtualMachine
@@ -87,6 +87,7 @@ public sealed unsafe partial class VirtualMachine(
     private ReadOnlyMemory<byte>? _previousCallResult;
     private UInt256 _previousCallOutputDestination;
 
+    public ILogger Logger => _logger;
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
     public IReleaseSpec Spec => _spec;
     public ITxTracer TxTracer => _txTracer;
@@ -959,7 +960,7 @@ public sealed unsafe partial class VirtualMachine(
         SSTORE
     }
 
-    private CallResult RunPrecompile(EvmState state)
+    public virtual CallResult RunPrecompile(EvmState state)
     {
         ReadOnlyMemory<byte> callData = state.Env.InputData;
         UInt256 transferValue = state.Env.TransferValue;
