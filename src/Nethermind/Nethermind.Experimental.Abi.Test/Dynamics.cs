@@ -39,4 +39,39 @@ public class Dynamics
         a.Should().Be("hello");
         b.Should().Be("world");
     }
+
+    [Test]
+    public void ThreeStrings()
+    {
+        var signature = new AbiSignature("f")
+            .With(
+                AbiType.String,
+                AbiType.String,
+                AbiType.String
+            );
+
+        var expectedMethodId = Bytes.FromHexString("e18744f7");
+        signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
+
+        byte[] encoded = V2.Abi.Encode(signature, ("hello", "my", "friends"));
+
+        var expected = Bytes.FromHexString(
+            "e18744f7" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000060" + // Offset to first string
+            "00000000000000000000000000000000000000000000000000000000000000a0" + // Offset to second string
+            "00000000000000000000000000000000000000000000000000000000000000e0" + // Offset to third string
+            "0000000000000000000000000000000000000000000000000000000000000005" + // Length of first string
+            "68656c6c6f000000000000000000000000000000000000000000000000000000" + // "hello"
+            "0000000000000000000000000000000000000000000000000000000000000002" + // Length of second string
+            "6d79000000000000000000000000000000000000000000000000000000000000" + // "my"
+            "0000000000000000000000000000000000000000000000000000000000000007" + // Length of third string
+            "667269656e647300000000000000000000000000000000000000000000000000");  // "friends"
+
+        encoded.Should().BeEquivalentTo(expected);
+
+        (string a, string b, string c) = V2.Abi.Decode(signature, encoded);
+        a.Should().Be("hello");
+        b.Should().Be("my");
+        c.Should().Be("friends");
+    }
 }

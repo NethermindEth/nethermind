@@ -168,14 +168,14 @@ public static partial class AbiType
             UInt256.Write(ref w, (UInt256)length);
             w.WritePadded(buffer);
         },
-        Size = v =>
+        Size = (v) =>
         {
-            // var offsetSize = 32; // Since type is dynamic, we can account for the offset
+            var offsetSize = 32;
             var lengthSize = 32;
             var byteCount = Encoding.UTF8.GetByteCount(v);
             var byteSize = Math.PadTo32(byteCount);
 
-            return /* offsetSize + */ lengthSize + byteSize;
+            return offsetSize + lengthSize + byteSize;
         }
     };
 }
@@ -201,7 +201,7 @@ public static partial class AbiType
         {
             abi.Write(ref w, v);
         },
-        Size = v => abi.Size(v)
+        Size = (v) => abi.Size(v)
     };
 
     public static IAbi<(T1, T2)> Tuple<T1, T2>(IAbi<T1> abi1, IAbi<T2> abi2) => new()
@@ -269,32 +269,97 @@ public static partial class AbiType
                 }
             });
         },
-        Size = (v) =>
-        {
-            // TODO: See if we can merge the 32 into the Size call since each abi knows if it's dynamic or not
-            var size1 = (abi1.IsDynamic ? 32 : 0) + abi1.Size(v.Item1);
-            var size2 = (abi2.IsDynamic ? 32 : 0) + abi2.Size(v.Item2);
-
-            return size1 + size2;
-        }
+        Size = (v) => abi1.Size(v.Item1) + abi2.Size(v.Item2)
     };
 
-    public static IAbi<(T1, T2, T3)> Tuple<T1, T2, T3>(IAbi<T1> abi1, IAbi<T2> abi2, IAbi<T3> arg3) => new()
+    public static IAbi<(T1, T2, T3)> Tuple<T1, T2, T3>(IAbi<T1> abi1, IAbi<T2> abi2, IAbi<T3> abi3) => new()
     {
-        Name = $"({abi1.Name},{abi2.Name},{arg3.Name})",
+        Name = $"({abi1.Name},{abi2.Name},{abi3.Name})",
+        IsDynamic = abi1.IsDynamic || abi2.IsDynamic || abi3.IsDynamic,
         Read = (ref BinarySpanReader r) =>
         {
-            T1 arg1 = abi1.Read(ref r);
-            T2 arg2 = abi2.Read(ref r);
-            T3 arg3Value = arg3.Read(ref r);
-            return (arg1, arg2, arg3Value);
+            return r.Scoped((ref BinarySpanReader r) =>
+            {
+                T1 arg1;
+                if (abi1.IsDynamic)
+                {
+                    (arg1, _) = r.ReadOffset((ref BinarySpanReader r) => abi1.Read(ref r));
+                }
+                else
+                {
+                    arg1 = abi1.Read(ref r);
+                }
+
+                T2 arg2;
+                if (abi2.IsDynamic)
+                {
+                    (arg2, int read) = r.ReadOffset((ref BinarySpanReader r) => abi2.Read(ref r));
+                }
+                else
+                {
+                    arg2 = abi2.Read(ref r);
+                }
+
+                T3 arg3;
+                if (abi3.IsDynamic)
+                {
+                    (arg3, int read) = r.ReadOffset((ref BinarySpanReader r) => abi3.Read(ref r));
+                    r.Advance(read);
+                }
+                else
+                {
+                    arg3 = abi3.Read(ref r);
+                }
+
+                return (arg1, arg2, arg3);
+            });
         },
         Write = (ref BinarySpanWriter w, (T1, T2, T3) v) =>
         {
-            abi1.Write(ref w, v.Item1);
-            abi2.Write(ref w, v.Item2);
-            arg3.Write(ref w, v.Item3);
+            w.Scoped((ref BinarySpanWriter w) =>
+            {
+                Span<int> offsets = stackalloc int[3];
+                if (abi1.IsDynamic)
+                {
+                    offsets[0] = w.Advance(32);
+                }
+                else
+                {
+                    abi1.Write(ref w, v.Item1);
+                }
+
+                if (abi2.IsDynamic)
+                {
+                    offsets[1] = w.Advance(32);
+                }
+                else
+                {
+                    abi2.Write(ref w, v.Item2);
+                }
+
+                if (abi3.IsDynamic)
+                {
+                    offsets[2] = w.Advance(32);
+                }
+                else
+                {
+                    abi3.Write(ref w, v.Item3);
+                }
+
+                if (abi1.IsDynamic)
+                {
+                    w.WriteOffset(offsets[0], (ref BinarySpanWriter w) => abi1.Write(ref w, v.Item1));
+                }
+                if (abi2.IsDynamic)
+                {
+                    w.WriteOffset(offsets[1], (ref BinarySpanWriter w) => abi2.Write(ref w, v.Item2));
+                }
+                if (abi3.IsDynamic)
+                {
+                    w.WriteOffset(offsets[2], (ref BinarySpanWriter w) => abi3.Write(ref w, v.Item3));
+                }
+            });
         },
-        Size = (v) => abi1.Size(v.Item1) + abi2.Size(v.Item2) + arg3.Size(v.Item3)
+        Size = (v) => abi1.Size(v.Item1) + abi2.Size(v.Item2) + abi3.Size(v.Item3)
     };
 }
