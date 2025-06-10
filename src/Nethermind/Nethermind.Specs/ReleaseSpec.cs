@@ -152,5 +152,6 @@ namespace Nethermind.Specs
         Array? IReleaseSpec.EvmInstructionsNoTrace { get; set; }
 
         Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
+        public bool CLZEnabled { get; set; }
     }
 }

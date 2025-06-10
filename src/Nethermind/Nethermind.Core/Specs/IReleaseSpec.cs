@@ -488,5 +488,7 @@ namespace Nethermind.Core.Specs
         public Array? EvmInstructionsTraced { get; set; }
 
         public ProofVersion BlobProofVersion => IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
+
+        bool CLZEnabled { get; }
     }
 }
