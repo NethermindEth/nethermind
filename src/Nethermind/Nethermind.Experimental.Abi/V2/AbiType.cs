@@ -166,6 +166,7 @@ public static partial class AbiType
     public static IAbi<byte[]> Bytes => new()
     {
         Name = $"bytes",
+        IsDynamic = true,
         Read = (ref BinarySpanReader r) =>
         {
             int length = (int)UInt256.Read(ref r);
@@ -180,10 +181,11 @@ public static partial class AbiType
         },
         Size = bytes =>
         {
+            var offsetSize = 32;
             var lengthSize = 32;
             var bytesSize = Math.PadTo32(bytes.Length);
 
-            return lengthSize + bytesSize;
+            return offsetSize + lengthSize + bytesSize;
         }
     };
 
