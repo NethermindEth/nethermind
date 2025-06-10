@@ -22,6 +22,8 @@ using System.Text.Json;
 using System.Text;
 using System.Threading.Tasks;
 using System.Net;
+using System.Threading;
+using Org.BouncyCastle.Asn1.X509;
 
 namespace Nethermind.Evm.Test.ILEVM
 {
@@ -2103,23 +2105,97 @@ namespace Nethermind.Evm.Test.ILEVM
                 var response = await httpClient.PostAsync(rpcUrl, content);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
-                if(response.StatusCode is HttpStatusCode.OK)
+                if (response.StatusCode is HttpStatusCode.OK)
                 {
                     using var doc = JsonDocument.Parse(responseContent);
                     var code = doc.RootElement.GetProperty("result").GetString();
 
                     byte[] bytecode = Bytes.FromHexString(code);
-                    var addressFromCode = enhancedChain.InsertCode(bytecode);
+                    var addressFromCode = enhancedChain.InsertCode(bytecode, targetAddress);
 
                     enhancedChain.ForceRunAnalysis(addressFromCode, ILMode.DYNAMIC_AOT_MODE);
                 }
             }
 
-            if(Precompiler._currentBundleSize > 0)
+            if (Precompiler._currentBundleSize > 0)
             {
                 Precompiler.FlushToDisk(config);
             }
+        }
 
+
+        [Test]
+        public void ILVM_AOT_WhiteList_Is_Handled()
+        {
+            var bytecode1 = Prepare.EvmCode
+                .PushData(UInt256.MaxValue)
+                .PushData(Address.SystemUser)
+                .PushData(1)
+                .STOP()
+                .Done;
+
+            var bytecode2 = Prepare.EvmCode
+                .PushData(UInt256.MaxValue)
+                .PushData(Address.SystemUser)
+                .PushData(2)
+                .STOP()
+                .Done;
+
+            var codeHash1 = Keccak.Compute(bytecode1);
+            var codeHash2 = Keccak.Compute(bytecode2);
+
+            AotContractsRepository.ReserveForWhitelisting(codeHash1);
+
+            IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
+            {
+                IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
+                IlEvmAnalysisThreshold = 1,
+                IlEvmAnalysisQueueMaxSize = 1,
+                IsIlEvmAggressiveModeEnabled = true,
+                IlEvmPersistPrecompiledContractsOnDisk = false,
+                IlEvmAllowedContracts = [codeHash1.ToString()],
+            }, Prague.Instance);
+
+            var address1 = enhancedChain.InsertCode(bytecode1, codeHash1);
+            var address2 = enhancedChain.InsertCode(bytecode2, codeHash2);
+
+            var isCode1Found = AotContractsRepository.TryGetIledCode(codeHash1, out var iledCodeBefore);
+            var isCode1Whitelisted = AotContractsRepository.IsWhitelisted(codeHash1);
+            Assert.That(iledCodeBefore, Is.Null, "reserved AOT code should not be generated before execution");
+            Assert.That(isCode1Found, Is.False, "AOT code should not be generated before execution");
+            Assert.That(isCode1Whitelisted, Is.True, "AOT code should be whitelisted");
+
+            var isCode2Found = AotContractsRepository.TryGetIledCode(codeHash2, out var iledCode2Before);
+            var isCode2Whitelisted = AotContractsRepository.IsWhitelisted(codeHash2);
+            Assert.That(iledCode2Before, Is.Null, "AOT code should not be generated for non-whitelisted contract");
+            Assert.That(isCode2Found, Is.False, "AOT code should not be generated for non-whitelisted contract");
+            Assert.That(isCode2Whitelisted, Is.False, "AOT code should not be whitelisted for non-whitelisted contract");
+
+
+            enhancedChain.Execute<ITxTracer>(bytecode1, NullTxTracer.Instance, forceAnalysis: false);
+            enhancedChain.Execute<ITxTracer>(bytecode2, NullTxTracer.Instance, forceAnalysis: false);
+
+            Thread.Sleep(TimeSpan.FromSeconds(5));
+
+            enhancedChain.Execute<ITxTracer>(bytecode1, NullTxTracer.Instance, forceAnalysis: false);
+            enhancedChain.Execute<ITxTracer>(bytecode2, NullTxTracer.Instance, forceAnalysis: false);
+
+            var codeInfo1 = enhancedChain.GetCodeInfo(address1);
+            AotContractsRepository.TryGetIledCode(codeHash1, out var iledCodeAfter);
+            Assert.That(iledCodeAfter, Is.Not.Null, "AOT code should be generated for whitelisted contract");
+
+            var code1phase = codeInfo1.IlInfo.AnalysisPhase;
+            Assert.That(code1phase, Is.EqualTo(AnalysisPhase.Completed), "AOT code should be processed for whitelisted contract");
+
+
+            var codeInfo2 = enhancedChain.GetCodeInfo(address2);
+            AotContractsRepository.TryGetIledCode(codeHash2, out var iledCode2After);
+            Assert.That(iledCode2After, Is.Null, "AOT code should not be generated for non-whitelisted contract");
+
+            var code2phase = codeInfo2.IlInfo.AnalysisPhase;
+            Assert.That(code2phase, Is.EqualTo(AnalysisPhase.NotStarted), "AOT code should not be processed for non-whitelisted contract");
+
+            Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(1), "AOT precompiled calls should be counted for whitelisted contract");
         }
     }
 }

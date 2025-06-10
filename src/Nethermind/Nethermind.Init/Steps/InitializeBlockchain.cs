@@ -102,6 +102,9 @@ namespace Nethermind.Init.Steps
 #else
             var vmConfig = getApi.VMConfig;
 #endif
+
+            Console.WriteLine($"VMConfig: {vmConfig!.IsVmOptimizationEnabled}");
+
             InitializeIlEvmProcesses(vmConfig );
 
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState, getApi.VMConfig);
@@ -273,6 +276,16 @@ namespace Nethermind.Init.Steps
         protected void InitializeIlEvmProcesses(IVMConfig? vMConfig)
         {
             if(!vMConfig?.IsVmOptimizationEnabled ?? false) return;
+
+            if(vMConfig?.IlEvmAllowedContracts.Length == 0)
+            {
+                var codeHashes = vMConfig?.IlEvmAllowedContracts ?? Array.Empty<string>();
+                foreach (var codeHasStr in codeHashes)
+                {
+                    ValueHash256 codeHash = new ValueHash256(codeHasStr);
+                    AotContractsRepository.ReserveForWhitelisting(codeHash);
+                }
+            }
 
             IlAnalyzer.StartPrecompilerBackgroundThread(vMConfig!, _api.LogManager.GetClassLogger<AotContractsRepository>());
 

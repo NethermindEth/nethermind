@@ -14,6 +14,7 @@ using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Collections;
+using System.Threading.Tasks;
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeInfo : IThreadPoolWorkItem
@@ -30,20 +31,26 @@ namespace Nethermind.Evm.CodeAnalysis
             if (Codehash is null || vmConfig.IlEvmEnabledMode == ILMode.NO_ILVM || !IlInfo.IsNotProcessed)
                 return;
 
+            if (AotContractsRepository.IsWhitelisted(Codehash.Value))
+            {
+                Interlocked.Exchange(ref IlInfo.AnalysisPhase, AnalysisPhase.Processing);
+
+                //Todo : Move this to aot-repository
+                Interlocked.Decrement(ref AotContractsRepository.WhiteListCount);
+
+                Task.Run(() =>
+                {
+                    IlAnalyzer.Analyse(this, vmConfig.IlEvmEnabledMode, vmConfig, logger);
+                });
+                return;
+            }
+
+            // avoid falling back to dynamic dynamic AOT if all whitelisted contracts are processed
+            if (vmConfig.IlEvmAllowedContracts.Length > 0) return;
 
             if (MachineCode.Length < vmConfig.IlEvmBytecodeMinLength
                 || MachineCode.Length > (vmConfig.IlEvmBytecodeMaxLength ?? spec.MaxCodeSize)) return;
 
-            if(vmConfig.IlEvmAllowedContracts.Length != 0)
-            {
-                if(Array.BinarySearch(
-                    vmConfig.IlEvmAllowedContracts,
-                    Codehash.Value.ToString (),
-                    StringComparer.OrdinalIgnoreCase) >= 0) {
-                    IlAnalyzer.Enqueue(this, vmConfig, logger);
-                }
-                return;
-            }
 
             if(Interlocked.Increment(ref _callCount) != vmConfig.IlEvmAnalysisThreshold)
                 return;

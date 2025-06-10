@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Config;
 using Nethermind.Evm.Tracing;
@@ -16,6 +17,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
+using System;
 using System.IO;
 using System.Linq;
 
@@ -41,15 +43,21 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
     {
         UseIlEvm = useIlEVM;
 
-        _config = new VMConfig
+        if(useIlEVM)
         {
-            IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
-            IlEvmAnalysisThreshold = 1,
-            IlEvmAnalysisQueueMaxSize = 1,
-            IlEvmContractsPerDllCount = 1,
-            IsIlEvmAggressiveModeEnabled = true,
-            IlEvmPersistPrecompiledContractsOnDisk = false,
-        };
+            _config = new VMConfig
+            {
+                IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
+                IlEvmAnalysisThreshold = 1,
+                IlEvmAnalysisQueueMaxSize = 1,
+                IlEvmContractsPerDllCount = 1,
+                IsIlEvmAggressiveModeEnabled = true,
+                IlEvmPersistPrecompiledContractsOnDisk = false,
+            };
+        } else
+        {
+            _config = new VMConfig();
+        }
 
         Setup();
     }
@@ -102,16 +110,33 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
         }
         Execute(fork ?? MainnetSpecProvider.PragueActivation, tx);
     }
-
-    public Address InsertCode(byte[] bytecode, Address? target = null)
+    public Address InsertCode(byte[] bytecode)
     {
         var hashcode = Keccak.Compute(bytecode);
-        var address = target ?? new Address(hashcode);
+        var address = new Address(hashcode);
 
         TestState.CreateAccount(address, 1_000_000_000);
         TestState.InsertCode(address, hashcode, bytecode, Spec);
         return address;
     }
+
+    public Address InsertCode(byte[] bytecode, Address target)
+    {
+        var hashcode = Keccak.Compute(bytecode);
+
+        TestState.CreateAccount(target, 1_000_000_000);
+        TestState.InsertCode(target, hashcode, bytecode, Spec);
+        return target;
+    }
+    public Address InsertCode(byte[] bytecode, ValueHash256 target)
+    {
+        var address = new Address(target);
+
+        TestState.CreateAccount(address, 1_000_000_000);
+        TestState.InsertCode(address, target, bytecode, Spec);
+        return address;
+    }
+
     public void ForceRunAnalysis(Address address, ILMode mode)
     {
         var codeinfo = CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance, out _);
@@ -123,6 +148,9 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
 
         codeinfo.IlInfo.AnalysisPhase = AnalysisPhase.Completed;
     }
+
+
+    public CodeInfo GetCodeInfo(Address address) => CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance, out _);
 
     public Hash256 StateRoot
     {

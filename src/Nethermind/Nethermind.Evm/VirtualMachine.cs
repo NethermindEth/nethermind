@@ -196,7 +196,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     private ITxTracer _txTracer = NullTxTracer.Instance;
     private readonly IVMConfig _vmConfig;
-
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ICodeInfoRepository codeInfoRepository,
