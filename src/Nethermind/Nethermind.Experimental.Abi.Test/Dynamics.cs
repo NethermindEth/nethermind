@@ -7,6 +7,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Experimental.Abi.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class Dynamics
 {
     [Test]
