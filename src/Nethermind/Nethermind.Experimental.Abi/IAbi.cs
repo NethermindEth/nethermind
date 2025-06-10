@@ -4,7 +4,6 @@
 namespace Nethermind.Experimental.Abi;
 
 public delegate T IAbiReadFunc<out T>(ref BinarySpanReader r);
-public delegate void IAbiWriteAction(ref BinarySpanWriter w);
 public delegate void IAbiWriteAction<in T>(ref BinarySpanWriter w, T value);
 public delegate int IAbiSizeFunc<in T>(T value); // TODO: Use `UInt256` when dealing with sizes according to the ABI spec
 
