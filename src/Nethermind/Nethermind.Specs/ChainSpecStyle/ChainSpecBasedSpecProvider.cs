@@ -191,9 +191,9 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.GasLimitBoundDivisor = chainSpec.Parameters.GasLimitBoundDivisor;
             releaseSpec.IsEip170Enabled = (chainSpec.Parameters.MaxCodeSizeTransition ?? long.MaxValue) <= releaseStartBlock ||
                                            (chainSpec.Parameters.MaxCodeSizeTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            bool isEip7907Enabled = (chainSpec.Parameters.Eip7907TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            releaseSpec.MaxCodeSize = isEip7907Enabled ? 48.KiB() : releaseSpec.IsEip170Enabled ? chainSpec.Parameters.MaxCodeSize ?? long.MaxValue : long.MaxValue;
-            releaseSpec.MaxInitCodeSize = isEip7907Enabled ? 72.KiB() : releaseSpec.MaxCodeSize == long.MaxValue ? long.MaxValue : 2 * releaseSpec.MaxCodeSize;
+            bool isEip7954Enabled = (chainSpec.Parameters.Eip7954TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.MaxCodeSize = isEip7954Enabled ? 48.KiB() : releaseSpec.IsEip170Enabled ? chainSpec.Parameters.MaxCodeSize ?? long.MaxValue : long.MaxValue;
+            releaseSpec.MaxInitCodeSize = isEip7954Enabled ? 72.KiB() : releaseSpec.MaxCodeSize == long.MaxValue ? long.MaxValue : 2 * releaseSpec.MaxCodeSize;
             releaseSpec.IsEip2Enabled = true;
             releaseSpec.IsEip100Enabled = true;
             releaseSpec.IsEip7Enabled = (chainSpec.Parameters.Eip7Transition ?? 0) <= releaseStartBlock;

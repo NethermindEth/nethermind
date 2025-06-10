@@ -13,7 +13,7 @@ public class ChainParameters
 {
     public long? MaxCodeSize { get; set; }
     public long? MaxCodeSizeTransition { get; set; }
-    public ulong? Eip7907TransitionTimestamp { get; set; }
+    public ulong? Eip7954TransitionTimestamp { get; set; }
     public ulong? MaxCodeSizeTransitionTimestamp { get; set; }
     public long GasLimitBoundDivisor { get; set; }
     public Address Registrar { get; set; }
