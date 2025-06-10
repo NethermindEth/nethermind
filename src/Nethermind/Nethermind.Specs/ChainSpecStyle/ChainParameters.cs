@@ -142,7 +142,7 @@ public class ChainParameters
     public ulong? Eip7825TransitionTimestamp { get; set; }
     public ulong? Eip7918TransitionTimestamp { get; set; }
     public ulong? Eip7934TransitionTimestamp { get; set; }
-    public int? Eip7934MaxRlpBlockSize { get; set; }
+    public int Eip7934MaxRlpBlockSize { get; set; }
 
     public SortedSet<BlobScheduleSettings>? BlobSchedule { get; set; } = [];
 
