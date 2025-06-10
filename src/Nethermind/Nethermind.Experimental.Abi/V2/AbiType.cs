@@ -170,11 +170,12 @@ public static partial class AbiType
         },
         Size = v =>
         {
+            // var offsetSize = 32; // Since type is dynamic, we can account for the offset
             var lengthSize = 32;
             var byteCount = Encoding.UTF8.GetByteCount(v);
             var byteSize = Math.PadTo32(byteCount);
 
-            return lengthSize + byteSize;
+            return /* offsetSize + */ lengthSize + byteSize;
         }
     };
 }
@@ -209,90 +210,68 @@ public static partial class AbiType
         IsDynamic = abi1.IsDynamic || abi2.IsDynamic,
         Read = (ref BinarySpanReader r) =>
         {
-            var rr = new BinarySpanReader(r.Span[r.Position..]);
-
-            T1 arg1;
-            if (abi1.IsDynamic)
+            return r.Scoped((ref BinarySpanReader r) =>
             {
-                var currentPosition = rr.Position;
-                UInt256 offset = UInt256.Read(ref rr);
-                rr.Position = (int)offset;
+                T1 arg1;
+                if (abi1.IsDynamic)
+                {
+                    (arg1, _) = r.ReadOffset((ref BinarySpanReader r) => abi1.Read(ref r));
+                }
+                else
+                {
+                    arg1 = abi1.Read(ref r);
+                }
 
-                arg1 = abi1.Read(ref rr);
+                T2 arg2;
+                if (abi2.IsDynamic)
+                {
+                    (arg2, int read) = r.ReadOffset((ref BinarySpanReader r) => abi2.Read(ref r));
+                    r.Advance(read);
+                }
+                else
+                {
+                    arg2 = abi2.Read(ref r);
+                }
 
-                rr.Position = currentPosition + 32;
-            }
-            else
-            {
-                arg1 = abi1.Read(ref rr);
-            }
-
-            T2 arg2;
-            if (abi2.IsDynamic)
-            {
-                var currentPosition = rr.Position;
-                UInt256 offset = UInt256.Read(ref rr);
-                rr.Position = (int)offset;
-
-                arg2 = abi2.Read(ref rr);
-            }
-            else
-            {
-                arg2 = abi2.Read(ref rr);
-            }
-
-            r.Position += rr.Position;
-
-            return (arg1, arg2);
+                return (arg1, arg2);
+            });
         },
         Write = (ref BinarySpanWriter w, (T1, T2) v) =>
         {
-            var ww = new BinarySpanWriter(w.Span[w.Position..]);
-
-            Span<int> offsets = stackalloc int[2];
-            if (abi1.IsDynamic)
+            w.Scoped((ref BinarySpanWriter w) =>
             {
-                offsets[0] = ww.Position;
-                ww.Position += 32;
-            }
-            else
-            {
-                abi1.Write(ref ww, v.Item1);
-            }
+                Span<int> offsets = stackalloc int[2];
+                if (abi1.IsDynamic)
+                {
+                    offsets[0] = w.Advance(32);
+                }
+                else
+                {
+                    abi1.Write(ref w, v.Item1);
+                }
 
-            if (abi2.IsDynamic)
-            {
-                offsets[1] = ww.Position;
-                ww.Position += 32;
-            }
-            else
-            {
-                abi2.Write(ref ww, v.Item2);
-            }
+                if (abi2.IsDynamic)
+                {
+                    offsets[1] = w.Advance(32);
+                }
+                else
+                {
+                    abi2.Write(ref w, v.Item2);
+                }
 
-            if (abi1.IsDynamic)
-            {
-                var currentPosition = ww.Position;
-                ww.Position = offsets[0];
-                UInt256.Write(ref ww, (UInt256)currentPosition);
-                ww.Position = currentPosition;
-
-                abi1.Write(ref ww, v.Item1);
-            }
-            if (abi2.IsDynamic)
-            {
-                var currentPosition = ww.Position;
-                ww.Position = offsets[1];
-                UInt256.Write(ref ww, (UInt256)currentPosition);
-                ww.Position = currentPosition;
-
-                abi2.Write(ref ww, v.Item2);
-            }
-
-            w.Position += ww.Position;
+                if (abi1.IsDynamic)
+                {
+                    w.WriteOffset(offsets[0], (ref BinarySpanWriter w) => abi1.Write(ref w, v.Item1));
+                }
+                if (abi2.IsDynamic)
+                {
+                    w.WriteOffset(offsets[1], (ref BinarySpanWriter w) => abi2.Write(ref w, v.Item2));
+                }
+            });
         },
         Size = (v) =>
         {
+            // TODO: See if we can merge the 32 into the Size call since each abi knows if it's dynamic or not
             var size1 = (abi1.IsDynamic ? 32 : 0) + abi1.Size(v.Item1);
             var size2 = (abi2.IsDynamic ? 32 : 0) + abi2.Size(v.Item2);
 

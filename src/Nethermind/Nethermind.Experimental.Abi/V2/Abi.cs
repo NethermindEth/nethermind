@@ -20,7 +20,7 @@ public static class Abi
         w.Write(signature.MethodId());
         signature.Abi.Write(ref w, arg);
 
-        Debug.Assert(w.Position == buffer.Length, "Abi encoding did not write the expected number of bytes");
+        Debug.Assert(w.Written == buffer.Length, "Abi encoding did not write the expected number of bytes");
 
         return buffer;
     }
