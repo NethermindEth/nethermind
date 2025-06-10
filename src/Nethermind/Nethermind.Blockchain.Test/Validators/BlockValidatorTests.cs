@@ -193,7 +193,7 @@ public class BlockValidatorTests
         "InsufficientMaxFeePerBlobGas");
 
         yield return new TestCaseData(
-        Build.A.Block.WithEncodedSize(Eip7934Constants.MaxRlpBlockSize + 1).TestObject,
+        Build.A.Block.WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize + 1).TestObject,
         Substitute.For<ISpecProvider>(),
         "ExceededBlockSizeLimit");
     }

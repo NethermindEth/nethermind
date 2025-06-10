@@ -9,5 +9,5 @@ public static class Eip7934Constants
     // = MaxBlockSize - SafetyMargin
     // = 10MiB - 2MiB
     // = 10_485_760 - 2_097_152 
-    public const int MaxRlpBlockSize = 8_388_608;
+    public const int DefaultMaxRlpBlockSize = 8_388_608;
 }

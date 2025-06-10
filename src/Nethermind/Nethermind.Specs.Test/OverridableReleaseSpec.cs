@@ -130,6 +130,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7883Enabled => _spec.IsEip7883Enabled;
 
         public bool IsEip7934Enabled => _spec.IsEip7934Enabled;
+        public int Eip7934MaxRlpBlockSize => _spec.Eip7934MaxRlpBlockSize;
 
         public bool IsEip3607Enabled { get; set; }
 
