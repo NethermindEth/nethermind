@@ -194,7 +194,7 @@ public class BlockValidatorTests
 
         yield return new TestCaseData(
         Build.A.Block.WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize + 1).TestObject,
-        Substitute.For<ISpecProvider>(),
+        new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)),
         "ExceededBlockSizeLimit");
     }
 
@@ -203,10 +203,8 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        string? error;
 
-        sut.ValidateSuggestedBlock(
-            suggestedBlock, out error);
+        sut.ValidateSuggestedBlock(suggestedBlock, out string? error);
 
         Assert.That(error, Does.StartWith(expectedError));
     }
