@@ -145,8 +145,6 @@ public class Erc20RouterTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
         UInt256 valuePerCall = CalledWithValueA; // Value per call
         UInt256 excessValue = 20000;
         UInt256 gasLimit = 1000000;
-        UInt256 senderBalance = 100.Ether();
-        UInt256 recipientBalance = 100.Ether();
         UInt256 totalValue = (valuePerCall * (new UInt256((ulong)calls))) + excessValue;
 
         byte[] multiCallData = GenerateMulticall(calls);
@@ -166,11 +164,11 @@ public class Erc20RouterTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
 
         ExecuteNoPrepare(block, transaction, NullTxTracer.Instance, Activation, gasLimit.ToLong(), null, true);
 
-        AsserSenderBalance(excessValue);
+        AssertSenderBalance(totalValue, excessValue);
         AssertBalance(CalledAddressCell, CalledWithValueA * (new UInt256((ulong)calls)));
     }
 
-    private void AsserSenderBalance(UInt256 excessValue)
+    private void AssertSenderBalance(UInt256 totalValue, UInt256 excessValue)
     {
         var senderBalance = GetAccountBalance(SenderAddress);
 
@@ -178,7 +176,7 @@ public class Erc20RouterTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
         //UInt256 expectedSenderBalance = SenderInitialBalance + RecipientInitialBalance - totalValue - gasLimit + excessValue + new UInt256((ulong)GasRemaining);
 
         // Work around since ilevm does not  correclty trace gas
-        senderBalance.Should().BeGreaterThanOrEqualTo(SenderInitialBalance + excessValue, "The sender's balance should be updated correctly after the call with excess value returned");
+        senderBalance.Should().BeGreaterThanOrEqualTo(SenderInitialBalance + excessValue - totalValue, "The sender's balance should be updated correctly after the call with excess value returned");
 
         //When above is fixed
         //senderBalance.Should().Be(expectedSenderBalance)
