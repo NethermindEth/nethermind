@@ -1,0 +1,55 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Collections.Generic;
+using FluentAssertions;
+using Nethermind.Core.Extensions;
+using NUnit.Framework;
+
+namespace Nethermind.Experimental.Abi.Test;
+
+/// <remarks>
+/// The tests have been provided by the ABI specification.
+/// See: https://docs.soliditylang.org/en/latest/abi-spec.html#formal-specification-of-the-encoding
+/// </remarks>
+[Parallelizable(ParallelScope.All)]
+public class UserErrors
+{
+    public static IEnumerable<TestCaseData> BytesMTestCases()
+    {
+        yield return new TestCaseData(4, new byte[] { 1, 2, 3, 4, 5 }).SetName("expected 4, got 5");
+        yield return new TestCaseData(3, new byte[] { 1 }).SetName("expected 3, got 1");
+        yield return new TestCaseData(2, new byte[] { }).SetName("expected 2, got 0");
+        yield return new TestCaseData(6, new byte[] { 1, 2, 3, 4, 5 }).SetName("expected 6, got 5");
+        yield return new TestCaseData(2, new byte[] { 1, 2, 3, 4 }).SetName("expected 2, got 4");
+    }
+
+    [TestCaseSource(nameof(BytesMTestCases))]
+    public void BytesM_WrongLength(int length, byte[] bytes)
+    {
+        var signature = new AbiSignature("f")
+            .With(
+                AbiType.BytesM(length)
+            );
+
+        var tryEncode = () => Abi.Encode(signature, bytes);
+        tryEncode.Should().Throw<AbiException>();
+    }
+
+    [Test]
+    public void Mismatched_MethodId()
+    {
+        var signature = new AbiSignature("f")
+            .With(
+                AbiType.UInt32
+            );
+
+        byte[] encoded = Abi.Encode(signature, 69u);
+
+        // Change the method id to something else
+        encoded[0] ^= 1;
+
+        var tryDecode = () => Abi.Decode(signature, encoded);
+        tryDecode.Should().Throw<AbiException>();
+    }
+}
