@@ -111,8 +111,8 @@ internal static partial class EvmInstructions
         stack.PushUInt32<TTracingInst>((uint)word.CountLeadingZeros());
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
-        StackUnderflow:
+    // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
 
