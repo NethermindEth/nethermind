@@ -40,9 +40,11 @@ public static class Precompiler
     internal static ModuleBuilder? _currentDynamicModBuilder = null;
     internal static int _currentBundleSize = 0;
     private static string GenerateAssemblyName() => Guid.NewGuid().ToByteArray().ToHexString();
+
+    public static string DllFileSuffix => ".Nethermind.g.c.dll";
     internal static string GetTargetFileName()
     {
-        return $"{Precompiler._currentPersistentAsmBuilder.Value.GetName()}.Nethermind.g.c.dll";
+        return $"{Precompiler._currentPersistentAsmBuilder.Value.GetName()}{DllFileSuffix}";
     }
 
     private static ILExecutionStep? CompileContractInternal(

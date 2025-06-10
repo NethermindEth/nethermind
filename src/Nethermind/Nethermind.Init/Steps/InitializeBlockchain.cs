@@ -293,7 +293,7 @@ namespace Nethermind.Init.Steps
 
             if (Directory.Exists(path))
             {
-                foreach (var file in Directory.GetFiles(path, ".Nethermind.g.c.dll"))
+                foreach (var file in Directory.GetFiles(path, Precompiler.DllFileSuffix))
                 {
                     using (FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read))
                     {
