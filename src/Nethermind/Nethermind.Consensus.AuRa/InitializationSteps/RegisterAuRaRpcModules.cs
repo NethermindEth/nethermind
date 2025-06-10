@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autofac;
-using Nethermind.Api;
+using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Find;
@@ -26,7 +26,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -47,7 +46,12 @@ public class AuRaTraceModuleFactory(IWorldStateManager worldStateManager, Func<I
 }
 
 public class AuRaReadOnlyChainProcessingEnv(
-    AuRaNethermindApi _api,
+    AuRaChainSpecEngineParameters parameters,
+    IAuraConfig auraConfig,
+    IBlocksConfig blocksConfig,
+    IAbiEncoder abiEncoder,
+    IReadOnlyTxProcessingEnvFactory envFactory,
+    AuRaContractGasLimitOverride.Cache gasLimitOverrideCache,
     IReadOnlyTxProcessingScope scope,
     IBlockValidator blockValidator,
     IBlockPreprocessorStep recoveryStep,
@@ -62,9 +66,8 @@ public class AuRaReadOnlyChainProcessingEnv(
     : ReadOnlyChainProcessingEnv(scope, blockValidator, recoveryStep, rewardCalculator, receiptStorage,
         specProvider, blockTree, stateReader, logManager, blockTransactionsExecutor)
 {
-    AuRaChainSpecEngineParameters _parameters = _api.ChainSpec.EngineChainSpecParametersProvider
-        .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-    IAuraConfig _auraConfig = _api.Config<IAuraConfig>();
+    private readonly ISpecProvider _specProvider = specProvider;
+    private readonly ILogManager _logManager = logManager;
 
     protected override IBlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope scope, IBlockTree blockTree,
         IBlockValidator blockValidator, IRewardCalculator rewardCalculator, IReceiptStorage receiptStorage,
@@ -72,8 +75,7 @@ public class AuRaReadOnlyChainProcessingEnv(
     {
         ITxFilter auRaTxFilter = new ServiceTxFilter(specProvider);
 
-        var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-        IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = chainSpecAuRa.RewriteBytecode;
+        IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
         return factory.Create(
@@ -97,23 +99,22 @@ public class AuRaReadOnlyChainProcessingEnv(
 
     private AuRaContractGasLimitOverride? GetGasLimitCalculator()
     {
-        if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
-        var blockGasLimitContractTransitions = _parameters.BlockGasLimitContractTransitions;
+        var blockGasLimitContractTransitions = parameters.BlockGasLimitContractTransitions;
 
         if (blockGasLimitContractTransitions?.Any() == true)
         {
             AuRaContractGasLimitOverride gasLimitCalculator = new(
                 blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
                         new BlockGasLimitContract(
-                            _api!.AbiEncoder,
+                            abiEncoder,
                             blockGasLimitContractTransition.Value,
                             blockGasLimitContractTransition.Key,
-                            _api!.ReadOnlyTxProcessingEnvFactory.Create()))
+                            envFactory.Create()))
                     .ToArray<IBlockGasLimitContract>(),
-                _api.GasLimitCalculatorCache,
-                _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
-                new TargetAdjustedGasLimitCalculator(_api.SpecProvider, _api.Config<IBlocksConfig>()),
-                _api.LogManager);
+                gasLimitOverrideCache,
+                auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
+                new TargetAdjustedGasLimitCalculator(_specProvider, blocksConfig),
+                _logManager);
 
             return gasLimitCalculator;
         }
