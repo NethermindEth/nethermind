@@ -11,7 +11,7 @@ using Nethermind.State;
 
 namespace Nethermind.Optimism.Rpc;
 
-public class OptimismTraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : AutoTraceModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)
+public class OptimismTraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : TraceModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)
 {
     protected override ContainerBuilder ConfigureCommonBlockProcessing<T>(ContainerBuilder builder)
     {

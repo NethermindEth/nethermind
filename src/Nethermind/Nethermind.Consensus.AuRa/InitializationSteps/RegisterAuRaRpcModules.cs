@@ -87,7 +87,7 @@ public class AuRaBlockProcessorFactory : IAuRaBlockProcessorFactory
             contractRewriter, preWarmer);
 }
 
-public class AutoAuRaDebugModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : AutoDebugModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)
+public class AuRaDebugModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : DebugModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)
 {
     protected override ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder)
     {
@@ -98,7 +98,7 @@ public class AutoAuRaDebugModuleFactory(IWorldStateManager worldStateManager, Fu
     }
 }
 
-public class AutoAuRaTraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : AutoTraceModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)
+public class AuRaTraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : TraceModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)
 {
     protected override ContainerBuilder ConfigureCommonBlockProcessing<T>(ContainerBuilder builder)
     {

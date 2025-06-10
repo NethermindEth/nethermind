@@ -15,7 +15,7 @@ using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
-    public class AutoProofModuleFactory(
+    public class ProofModuleFactory(
         ILifetimeScope rootLifetimeScope,
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory
     ) : ModuleFactoryBase<IProofRpcModule>

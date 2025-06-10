@@ -8,14 +8,13 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
-public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : ModuleFactoryBase<ITraceRpcModule>
+public class TraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : ModuleFactoryBase<ITraceRpcModule>
 {
     protected virtual ContainerBuilder ConfigureCommonBlockProcessing<T>(ContainerBuilder builder) where T : ITransactionProcessorAdapter
     {
@@ -58,7 +57,7 @@ public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, Func<I
                 .AddScoped<IWorldState>(overridableScope.WorldState)
                 .AddScoped<ICodeInfoRepository>(codeInfoRepository)
 
-                .AddScoped<IOverridableTxProcessorSource, AutoOverridableTxProcessingEnv>()
+                .AddScoped<IOverridableTxProcessorSource, OverridableTxProcessingEnv>()
                 .AddScoped<ITracerEnv, IOverridableTxProcessorSource>((scope) => new TracerEnv(new Tracer(
                         overridableScope.WorldState,
                         rpcProcessingScope.Resolve<IBlockchainProcessor>(),

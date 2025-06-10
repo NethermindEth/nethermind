@@ -12,7 +12,7 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class AutoOverridableTxProcessingEnv(IOverridableCodeInfoRepository codeInfoRepository, ITransactionProcessor transactionProcessor, IOverridableWorldScope overrideWorldScope, ISpecProvider specProvider) : IOverridableTxProcessorSource
+public class OverridableTxProcessingEnv(IOverridableCodeInfoRepository codeInfoRepository, ITransactionProcessor transactionProcessor, IOverridableWorldScope overrideWorldScope, ISpecProvider specProvider) : IOverridableTxProcessorSource
 {
     public IOverridableTxProcessingScope Build(Hash256 stateRoot)
     {

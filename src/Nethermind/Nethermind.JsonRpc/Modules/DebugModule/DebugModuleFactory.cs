@@ -12,7 +12,7 @@ using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
-public class AutoDebugModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : IRpcModuleFactory<IDebugRpcModule>
+public class DebugModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : IRpcModuleFactory<IDebugRpcModule>
 {
     protected virtual ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder)
     {
@@ -39,7 +39,7 @@ public class AutoDebugModuleFactory(IWorldStateManager worldStateManager, Func<I
                 .AddSingleton<IWorldState>(overridableScope.WorldState)
                 .AddSingleton<ICodeInfoRepository>(codeInfoRepository)
 
-                .AddScoped<IOverridableTxProcessorSource, AutoOverridableTxProcessingEnv>() // GethStyleTracer still need this
+                .AddScoped<IOverridableTxProcessorSource, OverridableTxProcessingEnv>() // GethStyleTracer still need this
                 .AddScoped<IOverridableWorldScope>(overridableScope)
                 .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository);
         });
