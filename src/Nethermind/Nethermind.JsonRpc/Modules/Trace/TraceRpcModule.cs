@@ -42,22 +42,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
         IJsonRpcConfig jsonRpcConfig,
         IStateReader stateReader,
         IBlockchainBridge blockchainBridge,
-        ulong secondsPerSlot)
+        IBlocksConfig blocksConfig)
         : ITraceRpcModule
     {
         private readonly TxDecoder _txDecoder = TxDecoder.Instance;
-
-
-        public TraceRpcModule(
-            IReceiptFinder receiptFinder,
-            ITracerEnv tracerEnv,
-            IBlockFinder blockFinder,
-            IJsonRpcConfig jsonRpcConfig,
-            IStateReader stateReader,
-            IBlockchainBridge blockchainBridge,
-            IBlocksConfig blocksConfig) : this(receiptFinder, tracerEnv, blockFinder, jsonRpcConfig, stateReader, blockchainBridge, blocksConfig.SecondsPerSlot)
-        {
-        }
+        private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
 
         public static ParityTraceTypes GetParityTypes(string[] types) =>
             types.Select(static s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate(static (t1, t2) => t1 | t2);
@@ -305,12 +294,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return TraceBlockDirect(env.Tracer, block, tracer);
         }
 
-        private IReadOnlyCollection<ParityLikeTxTrace> TraceBlockDirect(ITracer tracerT, Block block, ParityLikeBlockTracer tracer)
+        private IReadOnlyCollection<ParityLikeTxTrace> TraceBlockDirect(ITracer tracer, Block block, ParityLikeBlockTracer parityTracer)
         {
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
             CancellationToken cancellationToken = timeout.Token;
-            tracerT.Trace(block, tracer.WithCancellation(cancellationToken));
-            return tracer.BuildResult();
+            tracer.Trace(block, parityTracer.WithCancellation(cancellationToken));
+            return parityTracer.BuildResult();
         }
 
         private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(Block block, ParityLikeBlockTracer tracer)
@@ -335,7 +324,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(
             SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null)
         {
-            return new SimulateTxExecutor<ParityLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, new ParityStyleSimulateBlockTracerFactory(types: GetParityTypes(traceTypes ?? ["Trace"])), secondsPerSlot)
+            return new SimulateTxExecutor<ParityLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, new ParityStyleSimulateBlockTracerFactory(types: GetParityTypes(traceTypes ?? ["Trace"])), _secondsPerSlot)
                 .Execute(payload, blockParameter);
         }
     }

@@ -100,14 +100,10 @@ public class AutoAuRaDebugModuleFactory(IWorldStateManager worldStateManager, Fu
 
 public class AutoAuRaTraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : AutoTraceModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)
 {
-    protected override ContainerBuilder ConfigureCommonBlockProcessing<T>(
-        ContainerBuilder builder,
-        ICodeInfoRepository codeInfoRepository,
-        IWorldState worldState
-    )
+    protected override ContainerBuilder ConfigureCommonBlockProcessing<T>(ContainerBuilder builder)
     {
         // Screw it! aura will just construct things on its own.
-        return base.ConfigureCommonBlockProcessing<T>(builder, codeInfoRepository, worldState)
+        return base.ConfigureCommonBlockProcessing<T>(builder)
             .AddScoped<IReadOnlyTxProcessingScope, ITransactionProcessor, IWorldState>((txP, worldState) => new ReadOnlyTxProcessingScope(txP, worldState, Keccak.EmptyTreeHash))
             .AddScoped<ReadOnlyChainProcessingEnv, AuRaReadOnlyChainProcessingEnv>()
             .AddScoped<IBlockProcessor, ReadOnlyChainProcessingEnv>((env) => env.BlockProcessor);

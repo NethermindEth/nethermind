@@ -17,22 +17,19 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 
 public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : ModuleFactoryBase<ITraceRpcModule>
 {
-    protected virtual ContainerBuilder ConfigureCommonBlockProcessing<T>(
-        ContainerBuilder builder,
-        ICodeInfoRepository codeInfoRepository,
-        IWorldState worldState
-    ) where T : ITransactionProcessorAdapter
+    protected virtual ContainerBuilder ConfigureCommonBlockProcessing<T>(ContainerBuilder builder) where T : ITransactionProcessorAdapter
     {
-        // Note: Not overriding `IReceiptStorage` to null.
         return builder
-            .AddDecorator<IRewardCalculator, MergeRpcRewardCalculator>() // TODO: Check, what if this is pre merge?
-            .AddScoped<IBlockValidator>(Always.Valid) // Why?
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
-            .AddScoped<ICodeInfoRepository>(codeInfoRepository)
-            .AddScoped<IWorldState>(worldState)
-            .AddScoped<ITransactionProcessorAdapter, T>() // T can be trace or execute
-            .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
+
+                // More or less standard except for configurable `ITransactionProcessorAdapter`.
+                // Note: Not overriding `IReceiptStorage` to null.
+                .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
+                .AddScoped<ITransactionProcessorAdapter, T>() // T can be trace or execute
+                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+                .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+                .AddScoped<IBlockValidator>(Always.Valid) // Why?
+
+                .AddDecorator<IRewardCalculator, MergeRpcRewardCalculator>() // TODO: Check, what if this is pre merge?
             ;
     }
 
@@ -44,9 +41,13 @@ public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, Func<I
         // Note: The processing block has no concern with override's and scoping. As far as its concern, a standard
         // world state and code info repository is used.
         ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureCommonBlockProcessing<TraceTransactionProcessorAdapter>(builder, codeInfoRepository, overridableScope.WorldState));
+            ConfigureCommonBlockProcessing<TraceTransactionProcessorAdapter>(builder)
+                .AddScoped<ICodeInfoRepository>(codeInfoRepository)
+                .AddScoped<IWorldState>(overridableScope.WorldState));
         ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureCommonBlockProcessing<ExecuteTransactionProcessorAdapter>(builder, codeInfoRepository, overridableScope.WorldState));
+            ConfigureCommonBlockProcessing<ExecuteTransactionProcessorAdapter>(builder)
+                .AddScoped<ICodeInfoRepository>(codeInfoRepository)
+                .AddScoped<IWorldState>(overridableScope.WorldState));
 
         ILifetimeScope tracerLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {

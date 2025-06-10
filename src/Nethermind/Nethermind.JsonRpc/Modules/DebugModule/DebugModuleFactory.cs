@@ -17,14 +17,14 @@ public class AutoDebugModuleFactory(IWorldStateManager worldStateManager, Func<I
     protected virtual ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder)
     {
         return builder
-
-                // So the debug rpc change the adapter sometime.
-                .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
-
                 // Standard configuration
+                // Note: Not overriding `IReceiptStorage` to null.
                 .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
                 .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
                 .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+
+                // So the debug rpc change the adapter sometime.
+                .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
             ;
     }
 
@@ -39,7 +39,7 @@ public class AutoDebugModuleFactory(IWorldStateManager worldStateManager, Func<I
                 .AddSingleton<IWorldState>(overridableScope.WorldState)
                 .AddSingleton<ICodeInfoRepository>(codeInfoRepository)
 
-                .AddScoped<IOverridableTxProcessorSource, AutoOverridableTxProcessingEnv>()
+                .AddScoped<IOverridableTxProcessorSource, AutoOverridableTxProcessingEnv>() // GethStyleTracer still need this
                 .AddScoped<IOverridableWorldScope>(overridableScope)
                 .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository);
         });

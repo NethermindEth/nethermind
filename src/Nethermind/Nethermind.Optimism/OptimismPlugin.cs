@@ -362,7 +362,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddSingleton<IBlockProducerEnvFactory, OptimismBlockProducerEnvFactory>()
 
-            .AddSingleton<IRpcModuleFactory<ITraceRpcModule>, AutoOptimismTraceModuleFactory>()
+            .AddSingleton<IRpcModuleFactory<ITraceRpcModule>, OptimismTraceModuleFactory>()
             .AddSingleton<ISimulateTransactionProcessorFactory, SimulateOptimismTransactionProcessorFactory>()
 
             .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>
