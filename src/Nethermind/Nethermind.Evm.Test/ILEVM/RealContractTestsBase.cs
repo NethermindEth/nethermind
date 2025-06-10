@@ -3,11 +3,13 @@
 
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Config;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -93,6 +95,20 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
         // }
     }
 
+    public UInt256 GetAccountBalance(Address address)
+    {
+        return TestState.GetBalance(address);
+    }
+
+    public Address InsertCode(byte[] bytecode, Address? target = null)
+    {
+        var hashcode = Keccak.Compute(bytecode);
+        var address = target ?? new Address(hashcode);
+
+        TestState.CreateAccount(address, 1_000_000_000);
+        TestState.InsertCode(address, hashcode, bytecode, Spec);
+        return address;
+    }
     [TearDown]
     protected void AssertIlevmCalls()
     {
