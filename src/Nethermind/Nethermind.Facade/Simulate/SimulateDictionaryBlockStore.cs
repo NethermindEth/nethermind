@@ -16,7 +16,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     private readonly Dictionary<long, Block> _blockNumDict = [];
     private readonly BlockDecoder _blockDecoder = new();
 
-    public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
+    public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None, NettyRlpStream? encodedBlock = null)
     {
         _blockDict[block.Hash] = block;
         _blockNumDict[block.Number] = block;

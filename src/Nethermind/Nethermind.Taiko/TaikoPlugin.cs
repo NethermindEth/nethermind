@@ -18,7 +18,6 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Processing;
@@ -150,6 +149,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 invalidChainTracker,
                 beaconSync,
                 _api.LogManager,
+                new BlockDecoder(),
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
                 _api.Config<IReceiptConfig>().StoreReceipts),
             new TaikoForkchoiceUpdatedHandler(

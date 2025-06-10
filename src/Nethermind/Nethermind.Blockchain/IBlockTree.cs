@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain
 {
@@ -80,8 +81,11 @@ namespace Nethermind.Blockchain
         /// </summary>
         /// <param name="block">Block to add</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
-            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None);
+        AddBlockResult Insert(Block block,
+            BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
+            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None,
+            WriteFlags bodiesWriteFlags = WriteFlags.None,
+            NettyRlpStream? encodedBlock = null);
 
         void UpdateHeadBlock(Hash256 blockHash);
 

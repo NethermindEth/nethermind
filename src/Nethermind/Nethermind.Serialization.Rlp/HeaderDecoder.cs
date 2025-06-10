@@ -20,7 +20,7 @@ namespace Nethermind.Serialization.Rlp
                 return null;
             }
 
-            var headerRlp = decoderContext.PeekNextItem();
+            ReadOnlySpan<byte> headerRlp = decoderContext.PeekNextItem();
             int headerSequenceLength = decoderContext.ReadSequenceLength();
             int headerCheck = decoderContext.Position + headerSequenceLength;
 
