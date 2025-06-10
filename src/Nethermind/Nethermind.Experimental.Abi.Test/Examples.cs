@@ -4,12 +4,15 @@
 using System;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
-using Nethermind.Experimental.Abi;
 using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Experimental.Abi.Test;
 
+/// <remarks>
+/// The tests have been provided by the ABI specification.
+/// See: https://docs.soliditylang.org/en/latest/abi-spec.html#formal-specification-of-the-encoding
+/// </remarks>
 [Parallelizable(ParallelScope.All)]
 public class Examples
 {
