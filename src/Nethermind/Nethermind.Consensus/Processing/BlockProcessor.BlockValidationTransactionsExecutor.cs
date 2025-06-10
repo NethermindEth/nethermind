@@ -21,14 +21,10 @@ namespace Nethermind.Consensus.Processing
     public partial class BlockProcessor
     {
         public class BlockValidationTransactionsExecutor(
-            ITransactionProcessorAdapter transactionProcessor,
+            ITransactionProcessor transactionProcessor,
             IWorldState stateProvider)
             : IBlockProcessor.IBlockTransactionsExecutor
         {
-            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider)
-                : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
-            {
-            }
 
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 

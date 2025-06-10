@@ -6,23 +6,25 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
-    public class ChangeableTransactionProcessorAdapter : ITransactionProcessorAdapter
+    public class ChangeableTransactionProcessorAdapter : ITransactionProcessor
     {
-        public ITransactionProcessorAdapter CurrentAdapter { get; set; }
+        public ITransactionProcessor CurrentAdapter { get; set; }
         public ITransactionProcessor TransactionProcessor { get; }
 
-        private ChangeableTransactionProcessorAdapter(ITransactionProcessorAdapter adapter)
+        public ChangeableTransactionProcessorAdapter(ITransactionProcessor adapter)
         {
             CurrentAdapter = adapter;
+            TransactionProcessor = adapter;
         }
 
-        public ChangeableTransactionProcessorAdapter(ITransactionProcessor transactionProcessor)
-            : this(new ExecuteTransactionProcessorAdapter(transactionProcessor))
-        {
-            TransactionProcessor = transactionProcessor;
-        }
+        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer) => CurrentAdapter.Execute(transaction, in blkCtx, txTracer);
 
-        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer) =>
-            CurrentAdapter.Execute(transaction, in blkCtx, txTracer);
+        public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) => CurrentAdapter.CallAndRestore(transaction, in blCtx, txTracer);
+
+        public TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) => CurrentAdapter.BuildUp(transaction, in blCtx, txTracer);
+
+        public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) => CurrentAdapter.Trace(transaction, in blCtx, txTracer);
+
+        public TransactionResult Warmup(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) => CurrentAdapter.Warmup(transaction, in blCtx, txTracer);
     }
 }

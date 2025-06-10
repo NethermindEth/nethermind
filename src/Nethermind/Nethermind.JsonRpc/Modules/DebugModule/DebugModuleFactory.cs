@@ -117,7 +117,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider, _blockchainBridge, _secondsPerSlot, _blockTree);
     }
 
-    protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(ChangeableTransactionProcessorAdapter transactionProcessor, IWorldState worldState)
+    protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState worldState)
         => new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState);
 
     protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,

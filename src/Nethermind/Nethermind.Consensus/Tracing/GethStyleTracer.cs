@@ -69,7 +69,7 @@ public class GethStyleTracer(
         Block block = _blockTree.FindBlock(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
         tx.Hash ??= tx.CalculateHash();
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-        ITransactionProcessorAdapter currentAdapter = transactionProcessorAdapter.CurrentAdapter;
+        ITransactionProcessor currentAdapter = transactionProcessorAdapter.CurrentAdapter;
         transactionProcessorAdapter.CurrentAdapter = new TraceTransactionProcessorAdapter(transactionProcessorAdapter.TransactionProcessor);
 
         try

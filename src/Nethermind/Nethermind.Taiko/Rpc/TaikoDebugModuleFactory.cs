@@ -46,6 +46,6 @@ class TaikoDebugModuleFactory :
     {
     }
 
-    protected override IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(ChangeableTransactionProcessorAdapter transactionProcessorAdapter, IWorldState worldState)
+    protected override IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(ITransactionProcessor transactionProcessorAdapter, IWorldState worldState)
         => new TaikoBlockValidationTransactionExecutor(transactionProcessorAdapter, worldState);
 }

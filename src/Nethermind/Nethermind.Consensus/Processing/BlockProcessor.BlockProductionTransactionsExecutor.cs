@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.Processing
             ILogManager logManager)
             : IBlockProductionTransactionsExecutor
         {
-            private readonly ITransactionProcessorAdapter _transactionProcessor = new BuildUpTransactionProcessorAdapter(txProcessor);
+            private readonly ITransactionProcessor _transactionProcessor = new BuildUpTransactionProcessorAdapter(txProcessor);
             private readonly ILogger _logger = logManager.GetClassLogger();
 
             public BlockProductionTransactionsExecutor(

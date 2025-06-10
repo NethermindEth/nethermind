@@ -11,16 +11,10 @@ using Nethermind.State;
 namespace Nethermind.Taiko.BlockTransactionExecutors;
 
 public class TaikoBlockValidationTransactionExecutor(
-    ITransactionProcessorAdapter transactionProcessor,
+    ITransactionProcessor transactionProcessor,
     IWorldState stateProvider)
     : BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
 {
-
-    public TaikoBlockValidationTransactionExecutor(
-        ITransactionProcessor transactionProcessor,
-        IWorldState stateProvider) : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
-    {
-    }
 
     protected override void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int i, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
     {

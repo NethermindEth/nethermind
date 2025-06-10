@@ -11,7 +11,7 @@ namespace Nethermind.Consensus.Processing;
 
 internal static class TransactionProcessorAdapterExtensions
 {
-    public static TransactionResult ProcessTransaction(this ITransactionProcessorAdapter transactionProcessor,
+    public static TransactionResult ProcessTransaction(this ITransactionProcessor transactionProcessor,
         in BlockExecutionContext blkCtx,
         Transaction currentTx,
         BlockReceiptsTracer receiptsTracer,
