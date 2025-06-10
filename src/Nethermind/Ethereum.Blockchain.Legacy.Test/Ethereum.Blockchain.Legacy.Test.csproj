@@ -1,22 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <IsPackable>false</IsPackable>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="coverlet.collector">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="NUnit" />
-    <PackageReference Include="NUnit.Analyzers">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="NUnit3TestAdapter" />
-  </ItemGroup>
+  <Import Project="../tests.props" />
 
   <ItemGroup>
     <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />

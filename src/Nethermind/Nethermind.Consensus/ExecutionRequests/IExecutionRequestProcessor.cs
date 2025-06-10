@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.ExecutionRequests;

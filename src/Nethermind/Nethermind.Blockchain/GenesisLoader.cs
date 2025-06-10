@@ -52,6 +52,7 @@ public class GenesisLoader(
 
     private void Preallocate(Block genesis)
     {
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(genesis.Header, specProvider.GetSpec(genesis.Header)));
         foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(static a => a.Key))
         {
             _stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce);
@@ -80,7 +81,7 @@ public class GenesisLoader(
                 };
 
                 CallOutputTracer outputTracer = new();
-                _transactionProcessor.Execute(constructorTransaction, new BlockExecutionContext(genesis.Header, specProvider.GetSpec(genesis.Header)), outputTracer);
+                _transactionProcessor.Execute(constructorTransaction, outputTracer);
 
                 if (outputTracer.StatusCode != StatusCode.Success)
                 {

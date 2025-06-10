@@ -40,7 +40,7 @@ public class PruningTrieStateFactory(
     ITimerFactory timerFactory,
     IProcessExitSource processExit,
     ChainSpec chainSpec,
-    DisposableStack disposeStack,
+    IDisposableStack disposeStack,
     ILogManager logManager
 )
 {
@@ -76,19 +76,13 @@ public class PruningTrieStateFactory(
             pruningConfig.PruningBoundary = 64;
         }
 
-        if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
-        {
-            if (_logger.IsWarn) _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
-            syncConfig.DownloadBodiesInFastSync = true;
-        }
-
         IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
         IDb stateDb = dbProvider.StateDb;
         IPersistenceStrategy persistenceStrategy;
         IPruningStrategy pruningStrategy;
         if (pruningConfig.Mode.IsMemory())
         {
-            persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
+            persistenceStrategy = Persist.EveryNBlock(pruningConfig.PersistenceInterval); // TODO: this should be based on time
             if (pruningConfig.Mode.IsFull() && stateDb is IFullPruningDb fullPruningDb)
             {
                 PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(fullPruningDb, blockTree!, logManager);
@@ -125,12 +119,7 @@ public class PruningTrieStateFactory(
 
             pruningStrategy = Prune
                 .WhenCacheReaches(pruningConfig.DirtyCacheMb.MB())
-                .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB() - pruningConfig.DirtyCacheMb.MB())
-                // Use of ratio, as the effectiveness highly correlate with the amount of keys per snapshot save which
-                // depends on CacheMb. 0.05 is the minimum where it can keep track the whole snapshot.. most of the time.
-                .TrackingPastKeys((int)(pruningConfig.CacheMb.MB() * pruningConfig.TrackedPastKeyCountMemoryRatio / 48))
-                .WithDirtyNodeShardCount(pruningConfig.DirtyNodeShardBit)
-                .KeepingLastNState(pruningConfig.PruningBoundary);
+                .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB() - pruningConfig.DirtyCacheMb.MB());
         }
         else
         {
@@ -144,6 +133,7 @@ public class PruningTrieStateFactory(
             mainNodeStorage,
             pruningStrategy,
             persistenceStrategy,
+            pruningConfig,
             logManager);
 
         ITrieStore mainWorldTrieStore = trieStore;

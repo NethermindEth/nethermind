@@ -53,7 +53,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         BinaryPrimitives.WriteUInt64BigEndian(source[56..], blockInfo.SequenceNumber);
         Hash256 depositInfoHash = Keccak.Compute(source);
 
-        source.Fill(0);
+        source.Clear();
         BinaryPrimitives.WriteUInt64BigEndian(source[24..32], 1);
         depositInfoHash.Bytes.CopyTo(source[32..]);
         Hash256 sourceHash = Keccak.Compute(source);

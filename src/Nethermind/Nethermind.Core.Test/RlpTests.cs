@@ -264,11 +264,11 @@ namespace Nethermind.Core.Test
 
             for (int i = 0; i < 3; i++)
             {
-                Memory<byte>? slice = context.DecodeByteArrayMemory();
+                Memory<byte> slice = context.DecodeByteArrayMemory();
                 slice.Should().NotBeNull();
-                MemoryMarshal.TryGetArray(slice!.Value, out ArraySegment<byte> segment);
+                MemoryMarshal.TryGetArray(slice, out ArraySegment<byte> segment);
 
-                bool isACopy = (segment.Offset == 0 && segment.Count == slice.Value.Length);
+                bool isACopy = (segment.Offset == 0 && segment.Count == slice.Length);
                 isACopy.Should().NotBe(sliceValue);
             }
         }

@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -28,10 +29,8 @@ public class OptimismWithdrawalTests
     [TestCaseSource(nameof(WithdrawalsRootData))]
     public void WithdrawalsRoots_Should_Be_Set_According_To_Block_Timestamp(ulong timestamp, Hash256? withdrawalHash)
     {
-        using var db = new MemDb();
-        using var store = new TrieStore(db, TestLogManager.Instance);
-
-        var state = new WorldState(store, NullDb.Instance, TestLogManager.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        var state = worldStateManager.GlobalWorldState;
 
         var genesis = Build.A.BlockHeader
             .WithNumber(0)
@@ -82,10 +81,8 @@ public class OptimismWithdrawalTests
     [Test]
     public void WithdrawalsRoot_IsAlwaysUpToDate_PostIsthmus()
     {
-        using var db = new MemDb();
-        using var store = new TrieStore(db, TestLogManager.Instance);
-
-        var state = new WorldState(store, NullDb.Instance, TestLogManager.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        var state = worldStateManager.GlobalWorldState;
         var processor = new OptimismWithdrawalProcessor(state, TestLogManager.Instance, Spec.Instance);
         var releaseSpec = Substitute.For<IReleaseSpec>();
 

@@ -34,7 +34,7 @@ internal static partial class EvmInstructions
     /// <typeparam name="TOpCodeCopy">
     /// A struct implementing <see cref="IOpCodeCopy"/> that defines the code source to copy from.
     /// </typeparam>
-    /// <typeparam name="TTracingInstructions">
+    /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> that indicates whether tracing is active.
     /// </typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
@@ -45,13 +45,13 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code if an error occurs.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCodeCopy<TOpCodeCopy, TTracingInstructions>(
+    public static EvmExceptionType InstructionCodeCopy<TOpCodeCopy, TTracingInst>(
         VirtualMachine vm,
         ref EvmStack stack,
         ref long gasAvailable,
         ref int programCounter)
         where TOpCodeCopy : struct, IOpCodeCopy
-        where TTracingInstructions : struct, IFlag
+        where TTracingInst : struct, IFlag
     {
         // Pop destination offset, source offset, and copy length.
         if (!stack.PopUInt256(out UInt256 a) ||
@@ -77,7 +77,7 @@ internal static partial class EvmInstructions
             vm.EvmState.Memory.Save(in a, in slice);
 
             // If tracing is enabled, report the memory change.
-            if (TTracingInstructions.IsActive)
+            if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
             }
@@ -114,7 +114,7 @@ internal static partial class EvmInstructions
     /// Pops an address and three parameters (destination offset, source offset, and length) from the stack.
     /// Validates account access and memory expansion, then copies the external code into memory.
     /// </summary>
-    /// <typeparam name="TTracingInstructions">
+    /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> that indicates whether tracing is active.
     /// </typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
@@ -125,12 +125,12 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code on failure.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeCopy<TTracingInstructions>(
+    public static EvmExceptionType InstructionExtCodeCopy<TTracingInst>(
         VirtualMachine vm,
         ref EvmStack stack,
         ref long gasAvailable,
         ref int programCounter)
-        where TTracingInstructions : struct, IFlag
+        where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Retrieve the target account address.
@@ -173,7 +173,7 @@ internal static partial class EvmInstructions
             vm.EvmState.Memory.Save(in a, in slice);
 
             // Report memory changes if tracing is enabled.
-            if (TTracingInstructions.IsActive)
+            if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportMemoryChange(a, in slice);
             }
@@ -192,7 +192,7 @@ internal static partial class EvmInstructions
     /// Pops an account address from the stack, validates access, and pushes the code size onto the stack.
     /// Additionally, applies peephole optimizations for common contract checks.
     /// </summary>
-    /// <typeparam name="TTracingInstructions">
+    /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> indicating if instruction tracing is active.
     /// </typeparam>
     /// <param name="vm">The virtual machine instance.</param>
@@ -203,12 +203,12 @@ internal static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code if an error occurs.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeSize<TTracingInstructions>(
+    public static EvmExceptionType InstructionExtCodeSize<TTracingInst>(
         VirtualMachine vm,
         ref EvmStack stack,
         ref long gasAvailable,
         ref int programCounter)
-        where TTracingInstructions : struct, IFlag
+        where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct the gas cost for external code access.
@@ -224,7 +224,7 @@ internal static partial class EvmInstructions
 
         // Attempt a peephole optimization when tracing is not active and code is available.
         ReadOnlySpan<byte> codeSection = vm.EvmState.Env.CodeInfo.MachineCode.Span;
-        if (!TTracingInstructions.IsActive && programCounter < codeSection.Length)
+        if (!TTracingInst.IsActive && programCounter < codeSection.Length)
         {
             bool optimizeAccess = false;
             // Peek at the next instruction to detect patterns.
@@ -263,11 +263,11 @@ internal static partial class EvmInstructions
                 // Push 1 if the condition is met (indicating contract presence or absence), else push 0.
                 if (!isCodeLengthNotZero)
                 {
-                    stack.PushOne();
+                    stack.PushOne<TTracingInst>();
                 }
                 else
                 {
-                    stack.PushZero();
+                    stack.PushZero<TTracingInst>();
                 }
                 return EvmExceptionType.None;
             }
@@ -280,12 +280,12 @@ internal static partial class EvmInstructions
         // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
         if (spec.IsEofEnabled && EofValidator.IsEof(accountCode, out _))
         {
-            stack.PushUInt32(2);
+            stack.PushUInt32<TTracingInst>(2);
         }
         else
         {
             // Otherwise, push the actual code length.
-            stack.PushUInt32((uint)accountCode.Length);
+            stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
         }
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

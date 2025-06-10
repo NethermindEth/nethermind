@@ -10,6 +10,10 @@ namespace Nethermind.Trie.Pruning;
 
 public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = null) : IScopedTrieStore
 {
+    public RawScopedTrieStore(IKeyValueStoreWithBatching kv, Hash256? address = null) : this(new NodeStorage(kv), address)
+    {
+    }
+
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
 
     public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
@@ -25,11 +29,11 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
     public INodeStorage.KeyScheme Scheme => nodeStorage.Scheme;
 
-    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new RawCommitter(nodeStorage, address, writeFlags);
+    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(nodeStorage, address, writeFlags);
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => nodeStorage.KeyExists(address, path, keccak);
 
-    private class RawCommitter(INodeStorage nodeStorage, Hash256 address, WriteFlags writeFlags) : ICommitter
+    public class Committer(INodeStorage nodeStorage, Hash256? address, WriteFlags writeFlags) : ICommitter
     {
         INodeStorage.IWriteBatch _writeBatch = nodeStorage.StartWriteBatch();
 

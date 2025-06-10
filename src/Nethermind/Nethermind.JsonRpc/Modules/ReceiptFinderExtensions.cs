@@ -23,12 +23,12 @@ namespace Nethermind.JsonRpc.Modules
                 : new SearchResult<Hash256>(blockHash);
         }
 
-        public static ResultWrapper<ReceiptForRpc[]> GetBlockReceipts(this IReceiptFinder receiptFinder, BlockParameter blockParameter, IBlockFinder blockFinder, ISpecProvider specProvider)
+        public static ResultWrapper<ReceiptForRpc[]?> GetBlockReceipts(this IReceiptFinder receiptFinder, BlockParameter blockParameter, IBlockFinder blockFinder, ISpecProvider specProvider)
         {
             SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
             if (searchResult.IsError)
             {
-                return ResultWrapper<ReceiptForRpc[]>.Success(null);
+                return ResultWrapper<ReceiptForRpc[]?>.Success(null);
             }
 
             Block block = searchResult.Object;
@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc.Modules
                     return new ReceiptForRpc(t.Hash, r, t.GetGasInfo(spec, block.Header), receipts.GetBlockLogFirstIndex(r.Index));
                 });
             ReceiptForRpc[] resultAsArray = result.ToArray();
-            return ResultWrapper<ReceiptForRpc[]>.Success(resultAsArray);
+            return ResultWrapper<ReceiptForRpc[]?>.Success(resultAsArray);
         }
     }
 }

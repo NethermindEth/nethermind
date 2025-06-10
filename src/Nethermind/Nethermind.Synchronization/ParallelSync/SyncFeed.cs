@@ -53,7 +53,8 @@ namespace Nethermind.Synchronization.ParallelSync
         public Task FeedTask => _taskCompletionSource?.Task ?? Task.CompletedTask;
         public abstract void SyncModeSelectorOnChanged(SyncMode current);
         public abstract bool IsFinished { get; }
+        public abstract string FeedName { get; }
 
-        public void FallAsleep() => ChangeState(SyncFeedState.Dormant);
+        public virtual void FallAsleep() => ChangeState(SyncFeedState.Dormant);
     }
 }

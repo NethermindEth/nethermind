@@ -236,7 +236,9 @@ public class FullPrunerTests
             NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
             nodeStorageFactory.DetectCurrentKeySchemeFrom(TrieDb);
             NodeStorage = nodeStorageFactory.WrapKeyValueStore(FullPruningDb);
-            StateReader = new StateReader(new TrieStore(NodeStorage, LimboLogs.Instance), new TestMemDb(), LimboLogs.Instance);
+
+            var trieStore = TestTrieStoreFactory.Build(NodeStorage, LimboLogs.Instance);
+            StateReader = new StateReader(trieStore, new TestMemDb(), LimboLogs.Instance);
 
             Pruner = new(
                 FullPruningDb,
@@ -254,7 +256,7 @@ public class FullPrunerTests
                 ProcessExitSource,
                 _chainEstimations,
                 DriveInfo,
-                new TrieStore(NodeStorage, LimboLogs.Instance),
+                trieStore,
                 LimboLogs.Instance);
         }
 
@@ -321,7 +323,7 @@ public class FullPrunerTests
 
         public void ShouldCopyAllValuesWhenVisitingTrie()
         {
-            PatriciaTree trie = new PatriciaTree(new TrieStore(new NodeStorage(TrieDb), LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+            PatriciaTree trie = new PatriciaTree(new RawScopedTrieStore(new NodeStorage(TrieDb)), LimboLogs.Instance);
             TrieCopiedNodeVisitor visitor = new TrieCopiedNodeVisitor(new NodeStorage(CopyDb));
             trie.Accept(visitor, BlockTree.Head!.StateRoot!);
         }

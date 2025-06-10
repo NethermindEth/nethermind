@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.ServiceStopper;
 
 namespace Nethermind.Consensus;
 
-public interface IBlockProducerRunner
+public interface IBlockProducerRunner : IStoppableService
 {
     void Start();
-    Task StopAsync();
+    string IStoppableService.Description => "block producer";
     bool IsProducingBlocks(ulong? maxProducingInterval);
     event EventHandler<BlockEventArgs> BlockProduced;
 }

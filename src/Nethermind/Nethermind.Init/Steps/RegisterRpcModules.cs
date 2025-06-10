@@ -27,7 +27,7 @@ using Nethermind.Network.Config;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializePlugins))]
+[RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializeBlockProducer), typeof(InitializePlugins))]
 public class RegisterRpcModules : IStep
 {
     private readonly INethermindApi _api;
@@ -137,6 +137,7 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
         ProofModuleFactory proofModuleFactory = new(
             _api.WorldStateManager,
+            _api.ReadOnlyTxProcessingEnvFactory,
             _api.BlockTree,
             _api.BlockPreprocessor,
             _api.ReceiptFinder,
@@ -191,6 +192,7 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.StateReader);
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
         StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
+        StepDependencyException.ThrowIfNull(_api.ProtocolsManager);
 
         var feeHistoryOracle = new FeeHistoryOracle(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
         _api.DisposeStack.Push(feeHistoryOracle);
@@ -212,6 +214,7 @@ public class RegisterRpcModules : IStep
             _api.GasPriceOracle,
             _api.EthSyncingInfo,
             feeHistoryOracle,
+            _api.ProtocolsManager,
             secondsPerSlot);
     }
 

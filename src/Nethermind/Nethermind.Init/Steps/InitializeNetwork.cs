@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
@@ -13,15 +12,14 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P.Analyzers;
-using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats;
@@ -54,12 +52,9 @@ public static class NettyMemoryEstimator
     typeof(SetupKeyStore),
     typeof(ResolveIps),
     typeof(InitializePlugins),
-    typeof(EraStep),
     typeof(InitializeBlockchain))]
 public class InitializeNetwork : IStep
 {
-    public const string PeersDbPath = "peers";
-
     private readonly IApiWithNetwork _api;
     private readonly INodeStatsManager _nodeStatsManager;
     private readonly ISynchronizer _synchronizer;
@@ -84,7 +79,7 @@ public class InitializeNetwork : IStep
         NodeSourceToDiscV4Feeder enrDiscoveryAppFeeder,
         IDiscoveryApp discoveryApp,
         Lazy<IPeerPool> peerPool, // Require IRlpxPeer to be created first, hence, lazy.
-        [KeyFilter(INetworkStorage.PeerDb)] INetworkStorage peerStorage,
+        [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         IInitConfig initConfig,
@@ -264,40 +259,8 @@ public class InitializeNetwork : IStep
     private async Task InitPeer()
     {
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-        if (_api.NodeKey is null) throw new StepDependencyException(nameof(_api.NodeKey));
-        if (_api.EthereumEcdsa is null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
-
-        /* rlpx */
-        EciesCipher eciesCipher = new(_api.CryptoRandom);
-        Eip8MessagePad eip8Pad = new(_api.CryptoRandom);
-        _api.MessageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
-        _api.MessageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
-        _api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer))!);
-        ReceiptsMessageSerializer receiptsMessageSerializer = new(_api.SpecProvider);
-        _api.MessageSerializationService.Register(receiptsMessageSerializer);
-        _api.MessageSerializationService.Register(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
-
-        HandshakeService encryptionHandshakeServiceA = new(
-            _api.MessageSerializationService,
-            eciesCipher,
-            _api.CryptoRandom,
-            _api.EthereumEcdsa,
-            _api.NodeKey.Unprotect(),
-            _api.LogManager);
-
-        _api.DisconnectsAnalyzer = new MetricsDisconnectsAnalyzer();
-        _api.SessionMonitor = new SessionMonitor(_networkConfig, _api.LogManager);
-        _api.RlpxPeer = new RlpxHost(
-            _api.MessageSerializationService,
-            _api.NodeKey!,
-            encryptionHandshakeServiceA,
-            _api.SessionMonitor,
-            _api.DisconnectsAnalyzer,
-            _networkConfig,
-            _api.LogManager
-        );
 
         await _api.RlpxPeer.Init();
 
@@ -308,7 +271,13 @@ public class InitializeNetwork : IStep
         ISyncServer syncServer = _api.SyncServer!;
         ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis?.Hash ?? Hash256.Zero);
 
-        ProtocolValidator protocolValidator = new(_nodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
+        ProtocolValidator protocolValidator = new(
+            _nodeStatsManager!,
+            _api.BlockTree,
+            forkInfo,
+            _api.PeerManager!,
+            _networkConfig,
+            _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>(), _api.SpecProvider);
 
         _api.ProtocolsManager = new ProtocolsManager(
@@ -325,7 +294,6 @@ public class InitializeNetwork : IStep
             _peerStorage,
             forkInfo,
             _api.GossipPolicy,
-            _networkConfig,
             _api.WorldStateManager!,
             _api.LogManager,
             _api.TxGossipPolicy);

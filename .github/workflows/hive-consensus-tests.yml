@@ -105,8 +105,8 @@ jobs:
           REPO_NAME: ${{ env.REPO_NAME }}
           REF: ${{ github.ref }}
         run: |
-          chmod +x scripts/wait-for-workflow-completed.sh
-          ./scripts/wait-for-workflow-completed.sh
+          chmod +x scripts/wait-for-workflow.sh
+          ./scripts/wait-for-workflow.sh
         working-directory: ${{ github.workspace }}
 
   generate_hive_consensus_tests:

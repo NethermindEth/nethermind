@@ -313,11 +313,13 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
 
             // The direct implementation is decorated by merge plugin (not the interface)
             // so its  declared on its own and other use is binded.
-            .AddScoped<BlockDownloader>()
-            .AddScoped<IForwardHeaderProvider, PowForwardHeaderProvider>()
-            .Bind<ISyncDownloader<BlocksRequest>, BlockDownloader>()
+            .AddSingleton<BlockDownloader>()
+            .Bind<IForwardSyncController, BlockDownloader>()
 
-            .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>()
+            .AddScoped<IForwardHeaderProvider, PowForwardHeaderProvider>()
+            .AddScoped<ISyncDownloader<BlocksRequest>, MultiBlockDownloader>()
+
+            .Add<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>()
             .AddScoped<SyncDispatcher<BlocksRequest>>()
 
             // For headers. There are two header scope, Fast and Beacon
@@ -368,6 +370,15 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
                 // Move to clique plugin?
                 if (ctx.ResolveOptional<ChainSpec>()?.SealEngineType == SealEngineType.Clique)
                     syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
+
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+                ILogger logger = logManager.GetClassLogger<SynchronizerModule>();
+
+                if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
+                {
+                    if (logger.IsWarn) logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
+                    syncConfig.DownloadBodiesInFastSync = true;
+                }
 
                 return syncConfig;
             });
