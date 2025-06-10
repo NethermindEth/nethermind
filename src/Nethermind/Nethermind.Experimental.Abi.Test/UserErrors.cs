@@ -8,10 +8,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Experimental.Abi.Test;
 
-/// <remarks>
-/// The tests have been provided by the ABI specification.
-/// See: https://docs.soliditylang.org/en/latest/abi-spec.html#formal-specification-of-the-encoding
-/// </remarks>
 [Parallelizable(ParallelScope.All)]
 public class UserErrors
 {
