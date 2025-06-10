@@ -19,7 +19,6 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
-using Nethermind.Evm.Config;
 
 namespace Nethermind.Evm.Test;
 

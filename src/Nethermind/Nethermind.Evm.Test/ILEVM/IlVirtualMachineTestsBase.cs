@@ -4,7 +4,6 @@
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.CodeAnalysis.IL;
@@ -17,8 +16,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
-using System;
-using System.IO;
 using System.Linq;
 
 namespace Nethermind.Evm.Test.ILEVM;
@@ -29,15 +26,22 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
     internal bool UseIlEvm { get; init; }
     internal virtual byte[]? Bytecode { get; set; }
 
-
     protected IVMConfig _config;
+
     public IlVirtualMachineTestsBase(IVMConfig config, IReleaseSpec spec) : this(config.IsVmOptimizationEnabled)
     {
         _config = config;
         SpecProvider = new TestSpecProvider(spec);
         Setup();
     }
-    protected override ISpecProvider SpecProvider { get; set; } = new CustomSpecProvider((new ForkActivation(0, 0),Prague.Instance));
+
+    protected override ISpecProvider SpecProvider { get; set; } = new CustomSpecProvider((new ForkActivation(0, 0), Prague.Instance));
+
+    static IlVirtualMachineTestsBase()
+    {
+        // Memoize all IL for all the delegates.
+        Precompiler.MemoizeILForSteps();
+    }
 
     public IlVirtualMachineTestsBase(bool useIlEVM)
     {
@@ -104,7 +108,7 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
     public void Execute<T>(Transaction tx, T tracer, ForkActivation? fork = null, long gasAvailable = 10_000_000, byte[][] blobVersionedHashes = null, bool forceAnalysis = true)
         where T : ITxTracer
     {
-        if(UseIlEvm && forceAnalysis)
+        if (UseIlEvm && forceAnalysis)
         {
             ForceRunAnalysis(tx.To, ILMode.DYNAMIC_AOT_MODE);
         }

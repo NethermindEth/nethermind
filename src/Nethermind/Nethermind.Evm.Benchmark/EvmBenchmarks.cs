@@ -75,7 +75,7 @@ namespace Nethermind.Evm.Benchmark
                 ? ILMode.FULL_AOT_MODE : ILMode.NO_ILVM;
 
             vmConfig.IlEvmAnalysisThreshold = 1;
-            vmConfig.IsIlEvmAggressiveModeEnabled= true;
+            vmConfig.IsIlEvmAggressiveModeEnabled = true;
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
             IKeyValueStore codeDb = new MemDb();
             _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
@@ -84,7 +84,7 @@ namespace Nethermind.Evm.Benchmark
 
             bytecode = _bytecode;
 
-            codeInfoRepository = new TestCodeInfoRepository();  
+            codeInfoRepository = new TestCodeInfoRepository();
 
             ILogManager logmanager = NullLogManager.Instance;
 
@@ -264,7 +264,7 @@ namespace Nethermind.Evm.Benchmark
 
                 string benchName = $"Fib With args {new UInt256(argBytes)}";
 
-                switch(mode)
+                switch (mode)
                 {
                     case ILMode.NO_ILVM:
                         yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + benchName, bytecode);
@@ -341,7 +341,7 @@ namespace Nethermind.Evm.Benchmark
 
         [ParamsSource(nameof(GetBenchmarkSamples))]
         public ILocalSetup BenchmarkSetup;
-        
+
         [IterationSetup]
         public void Setup()
         {

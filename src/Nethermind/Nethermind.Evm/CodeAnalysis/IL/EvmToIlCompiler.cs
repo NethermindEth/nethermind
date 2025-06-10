@@ -1,44 +1,40 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Common.Utilities;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.Config;
-using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
-using Nethermind.State;
-using Org.BouncyCastle.Asn1.Cms;
 using Sigil;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Drawing;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
-using System.Reflection.Metadata.Ecma335;
-using System.Reflection.Metadata;
-using System.Reflection.PortableExecutable;
-using System.Runtime.Loader;
-using System.Text;
+using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
-using System.Xml.Linq;
-
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
-using static Org.BouncyCastle.Math.EC.ECCurve;
 using Label = Sigil.Label;
-using Microsoft.Extensions.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
 public static class Precompiler
 {
+    /// <summary>
+    /// Use for testing. All delegates will have their IL memoized.
+    /// </summary>
+    public static void MemoizeILForSteps()
+    {
+        _stepsIL = new ConditionalWeakTable<ILExecutionStep, string>();
+    }
+
+    public static bool TryGetEmittedIL(ILExecutionStep step, out string? il)
+    {
+        il = null;
+        return _stepsIL != null && _stepsIL.TryGetValue(step, out il);
+    }
+
+    private static ConditionalWeakTable<ILExecutionStep, string>? _stepsIL;
+
     internal static Lazy<PersistedAssemblyBuilder> _currentPersistentAsmBuilder = new Lazy<PersistedAssemblyBuilder>(() => new PersistedAssemblyBuilder(new AssemblyName(GenerateAssemblyName()), typeof(object).Assembly));
     internal static ModuleBuilder? _currentPersistentModBuilder = null;
     internal static ModuleBuilder? _currentDynamicModBuilder = null;
@@ -85,7 +81,14 @@ public static class Precompiler
             }
 
             var method = finalizedType.GetMethod(nameof(ILExecutionStep), BindingFlags.Static | BindingFlags.Public);
-            return (ILExecutionStep)Delegate.CreateDelegate(typeof(ILExecutionStep), method!);
+            var @delegate = (ILExecutionStep)Delegate.CreateDelegate(typeof(ILExecutionStep), method!);
+
+            if (_stepsIL != null)
+            {
+                _stepsIL.AddOrUpdate(@delegate, ilCode);
+            }
+
+            return @delegate;
 
         }
         catch
@@ -109,13 +112,14 @@ public static class Precompiler
     {
 
         // Runtime contract
-        if(_currentDynamicModBuilder is null)
+        if (_currentDynamicModBuilder is null)
         {
             var runtimeAsm = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("_dynamicAssembly"), AssemblyBuilderAccess.Run);
             _currentDynamicModBuilder = runtimeAsm.DefineDynamicModule("MainModule");
         }
 
-        if((iledCode = CompileContractInternal(_currentDynamicModBuilder, $"_dynamicAssembly_{(new Random()).Next()}_{contractName}", codeInfo, metadata, config, true)) is null) {
+        if ((iledCode = CompileContractInternal(_currentDynamicModBuilder, $"_dynamicAssembly_{(new Random()).Next()}_{contractName}", codeInfo, metadata, config, true)) is null)
+        {
             return false;
         }
 
@@ -137,7 +141,7 @@ public static class Precompiler
     {
         if (_currentPersistentAsmBuilder is null) return;
 
-        if(!Path.Exists(config.IlEvmPrecompiledContractsPath))
+        if (!Path.Exists(config.IlEvmPrecompiledContractsPath))
         {
             Directory.CreateDirectory(config.IlEvmPrecompiledContractsPath);
         }
@@ -212,7 +216,7 @@ public static class Precompiler
         int endOfSegment = codeInfo.MachineCode.Length;
 
         // Idea(Ayman) : implement every opcode as a method, and then inline the IL of the method in the main method
-        for (var i = 0; i < codeInfo.MachineCode.Length; )
+        for (var i = 0; i < codeInfo.MachineCode.Length;)
         {
             (Instruction Instruction, OpcodeMetadata Metadata) opcodeInfo = ((Instruction)machineCodeAsSpan[i], OpcodeMetadata.GetMetadata((Instruction)machineCodeAsSpan[i]));
 
@@ -249,7 +253,7 @@ public static class Precompiler
                         continue;
                     }
 
-                    if(currentSubsegment.RequiresStaticEnvCheck)
+                    if (currentSubsegment.RequiresStaticEnvCheck)
                     {
                         method.EmitAmortizedStaticEnvCheck(currentSubsegment, locals, evmExceptionLabels);
                     }
@@ -258,7 +262,7 @@ public static class Precompiler
                     {
                         method.EmitAmortizedOpcodeCheck(currentSubsegment, locals, evmExceptionLabels);
                     }
-                    // and we emit failure for failing jumpless segment at start 
+                    // and we emit failure for failing jumpless segment at start
 
                     if (currentSubsegment.RequiredStack != 0)
                     {
@@ -299,7 +303,7 @@ public static class Precompiler
                     method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
                 }
 
-                if(opcodeInfo.Metadata.IsNotStaticOpcode)
+                if (opcodeInfo.Metadata.IsNotStaticOpcode)
                 {
                     method.EmitAmortizedStaticEnvCheck(currentSubsegment, locals, evmExceptionLabels);
                 }

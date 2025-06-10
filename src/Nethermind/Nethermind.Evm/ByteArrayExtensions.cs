@@ -10,11 +10,13 @@ namespace Nethermind.Evm
 {
     public static class ByteArrayExtensions
     {
-        public static unsafe ZeroPaddedSpan SliceWithZeroPadding(this ref byte spanRef, int size, scoped in UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right) {
+        public static unsafe ZeroPaddedSpan SliceWithZeroPadding(this ref byte spanRef, int size, scoped in UInt256 startIndex, int length, PadDirection padDirection = PadDirection.Right)
+        {
             if (startIndex >= size || startIndex > int.MaxValue)
             {
                 return new ZeroPaddedSpan(default, length, PadDirection.Right);
-            } else
+            }
+            else
             {
                 Span<byte> span = new Span<byte>(Unsafe.AsPointer(ref spanRef), size);
                 return SliceWithZeroPadding(span, (int)startIndex, length, padDirection);

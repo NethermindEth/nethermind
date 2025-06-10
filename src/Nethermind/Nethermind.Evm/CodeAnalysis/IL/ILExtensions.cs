@@ -65,7 +65,7 @@ public static class ReleaseSpecEmit
         string segmentRefName = GetSegmentId(segmentMetadata);
         if (!locals.TryLoadLocal(segmentRefName, true))
         {
-            throw new InvalidOperationException($"method {nameof(DeclareOpcodeValidityCheckVariables) } must be called before calling {nameof(EmitAmortizedOpcodeCheck)}");
+            throw new InvalidOperationException($"method {nameof(DeclareOpcodeValidityCheckVariables)} must be called before calling {nameof(EmitAmortizedOpcodeCheck)}");
         }
 
         method.Call(typeof(bool?).GetProperty(nameof(Nullable<bool>.HasValue)).GetGetMethod());
@@ -73,7 +73,7 @@ public static class ReleaseSpecEmit
 
         foreach (var opcode in segmentMetadata.Instructions)
         {
-            if(opcode.RequiresAvailabilityCheck())
+            if (opcode.RequiresAvailabilityCheck())
             {
                 method.LoadSpec(locals, false);
                 method.LoadConstant((byte)opcode);
@@ -144,7 +144,7 @@ public static class StackEmit
         }
 
         il.LoadConstant(idx);
-        if(isReadOnly)
+        if (isReadOnly)
         {
             il.Call(typeof(ReadOnlySpan<U>).GetMethod("get_Item"));
         }
@@ -488,7 +488,7 @@ public static class WordEmit
 
         PropertyInfo checkProp = typeof(Word).GetProperty(checkName);
 
-        if(checkProp is null)
+        if (checkProp is null)
         {
             throw new Exception($"Type of Word does not have a property named {checkName}");
         }

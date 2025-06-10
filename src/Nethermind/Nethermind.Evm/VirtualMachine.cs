@@ -738,7 +738,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
 
-        if(typeof(IsPrecompiling) == typeof(TOptimizing))
+        if (typeof(IsPrecompiling) == typeof(TOptimizing))
         {
             if (env.CodeInfo.IlInfo.IsPrecompiled)
             {
@@ -747,11 +747,11 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 _logger.Info($"{env.CodeInfo.Codehash} precompile is being called");
 
                 int programCounter = vmState.ProgramCounter;
-                var codeAsSpan = env.CodeInfo.MachineCode.Span; 
+                var codeAsSpan = env.CodeInfo.MachineCode.Span;
                 ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
-                fixed(void* codePtr = codeAsSpan, stackPtr = stack.Bytes)
+                fixed (void* codePtr = codeAsSpan, stackPtr = stack.Bytes)
                 {
-                    if  (env.CodeInfo.IlInfo.PrecompiledContract(
+                    if (env.CodeInfo.IlInfo.PrecompiledContract(
                             in Unsafe.AsRef<byte>(codePtr),
                             _specProvider,
                             _blockhashProvider,
@@ -768,7 +768,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                             ref chunkExecutionState)
                         )
                     {
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head-1);
+                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head - 1);
                         Metrics.IlvmAotPrecompiledCalls--; // this will treat continuations as new calls 
                         return new CallResult(chunkExecutionState.CallResult);
                     }
@@ -776,7 +776,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
                 UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 
-                switch(chunkExecutionState.ContractState)
+                switch (chunkExecutionState.ContractState)
                 {
                     case ContractState.Return or ContractState.Revert:
                         return new CallResult(chunkExecutionState.ReturnData.ToArray(), null, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
@@ -786,7 +786,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                         return CallResult.Empty;
                 }
             }
-        } 
+        }
 
         // Struct generic parameter is used to burn out all the if statements
         // and inner code by typeof(TTracing) == typeof(NotTracing)
@@ -2487,7 +2487,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     }
 
     [SkipLocalsInit]
-    public static  EvmExceptionType InstructionSelfDestruct(EvmState vmState, IWorldState state, Address inheritor, ref long gasAvailable, IReleaseSpec spec, ITxTracer txTracer)
+    public static EvmExceptionType InstructionSelfDestruct(EvmState vmState, IWorldState state, Address inheritor, ref long gasAvailable, IReleaseSpec spec, ITxTracer txTracer)
     {
         Metrics.IncrementSelfDestructs();
 
