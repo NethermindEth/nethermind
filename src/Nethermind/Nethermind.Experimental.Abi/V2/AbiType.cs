@@ -68,9 +68,51 @@ public static partial class AbiType
     public static IAbi<T[]> Array<T>(IAbi<T> elements) => new()
     {
         Name = $"{elements.Name}[]",
-        Read = (ref BinarySpanReader r) => throw new NotImplementedException(),
-        Write = (ref BinarySpanWriter w, T[] array) => throw new NotImplementedException(),
-        Size = _ => throw new NotImplementedException(),
+        IsDynamic = true,
+        Read = (ref BinarySpanReader r) =>
+        {
+            int length = (int)UInt256.Read(ref r);
+
+            var array = new T[length];
+            for (int i = 0; i < length; i++)
+            {
+                if (elements.IsDynamic)
+                {
+                    throw new NotImplementedException();
+                }
+                else
+                {
+                    array[i] = elements.Read(ref r);
+                }
+            }
+            return array;
+        },
+        Write = (ref BinarySpanWriter w, T[] array) =>
+        {
+            UInt256.Write(ref w, (UInt256)array.Length);
+            w.Scoped((ref BinarySpanWriter w) =>
+            {
+                if (elements.IsDynamic)
+                {
+                    throw new NotImplementedException();
+                }
+                else
+                {
+                    for (int i = 0; i < array.Length; i++)
+                    {
+                        elements.Write(ref w, array[i]);
+                    }
+                }
+            });
+        },
+        Size = array =>
+        {
+            var offsetSize = 32;
+            var lengthSize = 32;
+            var elementsSize = array.Sum(e => elements.Size(e));
+
+            return offsetSize + lengthSize + elementsSize;
+        },
     };
 
     public static IAbi<T[]> Array<T>(IAbi<T> elements, int length) => new()
