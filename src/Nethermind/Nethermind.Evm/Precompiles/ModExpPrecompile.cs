@@ -201,9 +201,12 @@ namespace Nethermind.Evm.Precompiles
         {
             UInt256 maxLength = UInt256.Max(baseLength, modulusLength);
             UInt256.Mod(maxLength, 8, out UInt256 mod8);
-            UInt256 words = (maxLength / 8) + ((mod8.IsZero) ? UInt256.Zero : UInt256.One);
+            UInt256 words = (maxLength / 8) + (mod8.IsZero ? UInt256.Zero : UInt256.One);
+
             if (isEip7883Enabled)
+            {
                 return maxLength > 32 ? 2 * words * words : 16;
+            }
 
             return words * words;
         }
