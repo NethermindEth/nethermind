@@ -72,20 +72,28 @@ public static partial class AbiType
         Read = (ref BinarySpanReader r) =>
         {
             int length = (int)UInt256.Read(ref r);
-
-            var array = new T[length];
-            for (int i = 0; i < length; i++)
+            return r.Scoped((ref BinarySpanReader r) =>
             {
+                var array = new T[length];
                 if (elements.IsDynamic)
                 {
-                    throw new NotImplementedException();
+                    int read = 0;
+                    for (int i = 0; i < length; i++)
+                    {
+                        (array[i], read) = r.ReadOffset((ref BinarySpanReader r) => elements.Read(ref r));
+                    }
+                    r.Advance(read);
                 }
                 else
                 {
-                    array[i] = elements.Read(ref r);
+                    for (int i = 0; i < length; i++)
+                    {
+                        array[i] = elements.Read(ref r);
+                    }
                 }
-            }
-            return array;
+
+                return array;
+            });
         },
         Write = (ref BinarySpanWriter w, T[] array) =>
         {
@@ -94,7 +102,12 @@ public static partial class AbiType
             {
                 if (elements.IsDynamic)
                 {
-                    throw new NotImplementedException();
+                    w.Advance(array.Length * 32);
+
+                    for (int i = 0; i < array.Length; i++)
+                    {
+                        w.WriteOffset(i * 32, (ref BinarySpanWriter w) => elements.Write(ref w, array[i]));
+                    }
                 }
                 else
                 {
