@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs.Forks;
@@ -18,6 +19,8 @@ public class Osaka : Prague
         IsEip7883Enabled = true;
         // IsEip7825Enabled = true;
         IsEip7918Enabled = true;
+        MaxCodeSize = 48.KiB();
+        MaxInitCodeSize = MaxCodeSize * 3 / 2;
         Released = false;
     }
 

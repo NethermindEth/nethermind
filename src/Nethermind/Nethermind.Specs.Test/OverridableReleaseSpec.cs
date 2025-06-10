@@ -29,6 +29,7 @@ namespace Nethermind.Specs.Test
         public long MaximumExtraDataSize => _spec.MaximumExtraDataSize;
 
         public long MaxCodeSize => _spec.MaxCodeSize;
+        public long MaxInitCodeSize => _spec.MaxInitCodeSize;
 
         public long MinGasLimit => _spec.MinGasLimit;
 
