@@ -68,6 +68,8 @@ public ref struct BinarySpanReader
     }
 }
 
+public delegate void BinarySpanWriterAction<in TCtx>(TCtx ctx, ref BinarySpanWriter w);
+
 public ref struct BinarySpanWriter
 {
     private readonly Span<byte> _span;
@@ -102,20 +104,20 @@ public ref struct BinarySpanWriter
         return startPosition;
     }
 
-    public void Scoped(IAbiWriteAction inner)
+    public void Scoped<TCtx>(TCtx ctx, BinarySpanWriterAction<TCtx> inner)
     {
         var writer = new BinarySpanWriter(_span[_position..]);
-        inner(ref writer);
+        inner(ctx, ref writer);
         _position += writer._position;
     }
 
-    public void WriteOffset(int offset, IAbiWriteAction inner)
+    public void WriteOffset<TCtx>(int offset, TCtx ctx, BinarySpanWriterAction<TCtx> inner)
     {
         Span<byte> offsetLocation = _span[offset..(offset + 32)];
         var position = (UInt256)_position;
         position.ToBigEndian(offsetLocation);
 
-        inner(ref this);
+        inner(ctx, ref this);
     }
 }
 
