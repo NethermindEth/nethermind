@@ -191,6 +191,11 @@ public class BlockValidatorTests
         .TestObject,
         new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
         "InsufficientMaxFeePerBlobGas");
+
+        yield return new TestCaseData(
+        Build.A.Block.WithEncodedSize(Eip7934Constants.MaxRlpBlockSize + 1).TestObject,
+        Substitute.For<ISpecProvider>(),
+        "ExceededBlockSizeLimit");
     }
 
     [TestCaseSource(nameof(BadSuggestedBlocks))]
