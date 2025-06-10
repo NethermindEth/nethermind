@@ -31,8 +31,8 @@ public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, Func<I
             .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
             .AddScoped<ICodeInfoRepository>(codeInfoRepository)
             .AddScoped<IWorldState>(worldState)
-            .AddScoped<ITransactionProcessorAdapter, T>()
-            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor>(ctx => ctx.ResolveKeyed<IBlockProcessor.IBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Validation))
+            .AddScoped<ITransactionProcessorAdapter, T>() // T can be trace or execute
+            .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
             ;
     }
 
@@ -48,7 +48,7 @@ public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, Func<I
         ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             ConfigureCommonBlockProcessing<ExecuteTransactionProcessorAdapter>(builder, codeInfoRepository, overridableScope.WorldState));
 
-        ILifetimeScope traceRpcLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
+        ILifetimeScope tracerLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
             builder
                 .AddScoped<IOverridableWorldScope>(overridableScope)
@@ -68,10 +68,18 @@ public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, Func<I
                 ;
         });
 
-        traceRpcLifetimeScope.Disposer.AddInstanceForAsyncDisposal(rpcProcessingScope);
-        traceRpcLifetimeScope.Disposer.AddInstanceForAsyncDisposal(validationProcessingScope);
-        rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(traceRpcLifetimeScope);
+        // Note: Only `ITracerEnv` is exposed. This is because the tracer must be run in a well defined block processing scope
+        // otherwise, it risk memory leak.
+        ILifetimeScope rpcLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
+        {
+            builder.AddScoped<ITracerEnv>(tracerLifetimeScope.Resolve<ITracerEnv>());
+        });
 
-        return traceRpcLifetimeScope.Resolve<ITraceRpcModule>();
+        tracerLifetimeScope.Disposer.AddInstanceForAsyncDisposal(rpcProcessingScope);
+        tracerLifetimeScope.Disposer.AddInstanceForAsyncDisposal(validationProcessingScope);
+        rpcLifetimeScope.Disposer.AddInstanceForAsyncDisposal(tracerLifetimeScope);
+        rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(rpcLifetimeScope);
+
+        return rpcLifetimeScope.Resolve<ITraceRpcModule>();
     }
 }

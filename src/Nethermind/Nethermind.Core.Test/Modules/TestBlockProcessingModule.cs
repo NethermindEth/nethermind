@@ -54,10 +54,6 @@ public class TestBlockProcessingModule : Module
             .AddSingleton<ITxPool, TxPool.TxPool>()
             .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
 
-            // These are common between processing and production and worldstate-ful, so they should be scoped instead
-            // of singleton.
-            .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardCalculatorSource, txProcessor) => rewardCalculatorSource.Get(txProcessor))
-
             // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
             // in a `MainBlockProcessingContext`.
             .AddSingleton<MainBlockProcessingContext, ILifetimeScope>(ConfigureMainBlockProcessingContext)
@@ -102,8 +98,7 @@ public class TestBlockProcessingModule : Module
                 // These are main block processing specific
                 .AddScoped<ICodeInfoRepository>(mainCodeInfoRepository)
                 .AddScoped(mainWorldState)
-                .AddScoped<IBlockProcessor.IBlockTransactionsExecutor>(ctx => ctx
-                    .ResolveKeyed<IBlockProcessor.IBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Validation))
+                .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 .AddScoped(new BlockchainProcessor.Options
                 {

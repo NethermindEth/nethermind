@@ -23,32 +23,32 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         public override IProofRpcModule Create()
         {
+            // Note: No overridable world scope here. So the aren't any risk of leaking KV store.
             IReadOnlyTxProcessingScope txProcessingEnv = readOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
-            ILifetimeScope blockProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
+
+            ILifetimeScope tracerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             {
                 builder
                     .AddScoped<IWorldState>(txProcessingEnv.WorldState)
                     .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
-                    .AddScoped<IBlockProcessor.IBlockTransactionsExecutor>(ctx =>
-                        ctx.ResolveKeyed<IBlockProcessor.IBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Validation)
-                    )
+                    .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
                     .AddScoped<ITransactionProcessorAdapter, TraceTransactionProcessorAdapter>()
                     .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
                     .AddScoped<IRewardCalculator>(NoBlockRewards.Instance)
                     .AddScoped<IBlockValidator>(Always.Valid) // Why?
                     .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
-                    .AddScoped<IReadOnlyTxProcessingScope>(txProcessingEnv)
                     .AddScoped<ITracer, Tracer>()
                     ;
             });
 
-            // The tracer need a null receipts while the proof does not
+            // The tracer need a null receipts while the proof does not.
+            // Eh, its a good idea to separate what need block processing and what does not anyway.
             ILifetimeScope proofRpcScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             {
-                builder.AddSingleton<ITracer>(blockProcessingScope.Resolve<ITracer>());
+                builder.AddSingleton<ITracer>(tracerScope.Resolve<ITracer>());
             });
 
-            proofRpcScope.Disposer.AddInstanceForAsyncDisposal(blockProcessingScope);
+            proofRpcScope.Disposer.AddInstanceForAsyncDisposal(tracerScope);
             rootLifetimeScope.Disposer.AddInstanceForDisposal(proofRpcScope);
 
             return proofRpcScope.Resolve<IProofRpcModule>();

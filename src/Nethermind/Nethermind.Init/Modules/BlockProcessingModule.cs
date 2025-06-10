@@ -19,7 +19,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Simulate;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -43,7 +42,6 @@ public class BlockProcessingModule : Module
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
             .AddScoped<IVirtualMachine, VirtualMachine>()
             .AddScoped<IBlockhashProvider, BlockhashProvider>()
-            .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
             .AddScoped<IBlockhashStore, BlockhashStore>()
             .AddScoped<IBlockProcessor, BlockProcessor>()
@@ -51,9 +49,10 @@ public class BlockProcessingModule : Module
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
             .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
             .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardSource, txP) => rewardSource.Get(txP))
+            .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
 
-            // Some plugin replace these implementation. So we name it here.
-            .AddKeyedScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Validation)
+            // Transaction executor used by main block validation and rpc.
+            .AddScoped<IValidationTransactionExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
 
             // Block production components
             .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
