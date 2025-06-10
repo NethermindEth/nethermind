@@ -40,49 +40,6 @@ using Nethermind.Facade;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
-public class AuRaDebugModuleFactory(
-    AuRaNethermindApi api,
-    IWorldStateManager worldStateManager,
-    IDbProvider dbProvider,
-    IBlockTree blockTree,
-    IJsonRpcConfig jsonRpcConfig,
-    IBlockchainBridge blockchainBridge,
-    IBlocksConfig blocksConfig,
-    IBlockValidator blockValidator,
-    IBlockPreprocessorStep recoveryStep,
-    IRewardCalculatorSource rewardCalculator,
-    IReceiptStorage receiptStorage,
-    IReceiptsMigration receiptsMigration,
-    IConfigProvider configProvider,
-    ISpecProvider specProvider,
-    ISyncModeSelector syncModeSelector,
-    IBadBlockStore badBlockStore,
-    IFileSystem fileSystem,
-    ILogManager logManager,
-    IAuRaBlockProcessorFactory factory)
-    : DebugModuleFactory(worldStateManager, dbProvider, blockTree, jsonRpcConfig, blockchainBridge, blocksConfig.SecondsPerSlot, blockValidator, recoveryStep,
-        rewardCalculator, receiptStorage, receiptsMigration, configProvider, specProvider, syncModeSelector,
-        badBlockStore, fileSystem, logManager)
-{
-    protected override ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
-        IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
-    {
-        return new AuRaReadOnlyChainProcessingEnv(
-            api,
-            scope,
-            Always.Valid,
-            _recoveryStep,
-            _rewardCalculatorSource.Get(scope.TransactionProcessor),
-            _receiptStorage,
-            _specProvider,
-            _blockTree,
-            worldStateManager.GlobalStateReader,
-            _logManager,
-            transactionsExecutor,
-            factory);
-    }
-}
-
 public interface IAuRaBlockProcessorFactory
 {
     public AuRaBlockProcessor Create(
@@ -128,6 +85,17 @@ public class AuRaBlockProcessorFactory : IAuRaBlockProcessorFactory
             txFilter,
             gasLimitOverride,
             contractRewriter, preWarmer);
+}
+
+public class AutoAuRaDebugModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : AutoDebugModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)
+{
+    protected override ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder)
+    {
+        return base.ConfigureTracerContainer(builder)
+            .AddScoped<IReadOnlyTxProcessingScope, ITransactionProcessor, IWorldState>((txP, worldState) => new ReadOnlyTxProcessingScope(txP, worldState, Keccak.EmptyTreeHash))
+            .AddScoped<ReadOnlyChainProcessingEnv, AuRaReadOnlyChainProcessingEnv>()
+            .AddScoped<IBlockProcessor, ReadOnlyChainProcessingEnv>((env) => env.BlockProcessor);
+    }
 }
 
 public class AutoAuRaTraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : AutoTraceModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)

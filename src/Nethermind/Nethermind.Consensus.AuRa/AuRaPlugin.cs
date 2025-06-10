@@ -124,7 +124,7 @@ namespace Nethermind.Consensus.AuRa
 
                 .AddSingleton<IRpcModuleFactory<ITraceRpcModule>, AutoAuRaTraceModuleFactory>()
                 .AddSingleton<IAuRaBlockProcessorFactory, AuRaBlockProcessorFactory>()
-                .AddSingleton<IRpcModuleFactory<IDebugRpcModule>, AuRaDebugModuleFactory>()
+                .AddSingleton<IRpcModuleFactory<IDebugRpcModule>, AutoAuRaDebugModuleFactory>()
 
                 ;
 

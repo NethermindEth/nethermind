@@ -25,113 +25,44 @@ using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
-public class DebugModuleFactory(
-    IWorldStateManager stateManager,
-    IDbProvider dbProvider,
-    IBlockTree blockTree,
-    IJsonRpcConfig jsonRpcConfig,
-    IBlockchainBridge blockchainBridge,
-    ulong secondsPerSlot,
-    IBlockValidator blockValidator,
-    IBlockPreprocessorStep recoveryStep,
-    IRewardCalculatorSource rewardCalculator,
-    IReceiptStorage receiptStorage,
-    IReceiptsMigration receiptsMigration,
-    IConfigProvider configProvider,
-    ISpecProvider specProvider,
-    ISyncModeSelector syncModeSelector,
-    IBadBlockStore badBlockStore,
-    IFileSystem fileSystem,
-    ILogManager logManager)
-    : ModuleFactoryBase<IDebugRpcModule>
-{
-    protected readonly IBlockValidator _blockValidator = blockValidator;
-    protected readonly IRewardCalculatorSource _rewardCalculatorSource = rewardCalculator;
-    protected readonly IReceiptStorage _receiptStorage = receiptStorage;
-    protected readonly ISpecProvider _specProvider = specProvider;
-    protected readonly ILogManager _logManager = logManager;
-    protected readonly IBlockPreprocessorStep _recoveryStep = recoveryStep;
-    private readonly IReadOnlyDbProvider _dbProvider = dbProvider.AsReadOnly(false);
-    protected readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
-
-    public override IDebugRpcModule Create()
-    {
-        IOverridableWorldScope worldStateManager = stateManager.CreateOverridableWorldScope();
-        OverridableTxProcessingEnv txEnv = new(worldStateManager, _blockTree, _specProvider, _logManager);
-
-        IReadOnlyTxProcessingScope scope = txEnv.Build(Keccak.EmptyTreeHash);
-
-        ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor); // It want to execute by default. But sometime, it cchange to
-        ITransactionProcessorAdapter adapter = transactionProcessorAdapter;
-        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(adapter, scope.WorldState);
-        ReadOnlyChainProcessingEnv chainProcessingEnv = CreateReadOnlyChainProcessingEnv(scope, worldStateManager, transactionsExecutor);
-
-        GethStyleTracer tracer = new(
-            chainProcessingEnv.ChainProcessor,
-            scope.WorldState,
-            _receiptStorage,
-            _blockTree,
-            badBlockStore,
-            _specProvider,
-            transactionProcessorAdapter,
-            fileSystem,
-            txEnv);
-
-        DebugBridge debugBridge = new(
-            configProvider,
-            _dbProvider,
-            tracer,
-            _blockTree,
-            _receiptStorage,
-            receiptsMigration,
-            _specProvider,
-            syncModeSelector,
-            badBlockStore);
-
-        return new DebugRpcModule(_logManager, debugBridge, jsonRpcConfig, _specProvider, blockchainBridge, secondsPerSlot, _blockTree);
-    }
-
-    protected virtual ReadOnlyChainProcessingEnv CreateReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
-        IOverridableWorldScope worldStateManager, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
-    {
-        return new ReadOnlyChainProcessingEnv(
-            scope,
-            _blockValidator,
-            _recoveryStep,
-            _rewardCalculatorSource.Get(scope.TransactionProcessor),
-            _receiptStorage,
-            _specProvider,
-            _blockTree,
-            worldStateManager.GlobalStateReader,
-            _logManager,
-            transactionsExecutor);
-    }
-}
-
 public class AutoDebugModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope): IRpcModuleFactory<IDebugRpcModule>
 {
-    public IDebugRpcModule Create()
+    protected virtual ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder)
     {
-        IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
-        IOverridableCodeInfoRepository codeInfoRepository = new OverridableCodeInfoRepository(codeInfoRepositoryFunc());
-
-        ILifetimeScope childLifecycle = rootLifetimeScope.BeginLifetimeScope((builder) =>
-        {
-            builder
+        return builder
                 .AddScoped<ChangeableTransactionProcessorAdapter>()
                 .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
                 .AddScoped(ctx => ctx.ResolveKeyed<IBlockProcessor.IBlockTransactionsExecutor>(IBlockProcessor.IBlockTransactionsExecutor.Validation))
                 .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
                 .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+                .AddScoped<IOverridableTxProcessorSource, AutoOverridableTxProcessingEnv>()
+            ;
+    }
+
+    public IDebugRpcModule Create()
+    {
+        IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
+        IOverridableCodeInfoRepository codeInfoRepository = new OverridableCodeInfoRepository(codeInfoRepositoryFunc());
+
+        ILifetimeScope tracerLifecyccle = rootLifetimeScope.BeginLifetimeScope((builder) =>
+        {
+            ConfigureTracerContainer(builder)
                 .AddSingleton<IWorldState>(overridableScope.WorldState)
                 .AddSingleton<ICodeInfoRepository>(codeInfoRepository)
 
                 .AddScoped<IOverridableWorldScope>(overridableScope)
-                .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository)
-                .AddScoped<IOverridableTxProcessorSource, AutoOverridableTxProcessingEnv>()
-                ;
+                .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository);
         });
 
-        return childLifecycle.Resolve<IDebugRpcModule>();
+        // Pass only `IGethStyleTracer` into the debug rpc lifetime.
+        // This is to prevent leaking processor or world state accidentally.
+        // `GethStyleTracer` must be very careful to always dispose overridable env.
+        ILifetimeScope debugRpcModuleLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
+            .AddScoped<IGethStyleTracer>(tracerLifecyccle.Resolve<IGethStyleTracer>()));
+
+        debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(tracerLifecyccle);
+        rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(debugRpcModuleLifetime);
+
+        return debugRpcModuleLifetime.Resolve<IDebugRpcModule>();
     }
 }
