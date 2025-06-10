@@ -57,7 +57,7 @@ public class TraceModuleFactory(
                 transactionsExecutor);
 
     protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateRpcBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
-        => new RpcBlockTransactionsExecutor(new TraceTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState);
+        => new BlockProcessor.BlockValidationTransactionsExecutor(new TraceTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState);
 
     protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
         => new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState);

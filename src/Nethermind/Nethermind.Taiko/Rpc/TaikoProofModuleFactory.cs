@@ -24,5 +24,5 @@ class TaikoProofModuleFactory(
     : ProofModuleFactory(worldStateManager, readOnlyTxProcessingEnvFactory, blockTree, recoveryStep, receiptFinder, specProvider, logManager)
 {
     protected override IBlockProcessor.IBlockTransactionsExecutor CreateRpcBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
-        => new TaikoRpcBlockTransactionExecutor(scope.TransactionProcessor, scope.WorldState);
+        => new TaikoBlockValidationTransactionExecutor(new TraceTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState);
 }
