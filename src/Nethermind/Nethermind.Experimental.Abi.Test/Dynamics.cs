@@ -3,7 +3,6 @@
 
 using FluentAssertions;
 using Nethermind.Core.Extensions;
-using Nethermind.Experimental.Abi;
 using NUnit.Framework;
 
 namespace Nethermind.Experimental.Abi.Test;
