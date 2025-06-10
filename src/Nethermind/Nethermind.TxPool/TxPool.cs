@@ -478,7 +478,8 @@ namespace Nethermind.TxPool
 
             NewDiscovered?.Invoke(this, new TxEventArgs(tx));
 
-            bool startBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
+            bool startBroadcast = _txPoolConfig.PersistentBroadcastEnabled
+                                  && (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
                                   TxHandlingOptions.PersistentBroadcast;
 
             if (_logger.IsTrace)
