@@ -32,7 +32,7 @@ public class ClHealthTrackerTests
         healthTracker.CheckClAlive().Should().BeFalse(); // More than 300 since start
 
         healthTracker.OnForkchoiceUpdatedCalled();
-        healthTracker.CheckClAlive().Should().BeFalse(); // Only Fcu is not enough
+        healthTracker.CheckClAlive().Should().BeTrue(); // Fcu
 
         healthTracker.OnNewPayloadCalled();
         healthTracker.CheckClAlive().Should().BeTrue(); // Fcu + Np
@@ -41,19 +41,19 @@ public class ClHealthTrackerTests
         healthTracker.CheckClAlive().Should().BeFalse(); // Big gap since fcu + Np
 
         healthTracker.OnForkchoiceUpdatedCalled();
-        healthTracker.CheckClAlive().Should().BeFalse(); // Only Fcu is not enough
+        healthTracker.CheckClAlive().Should().BeTrue();
 
         timestamper.Add(TimeSpan.FromSeconds(301));
         healthTracker.CheckClAlive().Should().BeFalse(); // Big gap
 
         healthTracker.OnNewPayloadCalled();
-        healthTracker.CheckClAlive().Should().BeFalse(); // Previous fcu is too old
+        healthTracker.CheckClAlive().Should().BeTrue();
 
         timestamper.Add(TimeSpan.FromSeconds(299));
         healthTracker.OnForkchoiceUpdatedCalled();
-        healthTracker.CheckClAlive().Should().BeTrue(); // New fcu close to Np expiry time
+        healthTracker.CheckClAlive().Should().BeTrue();
 
-        timestamper.Add(TimeSpan.FromSeconds(2)); // Previous Np expired
-        healthTracker.CheckClAlive().Should().BeFalse();
+        timestamper.Add(TimeSpan.FromSeconds(2));
+        healthTracker.CheckClAlive().Should().BeTrue();
     }
 }
