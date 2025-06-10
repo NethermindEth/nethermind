@@ -490,7 +490,7 @@ namespace Nethermind.Core.Specs
         public ProofVersion BlobProofVersion => IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
 
         /// <summary>
-        /// EIP7939 - CLZ - Clear leading zeros instruction
+        /// EIP-7939 - CLZ - Count leading zeros instruction
         /// </summary>
         public bool IsEip7939Enabled { get; }
 
