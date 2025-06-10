@@ -8,7 +8,7 @@ using Autofac.Core.Activators.Reflection;
 
 namespace Nethermind.Core.Container;
 
-public class NethermindConstructorFinder: IConstructorFinder
+public class NethermindConstructorFinder : IConstructorFinder
 {
     private IConstructorFinder _defaultConstructorFinder = new DefaultConstructorFinder();
 
@@ -21,4 +21,4 @@ public class NethermindConstructorFinder: IConstructorFinder
 }
 
 [AttributeUsage(AttributeTargets.Constructor)]
-public class SkipConstructorAttribute : Attribute {}
+public class SkipConstructorAttribute : Attribute { }

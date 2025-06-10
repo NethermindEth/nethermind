@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IJsonRpcConfig jsonRpcConfig,
             IStateReader stateReader,
             IBlockchainBridge blockchainBridge,
-            IBlocksConfig blocksConfig): this(receiptFinder, tracerEnv, blockFinder, jsonRpcConfig, stateReader, blockchainBridge, blocksConfig.SecondsPerSlot)
+            IBlocksConfig blocksConfig) : this(receiptFinder, tracerEnv, blockFinder, jsonRpcConfig, stateReader, blockchainBridge, blocksConfig.SecondsPerSlot)
         {
         }
 

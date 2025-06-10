@@ -55,7 +55,7 @@ public class DebugRpcModule(
         IBlockchainBridge blockchainBridge,
         IBlocksConfig blocksConfig,
         IBlockFinder blockFinder)
-        :this(logManager, debugBridge, jsonRpcConfig, specProvider, blockchainBridge, blocksConfig.SecondsPerSlot, blockFinder)
+        : this(logManager, debugBridge, jsonRpcConfig, specProvider, blockchainBridge, blocksConfig.SecondsPerSlot, blockFinder)
     {
     }
 

@@ -7,6 +7,6 @@ namespace Nethermind.Consensus.Processing;
 /// Marker interface for <see cref="IBlockProcessor.IBlockTransactionsExecutor"/> used in block validation
 /// and RPC. Block production use a different executor.
 /// </summary>
-public interface IValidationTransactionExecutor: IBlockProcessor.IBlockTransactionsExecutor
+public interface IValidationTransactionExecutor : IBlockProcessor.IBlockTransactionsExecutor
 {
 }

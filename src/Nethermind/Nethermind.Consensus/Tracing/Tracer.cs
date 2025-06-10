@@ -63,13 +63,13 @@ namespace Nethermind.Consensus.Tracing
     /// </summary>
     /// <param name="theTracer"></param>
     /// <param name="envSource"></param>
-    public class TracerEnv(ITracer theTracer, IOverridableTxProcessorSource envSource): ITracerEnv
+    public class TracerEnv(ITracer theTracer, IOverridableTxProcessorSource envSource) : ITracerEnv
     {
         public ITracerScope RunInProcessingScope(BlockHeader block) => new TracerScope(theTracer, envSource.Build(block.StateRoot));
 
         public ITracerScope RunInProcessingScope(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride) => new TracerScope(theTracer, envSource.BuildAndOverride(header, stateOverride));
 
-        private class TracerScope(ITracer theTracer, IOverridableTxProcessingScope scope): ITracerScope
+        private class TracerScope(ITracer theTracer, IOverridableTxProcessingScope scope) : ITracerScope
         {
             public ITracer Tracer => theTracer;
             public void Dispose()

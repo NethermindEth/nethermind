@@ -21,7 +21,7 @@ public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, Func<I
         ContainerBuilder builder,
         ICodeInfoRepository codeInfoRepository,
         IWorldState worldState
-    ) where T: ITransactionProcessorAdapter
+    ) where T : ITransactionProcessorAdapter
     {
         // Note: Not overriding `IReceiptStorage` to null.
         return builder

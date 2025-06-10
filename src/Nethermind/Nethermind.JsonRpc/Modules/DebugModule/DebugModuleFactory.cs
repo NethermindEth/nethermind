@@ -12,7 +12,7 @@ using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
-public class AutoDebugModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope): IRpcModuleFactory<IDebugRpcModule>
+public class AutoDebugModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : IRpcModuleFactory<IDebugRpcModule>
 {
     protected virtual ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder)
     {
