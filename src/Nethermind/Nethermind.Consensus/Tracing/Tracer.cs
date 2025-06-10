@@ -57,19 +57,25 @@ namespace Nethermind.Consensus.Tracing
         ITracer Tracer { get; }
     }
 
+    /// <summary>
+    /// Wrapper around an <see cref="ITracer"> and <see cref="IOverridableTxProcessorSource"/> that owns the states
+    /// that the tracer is using. Used to hide the state neatly.
+    /// </summary>
+    /// <param name="theTracer"></param>
+    /// <param name="envSource"></param>
     public class TracerEnv(ITracer theTracer, IOverridableTxProcessorSource envSource): ITracerEnv
     {
         public ITracerScope RunInProcessingScope(BlockHeader block) => new TracerScope(theTracer, envSource.Build(block.StateRoot));
 
         public ITracerScope RunInProcessingScope(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride) => new TracerScope(theTracer, envSource.BuildAndOverride(header, stateOverride));
-    }
 
-    public class TracerScope(ITracer theTracer, IOverridableTxProcessingScope scope): ITracerScope
-    {
-        public ITracer Tracer => theTracer;
-        public void Dispose()
+        private class TracerScope(ITracer theTracer, IOverridableTxProcessingScope scope): ITracerScope
         {
-            scope.Dispose();
+            public ITracer Tracer => theTracer;
+            public void Dispose()
+            {
+                scope.Dispose();
+            }
         }
     }
 }

@@ -54,7 +54,6 @@ public class AutoTraceModuleFactory(IWorldStateManager worldStateManager, Func<I
                 .AddScoped<IOverridableWorldScope>(overridableScope)
                 .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository)
 
-                // TODO: Remove these two
                 .AddScoped<IWorldState>(overridableScope.WorldState)
                 .AddScoped<ICodeInfoRepository>(codeInfoRepository)
 
