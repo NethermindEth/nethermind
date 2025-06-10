@@ -1,38 +1,17 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Common.Utilities;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.Config;
-using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
-using Nethermind.State;
-using Org.BouncyCastle.Asn1.Cms;
 using Sigil;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Drawing;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
-using System.Reflection.Metadata.Ecma335;
-using System.Reflection.Metadata;
-using System.Reflection.PortableExecutable;
-using System.Runtime.Loader;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
-using System.Xml.Linq;
-
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
-using static Org.BouncyCastle.Math.EC.ECCurve;
 using Label = Sigil.Label;
-using Microsoft.Extensions.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
@@ -258,7 +237,7 @@ public static class Precompiler
                     {
                         method.EmitAmortizedOpcodeCheck(currentSubsegment, locals, evmExceptionLabels);
                     }
-                    // and we emit failure for failing jumpless segment at start 
+                    // and we emit failure for failing jumpless segment at start
 
                     if (currentSubsegment.RequiredStack != 0)
                     {

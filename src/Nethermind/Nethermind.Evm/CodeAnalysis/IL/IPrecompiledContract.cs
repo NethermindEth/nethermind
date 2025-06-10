@@ -3,22 +3,13 @@
 
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
-public unsafe delegate bool ILExecutionStep(
+public delegate bool ILExecutionStep(
         in byte machineCodeRef,
         ISpecProvider specProvider,
         IBlockhashProvider blockhashProvider,
