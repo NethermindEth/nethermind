@@ -73,7 +73,7 @@ public class ValidateSubmissionHandler
             _specProvider,
             _blockValidator,
             new Consensus.Rewards.RewardCalculator(_specProvider),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
             worldState,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, worldState),

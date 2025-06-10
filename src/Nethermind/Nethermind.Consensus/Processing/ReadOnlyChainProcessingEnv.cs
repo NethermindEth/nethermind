@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.Processing
             IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null)
         {
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor =
-                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
+                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState);
 
             BlockProcessor = CreateBlockProcessor(scope, blockTree, blockValidator, rewardCalculator, receiptStorage, specProvider, logManager, transactionsExecutor);
 

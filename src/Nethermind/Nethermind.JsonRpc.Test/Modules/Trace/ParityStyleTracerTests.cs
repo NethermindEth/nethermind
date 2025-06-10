@@ -77,7 +77,7 @@ public class ParityStyleTracerTests
             specProvider,
             Always.Valid,
             new MergeRpcRewardCalculator(NoBlockRewards.Instance, _poSSwitcher),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),

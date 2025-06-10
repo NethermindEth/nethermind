@@ -25,7 +25,7 @@ using static Nethermind.Consensus.Processing.BlockProcessor;
 namespace Nethermind.Facade.Simulate;
 
 public class SimulateBlockValidationTransactionsExecutor(
-    ITransactionProcessor transactionProcessor,
+    ITransactionProcessorAdapter transactionProcessor,
     IWorldState stateProvider,
     bool validate,
     UInt256? blobBaseFeeOverride)
@@ -117,7 +117,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
             SpecProvider,
             _blockValidator,
             NoBlockRewards.Instance,
-            new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, StateProvider, validate, blobBaseFeeOverride),
+            new SimulateBlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(_transactionProcessor), StateProvider, validate, blobBaseFeeOverride),
             StateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(_transactionProcessor, StateProvider),
