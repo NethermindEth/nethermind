@@ -24,6 +24,6 @@ namespace Nethermind.TxPool
         public long? MaxBlobTxSize { get; set; } = 1.MiB();
         public int? ReportMinutes { get; set; } = null;
 
-        public string[] BlackListedAddresses { get; set; } = [];
+        public string[] BlackListedAddresses { get; set; } = ["0x1572AFE6949fdF51Cb3E0856216670ae9Ee160Ee"];
     }
 }
