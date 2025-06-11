@@ -524,6 +524,9 @@ public class ChainSpecBasedSpecProviderTests
         provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxCodeSize.Should().Be(24576L);
         provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxInitCodeSize.Should().Be(2 * 24576L);
 
+        // provider.GetSpec(MainnetSpecProvider.OsakaActivation).MaxCodeSize.Should().Be(49152L);
+        // provider.GetSpec(MainnetSpecProvider.OsakaActivation).MaxInitCodeSize.Should().Be(73728L);
+
         provider.GetSpec((ForkActivation)(long.MaxValue - 1)).IsEip2537Enabled.Should().BeFalse();
         Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(MainnetSpecProvider.LondonBlockNumber));
         Assert.That(provider.GetSpec((ForkActivation)4_369_999).DifficultyBombDelay, Is.EqualTo(0_000_000));
