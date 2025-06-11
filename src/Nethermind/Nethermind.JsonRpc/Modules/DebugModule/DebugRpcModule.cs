@@ -482,6 +482,10 @@ public class DebugRpcModule : IDebugRpcModule
     {
         return ResultWrapper<bool>.Success(_blockchainBridge.ExecuteWitness(blockParameter, new Witness{ State = witness.State, Codes = witness.Codes, Headers = witness.Headers, Keys = witness.Keys}));
     }
+    public ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter)
+    {
+        return ResultWrapper<Witness>.Success(_blockchainBridge.GenerateExecutionWitness(blockParameter));
+    }
 
     private static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary)
         where TSearch : class =>

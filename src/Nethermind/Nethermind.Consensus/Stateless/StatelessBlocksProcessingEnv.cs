@@ -13,7 +13,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -26,6 +25,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Consensus.Stateless;
 
 public class StatelessBlocksProcessingEnv(
+    IWorldState worldState,
     IBlockFinder blockFinder,
     ISpecProvider specProvider,
     IBlockValidator blockValidator,
@@ -56,7 +56,7 @@ public class StatelessBlocksProcessingEnv(
         );
     }
 
-    private ITransactionProcessor CreateTransactionProcessor(WorldState state)
+    private ITransactionProcessor CreateTransactionProcessor(IWorldState state)
     {
         var blockhashProvider = new BlockhashProvider(blockFinder, specProvider, state, logManager);
         var vm = new VirtualMachine(blockhashProvider, specProvider, logManager);
@@ -66,13 +66,13 @@ public class StatelessBlocksProcessingEnv(
     private ITrieStore GetTrie(Witness witness)
     {
         IKeyValueStore db = new MemDb();
-        foreach (var node in witness.State)
+        foreach (var stateElement in witness.State)
         {
-            var hash = Keccak.Compute(node).Bytes;
-            _logger.Error($"Putting node: {new Hash256(hash)}, {node.ToHexString()}");
-            db.PutSpan(hash, node);
+            var hash = Keccak.Compute(stateElement);
+            db.PutSpan(hash.Bytes, stateElement);
         }
-        NodeStorage nodeStorage = new NodeStorage(db, INodeStorage.KeyScheme.Hash);
+
+        NodeStorage nodeStorage = new(db, INodeStorage.KeyScheme.Hash);
         return new TrieStore(nodeStorage, NoPruning.Instance, NoPersistence.Instance, new PruningConfig(), NullLogManager.Instance);
     }
 
@@ -82,9 +82,28 @@ public class StatelessBlocksProcessingEnv(
         foreach (var code in witness.Codes)
         {
             var hash = Keccak.Compute(code).Bytes;
-            _logger.Error($"Putting code: {new Hash256(hash)}, {code.ToHexString()}");
             db.PutSpan(hash, code);
         }
         return db;
+    }
+
+    public (IBlockProcessor, WitnessGeneratingWorldState) CreateWitnessGeneratingBlockProcessor()
+    {
+        WitnessGeneratingWorldState state = new(worldState);
+        ITransactionProcessor txProcessor = CreateTransactionProcessor(state);
+        IBlockProcessor.IBlockTransactionsExecutor txExecutor =
+            new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, state);
+        return (new BlockProcessor(
+            specProvider,
+            blockValidator,
+            NoBlockRewards.Instance,
+            txExecutor,
+            state,
+            NullReceiptStorage.Instance,
+            new BeaconBlockRootHandler(txProcessor, state),
+            new BlockhashStore(specProvider, state),
+            logManager,
+            new WithdrawalProcessor(state, logManager),
+            new ExecutionRequestsProcessor(txProcessor)), state);
     }
 }

@@ -99,7 +99,7 @@ namespace Nethermind.Api
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
             IBlocksConfig blocksConfig = ConfigProvider.GetConfig<IBlocksConfig>();
 
-            StatelessBlocksProcessingEnv statelessBlocksProcessingEnv = new(BlockTree!, SpecProvider, Always.Valid, LogManager);
+            StatelessBlocksProcessingEnv statelessBlocksProcessingEnv = new(WorldStateManager.GlobalWorldState, BlockTree!, SpecProvider, BlockValidator, LogManager);
 
             return new BlockchainBridge(
                 txProcessingEnv,

@@ -52,5 +52,6 @@ namespace Nethermind.Facade
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>;
         bool HasStateForRoot(Hash256 stateRoot);
         bool ExecuteWitness(BlockParameter blockParameter, Witness witness);
+        Witness GenerateExecutionWitness(BlockParameter blockParameter);
     }
 }
