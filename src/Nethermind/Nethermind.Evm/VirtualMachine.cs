@@ -5,6 +5,7 @@
 // #define ILVM_TESTING
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -17,6 +18,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Evm.CodeAnalysis.IL;
 using static Nethermind.Evm.VirtualMachine;
@@ -678,7 +680,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
     /// values at compile time.
     /// </remarks>
     [SkipLocalsInit]
-    private unsafe CallResult ExecuteCall<TTracingInstructions>(EvmState vmState, ReadOnlyMemory<byte>? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+    private CallResult ExecuteCall<TTracingInstructions>(EvmState vmState, ReadOnlyMemory<byte>? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
@@ -742,36 +744,37 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         {
             if (env.CodeInfo.IlInfo.IsPrecompiled)
             {
-                Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls 
+                Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls
 
-                _logger.Info($"{env.CodeInfo.Codehash} precompile is being called");
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"{env.CodeInfo.Codehash} precompile is being called");
+                }
 
                 int programCounter = vmState.ProgramCounter;
                 var codeAsSpan = env.CodeInfo.MachineCode.Span;
                 ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
-                fixed (void* codePtr = codeAsSpan, stackPtr = stack.Bytes)
+
+                if (env.CodeInfo.IlInfo.PrecompiledContract(
+                        in MemoryMarshal.GetReference(codeAsSpan),
+                        _specProvider,
+                        _blockhashProvider,
+                        vmState.Env.TxExecutionContext.CodeInfoRepository,
+                        vmState,
+                        _state,
+                        _returnDataBuffer,
+                        ref gasAvailable,
+                        ref programCounter,
+                        ref stack.Head,
+                        ref Add(ref As<byte, Word>(ref MemoryMarshal.GetReference(stack.Bytes)), stack.Head),
+                        _txTracer,
+                        _logger,
+                        ref chunkExecutionState)
+                   )
                 {
-                    if (env.CodeInfo.IlInfo.PrecompiledContract(
-                            in Unsafe.AsRef<byte>(codePtr),
-                            _specProvider,
-                            _blockhashProvider,
-                            vmState.Env.TxExecutionContext.CodeInfoRepository,
-                            vmState,
-                            _state,
-                            _returnDataBuffer,
-                            ref gasAvailable,
-                            ref programCounter,
-                            ref stack.Head,
-                            ref Unsafe.Add<Word>(ref Unsafe.AsRef<Word>(stackPtr), stack.Head),
-                            _txTracer,
-                            _logger,
-                            ref chunkExecutionState)
-                        )
-                    {
-                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head - 1);
-                        Metrics.IlvmAotPrecompiledCalls--; // this will treat continuations as new calls 
-                        return new CallResult(chunkExecutionState.CallResult);
-                    }
+                    UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head - 1);
+                    Metrics.IlvmAotPrecompiledCalls--; // this will treat continuations as new calls
+                    return new CallResult(chunkExecutionState.CallResult);
                 }
 
                 UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
