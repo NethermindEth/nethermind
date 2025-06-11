@@ -150,7 +150,7 @@ public class WrappedEthTests : RealContractTestsBase
         operation();
 
         // Execute, A->B, B->A
-        const int operationCount = 16;
+        const int operationCount = 100;
 
         Console.WriteLine($"==== MicroBenchmark Sketch, useIlEvm: {useIlEvm} ====");
 
