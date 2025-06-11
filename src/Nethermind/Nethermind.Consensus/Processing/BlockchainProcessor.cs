@@ -474,6 +474,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         Hash256? invalidBlockHash = null;
+        Block? invalidBlock = null;
         Block[]? processedBlocks;
         try
         {
@@ -490,7 +491,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (_logger.IsWarn) _logger.Warn($"Issue processing block {ex.InvalidBlock} {ex}");
             invalidBlockHash = ex.InvalidBlock.Hash;
             error = ex.Message;
-            Block? invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
+            invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
             if (invalidBlock is not null)
             {
                 Metrics.BadBlocks++;
@@ -498,7 +499,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 {
                     Metrics.BadBlocksByNethermindNodes++;
                 }
-                InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
 
                 BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
                     (_options.DumpOptions & DumpOptions.Rlp) != 0,
@@ -530,6 +530,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (invalidBlockHash is not null && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
             {
                 DeleteInvalidBlocks(in processingBranch, invalidBlockHash);
+                if (invalidBlock is not null)
+                    InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
             }
         }
 
