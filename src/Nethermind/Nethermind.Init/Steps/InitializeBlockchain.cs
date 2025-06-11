@@ -66,6 +66,8 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
             IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
+            IVMConfig vmConfig = getApi.Config<IVMConfig>();
+
 
             ThisNodeInfo.AddInfo("Gaslimit     :", $"{blocksConfig.TargetBlockGasLimit:N0}");
             ThisNodeInfo.AddInfo("ExtraData    :", Utf8.IsValid(blocksConfig.GetExtraDataBytes()) ?
@@ -99,12 +101,10 @@ namespace Nethermind.Init.Steps
                 IlEvmAnalysisQueueMaxSize = 1,
                 IlEvmAnalysisCoreUsage = 0.75f
             };
-#else
-            var vmConfig = getApi.VMConfig;
 #endif
             InitializeIlEvmProcesses(vmConfig);
 
-            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState, getApi.VMConfig);
+            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState, vmConfig);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
             InitSealEngine();

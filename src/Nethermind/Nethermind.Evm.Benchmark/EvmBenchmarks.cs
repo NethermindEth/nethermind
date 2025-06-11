@@ -72,7 +72,7 @@ namespace Nethermind.Evm.Benchmark
 
             vmConfig.IsILEvmEnabled = typeof(TIsOptimizing) != typeof(VirtualMachine.NotOptimizing);
             vmConfig.IlEvmEnabledMode = typeof(TIsOptimizing) == typeof(VirtualMachine.IsPrecompiling)
-                ? ILMode.FULL_AOT_MODE : ILMode.NO_ILVM;
+                ? ILMode.DYNAMIC_AOT_MODE : ILMode.NO_ILVM;
 
             vmConfig.IlEvmAnalysisThreshold = 1;
             vmConfig.IsIlEvmAggressiveModeEnabled = true;
@@ -250,7 +250,7 @@ namespace Nethermind.Evm.Benchmark
                         .Done;
         public static IEnumerable<ILocalSetup> GetBenchmarkSamples()
         {
-            int mode = Int32.Parse(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.MODE") ?? string.Empty);
+            ILMode mode = (ILMode)Int32.Parse(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.MODE") ?? string.Empty);
 
             UInt256[] f_args = [1, 23, 101, 1023, 2047, 4999];
             UInt256[] p_args = [1, 23, 1023, 8000009, 16000057];
@@ -269,7 +269,7 @@ namespace Nethermind.Evm.Benchmark
                     case ILMode.NO_ILVM:
                         yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + benchName, bytecode);
                         break;
-                    case ILMode.FULL_AOT_MODE:
+                    case ILMode.DYNAMIC_AOT_MODE:
                         yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + benchName, bytecode);
                         break;
                 }
@@ -290,7 +290,7 @@ namespace Nethermind.Evm.Benchmark
                     case ILMode.NO_ILVM:
                         yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + benchName, bytecode);
                         break;
-                    case ILMode.FULL_AOT_MODE:
+                    case ILMode.DYNAMIC_AOT_MODE:
                         yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + benchName, bytecode);
                         break;
                 }
@@ -326,14 +326,14 @@ namespace Nethermind.Evm.Benchmark
         public IEnumerable<ILocalSetup> GetBenchmarkSamples()
         {
             byte[] bytecode = Bytes.FromHexString(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.CODE") ?? string.Empty);
-            int mode = Int32.Parse(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.MODE") ?? string.Empty);
+            ILMode mode = (ILMode)Int32.Parse(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.MODE") ?? string.Empty);
             string BenchmarkName = Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.NAME") ?? string.Empty;
             switch (mode)
             {
                 case ILMode.NO_ILVM:
                     yield return new LocalSetup<NotOptimizing>("ILEVM::0::std::" + BenchmarkName, bytecode);
                     break;
-                case ILMode.FULL_AOT_MODE:
+                case ILMode.DYNAMIC_AOT_MODE:
                     yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + BenchmarkName, bytecode);
                     break;
             }
