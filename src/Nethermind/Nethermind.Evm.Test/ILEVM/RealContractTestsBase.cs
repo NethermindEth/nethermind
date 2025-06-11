@@ -85,12 +85,20 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
             ForceRunAnalysis(tx.To, ILMode.DYNAMIC_AOT_MODE);
         }
 
-        _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+        var result = _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+
+        result.Success.Should().BeTrue();
     }
 
     private void ForceRunAnalysis(Address address, ILMode mode)
     {
         var codeinfo = CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance, out _);
+
+        if (codeinfo.IlInfo != null && codeinfo.IlInfo.AnalysisPhase == AnalysisPhase.Completed)
+        {
+            // Nothing to analyze, already prepared.
+            return;
+        }
 
         if (mode.HasFlag(ILMode.DYNAMIC_AOT_MODE))
         {

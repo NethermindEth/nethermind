@@ -7,6 +7,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -35,7 +36,8 @@ public class WrappedEthTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
     private static readonly StorageCell SenderBalanceCell = new(ContractAddress, SenderBalanceStorage);
 
     // Represents some other address
-    private static readonly Address OtherAddress = TestItem.PrivateKeyD.Address;
+    private static readonly PrivateKey OtherAddressKey = TestItem.PrivateKeyD;
+    private static readonly Address OtherAddress = OtherAddressKey.Address;
     private static readonly UInt256 OtherAddressStorage = new(6336954612432966780, 13641044163492443802,
         12866168085374088197, 1518696171257252784);
     private static readonly StorageCell OtherAddressBalanceCell = new(ContractAddress, OtherAddressStorage);
@@ -80,6 +82,66 @@ public class WrappedEthTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
         // Assert value
         AssertBalance(SenderBalanceCell, 0);
         AssertBalance(OtherAddressBalanceCell, value);
+    }
+
+    [Test]
+    public void MicroBenchmarkSketch()
+    {
+        // https://etherscan.io/tx/0x3ab9c62830fb8db708bd5ab23506465c37f589eb6ccaf3ec455a0f4f5ef2c5fd
+        UInt256 value = 1000;
+        var paddedValue = value.ToBigEndian().PadLeft(32);
+
+        // Arrange value to be equal to the transfer value.
+        TestState.Set(SenderBalanceCell, value.ToBigEndian().WithoutLeadingZeros().ToArray());
+
+        var wrappedEth = SenderRecipientAndMiner.Default.RecipientKey;
+        var miner = SenderRecipientAndMiner.Default.MinerKey;
+
+        // Transfer: A to B
+        byte[] aToBCode = TransferSelector
+            .Concat(OtherAddress.Bytes.PadLeft(32))
+            .Concat(paddedValue)
+            .ToArray();
+
+        SenderRecipientAndMiner aToB = new SenderRecipientAndMiner
+        {
+            SenderKey = SenderRecipientAndMiner.Default.SenderKey,
+            RecipientKey = wrappedEth,
+            MinerKey = miner,
+        };
+
+        (Block block1, Transaction txAtoB) = PrepareTx(Activation, 100000, parsed, aToBCode, 0, aToB);
+
+        // Transfer: B to A
+        byte[] bToACode = TransferSelector
+            .Concat(SenderAddress.Bytes.PadLeft(32))
+            .Concat(paddedValue)
+            .ToArray();
+
+        SenderRecipientAndMiner bToA = new SenderRecipientAndMiner
+        {
+            SenderKey = OtherAddressKey,
+            RecipientKey = wrappedEth,
+            MinerKey = miner,
+        };
+
+        (Block block2, Transaction txBtoA) = PrepareTx(Activation, 100000, parsed, bToACode, 0, bToA);
+
+        // Execute, A->B, B->A
+        const int operationCount = 16;
+        for (int i = 0; i < operationCount; i++)
+        {
+            ExecuteNoPrepare(block1, txAtoB, NullTxTracer.Instance, Activation, 100000, null, true);
+            ExecuteNoPrepare(block2, txBtoA, NullTxTracer.Instance, Activation, 100000, null, true);
+
+            // Reuse transaction by moving the nonce forward
+            txAtoB.Nonce++;
+            txBtoA.Nonce++;
+        }
+
+        // Assert value, the transfer went from A to B then from B to A. It's the same as at the beginning.
+        AssertBalance(SenderBalanceCell, value);
+        AssertBalance(OtherAddressBalanceCell, 0);
     }
 
     private void AssertBalance(in StorageCell cell, UInt256 expected)
