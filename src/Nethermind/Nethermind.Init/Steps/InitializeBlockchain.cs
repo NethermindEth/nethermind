@@ -191,6 +191,23 @@ namespace Nethermind.Init.Steps
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
+            var txPoolConfig = _api.Config<ITxPoolConfig>();
+
+            if (txPoolConfig.BlackListedAddresses.Length != 0)
+            {
+                HashSet<AddressAsKey> blacklist = new(txPoolConfig.BlackListedAddresses.Length);
+                foreach (string address in txPoolConfig.BlackListedAddresses)
+                {
+                    blacklist.Add(new AddressAsKey(new Address(address)));
+                }
+
+                return new TransactionProcessorWithBlocklist(_api.SpecProvider,
+                    _api.WorldStateManager!.GlobalWorldState,
+                    virtualMachine,
+                    codeInfoRepository,
+                    _api.LogManager, blacklist);
+            }
+
             return new TransactionProcessor(
                 _api.SpecProvider,
                 _api.WorldStateManager!.GlobalWorldState,

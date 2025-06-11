@@ -42,8 +42,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private SystemTransactionProcessor? _systemTransactionProcessor;
         private readonly ILogManager _logManager;
 
-        private readonly HashSet<AddressAsKey> _blockedAddresses = [new Address("0x1572AFE6949fdF51Cb3E0856216670ae9Ee160Ee")];
-
         [Flags]
         protected enum ExecutionOptions
         {
@@ -136,18 +134,6 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             BlockHeader header = blCtx.Header;
             IReleaseSpec spec = GetSpec(tx, header);
-
-            if (_blockedAddresses.Contains(tx.SenderAddress))
-            {
-                Logger.Error(
-                    $"Transaction {tx.Hash} in Block {header.Number} ({header.Hash}) has a blocked SENDER. Blocked Address: {tx.SenderAddress}. Full Sender: {tx.SenderAddress}, Recipient: {tx.To}.");
-            }
-
-            if (_blockedAddresses.Contains(tx.To))
-            {
-                Logger.Error(
-                    $"Transaction {tx.Hash} in Block {header.Number} ({header.Hash}) has a blocked RECIPIENT. Blocked Address: {tx.To}. Full Sender: {tx.SenderAddress}, Recipient: {tx.To}.");
-            }
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);

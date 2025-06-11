@@ -16,14 +16,16 @@ internal sealed class AddressFilter(
     {
         if (hashCache.Contains(tx.SenderAddress!))
         {
-            logger.Error($"Sender of the transaction is blacklisted. SenderAddress: {tx.SenderAddress!} TxHash: {tx.Hash}");
+            logger.Error(
+                $"Submitted transaction:{tx.Hash} has a blocked SENDER. Blocked Address: {tx.SenderAddress}. Full Sender: {tx.SenderAddress}, Recipient: {tx.To}.");
             Metrics.BlacklistedTransactions++;
             return AcceptTxResult.BlacklistedAddress;
         }
 
         if (tx.To is not null && hashCache.Contains(tx.To))
         {
-            logger.Error($"To Address of the transaction is blacklisted. ToAddress: {tx.To} TxHash: {tx.Hash}");
+            logger.Error(
+                $"Submitted transaction:{tx.Hash} has a blocked RECIPIENT. Blocked Address: {tx.To}. Full Sender: {tx.SenderAddress}, Recipient: {tx.To}.");
             Metrics.BlacklistedTransactions++;
             return AcceptTxResult.BlacklistedAddress;
         }
