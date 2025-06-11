@@ -43,7 +43,6 @@ namespace Nethermind.Blockchain
         }
 
         public IChainHeadSpecProvider SpecProvider { get; }
-        public IReleaseSpec Spec => SpecProvider.GetSpec(_blockTree.Head?.Header);
 
         public IReadOnlyStateProvider ReadOnlyStateProvider { get; }
 

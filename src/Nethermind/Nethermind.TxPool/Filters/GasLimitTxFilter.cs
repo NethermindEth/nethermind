@@ -27,7 +27,8 @@ namespace Nethermind.TxPool.Filters
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             long gasLimit = Math.Min(_chainHeadInfoProvider.BlockGasLimit ?? long.MaxValue, _configuredGasLimit);
-            if (_chainHeadInfoProvider.Spec.IsEip7825Enabled)
+
+            if (_chainHeadInfoProvider.SpecProvider.GetCurrentHeadSpec().IsEip7825Enabled)
             {
                 gasLimit = Math.Min(gasLimit, Eip7825Constants.DefaultTxGasLimitCap);
             }

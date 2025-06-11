@@ -12,8 +12,6 @@ namespace Nethermind.TxPool
 {
     public interface IChainHeadInfoProvider
     {
-        IReleaseSpec Spec { get; }
-
         IChainHeadSpecProvider SpecProvider { get; }
 
         IReadOnlyStateProvider ReadOnlyStateProvider { get; }
