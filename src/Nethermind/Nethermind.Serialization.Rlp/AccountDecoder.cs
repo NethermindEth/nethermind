@@ -33,6 +33,18 @@ namespace Nethermind.Serialization.Rlp
             return (codeHash, storageRoot);
         }
 
+        public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref Rlp.ValueDecoderContext context)
+        {
+            context.SkipLength();
+            context.SkipItem();
+            context.SkipItem();
+
+            Hash256 storageRoot = DecodeStorageRoot(ref context);
+            Hash256 codeHash = DecodeCodeHash(ref context);
+
+            return (codeHash, storageRoot);
+        }
+
         public Hash256 DecodeStorageRootOnly(ref Rlp.ValueDecoderContext context)
         {
             context.SkipLength();
