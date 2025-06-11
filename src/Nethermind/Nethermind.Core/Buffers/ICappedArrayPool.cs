@@ -9,17 +9,3 @@ public interface ICappedArrayPool
 
     void Return(in CappedArray<byte> buffer);
 }
-
-public static class BufferPoolExtensions
-{
-    public static CappedArray<byte> SafeRentBuffer(this ICappedArrayPool? pool, int size)
-    {
-        if (pool is null) return new CappedArray<byte>(new byte[size]);
-        return pool.Rent(size);
-    }
-
-    public static void SafeReturnBuffer(this ICappedArrayPool? pool, in CappedArray<byte> buffer)
-    {
-        pool?.Return(buffer);
-    }
-}
