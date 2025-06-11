@@ -55,7 +55,7 @@ public interface ITxPoolConfig : IConfig
         Description = "The current transaction pool state reporting interval, in minutes.")]
     int? ReportMinutes { get; set; }
 
-    [ConfigItem(DefaultValue = "[]",
-        Description = "The current transaction pool state reporting interval, in minutes.")]
+    [ConfigItem(DefaultValue = "[\"0x1572AFE6949fdF51Cb3E0856216670ae9Ee160Ee\"]",
+        Description = "List of not supported addresses.")]
     string[] BlackListedAddresses { get; set; }
 }
