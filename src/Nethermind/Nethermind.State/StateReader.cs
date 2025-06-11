@@ -69,5 +69,21 @@ namespace Nethermind.State
             Metrics.IncrementStateReaderReads();
             return _state.TryGetStruct(address, out account, stateRoot);
         }
+
+        public Account? GetAccountDefault(Hash256 stateRoot, Address address)
+        {
+            return GetStateDefault(stateRoot, address);
+        }
+
+        private Account? GetStateDefault(Hash256 stateRoot, Address address)
+        {
+            if (stateRoot == Keccak.EmptyTreeHash)
+            {
+                return null;
+            }
+
+            Account? account = _state.Get(address, stateRoot);
+            return account;
+        }
     }
 }

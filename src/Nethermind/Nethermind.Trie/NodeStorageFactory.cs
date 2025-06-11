@@ -12,21 +12,26 @@ namespace Nethermind.Trie;
 public class NodeStorageFactory : INodeStorageFactory
 {
     private readonly INodeStorage.KeyScheme _preferredKeyScheme;
+    private readonly INodeStorage.NodeType _nodeType;
     private INodeStorage.KeyScheme? _currentKeyScheme;
     private readonly ILogger _logger;
 
-    public NodeStorageFactory(INodeStorage.KeyScheme preferredKeyScheme, ILogManager logManager)
+    public NodeStorageFactory(INodeStorage.KeyScheme preferredKeyScheme, ILogManager logManager, INodeStorage.NodeType nodeType = INodeStorage.NodeType.Merkle)
     {
         _logger = logManager.GetClassLogger();
         _preferredKeyScheme = preferredKeyScheme;
         _currentKeyScheme = null;
+        _nodeType = nodeType;
     }
 
     public INodeStorage.KeyScheme? CurrentKeyScheme => _currentKeyScheme!;
 
     public void DetectCurrentKeySchemeFrom(IDb mainStateDb)
     {
-        _currentKeyScheme = DetectKeyScheme(mainStateDb);
+        _currentKeyScheme = _nodeType == INodeStorage.NodeType.Verkle
+            ? INodeStorage.KeyScheme.Path
+            : DetectKeyScheme(mainStateDb);
+
         if (_currentKeyScheme is null)
         {
             _logger.Info("No current state db key scheme.");
@@ -39,6 +44,10 @@ public class NodeStorageFactory : INodeStorageFactory
 
     public INodeStorage WrapKeyValueStore(IKeyValueStore keyValueStore, bool forceUsePreferredKeyScheme = false)
     {
+        if (_nodeType == INodeStorage.NodeType.Verkle)
+        {
+
+        }
         bool preferredNotCurrent = _preferredKeyScheme != INodeStorage.KeyScheme.Current;
         INodeStorage.KeyScheme effectiveKeyScheme = forceUsePreferredKeyScheme && preferredNotCurrent
             ? _preferredKeyScheme

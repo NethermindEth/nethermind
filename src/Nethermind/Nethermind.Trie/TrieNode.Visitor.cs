@@ -111,9 +111,10 @@ namespace Nethermind.Trie
 
                 case NodeType.Leaf:
                     {
-                        visitor.VisitLeaf(nodeContext, node);
 
-                        AddVisited();
+                        // TODO: this is temporary change to accomodate moving storage before account
+                        // visitor.VisitLeaf(nodeContext, node);
+                        // AddVisited();
 
                         TNodeContext leafContext = nodeContext.Add(node.Key!);
 
@@ -146,6 +147,10 @@ namespace Nethermind.Trie
                                 }
                             }
                         }
+
+                        // TODO: this is temporary change to accomodate moving storage before account
+                        visitor.VisitLeaf(nodeContext, node);
+                        AddVisited();
 
                         break;
                     }

@@ -40,7 +40,7 @@ public class VerkleWorldState : IWorldState
 
     private readonly List<Change> _keptInCache = [];
     private readonly ILogger _logger;
-    private readonly IKeyValueStoreWithBatching _codeDb;
+    protected readonly IKeyValueStoreWithBatching _codeDb;
     private Dictionary<Hash256AsKey, byte[]> _codeBatch;
     private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
 
@@ -141,6 +141,11 @@ public class VerkleWorldState : IWorldState
 
         Tree.Accept(visitor, stateRoot, visitingOptions);
     }
+
+    public virtual void SweepLeaves(int blockNumber)
+    {
+    }
+
 
     public void RecalculateStateRoot()
     {
@@ -639,7 +644,7 @@ public class VerkleWorldState : IWorldState
 
     protected readonly HashSet<Address> _nullAccountReads = [];
 
-    protected virtual Account? GetAndAddToCache(Address address)
+    protected virtual Account? GetAndAddToCache(Address address, bool onlyVerkle = false)
     {
         if (_nullAccountReads.Contains(address)) return null;
 
@@ -949,7 +954,7 @@ public class VerkleWorldState : IWorldState
                 case ChangeType.New:
                     {
                         // For new accounts we do not need to save empty accounts when Eip158 enabled with Verkle
-                        if (change.Account != null && (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis))
+                        if (change.Account != null && (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis || change.Address == new Address("0xfffffffffffffffffffffffffffffffffffffffe")))
                         {
                             if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             accountChange[change.Address] = (change.Account, true);

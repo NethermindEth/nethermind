@@ -120,6 +120,16 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
         return innerState.GetCodeChunk(codeOwner, chunkId);
     }
 
+    public void SweepLeaves(int blockNumber)
+    {
+        innerState.SweepLeaves(blockNumber);
+    }
+
+    public bool ValuePresentInTree(Hash256 key)
+    {
+        return innerState.ValuePresentInTree(key);
+    }
+
     public byte[]? GetCode(Address address) => innerState.GetCode(address);
 
     public byte[]? GetCode(Hash256 codeHash) => innerState.GetCode(codeHash);

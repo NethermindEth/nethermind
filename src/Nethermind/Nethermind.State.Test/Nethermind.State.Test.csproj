@@ -22,5 +22,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
+    <ProjectReference Include="..\Nethermind.Verkle.Tree.Test\Nethermind.Verkle.Tree.Test.csproj" />
   </ItemGroup>
 </Project>

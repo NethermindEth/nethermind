@@ -14,11 +14,11 @@ public class StatelessVerkleWorldState(
     ILogManager logManager)
     : VerkleWorldState(new VerkleStateTree(new NullVerkleTreeStore(), logManager), codeDb, logManager, null, false)
 {
-    protected override Account? GetAndAddToCache(Address address)
+    protected override Account? GetAndAddToCache(Address address, bool onlyVerkle = false)
     {
         if (systemAccounts is null || !systemAccounts.TryGetValue(address, out Account? account))
         {
-            account = base.GetAndAddToCache(address);
+            account = base.GetAndAddToCache(address, onlyVerkle);
         }
 
         return account;

@@ -38,9 +38,16 @@ public interface INodeStorage
     {
         Hash,
         HalfPath,
+        Path,
 
         // The default setting in config, which for some reason, can't be a null enum.
         Current,
+    }
+
+    public enum NodeType
+    {
+        Merkle,
+        Verkle
     }
 
     public interface IWriteBatch : IDisposable

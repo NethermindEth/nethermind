@@ -141,4 +141,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="chunkId"></param>
     /// <returns></returns>
     public byte[] GetCodeChunk(Address codeOwner, UInt256 chunkId);
+
+    void SweepLeaves(int blockNumber);
+
+    bool ValuePresentInTree(Hash256 key);
 }
