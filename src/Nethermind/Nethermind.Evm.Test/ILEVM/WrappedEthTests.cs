@@ -19,8 +19,10 @@ namespace Nethermind.Evm.Test.ILEVM;
 [NonParallelizable]
 [TestFixture(false)]
 [TestFixture(true)]
-public class WrappedEthTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
+public class WrappedEthTests : RealContractTestsBase
 {
+    private readonly bool useIlEvm;
+
     [SetUp]
     public void SetUp()
     {
@@ -28,6 +30,12 @@ public class WrappedEthTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
         Precompiler.ResetEnvironment(true);
 
         Metrics.IlvmAotPrecompiledCalls = 0;
+    }
+
+
+    public WrappedEthTests(bool useIlEvm) : base(useIlEvm)
+    {
+        this.useIlEvm = useIlEvm;
     }
 
     // Represents the address
@@ -87,6 +95,7 @@ public class WrappedEthTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
     [Test]
     public void MicroBenchmarkSketch()
     {
+
         // https://etherscan.io/tx/0x3ab9c62830fb8db708bd5ab23506465c37f589eb6ccaf3ec455a0f4f5ef2c5fd
         UInt256 value = 1000;
         var paddedValue = value.ToBigEndian().PadLeft(32);
@@ -127,9 +136,7 @@ public class WrappedEthTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
 
         (Block block2, Transaction txBtoA) = PrepareTx(Activation, 100000, parsed, bToACode, 0, bToA);
 
-        // Execute, A->B, B->A
-        const int operationCount = 16;
-        for (int i = 0; i < operationCount; i++)
+        Action operation = () =>
         {
             ExecuteNoPrepare(block1, txAtoB, NullTxTracer.Instance, Activation, 100000, null, true);
             ExecuteNoPrepare(block2, txBtoA, NullTxTracer.Instance, Activation, 100000, null, true);
@@ -137,7 +144,26 @@ public class WrappedEthTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
             // Reuse transaction by moving the nonce forward
             txAtoB.Nonce++;
             txBtoA.Nonce++;
+        };
+
+        // Warm up
+        operation();
+
+        // Execute, A->B, B->A
+        const int operationCount = 16;
+
+        Console.WriteLine($"==== MicroBenchmark Sketch, useIlEvm: {useIlEvm} ====");
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        for (int i = 0; i < operationCount; i++)
+        {
+            operation();
         }
+
+        sw.Stop();
+        Console.WriteLine($"Executed {operationCount * 2} transfers in {sw.ElapsedMilliseconds} ms, " +
+                          $"{(double)sw.ElapsedMilliseconds / (double)operationCount} ms per transfer");
 
         // Assert value, the transfer went from A to B then from B to A. It's the same as at the beginning.
         AssertBalance(SenderBalanceCell, value);
