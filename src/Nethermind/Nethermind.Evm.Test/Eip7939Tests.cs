@@ -20,7 +20,6 @@ public class Eip7939Tests : VirtualMachineTestsBase
         get
         {
             yield return new TestCaseData<UInt256>(UInt256.Zero) { ExpectedResult = 256 };
-            yield return new TestCaseData<UInt256>(UInt256.One) { ExpectedResult = 255 };
             yield return new TestCaseData<UInt256>(255) { ExpectedResult = 248 };
             yield return new TestCaseData<UInt256>(256) { ExpectedResult = 247 };
             yield return new TestCaseData<UInt256>(new UInt256(ulong.MaxValue)) { ExpectedResult = 192 };
@@ -29,6 +28,11 @@ public class Eip7939Tests : VirtualMachineTestsBase
             yield return new TestCaseData<UInt256>(new UInt256(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue)) { ExpectedResult = 0 };
             yield return new TestCaseData<UInt256>(new UInt256(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue / 2, ulong.MaxValue >> 1)) { ExpectedResult = 1 };
             yield return new TestCaseData<UInt256>(new UInt256(0, 0, 0, ulong.MaxValue >> 4)) { ExpectedResult = 4 };
+
+            for (int i = 0; i <= 255; i++)
+            {
+                yield return new TestCaseData<UInt256>(UInt256.One << i) { ExpectedResult = 255 - i };
+            }
         }
     }
 
