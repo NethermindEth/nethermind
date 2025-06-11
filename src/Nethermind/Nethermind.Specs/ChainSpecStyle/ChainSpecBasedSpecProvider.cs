@@ -310,6 +310,10 @@ namespace Nethermind.Specs.ChainSpecStyle
                 {
                     releaseSpec.TargetBlobCount = blobSchedule.Target;
                     releaseSpec.MaxBlobCount = blobSchedule.Max;
+                    if (blobSchedule.MaxBlobsPerTx is not null)
+                    {
+                        releaseSpec.MaxBlobsPerTx = blobSchedule.MaxBlobsPerTx.Value;
+                    }
                     releaseSpec.BlobBaseFeeUpdateFraction = blobSchedule.BaseFeeUpdateFraction;
                 }
                 else if (releaseSpec.Eip4844TransitionTimestamp <= releaseStartTimestamp)
