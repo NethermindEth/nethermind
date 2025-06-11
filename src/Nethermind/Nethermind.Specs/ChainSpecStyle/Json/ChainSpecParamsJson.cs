@@ -172,4 +172,5 @@ public class ChainSpecParamsJson
     public SortedSet<BlobScheduleSettings> BlobSchedule { get; set; } = [];
     public ulong? Eip7594TransitionTimestamp { get; set; }
     public ulong? Eip7954TransitionTimestamp { get; set; }
+    public ulong? Eip7939TransitionTimestamp { get; set; }
 }

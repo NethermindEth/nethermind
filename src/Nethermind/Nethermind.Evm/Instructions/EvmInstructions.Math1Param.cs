@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using static System.Runtime.CompilerServices.Unsafe;
 using static Nethermind.Evm.VirtualMachine;
@@ -90,6 +92,29 @@ internal static partial class EvmInstructions
         public static Word Operation(Word value) => value == default ? OpBitwiseEq.One : default;
     }
 
+    /// <summary>
+    /// Implements the CLZ opcode.
+    /// Counts leading 0's of 256‐bit vector
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionCLZ<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
+    {
+        gasAvailable -= GasCostOf.VeryLow;
+
+        // Pop the byte position and the 256-bit word.
+        if (!stack.PopUInt256(out UInt256 word))
+        {
+            goto StackUnderflow;
+        }
+
+        stack.PushUInt32<TTracingInst>((uint)word.CountLeadingZeros());
+
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
 
     /// <summary>
     /// Implements the BYTE opcode.

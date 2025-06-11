@@ -285,6 +285,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.FeeCollector = (eip1559FeeCollector || eip4844FeeCollector) ? chainSpec.Parameters.FeeCollector : null;
             releaseSpec.IsEip4844FeeCollectorEnabled = eip4844FeeCollector;
 
+            releaseSpec.IsEip7939Enabled = (chainSpec.Parameters.Eip7939TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
                          .AllChainSpecParameters)
             {
