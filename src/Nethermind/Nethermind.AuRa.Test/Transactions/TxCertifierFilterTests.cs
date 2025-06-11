@@ -51,7 +51,7 @@ public class TxCertifierFilterTests
             Arg.Is<Address>(static a => TestItem.Addresses.Take(3).Contains(a)))
             .Returns(true);
 
-        _filter = new TxCertifierFilter(_certifierContract, _notCertifiedFilter, _specProvider, LimboLogs.Instance);
+        _filter = new TxCertifierFilter(_certifierContract, _notCertifiedFilter, LimboLogs.Instance);
     }
 
     [Test]
