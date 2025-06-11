@@ -64,7 +64,7 @@ namespace Nethermind.Benchmark.Runner
     {
         public class Options
         {
-            [Option('m', "mode", Default = "full", Required = true, HelpText = "Available modes: full, evm, ilevm")]
+            [Option('m', "mode", Default = "full", Required = true, HelpText = "Available modes: full, evm, ilevm, ilevm-weth")]
             public string Mode { get; set; }
 
             [Option('b', "bytecode", Required = false, HelpText = "Hex encoded bytecode")]
@@ -87,6 +87,7 @@ namespace Nethermind.Benchmark.Runner
             }
         }
 
+
         public static void Main(string[] args)
         {
             ParserResult<Options> options = Parser.Default.ParseArguments<Options>(args);
@@ -100,6 +101,9 @@ namespace Nethermind.Benchmark.Runner
                     break;
                 case "ilevm":
                     RunIlEvmBenchmarks(options.Value);
+                    break;
+                case "ilevm-weth":
+                    RunWethIlvmBenchmarks();
                     break;
                 default:
                     throw new Exception("Invalid mode");
@@ -148,8 +152,13 @@ namespace Nethermind.Benchmark.Runner
 
                 Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.CODE", bytecode);
                 Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.Name", options.Name);
-                var summary = BenchmarkRunner.Run<CustomEvmBenchmarks>(new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core90)));
+                var summary = BenchmarkRunner.Run<CustomEvmBenchmarks>(new DashboardConfig(Job.VeryLongRun.WithRuntime(CoreRuntime.Core90)));
             }
+        }
+
+        public static void RunWethIlvmBenchmarks()
+        {
+            BenchmarkRunner.Run<WrapedEthBenchmarks>(new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core90)));
         }
 
         public static void RunFullBenchmark(string[] args)
