@@ -273,7 +273,7 @@ public class DepositTransactionBuilderTest
         depositTransactions.Length.Should().Be(1);
         // NOTE: Check if we can simplify this assertion
         depositTransactions[0].Should().BeEquivalentTo(expectedTransaction, config => config.Excluding(x => x.Data));
-        depositTransactions[0].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction.Data?.ToArray());
+        depositTransactions[0].Data.ToArray().Should().BeEquivalentTo(expectedTransaction.Data.ToArray());
     }
 
     [Test]
@@ -337,7 +337,7 @@ public class DepositTransactionBuilderTest
         depositTransactions.Length.Should().Be(1);
 
         depositTransactions[0].Should().BeEquivalentTo(expectedTransaction, config => config.Excluding(x => x.Data));
-        depositTransactions[0].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction.Data?.ToArray());
+        depositTransactions[0].Data.ToArray().Should().BeEquivalentTo(expectedTransaction.Data.ToArray());
     }
 
     [Test]
@@ -425,7 +425,7 @@ public class DepositTransactionBuilderTest
         depositTransactions.Length.Should().Be(1);
 
         depositTransactions[0].Should().BeEquivalentTo(expectedTransaction, config => config.Excluding(x => x.Data));
-        depositTransactions[0].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction.Data?.ToArray());
+        depositTransactions[0].Data.ToArray().Should().BeEquivalentTo(expectedTransaction.Data.ToArray());
     }
 
     [Test]
@@ -527,10 +527,10 @@ public class DepositTransactionBuilderTest
 
         depositTransactions.Length.Should().Be(2);
         depositTransactions[0].Should().BeEquivalentTo(expectedTransaction_0, config => config.Excluding(x => x.Data));
-        depositTransactions[0].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction_0.Data?.ToArray());
+        depositTransactions[0].Data.ToArray().Should().BeEquivalentTo(expectedTransaction_0.Data.ToArray());
 
         depositTransactions[1].Should().BeEquivalentTo(expectedTransaction_1, config => config.Excluding(x => x.Data));
-        depositTransactions[1].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction_1.Data?.ToArray());
+        depositTransactions[1].Data.ToArray().Should().BeEquivalentTo(expectedTransaction_1.Data.ToArray());
     }
 
     [Test]
@@ -715,9 +715,9 @@ public class DepositTransactionBuilderTest
 
         depositTransactions.Length.Should().Be(2);
         depositTransactions[0].Should().BeEquivalentTo(expectedTransaction_0, config => config.Excluding(x => x.Data));
-        depositTransactions[0].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction_0.Data?.ToArray());
+        depositTransactions[0].Data.ToArray().Should().BeEquivalentTo(expectedTransaction_0.Data.ToArray());
 
         depositTransactions[1].Should().BeEquivalentTo(expectedTransaction_1, config => config.Excluding(x => x.Data));
-        depositTransactions[1].Data?.ToArray().Should().BeEquivalentTo(expectedTransaction_1.Data?.ToArray());
+        depositTransactions[1].Data.ToArray().Should().BeEquivalentTo(expectedTransaction_1.Data.ToArray());
     }
 }
