@@ -86,6 +86,8 @@
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="9.0.1" />
     <PackageVersion Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="21.2.1" />
     <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="21.2.1" />
+    <PackageVersion Include="Verify" Version="30.3.1" />
+    <PackageVersion Include="Verify.NUnit" Version="30.3.1" />
     <PackageVersion Include="Websocket.Client" Version="5.1.2" />
     <PackageVersion Include="ZstdSharp.Port" Version="0.8.4" />
   </ItemGroup>
