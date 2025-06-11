@@ -853,13 +853,13 @@ namespace Nethermind.Blockchain
         public IEnumerable<Block> DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken)
         {
             BlockAcceptingNewBlocks();
-            List<Block> blocks = [];
+
             int deletedBlocks = 0;
             try
             {
-                using var batch = _chainLevelInfoRepository.StartBatch();
+                using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
 
-                var oldBlocks = _blockStore.GetBlocksOlderThan(cutoffTimestamp);
+                IEnumerable<Block> oldBlocks = _blockStore.GetBlocksOlderThan(cutoffTimestamp);
                 foreach (Block block in oldBlocks)
                 {
                     long number = block.Number;
@@ -879,7 +879,7 @@ namespace Nethermind.Blockchain
                     if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}");
                     DeleteBlock(number, hash, null, batch, null, true);
                     deletedBlocks++;
-                    blocks.Add(block);
+                    yield return block;
                 }
             }
             finally
@@ -887,7 +887,6 @@ namespace Nethermind.Blockchain
                 if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
                 ReleaseAcceptingNewBlocks();
             }
-            return blocks;
         }
 
         private void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256 nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null, bool isOldBlock = false)
