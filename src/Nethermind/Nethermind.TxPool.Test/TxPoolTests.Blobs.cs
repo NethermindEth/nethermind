@@ -1063,11 +1063,11 @@ namespace Nethermind.TxPool.Test
                 static TestCaseData MakeTestCase(string testName, BlobScheduleSettings initial, BlobScheduleSettings updated, int[] blobTxBlobCounts, int finalTxCount)
                     => new(initial, updated, blobTxBlobCounts) { TestName = $"EvictionAccordingToBlobLimits: {testName}", ExpectedResult = finalTxCount };
 
-                yield return MakeTestCase("Evicts, when per block limit is set",
+                yield return MakeTestCase("Evicts when per block limit is set",
                     new BlobScheduleSettings { Max = 6 }, new BlobScheduleSettings { Max = 5 }, [6], 0);
-                yield return MakeTestCase("Evicts, when per tx limit only is set",
+                yield return MakeTestCase("Evicts when per tx limit only is set",
                     new BlobScheduleSettings { Max = 6 }, new BlobScheduleSettings { Max = 6, MaxBlobsPerTx = 3 }, [6], 0);
-                yield return MakeTestCase("Evicts, when per tx limit only is changed",
+                yield return MakeTestCase("Evicts when per tx limit only is changed",
                     new BlobScheduleSettings { Max = 6, MaxBlobsPerTx = 3 }, new BlobScheduleSettings { Max = 6, MaxBlobsPerTx = 2 }, [2, 3, 2], 1);
                 yield return MakeTestCase("Evicts next txs too",
                     new BlobScheduleSettings { Max = 6 }, new BlobScheduleSettings { Max = 6, MaxBlobsPerTx = 3 }, [6, 3, 3, 3], 0);
