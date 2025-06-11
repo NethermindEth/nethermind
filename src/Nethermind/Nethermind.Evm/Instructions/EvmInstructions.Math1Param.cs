@@ -96,24 +96,11 @@ internal static partial class EvmInstructions
     /// Implements the CLZ opcode.
     /// Counts leading 0's of 256‐bit vector
     /// </summary>
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionCLZ<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInst : struct, IFlag
+    public struct OpCLZ : IOpMath1Param
     {
-        gasAvailable -= GasCostOf.VeryLow;
-
-        // Pop the byte position and the 256-bit word.
-        if (!stack.PopUInt256(out UInt256 word))
-        {
-            goto StackUnderflow;
-        }
-
-        stack.PushUInt32<TTracingInst>((uint)word.CountLeadingZeros());
-
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        public static Word Operation(Word value) => value == default
+            ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
+            : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();
     }
 
     /// <summary>

@@ -68,7 +68,7 @@ internal static unsafe partial class EvmInstructions
 
         if (spec.CLZEnabled)
         {
-            lookup[(int)Instruction.CLZ] = &InstructionCLZ<TTracingInst>;
+            lookup[(int)Instruction.CLZ] = &InstructionMath1Param<OpCLZ>;
         }
 
         // Cryptographic hash opcode.
