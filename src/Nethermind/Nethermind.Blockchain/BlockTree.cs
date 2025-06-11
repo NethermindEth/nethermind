@@ -871,12 +871,12 @@ namespace Nethermind.Blockchain
                         break;
                     }
 
-                    if (number == 0)
+                    if (number == 0 || number >= SyncPivot.BlockNumber)
                     {
                         continue;
                     }
 
-                    if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}");
+                    if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}.");
                     DeleteBlock(number, hash, null, batch, null, true);
                     deletedBlocks++;
                     yield return block;
