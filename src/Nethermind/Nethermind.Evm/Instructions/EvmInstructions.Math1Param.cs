@@ -93,9 +93,8 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Implements the ISZERO operation.
-    /// Compares the input 256‐bit vector to zero and returns a predefined marker if the value is zero;
-    /// otherwise, returns a zero vector.
+    /// Implements the CLZ opcode.
+    /// Counts leading 0's of 256‐bit vector
     /// </summary>
     public struct OpCLZ : IOpMath1Param
     {
