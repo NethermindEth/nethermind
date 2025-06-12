@@ -36,8 +36,9 @@ namespace Nethermind.Evm.Precompiles
 
             if (inputData.Length == 128)
             {
-                return RunInternal(inputData.Span)
+                return RunInternal(inputData.Span);
             }
+
             Span<byte> inputDataSpan = stackalloc byte[128];
             inputData.Span[..Math.Min(128, inputData.Length)]
                 .CopyTo(inputDataSpan[..Math.Min(128, inputData.Length)]);
