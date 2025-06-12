@@ -41,7 +41,7 @@ namespace Nethermind.Benchmarks.Core
         public void GlobalSetup()
         {
             _ethereumEcdsa = new(_specProvider.ChainId);
-            _sut = new(_ethereumEcdsa, NullTxPool.Instance, _specProvider, NullLogManager.Instance);
+            _sut = new(_ethereumEcdsa, _specProvider, NullLogManager.Instance);
 
             var rnd = new Random();
 
