@@ -31,10 +31,7 @@ namespace Nethermind.Evm.Precompiles
 
         public static Address Address { get; } = Address.FromNumber(5);
 
-        public long BaseGasCost(IReleaseSpec releaseSpec)
-        {
-            return 0L;
-        }
+        public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
         /// <summary>
         /// https://github.com/ethereum/EIPs/pull/2892
@@ -58,8 +55,8 @@ namespace Nethermind.Evm.Precompiles
             try
             {
                 Span<byte> extendedInput = stackalloc byte[96];
-                inputData[..Math.Min(96, inputData.Length)].Span
-                    .CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
+                ReadOnlyMemory<byte> readOnlyMemory = inputData[..Math.Min(96, inputData.Length)];
+                readOnlyMemory.Span.CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
 
                 UInt256 baseLength = new(extendedInput[..32], true);
                 UInt256 expLength = new(extendedInput.Slice(32, 32), true);
@@ -70,10 +67,6 @@ namespace Nethermind.Evm.Precompiles
                     return long.MaxValue;
                 }
 
-                if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
-                {
-                    return long.MaxValue;
-                }
 
                 UInt256 complexity = MultComplexity(baseLength, modulusLength, releaseSpec.IsEip7883Enabled);
 

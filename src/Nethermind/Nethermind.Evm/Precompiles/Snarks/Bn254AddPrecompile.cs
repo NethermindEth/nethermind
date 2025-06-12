@@ -27,7 +27,7 @@ public class Bn254AddPrecompile : IPrecompile<Bn254AddPrecompile>
         Span<byte> inputDataSpan = stackalloc byte[128];
         inputData.PrepareEthInput(inputDataSpan);
 
-        Span<byte> output = stackalloc byte[64];
-        return Pairings.Bn254Add(inputDataSpan, output) ? (output.ToArray(), true) : IPrecompile.Failure;
+        byte[] output = GC.AllocateUninitializedArray<byte>(64);
+        return Pairings.Bn254Add(inputDataSpan, output) ? (output, true) : IPrecompile.Failure;
     }
 }

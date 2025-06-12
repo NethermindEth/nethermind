@@ -17,6 +17,7 @@ namespace Nethermind.Evm.Precompiles
     public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565>
     {
         public static ModExpPrecompilePreEip2565 Instance = new();
+        private static readonly UInt256 Eight = 8;
 
         private ModExpPrecompilePreEip2565()
         {
@@ -24,10 +25,7 @@ namespace Nethermind.Evm.Precompiles
 
         public static Address Address { get; } = Address.FromNumber(5);
 
-        public long BaseGasCost(IReleaseSpec releaseSpec)
-        {
-            return 0L;
-        }
+        public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
@@ -101,16 +99,16 @@ namespace Nethermind.Evm.Precompiles
             int leadingZeros = exponent.AsSpan().LeadingZerosCount();
             if (leadingZeros == exponent.Length)
             {
-                overflow |= UInt256.MultiplyOverflow(lengthOver32, 8, out result);
+                overflow |= UInt256.MultiplyOverflow(lengthOver32, Eight, out result);
                 return overflow ? UInt256.MaxValue : result;
             }
 
             overflow |= UInt256.AddOverflow(lengthOver32, (UInt256)exponent.Length, out result);
             underflow |= UInt256.SubtractUnderflow(result, (UInt256)leadingZeros, out result);
-            underflow |= UInt256.SubtractUnderflow(result, (UInt256)1, out result);
-            overflow |= UInt256.MultiplyOverflow(result, 8, out result);
-            overflow |= UInt256.AddOverflow(result, (UInt256)(exponent[leadingZeros].GetHighestSetBitIndex()), out result);
-            underflow |= UInt256.SubtractUnderflow(result, (UInt256)1, out result);
+            underflow |= UInt256.SubtractUnderflow(result, UInt256.One, out result);
+            overflow |= UInt256.MultiplyOverflow(result, Eight, out result);
+            overflow |= UInt256.AddOverflow(result, (UInt256)exponent[leadingZeros].GetHighestSetBitIndex(), out result);
+            underflow |= UInt256.SubtractUnderflow(result, UInt256.One, out result);
 
             return overflow ? UInt256.MaxValue : underflow ? UInt256.MinValue : result;
         }

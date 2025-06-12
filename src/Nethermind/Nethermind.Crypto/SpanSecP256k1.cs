@@ -10,7 +10,7 @@ public static class SpanSecP256k1
     [ThreadStatic] private static byte[]? _signMessageHash;
     [ThreadStatic] private static byte[]? _signPrivateKey;
 
-    public static byte[]? SignCompact(Span<byte> messageHash, Span<byte> privateKey, out int recoveryId)
+    public static byte[]? SignCompact(ReadOnlySpan<byte> messageHash, ReadOnlySpan<byte> privateKey, out int recoveryId)
     {
         byte[] messageHashArray;
         if (messageHash.Length == 32)
@@ -43,7 +43,7 @@ public static class SpanSecP256k1
 
     [ThreadStatic] private static byte[]? _recoverMessageHash;
 
-    public static bool RecoverKeyFromCompact(Span<byte> publicKey, Span<byte> messageHash, Span<byte> signature, int recoveryId, bool compressed)
+    public static bool RecoverKeyFromCompact(Span<byte> publicKey, ReadOnlySpan<byte> messageHash, ReadOnlySpan<byte> signature, int recoveryId, bool compressed)
     {
         byte[] messageHashArray;
         if (messageHash.Length == 32)
