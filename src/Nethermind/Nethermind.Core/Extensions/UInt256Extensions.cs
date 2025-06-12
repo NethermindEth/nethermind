@@ -66,7 +66,7 @@ public static class UInt256Extensions
         return Unsafe.As<Word, ValueHash256>(ref result);
     }
 
-    public static int CountLeadingZeros(this UInt256 uInt256)
+    public static int CountLeadingZeros(this in UInt256 uInt256)
     {
         // Scan from the highest limb down to the lowest
         for (int i = 3; i >= 0; i--)

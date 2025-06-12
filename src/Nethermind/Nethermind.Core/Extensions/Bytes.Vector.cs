@@ -146,7 +146,7 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        public static int CountLeadingZeroBits(this Vector256<byte> v)
+        public static int CountLeadingZeroBits(this in Vector256<byte> v)
         {
             if (Vector256<byte>.IsSupported)
             {
