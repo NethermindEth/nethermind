@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -374,6 +374,7 @@ namespace Nethermind.Core.Specs
         /// </summary>
         public ulong TargetBlobCount { get; }
         public ulong MaxBlobCount { get; }
+        public ulong MaxBlobsPerTx { get; }
         public UInt256 BlobBaseFeeUpdateFraction { get; }
 
         public ulong WithdrawalTimestamp { get; }
