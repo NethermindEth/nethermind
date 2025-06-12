@@ -852,8 +852,6 @@ namespace Nethermind.Blockchain
 
         public IEnumerable<Block> DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken)
         {
-            BlockAcceptingNewBlocks();
-
             int deletedBlocks = 0;
             try
             {
