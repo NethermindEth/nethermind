@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions
 {
@@ -142,6 +144,27 @@ namespace Nethermind.Core.Extensions
             }
 
             return result;
+        }
+
+        public static int CountLeadingZeroBits(this in Vector256<byte> v)
+        {
+            if (Vector256<byte>.IsSupported)
+            {
+                var cmp = Vector256.Equals(v, Vector256<byte>.Zero);
+                uint nonZeroMask = ~cmp.ExtractMostSignificantBits();
+                if (nonZeroMask == 0)
+                    return 256;
+
+                int firstIdx = BitOperations.TrailingZeroCount(nonZeroMask);
+                byte b = v.GetElement(firstIdx);
+                int lzInByte = BitOperations.LeadingZeroCount(b) - 24;
+                return firstIdx * 8 + lzInByte;
+            }
+
+            ref byte first = ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in v));
+            ReadOnlySpan<byte> span = MemoryMarshal.CreateReadOnlySpan(ref first, Vector256<byte>.Count);
+            UInt256 uint256 = new(span, true);
+            return uint256.CountLeadingZeros();
         }
     }
 }

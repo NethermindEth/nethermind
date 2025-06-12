@@ -489,5 +489,12 @@ namespace Nethermind.Core.Specs
         public Array? EvmInstructionsTraced { get; set; }
 
         public ProofVersion BlobProofVersion => IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
+
+        /// <summary>
+        /// EIP-7939 - CLZ - Count leading zeros instruction
+        /// </summary>
+        public bool IsEip7939Enabled { get; }
+
+        public bool CLZEnabled => IsEip7939Enabled;
     }
 }
