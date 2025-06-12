@@ -20,7 +20,7 @@ public class ReceiptTrie<TReceipt> : PatriciaTrie<TReceipt>
     private readonly IRlpStreamDecoder<TReceipt> _decoder;
     /// <inheritdoc/>
     /// <param name="receipts">The transaction receipts to build the trie of.</param>
-    private ReceiptTrie(IReceiptSpec spec, ReadOnlySpan<TReceipt> receipts, IRlpStreamDecoder<TReceipt> trieDecoder, ICappedArrayPool bufferPool, bool canBuildProof = false)
+    public ReceiptTrie(IReceiptSpec spec, ReadOnlySpan<TReceipt> receipts, IRlpStreamDecoder<TReceipt> trieDecoder, ICappedArrayPool bufferPool, bool canBuildProof = false)
         : base(null, canBuildProof, bufferPool: bufferPool)
     {
         ArgumentNullException.ThrowIfNull(spec);
