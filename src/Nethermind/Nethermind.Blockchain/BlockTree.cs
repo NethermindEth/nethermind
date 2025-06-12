@@ -804,6 +804,47 @@ namespace Nethermind.Blockchain
             }
         }
 
+        // public BatchWrite CreateBatch()
+        //     => _chainLevelInfoRepository.StartBatch();
+
+        // public IEnumerable<Block> GetBlocksOlderThan(ulong cutoffTimestamp)
+        //     => _blockStore.GetBlocksOlderThan(cutoffTimestamp);
+
+        public void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256 nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null, bool isOldBlock = false)
+        {
+            currentLevel ??= LoadLevel(currentNumber);
+
+            bool shouldRemoveLevel = false;
+            if (currentLevel is not null) // preparing update of the level (removal of the invalid branch block)
+            {
+                if (currentLevel.BlockInfos.Length == 1)
+                {
+                    shouldRemoveLevel = true;
+                }
+                else
+                {
+                    currentLevel.BlockInfos = currentLevel.BlockInfos.Where(bi => bi.BlockHash != currentHash).ToArray();
+                }
+            }
+
+            UpdateDeletePointer(nextHash);
+
+            if (shouldRemoveLevel)
+            {
+                // only need to update BestKnownNumber if we are deleting most recent block level
+                if (!isOldBlock) BestKnownNumber = Math.Min(BestKnownNumber, currentNumber - 1);
+                _chainLevelInfoRepository.Delete(currentNumber, batch);
+            }
+            else if (currentLevel is not null)
+            {
+                _chainLevelInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
+            }
+
+            _blockStore.Delete(currentNumber, currentHash);
+            _headerStore.Delete(currentHash);
+            if (isOldBlock) _blockInfoDb.Delete(currentHash);
+        }
+
         private void DeleteInvalidBranch(Hash256 deletePointer)
         {
             BlockHeader? deleteHeader = FindHeader(deletePointer, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -848,78 +889,6 @@ namespace Nethermind.Blockchain
                 currentHash = nextHash;
                 nextHash = null;
             }
-        }
-
-        public IEnumerable<Block> DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken)
-        {
-            int deletedBlocks = 0;
-            try
-            {
-                using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
-
-                IEnumerable<Block> oldBlocks = _blockStore.GetBlocksOlderThan(cutoffTimestamp);
-                foreach (Block block in oldBlocks)
-                {
-                    long number = block.Number;
-                    Hash256 hash = block.Hash;
-
-                    if (cancellationToken.IsCancellationRequested)
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Pruning operation timed out at timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
-                        break;
-                    }
-
-                    if (number == 0 || number >= SyncPivot.BlockNumber)
-                    {
-                        continue;
-                    }
-
-                    if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}.");
-                    DeleteBlock(number, hash, null, batch, null, true);
-                    deletedBlocks++;
-                    yield return block;
-                }
-            }
-            finally
-            {
-                if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
-                ReleaseAcceptingNewBlocks();
-            }
-        }
-
-        private void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256 nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null, bool isOldBlock = false)
-        {
-            currentLevel ??= LoadLevel(currentNumber);
-
-            bool shouldRemoveLevel = false;
-            if (currentLevel is not null) // preparing update of the level (removal of the invalid branch block)
-            {
-                if (currentLevel.BlockInfos.Length == 1)
-                {
-                    shouldRemoveLevel = true;
-                }
-                else
-                {
-                    currentLevel.BlockInfos = currentLevel.BlockInfos.Where(bi => bi.BlockHash != currentHash).ToArray();
-                }
-            }
-
-            UpdateDeletePointer(nextHash);
-
-            if (shouldRemoveLevel)
-            {
-                // only need to update BestKnownNumber if we are deleting most recent block level
-                if (!isOldBlock) BestKnownNumber = Math.Min(BestKnownNumber, currentNumber - 1);
-                _chainLevelInfoRepository.Delete(currentNumber, batch);
-            }
-            else if (currentLevel is not null)
-            {
-                _chainLevelInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
-            }
-
-            _blockStore.Delete(currentNumber, currentHash);
-            _headerStore.Delete(currentHash);
-            if (isOldBlock) _blockInfoDb.Delete(currentHash);
         }
 
         private Hash256? FindChild(ChainLevelInfo level, Hash256 parentHash)

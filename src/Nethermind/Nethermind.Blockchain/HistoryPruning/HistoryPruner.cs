@@ -5,11 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.State.Repositories;
 
 namespace Nethermind.Blockchain.HistoryPruning;
 
@@ -17,6 +20,8 @@ public class HistoryPruner(
     IBlockTree blockTree,
     IReceiptStorage receiptStorage,
     ISpecProvider specProvider,
+    IBlockStore blockStore,
+    IChainLevelInfoRepository chainLevelInfoRepository,
     IHistoryConfig historyConfig,
     long secondsPerSlot,
     ILogManager logManager) : IHistoryPruner
@@ -28,6 +33,8 @@ public class HistoryPruner(
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly IBlockTree _blockTree = blockTree;
     private readonly IReceiptStorage _receiptStorage = receiptStorage;
+    private readonly IBlockStore _blockStore = blockStore;
+    private readonly IChainLevelInfoRepository _chainLevelInfoRepository = chainLevelInfoRepository;
     private readonly IHistoryConfig _historyConfig = historyConfig;
     private readonly bool _enabled = historyConfig.Enabled;
     private readonly long _epochLength = secondsPerSlot * 32;
@@ -97,12 +104,48 @@ public class HistoryPruner(
 
         await Task.Run(() =>
         {
-            var deletedBlocks = _blockTree.DeleteBlocksBeforeTimestamp(cutoffTimestamp, cancellationToken);
+            IEnumerable<Block> deletedBlocks = DeleteBlocksBeforeTimestamp(cutoffTimestamp, cancellationToken);
             PruneReceipts(deletedBlocks);
         }, cancellationToken);
 
         _lastPrunedTimestamp = cutoffTimestamp;
         if (_logger.IsInfo) _logger.Info($"Pruned historical blocks up to timestamp {cutoffTimestamp}");
+    }
+
+    public IEnumerable<Block> DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken)
+    {
+        int deletedBlocks = 0;
+        try
+        {
+            using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
+
+            IEnumerable<Block> oldBlocks = _blockStore.GetBlocksOlderThan(cutoffTimestamp);
+            foreach (Block block in oldBlocks)
+            {
+                long number = block.Number;
+                Hash256 hash = block.Hash;
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Pruning operation timed out at timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
+                    break;
+                }
+
+                if (number == 0 || number >= _blockTree.SyncPivot.BlockNumber)
+                {
+                    continue;
+                }
+
+                if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}.");
+                _blockTree.DeleteBlock(number, hash, null, batch, null, true);
+                deletedBlocks++;
+                yield return block;
+            }
+        }
+        finally
+        {
+            if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
+        }
     }
 
     private void PruneReceipts(IEnumerable<Block> blocks)

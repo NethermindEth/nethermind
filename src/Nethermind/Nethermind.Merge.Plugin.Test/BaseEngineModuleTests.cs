@@ -357,7 +357,15 @@ public abstract partial class BaseEngineModuleTests
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
                 50000); // by default we want to avoid cleanup payload effects in testing
 
-            HistoryPruner = new HistoryPruner(BlockTree, ReceiptStorage, SpecProvider, new HistoryConfig(), (long)MergeConfig.SecondsPerSlot, LogManager);
+            HistoryPruner = new HistoryPruner(
+                BlockTree,
+                ReceiptStorage,
+                SpecProvider,
+                BlockStore,
+                ChainLevelInfoRepository,
+                new HistoryConfig(),
+                (long)MergeConfig.SecondsPerSlot,
+                LogManager);
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 

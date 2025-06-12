@@ -1138,64 +1138,6 @@ public class BlockTreeTests
         Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(block5.Hash), "suggested");
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_delete_blocks_before_timestamp()
-    {
-        BlockTree tree = Build.A.BlockTree()
-            .WithoutSettingHead
-            .TestObject;
-
-        List<Block> blocks = [];
-        Block? parentBlock = null;
-
-        for (int i = 0; i <= 5; i++)
-        {
-            BlockBuilder blockBuilder = Build.A.Block
-                .WithNumber(i)
-                .WithDifficulty((ulong)i + 1)
-                .WithTimestamp(1000 + (ulong)i);
-
-            if (parentBlock != null)
-            {
-                blockBuilder.WithParent(parentBlock);
-            }
-
-            Block block = blockBuilder.TestObject;
-            blocks.Add(block);
-            tree.SuggestBlock(block);
-            parentBlock = block;
-        }
-
-        tree.UpdateMainChain(blocks, true);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(tree.BestKnownNumber, Is.EqualTo(5L), "BestKnownNumber should be 5 before deletion");
-            Assert.That(tree.FindBlock(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block should exist before deletion");
-            Assert.That(tree.FindBlock(1, BlockTreeLookupOptions.None), Is.Not.Null, "Block 1 should exist before deletion");
-            Assert.That(tree.FindBlock(2, BlockTreeLookupOptions.None), Is.Not.Null, "Block 2 should exist before deletion");
-            Assert.That(tree.FindBlock(3, BlockTreeLookupOptions.None), Is.Not.Null, "Block 3 should exist before deletion");
-            Assert.That(tree.BestKnownNumber, Is.EqualTo(5L), "BestKnownNumber should remain 5 after deletion");
-        }
-
-        foreach (var deletedBlock in tree.DeleteBlocksBeforeTimestamp(1003, CancellationToken.None))
-        {
-            Assert.That(deletedBlock.Number, Is.InRange(1, 2));
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(tree.FindBlock(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block should still exist after deletion");
-            Assert.That(tree.FindBlock(1, BlockTreeLookupOptions.None), Is.Null, "Block 1 should be deleted");
-            Assert.That(tree.FindBlock(2, BlockTreeLookupOptions.None), Is.Null, "Block 2 should be deleted");
-            Assert.That(tree.FindBlock(3, BlockTreeLookupOptions.None), Is.Not.Null, "Block 3 should still exist");
-            Assert.That(tree.FindBlock(4, BlockTreeLookupOptions.None), Is.Not.Null, "Block 4 should still exist");
-            Assert.That(tree.FindBlock(5, BlockTreeLookupOptions.None), Is.Not.Null, "Block 5 should still exist");
-            Assert.That(tree.BestKnownNumber, Is.EqualTo(5L), "BestKnownNumber should remain 5 after deletion");
-            Assert.That(tree.Head?.Number, Is.EqualTo(5L), "Head should remain at block 5");
-        }
-    }
-
     [Test, MaxTime(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
     public void When_lowestInsertedHeaderWasNotPersisted_useBinarySearchToLoadLowestInsertedHeader(long beginIndex, long insertedBlocks)
     {

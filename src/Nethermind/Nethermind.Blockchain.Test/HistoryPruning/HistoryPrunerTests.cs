@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -12,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Logging;
+using Nethermind.State.Repositories;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -36,7 +38,7 @@ public class HistoryPrunerTests
             blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
         }
 
-        var head = testBlockchain.BlockTree.Head;
+        Core.Block head = testBlockchain.BlockTree.Head;
         Assert.That(head, Is.Not.Null);
 
         // n.b. technically invalid, should be at least 82125 epochs
@@ -52,6 +54,8 @@ public class HistoryPrunerTests
             testBlockchain.BlockTree,
             testBlockchain.ReceiptStorage,
             specProvider,
+            testBlockchain.BlockStore,
+            testBlockchain.ChainLevelInfoRepository,
             historyConfig,
             SecondsPerSlot,
             LimboLogs.Instance);
@@ -68,9 +72,9 @@ public class HistoryPrunerTests
 
         for (int i = 1; i <= 100; i++)
         {
-            var block = testBlockchain.BlockTree.FindBlock(i, BlockTreeLookupOptions.None);
-            var header = testBlockchain.BlockTree.FindHeader(i, BlockTreeLookupOptions.None);
-            var blockInfo = testBlockchain.BlockTree.FindCanonicalBlockInfo(i);
+            Core.Block? block = testBlockchain.BlockTree.FindBlock(i, BlockTreeLookupOptions.None);
+            Core.BlockHeader? header = testBlockchain.BlockTree.FindHeader(i, BlockTreeLookupOptions.None);
+            Core.BlockInfo blockInfo = testBlockchain.BlockTree.FindCanonicalBlockInfo(i);
             var hasReceipt = testBlockchain.ReceiptStorage.HasBlock(i, blockHashes[i]);
 
             if (i < 100 - 64)
@@ -115,7 +119,7 @@ public class HistoryPrunerTests
             blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
         }
 
-        var head = testBlockchain.BlockTree.Head;
+        Core.Block head = testBlockchain.BlockTree.Head;
         Assert.That(head, Is.Not.Null);
 
         IHistoryConfig historyConfig = new HistoryConfig
@@ -130,6 +134,8 @@ public class HistoryPrunerTests
             testBlockchain.BlockTree,
             testBlockchain.ReceiptStorage,
             specProvider,
+            testBlockchain.BlockStore,
+            testBlockchain.ChainLevelInfoRepository,
             historyConfig,
             SecondsPerSlot,
             LimboLogs.Instance);
@@ -147,9 +153,9 @@ public class HistoryPrunerTests
 
         for (int i = 1; i <= 100; i++)
         {
-            var block = testBlockchain.BlockTree.FindBlock(i, BlockTreeLookupOptions.None);
-            var header = testBlockchain.BlockTree.FindHeader(i, BlockTreeLookupOptions.None);
-            var blockInfo = testBlockchain.BlockTree.FindCanonicalBlockInfo(i);
+            Core.Block? block = testBlockchain.BlockTree.FindBlock(i, BlockTreeLookupOptions.None);
+            Core.BlockHeader? header = testBlockchain.BlockTree.FindHeader(i, BlockTreeLookupOptions.None);
+            Core.BlockInfo blockInfo = testBlockchain.BlockTree.FindCanonicalBlockInfo(i);
             var hasReceipt = testBlockchain.ReceiptStorage.HasBlock(i, blockHashes[i]);
             if (i < BeaconGenesisBlockNumber)
             {
@@ -205,6 +211,8 @@ public class HistoryPrunerTests
             testBlockchain.BlockTree,
             testBlockchain.ReceiptStorage,
             specProvider,
+            testBlockchain.BlockStore,
+            testBlockchain.ChainLevelInfoRepository,
             historyConfig,
             SecondsPerSlot,
             LimboLogs.Instance);
@@ -243,6 +251,8 @@ public class HistoryPrunerTests
             Substitute.For<IBlockTree>(),
             Substitute.For<IReceiptStorage>(),
             Substitute.For<ISpecProvider>(),
+            Substitute.For<IBlockStore>(),
+            Substitute.For<IChainLevelInfoRepository>(),
             validHistoryConfig,
             SecondsPerSlot,
             LimboLogs.Instance);
@@ -263,10 +273,70 @@ public class HistoryPrunerTests
             Substitute.For<IBlockTree>(),
             Substitute.For<IReceiptStorage>(),
             Substitute.For<ISpecProvider>(),
+            Substitute.For<IBlockStore>(),
+            Substitute.For<IChainLevelInfoRepository>(),
             invalidHistoryConfig,
             SecondsPerSlot,
             LimboLogs.Instance);
 
         Assert.That(!historyPruner.CheckConfig());
     }
+
+    // [Test, MaxTime(Timeout.MaxTestTime)]
+    // public void Can_delete_blocks_before_timestamp()
+    // {
+    //     BlockTree tree = Build.A.BlockTree()
+    //         .WithoutSettingHead
+    //         .TestObject;
+
+    //     List<Block> blocks = [];
+    //     Block? parentBlock = null;
+
+    //     for (int i = 0; i <= 5; i++)
+    //     {
+    //         BlockBuilder blockBuilder = Build.A.Block
+    //             .WithNumber(i)
+    //             .WithDifficulty((ulong)i + 1)
+    //             .WithTimestamp(1000 + (ulong)i);
+
+    //         if (parentBlock != null)
+    //         {
+    //             blockBuilder.WithParent(parentBlock);
+    //         }
+
+    //         Block block = blockBuilder.TestObject;
+    //         blocks.Add(block);
+    //         tree.SuggestBlock(block);
+    //         parentBlock = block;
+    //     }
+
+    //     tree.UpdateMainChain(blocks, true);
+
+    //     using (Assert.EnterMultipleScope())
+    //     {
+    //         Assert.That(tree.BestKnownNumber, Is.EqualTo(5L), "BestKnownNumber should be 5 before deletion");
+    //         Assert.That(tree.FindBlock(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block should exist before deletion");
+    //         Assert.That(tree.FindBlock(1, BlockTreeLookupOptions.None), Is.Not.Null, "Block 1 should exist before deletion");
+    //         Assert.That(tree.FindBlock(2, BlockTreeLookupOptions.None), Is.Not.Null, "Block 2 should exist before deletion");
+    //         Assert.That(tree.FindBlock(3, BlockTreeLookupOptions.None), Is.Not.Null, "Block 3 should exist before deletion");
+    //         Assert.That(tree.BestKnownNumber, Is.EqualTo(5L), "BestKnownNumber should remain 5 after deletion");
+    //     }
+
+    //     foreach (var deletedBlock in HistoryPruner.DeleteBlocksBeforeTimestamp(1003, CancellationToken.None))
+    //     {
+    //         Assert.That(deletedBlock.Number, Is.InRange(1, 2));
+    //     }
+
+    //     using (Assert.EnterMultipleScope())
+    //     {
+    //         Assert.That(tree.FindBlock(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block should still exist after deletion");
+    //         Assert.That(tree.FindBlock(1, BlockTreeLookupOptions.None), Is.Null, "Block 1 should be deleted");
+    //         Assert.That(tree.FindBlock(2, BlockTreeLookupOptions.None), Is.Null, "Block 2 should be deleted");
+    //         Assert.That(tree.FindBlock(3, BlockTreeLookupOptions.None), Is.Not.Null, "Block 3 should still exist");
+    //         Assert.That(tree.FindBlock(4, BlockTreeLookupOptions.None), Is.Not.Null, "Block 4 should still exist");
+    //         Assert.That(tree.FindBlock(5, BlockTreeLookupOptions.None), Is.Not.Null, "Block 5 should still exist");
+    //         Assert.That(tree.BestKnownNumber, Is.EqualTo(5L), "BestKnownNumber should remain 5 after deletion");
+    //         Assert.That(tree.Head?.Number, Is.EqualTo(5L), "Head should remain at block 5");
+    //     }
+    // }
 }

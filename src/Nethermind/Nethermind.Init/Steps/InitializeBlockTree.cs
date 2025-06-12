@@ -9,13 +9,16 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Find;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 
@@ -36,6 +39,10 @@ namespace Nethermind.Init.Steps
         {
             IInitConfig initConfig = _get.Config<IInitConfig>();
             IBloomConfig bloomConfig = _get.Config<IBloomConfig>();
+            IHistoryConfig historyConfig = _get.Config<IHistoryConfig>();
+            IBlocksConfig blocksConfig = _get.Config<IBlocksConfig>();
+
+            ILogManager logManager = _get.LogManager;
 
             IFileStoreFactory fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb
                 ? new InMemoryDictionaryFileStoreFactory()
@@ -65,13 +72,13 @@ namespace Nethermind.Init.Steps
                 _get.SpecProvider,
                 bloomStorage,
                 _get.Config<ISyncConfig>(),
-                _get.LogManager);
+                logManager);
 
             ISigner signer = NullSigner.Instance;
             ISignerStore signerStore = NullSigner.Instance;
             if (_get.Config<IMiningConfig>().Enabled)
             {
-                Signer signerAndStore = new(_get.SpecProvider!.ChainId, _get.OriginalSignerKey!, _get.LogManager);
+                Signer signerAndStore = new(_get.SpecProvider!.ChainId, _get.OriginalSignerKey!, logManager);
                 signer = signerAndStore;
                 signerStore = signerAndStore;
             }
@@ -99,7 +106,7 @@ namespace Nethermind.Init.Steps
                 receiptFinder,
                 receiptStorage,
                 bloomStorage,
-                _get.LogManager,
+                logManager,
                 new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider),
                 receiptConfig.MaxBlockDepth);
 
@@ -107,7 +114,24 @@ namespace Nethermind.Init.Steps
 
             if (initConfig.ExitOnBlockNumber is not null)
             {
-                new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
+                _ = new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
+            }
+
+            if (historyConfig.Enabled)
+            {
+                HistoryPruner historyPruner = new(
+                    blockTree,
+                    receiptStorage,
+                    _get.SpecProvider!,
+                    blockStore,
+                    chainLevelInfoRepository,
+                    historyConfig,
+                    (long)blocksConfig.SecondsPerSlot,
+                    logManager);
+                historyPruner.CheckConfig();
+                _set.HistoryPruner = historyPruner;
+
+                // blockchainProcessor.ProcessingQueueEmpty += historyPruner.OnBlockProcessorQueueEmpty;
             }
 
             return Task.CompletedTask;

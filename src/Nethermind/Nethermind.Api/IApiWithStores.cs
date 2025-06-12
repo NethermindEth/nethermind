@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -31,5 +32,6 @@ namespace Nethermind.Api
         IReceiptMonitor? ReceiptMonitor { get; set; }
         IWallet? Wallet { get; set; }
         IBadBlockStore? BadBlocksStore { get; set; }
+        IHistoryPruner? HistoryPruner { get; set; }
     }
 }
