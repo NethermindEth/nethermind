@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.Int256;
 
 namespace Nethermind.Experimental.Abi;
@@ -121,8 +122,7 @@ public ref struct BinarySpanWriter
     public void WriteOffset<TCtx>(int offset, in TCtx ctx, BinarySpanWriterAction<TCtx> inner)
     {
         Span<byte> offsetLocation = _span[offset..(offset + 32)];
-        var position = (UInt256)_position;
-        position.ToBigEndian(offsetLocation);
+        BinaryPrimitives.WriteInt32BigEndian(offsetLocation[^sizeof(int)..], _position);
 
         inner(ctx, ref this);
     }
