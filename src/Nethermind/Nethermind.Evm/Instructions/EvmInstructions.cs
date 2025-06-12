@@ -66,6 +66,11 @@ internal static unsafe partial class EvmInstructions
             lookup[(int)Instruction.SAR] = &InstructionSar<TTracingInst>;
         }
 
+        if (spec.CLZEnabled)
+        {
+            lookup[(int)Instruction.CLZ] = &InstructionMath1Param<OpCLZ>;
+        }
+
         // Cryptographic hash opcode.
         lookup[(int)Instruction.KECCAK256] = &InstructionKeccak256<TTracingInst>;
 

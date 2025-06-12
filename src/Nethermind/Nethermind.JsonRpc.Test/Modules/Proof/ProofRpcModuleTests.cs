@@ -858,8 +858,8 @@ public class ProofRpcModuleTests
             // the exception will be thrown if the account did not exist before the call
             try
             {
-                CappedArray<byte> verifyOneProof = ProofVerifier.VerifyOneProof(accountProof.Proof!, block.StateRoot!);
-                new AccountDecoder().Decode(verifyOneProof.AsSpan());
+                SpanSource verifyOneProof = ProofVerifier.VerifyOneProof(accountProof.Proof!, block.StateRoot!);
+                new AccountDecoder().Decode(verifyOneProof.Span);
             }
             catch (Exception)
             {
