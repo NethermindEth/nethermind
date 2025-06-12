@@ -93,6 +93,11 @@ public unsafe partial class VirtualMachine
                 stack.PushOne<TTracingInst>();
 
                 opcodes[i](vm, ref stack, ref gas, ref pc);
+                if (vm.ReturnData is EvmState returnState)
+                {
+                    returnState.Dispose();
+                    vm.ReturnData = null!;
+                }
 
                 state.Reset(resetBlockChanges: true);
                 stack = new(0, txTracer, evmState.DataStack);
