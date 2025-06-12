@@ -185,6 +185,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _invalidChainTracker,
             beaconSync,
             _api.LogManager,
+            new BlockDecoder(),
             TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
             _api.Config<IReceiptConfig>().StoreReceipts);
         bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;

@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain;
 
@@ -62,7 +63,8 @@ public class BlockTreeOverlay : IBlockTree
     public AddBlockResult Insert(Block block,
         BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
         BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None,
-        WriteFlags bodiesWriteFlags = WriteFlags.None) =>
+        WriteFlags bodiesWriteFlags = WriteFlags.None,
+        NettyRlpStream? encodedBlock = null) =>
         _overlayTree.Insert(block, insertBlockOptions, insertHeaderOptions, bodiesWriteFlags);
 
     public void UpdateHeadBlock(Hash256 blockHash) =>

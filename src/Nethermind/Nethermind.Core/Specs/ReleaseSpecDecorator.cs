@@ -93,6 +93,8 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip7825Enabled => spec.IsEip7825Enabled;
     public bool IsEip7883Enabled => spec.IsEip7883Enabled;
     public virtual bool IsEip7918Enabled => spec.IsEip7918Enabled;
+    public virtual bool IsEip7934Enabled => spec.IsEip7934Enabled;
+    public virtual int Eip7934MaxRlpBlockSize => spec.Eip7934MaxRlpBlockSize;
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
     public virtual bool IsEofEnabled => spec.IsEofEnabled;

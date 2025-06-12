@@ -38,18 +38,26 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
         return blockDb.KeyExists(dbKey);
     }
 
-    public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
+    public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None, NettyRlpStream? encodedBlock = null)
     {
         if (block.Hash is null)
         {
             throw new InvalidOperationException("An attempt to store a block with a null hash.");
         }
 
+        bool allocatedRlpStream = encodedBlock is null;
+
         // if we carry Rlp from the network message all the way here we could avoid encoding back to RLP here
         // Although cpu is the main bottleneck since NettyRlpStream uses pooled memory which avoid unnecessary allocations..
-        using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
+        encodedBlock ??= _blockDecoder.EncodeToNewNettyStream(block);
 
-        blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
+        blockDb.Set(block.Number, block.Hash, encodedBlock.AsSpan(), writeFlags);
+
+        // only dispose if allocated here
+        if (allocatedRlpStream)
+        {
+            encodedBlock.Dispose();
+        }
     }
 
     private static void GetBlockNumPrefixedKey(long blockNumber, Hash256 blockHash, Span<byte> output)
