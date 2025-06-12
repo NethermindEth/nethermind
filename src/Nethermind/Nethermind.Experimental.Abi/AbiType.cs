@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Text;
 using Nethermind.Int256;
 
@@ -231,12 +232,13 @@ public static partial class AbiType
         },
         Write = (ref BinarySpanWriter w, String v) =>
         {
-            Span<byte> buffer = stackalloc byte[Encoding.UTF8.GetByteCount(v)];
-            Encoding.UTF8.GetBytes(v, buffer);
-            int length = buffer.Length;
+            int byteCount = Encoding.UTF8.GetByteCount(v);
+            int byteSize = Math.PadTo32(byteCount);
 
-            UInt256.Write(ref w, (UInt256)length);
-            w.WritePadded(buffer);
+            UInt256.Write(ref w, (UInt256)byteCount);
+
+            var buffer = w.Take(byteSize);
+            Encoding.UTF8.GetBytes(v, buffer);
         },
         Size = v =>
         {
