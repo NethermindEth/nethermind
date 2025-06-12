@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -40,7 +41,8 @@ namespace Nethermind.Trie.Test.Pruning
         private TrieStore CreateTrieStore(
             IPruningStrategy? pruningStrategy = null,
             IKeyValueStoreWithBatching? kvStore = null,
-            IPersistenceStrategy? persistenceStrategy = null
+            IPersistenceStrategy? persistenceStrategy = null,
+            IPruningConfig? pruningConfig = null
         )
         {
             pruningStrategy ??= No.Pruning;
@@ -50,6 +52,10 @@ namespace Nethermind.Trie.Test.Pruning
                 new NodeStorage(kvStore, _scheme, requirePath: _scheme == INodeStorage.KeyScheme.HalfPath),
                 pruningStrategy,
                 persistenceStrategy,
+                pruningConfig ?? new PruningConfig()
+                {
+                    TrackPastKeys = false // Default disable
+                },
                 _logManager);
         }
 
@@ -255,7 +261,7 @@ namespace Nethermind.Trie.Test.Pruning
                 tree.Commit();
             }
 
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 589124 : 659272L);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 545956 : 616104L);
             fullTrieStore.CommittedNodesCount.Should().Be(1349);
         }
 
@@ -606,10 +612,10 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Trie_store_multi_threaded_scenario()
         {
-            using TrieStore trieStore = new(new BadDb(), _logManager);
-            StateTree tree = new(trieStore, _logManager);
-            tree.Set(TestItem.AddressA, Build.A.Account.WithBalance(1000).TestObject);
-            tree.Set(TestItem.AddressB, Build.A.Account.WithBalance(1000).TestObject);
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            IWorldState worldState = worldStateManager.GlobalWorldState;
+            worldState.CreateAccount(TestItem.AddressA, 1000);
+            worldState.CreateAccount(TestItem.AddressB, 1000);
         }
 
         [Test]
@@ -901,7 +907,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void After_commit_should_have_has_root()
         {
             MemDb db = new();
-            TrieStore trieStore = new TrieStore(db, LimboLogs.Instance);
+            TrieStore trieStore = CreateTrieStore(kvStore: db);
             trieStore.HasRoot(Keccak.EmptyTreeHash).Should().BeTrue();
 
             Account account = new(1);
@@ -925,14 +931,19 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 2, 100000),
-                persistenceStrategy: No.Persistence);
+                pruningStrategy: new TestPruningStrategy(true, true),
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 2,
+                    TrackPastKeys = true
+                });
 
             TreePath emptyPath = TreePath.Empty;
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
@@ -955,12 +966,18 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public async Task Will_Trigger_ReorgBoundaryEvent_On_Prune()
         {
+            // TODO: Check why slow
             MemDb memDb = new();
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 2, 100000),
-                persistenceStrategy: No.Persistence);
+                pruningStrategy: new TestPruningStrategy(true, true),
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 2,
+                    Enabled = true
+                });
 
             long reorgBoundary = 0;
             fullTrieStore.ReorgBoundaryReached += (sender, reached) => reorgBoundary = reached.BlockNumber;
@@ -970,7 +987,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
@@ -998,8 +1015,13 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 2, 100000),
-                persistenceStrategy: isPruningPersistenceStrategy);
+                pruningStrategy: new TestPruningStrategy(true, true),
+                persistenceStrategy: isPruningPersistenceStrategy,
+                pruningConfig: new PruningConfig()
+                {
+                    TrackPastKeys = true,
+                    PruningBoundary = 2
+                });
 
             TreePath emptyPath = TreePath.Empty;
             TaskCompletionSource tcs = new TaskCompletionSource();
@@ -1007,7 +1029,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
@@ -1020,7 +1042,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb.Count.Should().Be(61);
             fullTrieStore.Prune();
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 880 : 1088);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 752 : 960);
         }
 
         [Test]
@@ -1030,15 +1052,20 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 2, 100000),
-                persistenceStrategy: No.Persistence);
+                pruningStrategy: new TestPruningStrategy(true, true),
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 2,
+                    TrackPastKeys = true
+                });
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             TreePath emptyPath = TreePath.Empty;
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new byte[2]);
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new SpanSource(new byte[2]));
                 using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
@@ -1064,8 +1091,13 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDbProvider.StateDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 2, 100000),
-                persistenceStrategy: No.Persistence);
+                pruningStrategy: new TestPruningStrategy(true, true),
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 2,
+                    TrackPastKeys = true
+                });
 
             WorldState worldState = new WorldState(
                 fullTrieStore,
@@ -1088,7 +1120,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             (Hash256, ValueHash256) SetupStartingState()
             {
-                WorldState worldState = new WorldState(new TrieStore(nodeStorage, LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
+                WorldState worldState = new WorldState(TestTrieStoreFactory.Build(nodeStorage, LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
                 worldState.StateRoot = Keccak.EmptyTreeHash;
                 worldState.CreateAccountIfNotExists(address, UInt256.One);
                 worldState.Set(new StorageCell(address, slot), TestItem.KeccakB.BytesToArray());
@@ -1111,8 +1143,13 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 64, 100000),
-                persistenceStrategy: isPruningPersistenceStrategy);
+                pruningStrategy: new TestPruningStrategy(true, true),
+                persistenceStrategy: isPruningPersistenceStrategy,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 64,
+                    TrackPastKeys = true
+                });
 
             TreePath emptyPath = TreePath.Empty;
             TaskCompletionSource tcs = new TaskCompletionSource();
@@ -1120,7 +1157,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
@@ -1132,7 +1169,7 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             memDb.Count.Should().Be(0);
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 14080 : 17408);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 12032 : 15360);
 
             fullTrieStore.PersistCache(default);
             memDb.Count.Should().Be(64);

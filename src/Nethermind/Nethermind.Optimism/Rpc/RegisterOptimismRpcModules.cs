@@ -48,6 +48,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.WorldStateManager);
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.Sealer);
+        StepDependencyException.ThrowIfNull(_api.ProtocolsManager);
 
         if (_config.SequencerUrl is null && _logger.IsWarn)
         {
@@ -78,11 +79,14 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
             _api.GasPriceOracle,
             _api.EthSyncingInfo,
             feeHistoryOracle,
+            _api.ProtocolsManager,
             _api.ConfigProvider.GetConfig<IBlocksConfig>().SecondsPerSlot,
             sequencerJsonRpcClient,
             _api.EthereumEcdsa,
             sealer,
             _api.SpecHelper);
+
+        _api.OptimismEthRpcModule = optimismEthModuleFactory.Create();
 
         rpcModuleProvider.RegisterBounded(optimismEthModuleFactory,
             JsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, JsonRpcConfig.Timeout);

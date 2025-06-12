@@ -95,7 +95,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             Hash256 path = stream.DecodeKeccak();
             byte[] value = stream.DecodeByteArray();
 
-            PathWithStorageSlot data = new(path, value);
+            PathWithStorageSlot data = new(in path.ValueHash256, value);
 
             return data;
         }
@@ -118,7 +118,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                     int accountSlotsLength = 0;
 
                     var accountSlots = message.Slots[i];
-                    foreach (PathWithStorageSlot slot in accountSlots)
+                    foreach (ref readonly PathWithStorageSlot slot in accountSlots.AsSpan())
                     {
                         int slotLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
                         accountSlotsLength += Rlp.LengthOfSequence(slotLength);

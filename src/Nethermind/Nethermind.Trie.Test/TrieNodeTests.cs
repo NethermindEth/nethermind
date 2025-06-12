@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -157,7 +158,7 @@ public class TrieNodeTests
             }
 
             TreePath emptyPath = TreePath.Empty;
-            CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+            SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
             TrieNode restoredNode = new(NodeType.Branch, rlp);
 
             for (int childIndex = 0; childIndex < 16; childIndex++)
@@ -184,7 +185,7 @@ public class TrieNodeTests
         trieNode.SetChild(11, ctx.TiniestLeaf);
 
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode decoded = new(NodeType.Unknown, rlp);
         decoded.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
@@ -203,7 +204,7 @@ public class TrieNodeTests
         trieNode.SetChild(11, ctx.HeavyLeaf);
 
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode decoded = new(NodeType.Unknown, rlp);
         decoded.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
@@ -221,7 +222,7 @@ public class TrieNodeTests
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode decoded = new(NodeType.Unknown, rlp);
         decoded.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
@@ -242,7 +243,7 @@ public class TrieNodeTests
         trieNode.SetChild(0, ctx.HeavyLeaf);
 
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode decoded = new(NodeType.Unknown, rlp);
         decoded.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
@@ -272,7 +273,7 @@ public class TrieNodeTests
         TrieNode trieNode = new(NodeType.Branch);
         trieNode[11] = ctx.HeavyLeaf;
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
         TrieNode decoded = new(NodeType.Branch, rlp);
 
         Hash256 getResult = decoded.GetChildHash(11);
@@ -287,7 +288,7 @@ public class TrieNodeTests
 
         trieNode[11] = ctx.TiniestLeaf;
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
         TrieNode decoded = new(NodeType.Branch, rlp);
 
         Hash256 getResult = decoded.GetChildHash(11);
@@ -302,7 +303,7 @@ public class TrieNodeTests
         trieNode[0] = ctx.HeavyLeaf;
         trieNode.Key = new byte[] { 5 };
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
         TrieNode decoded = new(NodeType.Extension, rlp);
 
         Hash256 getResult = decoded.GetChildHash(0);
@@ -317,7 +318,7 @@ public class TrieNodeTests
         trieNode[0] = ctx.TiniestLeaf;
         trieNode.Key = new byte[] { 5 };
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
         TrieNode decoded = new(NodeType.Extension, rlp);
 
         Hash256 getResult = decoded.GetChildHash(0);
@@ -537,7 +538,7 @@ public class TrieNodeTests
         }
 
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = node.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = node.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode restoredNode = new(NodeType.Branch, rlp);
 
@@ -548,14 +549,14 @@ public class TrieNodeTests
     public void Size_of_a_heavy_leaf_is_correct()
     {
         Context ctx = new();
-        Assert.That(ctx.HeavyLeaf.GetMemorySize(false), Is.EqualTo(208));
+        ctx.HeavyLeaf.GetMemorySize(false).Should().Be(208);
     }
 
     [Test]
     public void Size_of_a_tiny_leaf_is_correct()
     {
         Context ctx = new();
-        Assert.That(ctx.TiniestLeaf.GetMemorySize(false), Is.EqualTo(136));
+        ctx.TiniestLeaf.GetMemorySize(false).Should().Be(136);
     }
 
     [Test]
@@ -568,8 +569,8 @@ public class TrieNodeTests
             node.SetChild(i, ctx.AccountLeaf);
         }
 
-        Assert.That(node.GetMemorySize(true), Is.EqualTo(3376));
-        Assert.That(node.GetMemorySize(false), Is.EqualTo(176));
+        node.GetMemorySize(true).Should().Be(3376);
+        node.GetMemorySize(false).Should().Be(176);
     }
 
     [Test]
@@ -591,8 +592,8 @@ public class TrieNodeTests
         trieNode.Key = new byte[] { 1 };
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
-        Assert.That(trieNode.GetMemorySize(true), Is.EqualTo(232));
-        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(96));
+        trieNode.GetMemorySize(true).Should().Be(232);
+        trieNode.GetMemorySize(false).Should().Be(96);
     }
 
     [Test]
@@ -637,7 +638,7 @@ public class TrieNodeTests
     public void Size_of_an_unknown_node_with_full_rlp_is_correct()
     {
         TrieNode trieNode = new(NodeType.Unknown, new byte[7]);
-        trieNode.GetMemorySize(false).Should().Be(112);
+        trieNode.GetMemorySize(false).Should().Be(80);
     }
 
     [Test]
@@ -924,7 +925,7 @@ public class TrieNodeTests
     [Test]
     public void Rlp_is_cloned_when_cloning()
     {
-        ITrieStore fullTrieStore = new TrieStore(new MemDb(), NullLogManager.Instance);
+        ITrieStore fullTrieStore = TestTrieStoreFactory.Build(new MemDb(), NullLogManager.Instance);
         IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
         TrieNode leaf1 = new(NodeType.Leaf);
@@ -955,7 +956,7 @@ public class TrieNodeTests
         trieNode.SetChild(1, leaf1);
         trieNode.SetChild(2, leaf2);
         trieNode.ResolveKey(trieStore, ref emptyPath, true);
-        CappedArray<byte> rlp = trieNode.FullRlp;
+        SpanSource rlp = trieNode.FullRlp;
 
         TrieNode restoredBranch = new(NodeType.Branch, rlp);
 
@@ -979,7 +980,7 @@ public class TrieNodeTests
         }
 
         TreePath emptyPath = TreePath.Empty;
-        CappedArray<byte> rlp = node.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        SpanSource rlp = node.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode restoredNode = new(NodeType.Branch, rlp);
 

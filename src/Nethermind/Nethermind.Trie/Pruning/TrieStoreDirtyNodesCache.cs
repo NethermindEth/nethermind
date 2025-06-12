@@ -280,20 +280,20 @@ internal class TrieStoreDirtyNodesCache
                         if (_logger.IsTrace) LogPersistedNodeRemoval(node);
 
                         Hash256? keccak = (node.Keccak ??= GenerateKeccak(key, node));
-                        RemoveNodeFromCache(key, node);
+                        RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);
                         continue;
                     }
 
                     if (_trieStore.IsNoLongerNeeded(node))
                     {
-                        RemoveNodeFromCache(key, node);
+                        RemoveNodeFromCache(key, node, ref Metrics.PrunedPersistedNodesCount);
                         continue;
                     }
                 }
             }
             else if (_trieStore.IsNoLongerNeeded(node))
             {
-                RemoveNodeFromCache(key, node);
+                RemoveNodeFromCache(key, node, ref Metrics.DeepPrunedPersistedNodesCount);
                 continue;
             }
 
@@ -324,7 +324,7 @@ internal class TrieStoreDirtyNodesCache
             return keccak;
         }
 
-        void RemoveNodeFromCache(in Key key, TrieNode node)
+        void RemoveNodeFromCache(in Key key, TrieNode node, ref long metric)
         {
             if (_logger.IsTrace) LogNodeRemoval(node);
             if (node.Keccak is null)
@@ -332,7 +332,7 @@ internal class TrieStoreDirtyNodesCache
                 ThrowKeccakIsNull(node);
             }
 
-            Metrics.PrunedPersistedNodesCount++;
+            metric++;
 
             Remove(key);
         }
@@ -387,7 +387,7 @@ internal class TrieStoreDirtyNodesCache
             Key key = new Key(address, path, n.Keccak);
             if (wasPersisted.TryAdd(key, true))
             {
-                nodeStorage.Set(address, path, n.Keccak, n.FullRlp);
+                nodeStorage.Set(address, path, n.Keccak, n.FullRlp.Span);
                 n.IsPersisted = true;
                 persistedCount++;
             }

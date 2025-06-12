@@ -19,21 +19,21 @@ public class TestBlockchainUtil(
     IManualBlockProductionTrigger blockProductionTrigger,
     ManualTimestamper timestamper,
     IBlockTree blockTree,
-    ITxPool txPool
-)
+    ITxPool txPool,
+    long slotTime)
 {
     private Task _previousAddBlock = Task.CompletedTask;
 
     public async Task<AcceptTxResult[]> AddBlockDoNotWaitForHead(CancellationToken cancellationToken, params Transaction[] transactions)
     {
         await WaitAsync(_previousAddBlock, "Multiple block produced at once.").ConfigureAwait(false);
-        TaskCompletionSource tcs = new TaskCompletionSource();
+        TaskCompletionSource tcs = new();
         _previousAddBlock = tcs.Task;
 
         Task waitForNewBlock = WaitAsync(WaitForBlockProducerBlockProduced(cancellationToken), "timeout waiting for block producer");
 
         AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
-        timestamper.Add(TimeSpan.FromSeconds(1));
+        timestamper.Add(TimeSpan.FromSeconds(slotTime));
         await blockProductionTrigger.BuildBlock().ConfigureAwait(false);
 
         await waitForNewBlock.ConfigureAwait(false);
@@ -59,7 +59,7 @@ public class TestBlockchainUtil(
             b => true);
     }
 
-    private async Task WaitAsync(Task task, string error)
+    private static async Task WaitAsync(Task task, string error)
     {
         try
         {

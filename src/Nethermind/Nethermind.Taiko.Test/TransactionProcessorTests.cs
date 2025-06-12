@@ -15,6 +15,7 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Collections;
+using Nethermind.Core.Test;
 using Nethermind.Evm;
 using Nethermind.Evm.Test;
 using Nethermind.Taiko.TaikoSpec;
@@ -27,7 +28,7 @@ public class TransactionProcessorTests
     private readonly ISpecProvider _specProvider;
     private readonly IEthereumEcdsa _ethereumEcdsa;
     private TaikoTransactionProcessor? _transactionProcessor;
-    private WorldState? _stateProvider;
+    private IWorldState? _stateProvider;
 
     public TransactionProcessorTests()
     {
@@ -43,15 +44,14 @@ public class TransactionProcessorTests
     {
         _spec.FeeCollector = TestItem.AddressB;
 
-        MemDb stateDb = new();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
         CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TaikoTransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
     }
 
@@ -76,7 +76,8 @@ public class TransactionProcessorTests
             .WithExtraData(extraData)
             .WithBeneficiary(benefeciaryAddress).WithGasLimit(gasLimit).TestObject;
 
-        _transactionProcessor!.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+        _transactionProcessor!.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
+        _transactionProcessor!.Execute(tx, NullTxTracer.Instance);
 
         Assert.Multiple(() =>
         {

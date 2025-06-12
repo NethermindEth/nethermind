@@ -38,6 +38,9 @@ public interface IMetricsConfig : IConfig
     [ConfigItem(Description = "The Prometheus metrics job name.", DefaultValue = "nethermind")]
     string MonitoringJob { get; }
 
-    [ConfigItem(Description = "Enable detailed metric", DefaultValue = "nethermind")]
+    [ConfigItem(Description = "Enable detailed metric", DefaultValue = "false")]
     bool EnableDetailedMetric { get; }
+
+    [ConfigItem(Description = "Enable static label initialization", DefaultValue = "true", HiddenFromDocs = true)]
+    bool InitializeStaticLabels { get; set; }
 }

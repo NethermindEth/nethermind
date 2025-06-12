@@ -355,12 +355,11 @@ public partial class EngineModuleTests
             yield return GetNewBlockRequestBadDataTestCase(static r => r.StateRoot, TestItem.KeccakD);
 
             Bloom bloom = new();
-            bloom.Add(new[]
-            {
+            bloom.Add([
                 Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakG).TestObject
-            });
+            ]);
             yield return GetNewBlockRequestBadDataTestCase(static r => r.LogsBloom, bloom);
-            yield return GetNewBlockRequestBadDataTestCase(static r => r.Transactions, new[] { new byte[] { 1 } });
+            yield return GetNewBlockRequestBadDataTestCase(static r => r.Transactions, [[1]]);
             yield return GetNewBlockRequestBadDataTestCase(static r => r.GasUsed, 1);
         }
     }
@@ -416,8 +415,8 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
-        getPayloadResult.Timestamp = (ulong)chain.BlockTree.Head!.Timestamp - 1;
-        getPayloadResult.TryGetBlock(out Block? block);
+        getPayloadResult.Timestamp = chain.BlockTree.Head!.Timestamp - 1;
+        Block? block = getPayloadResult.TryGetBlock().Block;
         getPayloadResult.BlockHash = block!.Header.CalculateHash();
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
@@ -431,7 +430,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
         getPayloadResult.ReceiptsRoot = TestItem.KeccakA;
-        getPayloadResult.TryGetBlock(out Block? block);
+        Block? block = getPayloadResult.TryGetBlock().Block;
         getPayloadResult.BlockHash = block!.Header.CalculateHash();
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
@@ -1102,7 +1101,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = new();
         executionPayload.SetTransactions(txsSource);
 
-        Transaction[] txsReceived = executionPayload.GetTransactions();
+        Transaction[] txsReceived = executionPayload.TryGetTransactions().Transactions;
 
         txsReceived.Should().BeEquivalentTo(txsSource, static options => options
             .Excluding(static t => t.ChainId)
@@ -1474,7 +1473,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Should_return_capabilities()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()
             .Select(static m => m.Name)
@@ -1514,7 +1513,10 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_getPayloadV3),
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3),
             nameof(IEngineRpcModule.engine_newPayloadV3),
-            nameof(IEngineRpcModule.engine_getBlobsV1)
+            nameof(IEngineRpcModule.engine_getBlobsV1),
+
+            nameof(IEngineRpcModule.engine_getPayloadV4),
+            nameof(IEngineRpcModule.engine_newPayloadV4),
         };
         Assert.That(result, Is.EquivalentTo(expectedMethods));
     }

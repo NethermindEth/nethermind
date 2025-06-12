@@ -3,11 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -16,18 +17,25 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
+using NonBlocking;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class BlockDownloader : ISyncDownloader<BlocksRequest>
+    public class BlockDownloader : IForwardSyncController
     {
-        // This includes both body and receipt
-        public static readonly TimeSpan SyncBatchDownloadTimeUpperBound = TimeSpan.FromMilliseconds(8000);
-        public static readonly TimeSpan SyncBatchDownloadTimeLowerBound = TimeSpan.FromMilliseconds(5000);
+        private static readonly IPeerAllocationStrategy EstimatedAllocationStrategy =
+            BlocksSyncPeerAllocationStrategyFactory.AllocationStrategy;
+
+        private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>() ?? throw new InvalidOperationException();
 
         private readonly IBlockTree _blockTree;
         private readonly IBlockValidator _blockValidator;
@@ -38,8 +46,30 @@ namespace Nethermind.Synchronization.Blocks
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly IFullStateFinder _fullStateFinder;
         private readonly IForwardHeaderProvider _forwardHeaderProvider;
+        private readonly ISyncPeerPool _syncPeerPool;
         private readonly ILogger _logger;
-        protected SyncBatchSize _syncBatchSize;
+
+        // Estimated maximum tx in buffer used to estimate memory limit. Each tx is on average about 1KB.
+        private readonly int _maxTxInBuffer;
+        private const int MinEstimateTxPerBlock = 10;
+
+        // Header lookup need to be limited, because `IForwardHeaderProvider.GetBlockHeaders` can be slow.
+        private const int MaxHeaderLookup = 4 * 1024;
+
+        // This var is updated as blocks get downloaded.
+        private int _estimateTxPerBlock = 100;
+
+        // On the off chance that something goes wrong somewhere, request completely hang for example. Retry
+        // the request.
+        private static readonly TimeSpan RequestHardTimeout = TimeSpan.FromSeconds(30);
+
+        // The forward lookup size determine the buffer size of concurrent download. Estimated from the _maxTxInBuffer
+        // and _estimateTxPerBlock. It is capped because of memory limit and to reduce workload by `_forwardHeaderProvider`.
+        private int HeaderLookupSize => Math.Min(_maxTxInBuffer / _estimateTxPerBlock, MaxHeaderLookup);
+
+        private readonly ConcurrentDictionary<Hash256, BlockEntry> _downloadRequests = new();
+        public int DownloadRequestBufferSize => _downloadRequests.Count;
+        private SemaphoreSlim _requestLock = new(1);
 
         public BlockDownloader(
             IBlockTree? blockTree,
@@ -50,8 +80,9 @@ namespace Nethermind.Synchronization.Blocks
             IBetterPeerStrategy betterPeerStrategy,
             IFullStateFinder fullStateFinder,
             IForwardHeaderProvider forwardHeaderProvider,
-            ILogManager? logManager,
-            SyncBatchSize? syncBatchSize = null)
+            ISyncPeerPool syncPeerPool,
+            ISyncConfig syncConfig,
+            ILogManager? logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -61,10 +92,11 @@ namespace Nethermind.Synchronization.Blocks
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
             _forwardHeaderProvider = forwardHeaderProvider;
+            _syncPeerPool = syncPeerPool;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _maxTxInBuffer = syncConfig.MaxTxInForwardSyncBuffer;
 
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(_specProvider.ChainId), _specProvider);
-            _syncBatchSize = syncBatchSize ?? new SyncBatchSize(logManager);
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
@@ -80,81 +112,57 @@ namespace Nethermind.Synchronization.Blocks
             _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
         }
 
-        private PeerInfo? _previousBestPeer = null;
-
-        public virtual async Task Dispatch(PeerInfo bestPeer, BlocksRequest? blocksRequest, CancellationToken cancellation)
+        public async Task<BlocksRequest?> PrepareRequest(DownloaderOptions options, int fastSyncLag, CancellationToken cancellation)
         {
-            if (blocksRequest is null)
+            await _requestLock.WaitAsync(cancellation);
+            try
             {
-                if (_logger.IsWarn) _logger.Warn($"NULL received for dispatch in {nameof(BlockDownloader)}");
-                return;
+                return await DoPrepareRequest(options, fastSyncLag, cancellation);
             }
-
-            if (!_blockTree.CanAcceptNewBlocks) return;
-
-            if (_previousBestPeer != bestPeer)
+            finally
             {
-                _syncBatchSize.Reset();
+                _requestLock.Release();
             }
-            _previousBestPeer = bestPeer;
-
-            SyncEvent?.Invoke(this, new SyncEventArgs(bestPeer.SyncPeer, Synchronization.SyncEvent.Started));
-
-            if (_logger.IsDebug) _logger.Debug("Downloading bodies");
-            await DownloadBlocks(bestPeer, blocksRequest, cancellation)
-                .ContinueWith(t => HandleSyncRequestResult(t, bestPeer), cancellation);
-            if (_logger.IsDebug) _logger.Debug("Finished downloading bodies");
         }
 
-        private async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
+        private async Task<BlocksRequest?> DoPrepareRequest(DownloaderOptions options, int fastSyncLag, CancellationToken cancellation)
         {
-            if (bestPeer is null)
-            {
-                string message = $"Not expecting best peer to be null inside the {nameof(BlockDownloader)}";
-                if (_logger.IsError) _logger.Error(message);
-                throw new ArgumentNullException(message);
-            }
-
-            DownloaderOptions options = blocksRequest.Options;
             bool originalDownloadReceiptOpts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
             bool originalShouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
 
             int blocksSynced = 0;
-            // pivot number - 6 for uncle validation
-            // long currentNumber = Math.Max(Math.Max(0, pivotNumber - 6), Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             long bestProcessedBlock = 0;
+            long previousStartingHeaderNumber = -1;
 
             while (true)
             {
-                using IOwnedReadOnlyList<BlockHeader?>? headers = await _forwardHeaderProvider.GetBlockHeaders(blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0, _syncBatchSize.Current, cancellation);
-                if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                if (headers is null || headers.Count <= 1) return blocksSynced;
+                using IOwnedReadOnlyList<BlockHeader?>? headers = await _forwardHeaderProvider.GetBlockHeaders(fastSyncLag, HeaderLookupSize + 1, cancellation);
+                if (cancellation.IsCancellationRequested) return null; // check before every heavy operation
+                if (headers is null || headers.Count <= 1) return null;
 
-                (bool shouldProcess, bool downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headers[0].Number, originalShouldProcess, originalDownloadReceiptOpts);
-
-                BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts, _receiptsRecovery);
-                long startTime = Stopwatch.GetTimestamp();
-                await RequestBodies(bestPeer, cancellation, context);
-
-                if (context.DownloadReceipts)
+                if (previousStartingHeaderNumber == headers[0].Number)
                 {
-                    if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                    await RequestReceipts(bestPeer, cancellation, context);
+                    // When the block is suggested right between a `NewPayload` and `ForkChoiceUpdatedHandler` the block is not added because it was added already
+                    // by NP, but it still a beacon block because `FCU` has not happened yet. Causing this situation.
+                    if (_logger.IsDebug) _logger.Debug($"Forward header starting block number did not changed from {previousStartingHeaderNumber}.");
+                    return null;
+                }
+                previousStartingHeaderNumber = headers[0].Number;
+
+                (bool shouldProcess, bool downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headers[1].Number, originalShouldProcess, originalDownloadReceiptOpts);
+
+                using var satisfiedEntry = AssembleSatisfiedEntries(headers, downloadReceipts);
+
+                if (satisfiedEntry.Count == 0)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"No entries satisfied");
+                }
+                else
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Processing {satisfiedEntry.Count} entries from {satisfiedEntry[0]?.Header.Number ?? -1} to {satisfiedEntry[^1]?.Header.Number ?? -1}");
                 }
 
-                AdjustSyncBatchSize(Stopwatch.GetElapsedTime(startTime));
-
-                Block[]? blocks = context.Blocks;
-                TxReceipt[]?[]? receipts = context.ReceiptsForBlocks;
-
-                if (!(blocks?.Length > 0))
-                {
-                    if (_logger.IsTrace)
-                        _logger.Trace("Break early due to no blocks.");
-                    break;
-                }
-
-                for (int blockIndex = 0; blockIndex < context.FullBlocksCount; blockIndex++)
+                for (int blockIndex = 0; blockIndex < satisfiedEntry.Count; blockIndex++)
                 {
                     if (cancellation.IsCancellationRequested)
                     {
@@ -162,9 +170,23 @@ namespace Nethermind.Synchronization.Blocks
                         break;
                     }
 
-                    Block currentBlock = blocks[blockIndex];
-                    PreValidate(bestPeer, context, blockIndex);
-                    if (SuggestBlock(bestPeer, currentBlock, blockIndex == 0, shouldProcess, context.DownloadReceipts, receipts?[blockIndex]))
+                    BlockEntry entry = satisfiedEntry[blockIndex];
+                    Block currentBlock = entry.Block!;
+
+                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, out string? errorMessage))
+                    {
+                        PeerInfo peer = entry.PeerInfo;
+                        if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, {errorMessage}");
+
+                        if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {currentBlock.Header.ToString(BlockHeader.Format.Short)}");
+                        entry.RetryBlockRequest();
+
+                        // At this point, the chain is somehow invalid. `IForwardHeaderProvider` returned a chain whose block
+                        // is interpreted as invalid. `IForwardHeaderProvider` need to provide a different chain later on.
+                        return null;
+                    }
+
+                    if (SuggestBlock(entry.PeerInfo, entry.Block, blockIndex == 0, shouldProcess, downloadReceipts, entry.Receipts))
                     {
                         if (shouldProcess)
                         {
@@ -175,22 +197,280 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 }
 
+                // Should only happen because of a lot of reorg
+                // or if the `HeaderLookupSize` become smaller significantly.
+                if (_downloadRequests.Count > headers.Count * 2)
+                {
+                    PruneRequestMap(headers);
+                }
+
                 if (blocksSynced > 0)
                 {
                     _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
                 }
-                else
+
+                _syncReport.FullSyncBlocksDownloaded.CurrentQueued = _downloadRequests.Count;
+
+                if (satisfiedEntry.Count == 0) // Nothing left to process
+                {
+                    return await AssembleRequest(headers, downloadReceipts, cancellation);
+                }
+            }
+        }
+
+        public void PruneDownloadBuffer()
+        {
+            _downloadRequests.Clear();
+        }
+
+        private void PruneRequestMap(IOwnedReadOnlyList<BlockHeader> currentHeaders)
+        {
+            HashSet<Hash256> currentHeaderHashes = currentHeaders.Select(h => h.Hash).ToHashSet();
+            foreach (var kv in _downloadRequests)
+            {
+                if (!currentHeaderHashes.Contains(kv.Key))
+                {
+                    _downloadRequests.Remove(kv.Key, out _);
+                }
+            }
+        }
+
+        private async Task<BlocksRequest?> AssembleRequest(IOwnedReadOnlyList<BlockHeader> headers, bool shouldDownloadReceipt, CancellationToken cancellation)
+        {
+            bool? bodiesOnly = null; // Otherwise receipts only
+
+            ArrayPoolList<BlockHeader> receiptsToDownload = new ArrayPoolList<BlockHeader>(headers.Count);
+            ArrayPoolList<BlockHeader> bodiesToDownload = new ArrayPoolList<BlockHeader>(headers.Count);
+
+            int bodiesRequestSize =
+                (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
+                ?? GethSyncLimits.MaxBodyFetch;
+            int receiptsRequestSize =
+                (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
+                ?? GethSyncLimits.MaxReceiptFetch;
+
+            BlockHeader parentHeader = headers[0];
+            foreach (var blockHeader in headers.Skip(1))
+            {
+                BlockEntry? entry;
+                while (!_downloadRequests.TryGetValue(blockHeader.Hash!, out entry))
+                {
+                    blockHeader.MaybeParent ??= new WeakReference<BlockHeader>(parentHeader);
+                    _downloadRequests.TryAdd(blockHeader.Hash, new BlockEntry(parentHeader, blockHeader, null, null, null));
+                }
+                parentHeader = blockHeader;
+
+                if ((bodiesOnly ?? true) && entry.NeedBodyDownload)
+                {
+                    entry.MarkBlockRequestSent();
+                    bodiesToDownload.Add(blockHeader);
+                    bodiesOnly = true;
+                }
+
+                if (
+                    shouldDownloadReceipt &&
+                    !(bodiesOnly ?? false) &&
+                    entry.NeedReceiptDownload)
+                {
+                    entry.MarkReceiptRequestSent();
+                    receiptsToDownload.Add(blockHeader);
+                    bodiesOnly = false;
+                }
+
+                if (bodiesToDownload.Count >= bodiesRequestSize)
+                {
+                    break;
+                }
+                if (receiptsToDownload.Count >= receiptsRequestSize)
                 {
                     break;
                 }
             }
 
-            return blocksSynced;
+            if (_logger.IsTrace) _logger.Trace($"Assembled request of {bodiesToDownload.Count} bodies and {receiptsToDownload.Count} receipts.");
+
+            if (receiptsToDownload.Count + bodiesToDownload.Count == 0)
+            {
+                bodiesToDownload.Dispose();
+                receiptsToDownload.Dispose();
+                return null;
+            }
+
+            return new BlocksRequest()
+            {
+                BodiesRequests = bodiesToDownload,
+                ReceiptsRequests = receiptsToDownload,
+            };
+        }
+
+        private ArrayPoolList<BlockEntry> AssembleSatisfiedEntries(IOwnedReadOnlyList<BlockHeader?> headers, bool shouldDownloadReceipt)
+        {
+            ArrayPoolList<BlockEntry>? satisfiedEntry = null;
+            try
+            {
+                satisfiedEntry = new ArrayPoolList<BlockEntry>(headers.Count);
+                foreach (var blockHeader in headers.Skip(1))
+                {
+                    if (blockHeader is null) break;
+                    if (!_downloadRequests.TryGetValue(blockHeader.Hash, out BlockEntry blockEntry)) break;
+                    if (blockEntry.Block is null) break;
+                    if (shouldDownloadReceipt && !blockEntry.HasReceipt) break;
+
+                    satisfiedEntry.Add(blockEntry);
+                    _downloadRequests.Remove(blockHeader.Hash, out _);
+                }
+
+                return satisfiedEntry;
+            }
+            catch
+            {
+                satisfiedEntry?.Dispose();
+                throw;
+            }
+        }
+
+        public SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo? peer)
+        {
+            using var _ = response;
+            BlockBody[]? bodies = response.OwnedBodies?.Bodies;
+            response.OwnedBodies?.Disown();
+
+            SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
+            using ArrayPoolList<Block> blocks = new ArrayPoolList<Block>(response.BodiesRequests?.Count ?? 0);
+            int bodiesCount = 0;
+            int receiptsCount = 0;
+
+            for (int i = 0; i < response.BodiesRequests.Count; i++)
+            {
+                BlockHeader header = response.BodiesRequests[i];
+                if (!_downloadRequests.TryGetValue(header.Hash, out BlockEntry entry))
+                {
+                    continue;
+                }
+
+                if ((bodies?.Length ?? 0) <= i)
+                {
+                    entry.RetryBlockRequest();
+                    continue;
+                }
+
+                BlockBody? body = bodies[i];
+                if (body is null)
+                {
+                    entry.RetryBlockRequest();
+                    continue;
+                }
+
+                if (!_blockValidator.ValidateBodyAgainstHeader(entry.Header, body, out string errorMessage))
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Invalid downloaded block from {peer}, {errorMessage}");
+
+                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {entry.Header.ToString(BlockHeader.Format.Short)}");
+                    result = SyncResponseHandlingResult.LesserQuality;
+                    entry.RetryBlockRequest();
+                    continue;
+                }
+
+                Block block = new Block(entry.Header, body);
+
+                if (_logger.IsTrace) _logger.Trace($"Adding block to requests map {entry.Header.Number}");
+                entry.Block = block;
+                entry.PeerInfo = peer;
+                blocks.Add(block);
+                bodiesCount++;
+            }
+
+            if (result == SyncResponseHandlingResult.OK)
+            {
+                if (bodiesCount > 0)
+                {
+                    long txCount = 0;
+                    foreach (var block in blocks)
+                    {
+                        txCount += block.Transactions?.Length ?? 0;
+                    }
+                    _estimateTxPerBlock = (int)Math.Max(txCount / blocks.Count, MinEstimateTxPerBlock);
+                }
+            }
+
+            for (int i = 0; i < response.ReceiptsRequests.Count; i++)
+            {
+                BlockHeader header = response.ReceiptsRequests[i];
+                if (!_downloadRequests.TryGetValue(header.Hash, out BlockEntry entry))
+                {
+                    continue;
+                }
+
+                if ((response.Receipts?.Count ?? 0) <= i)
+                {
+                    entry.RetryReceiptRequest();
+                    continue;
+                }
+
+                TxReceipt[]? receipts = response.Receipts[i];
+                if (receipts is null)
+                {
+                    entry.RetryReceiptRequest();
+                    continue;
+                }
+
+                Block block = entry.Block!;
+
+                if (block is null)
+                {
+                    // Could happen if the buffer is reduced and then reenlarged.
+                    entry.RetryBlockRequest();
+                    entry.RetryReceiptRequest();
+                    continue;
+                }
+
+                if (_receiptsRecovery.TryRecover(block, receipts, false) == ReceiptsRecoveryResult.Fail)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Recovery failure from {peer} for block {header.ToString(BlockHeader.Format.Short)}");
+                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "receipt recovery failed");
+                    result = SyncResponseHandlingResult.LesserQuality;
+                    entry.RetryReceiptRequest();
+                    continue;
+                }
+                if (!ValidateReceiptsRoot(block, receipts))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Invalid receipt root from {peer} for block {header.ToString(BlockHeader.Format.Short)}");
+
+                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid receipt root");
+                    result = SyncResponseHandlingResult.LesserQuality;
+                    entry.RetryReceiptRequest();
+                    continue;
+                }
+
+                if (_logger.IsTrace) _logger.Trace($"Adding receipts to requests map {entry.Header.Number}");
+                entry.Receipts = receipts;
+                entry.PeerInfo = peer;
+                receiptsCount++;
+            }
+
+            if (result == SyncResponseHandlingResult.OK)
+            {
+                // Request and body does not have the same size so this hueristic is wrong.
+                if (bodiesCount + receiptsCount == 0)
+                {
+                    // Trigger sleep
+                    result = SyncResponseHandlingResult.LesserQuality;
+                }
+            }
+
+            HandleSyncRequestResult(response.DownloadTask, peer);
+
+            return result;
+        }
+
+        private bool ValidateReceiptsRoot(Block block, TxReceipt[] blockReceipts)
+        {
+            Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, _receiptDecoder);
+            return receiptsRoot == block.ReceiptsRoot;
         }
 
         protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
         {
-            if (_logger.IsTrace) _logger.Trace($"BlockDownloader - SuggestBlock {currentBlock}, ShouldProcess: {true}");
             return shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
         }
 
@@ -203,15 +483,11 @@ namespace Nethermind.Synchronization.Blocks
             TxReceipt[]? receipts)
         {
             BlockTreeSuggestOptions suggestOptions = GetSuggestOption(shouldProcess, currentBlock);
+            if (_logger.IsDebug) _logger.Debug($"Suggesting block {currentBlock.Header.ToString(BlockHeader.Format.Short)} with option {suggestOptions}");
             AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
             bool handled = false;
             if (HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult))
             {
-                if (!shouldProcess)
-                {
-                    _blockTree.UpdateMainChain(new[] { currentBlock }, false);
-                }
-
                 if (downloadReceipts)
                 {
                     if (receipts is not null)
@@ -232,7 +508,7 @@ namespace Nethermind.Synchronization.Blocks
 
             if (!shouldProcess)
             {
-                _blockTree.UpdateMainChain(new[] { currentBlock }, false);
+                _blockTree.UpdateMainChain([currentBlock], false);
             }
 
             _forwardHeaderProvider.OnSuggestBlock(suggestOptions, currentBlock, addResult);
@@ -271,128 +547,11 @@ namespace Nethermind.Synchronization.Blocks
             return (shouldProcess, shouldDownloadReceipt);
         }
 
-        private void PreValidate(PeerInfo bestPeer, BlockDownloadContext blockDownloadContext, int blockIndex)
-        {
-            Block currentBlock = blockDownloadContext.Blocks[blockIndex];
-            if (_logger.IsTrace) _logger.Trace($"Received {currentBlock} from {bestPeer}");
-
-            if (currentBlock.IsBodyMissing)
-            {
-                throw new EthSyncException($"{bestPeer} didn't send body for block {currentBlock.ToString(Block.Format.Short)}.");
-            }
-
-            // can move this to block tree now?
-            if (!_blockValidator.ValidateSuggestedBlock(currentBlock, out string? errorMessage))
-            {
-                string message = InvalidBlockHelper.GetMessage(currentBlock, $"invalid block sent by peer. {errorMessage}") +
-                                 $" PeerInfo {bestPeer}";
-                if (_logger.IsWarn) _logger.Warn(message);
-                throw new EthSyncException(message);
-            }
-
-            if (blockDownloadContext.DownloadReceipts)
-            {
-                TxReceipt[]? contextReceiptsForBlock = blockDownloadContext.ReceiptsForBlocks![blockIndex];
-                if (currentBlock.Header.HasTransactions && contextReceiptsForBlock is null)
-                {
-                    throw new EthSyncException($"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
-                }
-            }
-        }
-
-        private ValueTask DownloadFailHandler<T>(Task<T> downloadTask, string entities)
-        {
-            if (downloadTask.IsFaulted)
-            {
-                if (downloadTask.HasTimeoutException())
-                {
-                    if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Failed to retrieve {entities} when synchronizing (Timeout)", downloadTask.Exception);
-                    _syncBatchSize.Shrink();
-                }
-
-                if (downloadTask.Exception is not null)
-                {
-                    _ = downloadTask.GetAwaiter().GetResult(); // trying to throw with stack trace
-                }
-            }
-
-            return default;
-        }
-
-        private async Task RequestBodies(PeerInfo peer, CancellationToken cancellation, BlockDownloadContext context)
-        {
-            int offset = 0;
-            while (offset != context.NonEmptyBlockHashes.Count)
-            {
-                IReadOnlyList<Hash256> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxBodiesPerRequest());
-                Task<OwnedBlockBodies> getBodiesRequest = peer.SyncPeer.GetBlockBodies(hashesToRequest, cancellation);
-                await getBodiesRequest.ContinueWith(_ => DownloadFailHandler(getBodiesRequest, "bodies"), cancellation);
-
-                using OwnedBlockBodies ownedBlockBodies = getBodiesRequest.Result;
-                ownedBlockBodies.Disown();
-                BlockBody?[] result = ownedBlockBodies.Bodies;
-
-                int receivedBodies = 0;
-                for (int i = 0; i < result.Length; i++)
-                {
-                    if (result[i] is null)
-                    {
-                        break;
-                    }
-                    context.SetBody(i + offset, result[i]);
-                    receivedBodies++;
-                }
-
-                if (receivedBodies == 0)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Peer sent no bodies. Peer: {peer}, Request: {hashesToRequest.Count}");
-                    return;
-                }
-
-                offset += receivedBodies;
-            }
-        }
-
-        private async Task RequestReceipts(PeerInfo peer, CancellationToken cancellation, BlockDownloadContext context)
-        {
-            int offset = 0;
-            while (offset != context.NonEmptyBlockHashes.Count)
-            {
-                IReadOnlyList<Hash256> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxReceiptsPerRequest());
-                Task<IOwnedReadOnlyList<TxReceipt[]>> request = peer.SyncPeer.GetReceipts(hashesToRequest, cancellation);
-                await request.ContinueWith(_ => DownloadFailHandler(request, "receipts"), cancellation);
-
-                using IOwnedReadOnlyList<TxReceipt[]> result = request.Result;
-
-                for (int i = 0; i < result.Count; i++)
-                {
-                    TxReceipt[] txReceipts = result[i];
-                    Block block = context.GetBlockByRequestIdx(i + offset);
-                    if (block.IsBodyMissing)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Found incomplete blocks. {block.Hash}");
-                        return;
-                    }
-                    if (!context.TrySetReceipts(i + offset, txReceipts, out block))
-                    {
-                        throw new EthSyncException($"{peer} {peer.PeerClientType} sent invalid receipts for block {block.ToString(Block.Format.Short)}.");
-                    }
-                }
-
-                if (result.Count == 0)
-                {
-                    throw new EthSyncException("Empty receipts response received");
-                }
-
-                offset += result.Count;
-            }
-        }
-
         private bool HandleAddResult(PeerInfo peerInfo, BlockHeader block, bool isFirstInBatch, AddBlockResult addResult)
         {
             void UpdatePeerInfo(PeerInfo peer, BlockHeader header)
             {
-                if (header.Hash is not null && header.TotalDifficulty is not null && _betterPeerStrategy.Compare(header, peer?.SyncPeer) > 0)
+                if (peer?.SyncPeer is not null && header.Hash is not null && header.TotalDifficulty is not null && _betterPeerStrategy.Compare(header, peer?.SyncPeer) > 0)
                 {
                     peer.SyncPeer.TotalDifficulty = header.TotalDifficulty.Value;
                     peer.SyncPeer.HeadNumber = header.Number;
@@ -468,7 +627,7 @@ namespace Nethermind.Synchronization.Blocks
 #endif
                     }
 
-                    if (peerInfo is not null) // fix this for node data sync
+                    if (peerInfo is not null && !t.HasTimeoutException() && !t.HasCanceledException()) // fix this for node data sync
                     {
                         peerInfo.SyncPeer.Disconnect(DisconnectReason.ForwardSyncFailed, reason);
                         // redirect sync event from block downloader here (move this one inside)
@@ -491,23 +650,44 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        /// <summary>
-        /// Adjust the sync batch size according to how much time it take to download the batch.
-        /// </summary>
-        /// <param name="downloadTime"></param>
-        private void AdjustSyncBatchSize(TimeSpan downloadTime)
+        private record BlockEntry(
+            BlockHeader ParentHeader, // Needed to keep the `MaybeParent` of the `Header` alive.
+            BlockHeader Header,
+            Block? Block,
+            TxReceipt[]? Receipts,
+            PeerInfo? PeerInfo
+        )
         {
-            // We shrink the batch size to prevent timeout. Timeout are wasted bandwidth.
-            if (downloadTime > SyncBatchDownloadTimeUpperBound)
+            public bool HasReceipt => !Header.HasTransactions || Receipts?.Length > 0;
+            private DateTimeOffset _blockRequestDeadline = DateTimeOffset.MinValue;
+            public bool NeedBodyDownload => Block is null && _blockRequestDeadline < DateTimeOffset.Now;
+            public void MarkBlockRequestSent()
             {
-                _syncBatchSize.Shrink();
+                _blockRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
+            }
+            public void RetryBlockRequest()
+            {
+                _blockRequestDeadline = DateTimeOffset.MinValue;
             }
 
-            // We also want as high batch size as we can afford.
-            if (downloadTime < SyncBatchDownloadTimeLowerBound)
+            private DateTimeOffset _receiptRequestDeadline = DateTimeOffset.MinValue;
+            public bool NeedReceiptDownload =>
+                Block is not null &&
+                !HasReceipt &&
+                _receiptRequestDeadline < DateTimeOffset.Now;
+
+            public void MarkReceiptRequestSent()
             {
-                _syncBatchSize.Expand();
+                _receiptRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
             }
+            public void RetryReceiptRequest()
+            {
+                _receiptRequestDeadline = DateTimeOffset.MinValue;
+            }
+
+            public PeerInfo? PeerInfo { get; set; } = PeerInfo;
+            public Block? Block { get; set; } = Block;
+            public TxReceipt[]? Receipts { get; set; } = Receipts;
         }
     }
 }

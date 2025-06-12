@@ -39,7 +39,7 @@ jobs:
       - name: Set Matrix
         id: set-matrix
         run: |
-          matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
+          matrix=$(cat nethermind/scripts/config/testnet-matrix.json)
 
           if [ -n "${{ github.event.inputs.network_filter }}" ]; then
             matrix=$(echo "$matrix" | jq --arg filter "${{ github.event.inputs.network_filter }}" '[.[] | select(.network | contains($filter))]')
@@ -172,11 +172,11 @@ jobs:
             fi
 
             if [[ "$network" == base-* ]]; then
-              extra_param="--base ${{ secrets.BASE_MAINNET_EXTRA_BOOTNODES }}"
+              extra_param="--chain base ${{ secrets.BASE_MAINNET_EXTRA_BOOTNODES }}"
             fi
 
             if [[ "$network" == world-* ]]; then
-              extra_param="--world"
+              extra_param="--chain worldchain"
             fi
 
             stripped_network="${network#base-}"
@@ -269,7 +269,7 @@ jobs:
         env:
           NETWORK: ${{ matrix.config.network }}
         run: |
-          python scripts/waitForSync.py
+          python scripts/wait-for-sync.py
 
       - name: Get Nethermind Debug Logs
         if: ${{ failure() || cancelled() }}

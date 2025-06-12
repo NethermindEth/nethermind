@@ -29,7 +29,7 @@ namespace Nethermind.TxPool
 
         public Transaction[] GetPendingTransactionsBySender(Address address) => [];
 
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender()
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default)
             => new Dictionary<AddressAsKey, Transaction[]>();
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()
@@ -63,7 +63,7 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool TryGetBlobAndProof(byte[] blobVersionedHash,
+        public bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof)
         {
@@ -71,6 +71,17 @@ namespace Nethermind.TxPool
             proof = null;
             return false;
         }
+
+        public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
+            [NotNullWhen(true)] out byte[]? blob,
+            [NotNullWhen(true)] out byte[][]? cellProofs)
+        {
+            blob = null;
+            cellProofs = null;
+            return false;
+        }
+
+        public int GetBlobCounts(byte[][] blobVersionedHashes) => 0;
 
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 

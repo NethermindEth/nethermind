@@ -18,6 +18,7 @@ public enum DisconnectReason : byte
     DuplicatedConnection,
     PeerRemoved,
     TooManyPeers,
+    HardLimitTooManyPeers,
     SessionAlreadyExist,
     ReplacingSessionWithOppositeDirection,
     OppositeDirectionCleanup,
@@ -51,6 +52,7 @@ public enum DisconnectReason : byte
     InvalidHeader,
     InvalidReceiptRoot,
     EthSyncException,
+    InvalidBlockRangeUpdate,
 
     // These are from EthDisconnectReason which does not necessarily used in Nethermind.
     EthDisconnectRequested,
@@ -75,6 +77,7 @@ public static class DisconnectReasonExtension
         return disconnectReason switch
         {
             DisconnectReason.TooManyPeers => EthDisconnectReason.TooManyPeers,
+            DisconnectReason.HardLimitTooManyPeers => EthDisconnectReason.TooManyPeers,
             DisconnectReason.SessionAlreadyExist or DisconnectReason.ReplacingSessionWithOppositeDirection or DisconnectReason.OppositeDirectionCleanup or DisconnectReason.DuplicatedConnection or DisconnectReason.SessionIdAlreadyExists => EthDisconnectReason.AlreadyConnected,
             DisconnectReason.ConnectionClosed or DisconnectReason.OutgoingConnectionFailed => EthDisconnectReason.TcpSubSystemError,
             DisconnectReason.IncompatibleP2PVersion => EthDisconnectReason.IncompatibleP2PVersion,

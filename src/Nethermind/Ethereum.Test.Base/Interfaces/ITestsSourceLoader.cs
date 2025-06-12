@@ -8,5 +8,7 @@ namespace Ethereum.Test.Base.Interfaces
     public interface ITestSourceLoader
     {
         IEnumerable<EthereumTest> LoadTests();
+        IEnumerable<TTestType> LoadTests<TTestType>()
+            where TTestType : EthereumTest;
     }
 }

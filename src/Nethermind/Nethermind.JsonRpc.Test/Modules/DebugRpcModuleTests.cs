@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -42,19 +42,23 @@ public partial class DebugRpcModuleTests
             Blockchain = blockchain;
         }
 
-        public static async Task<Context> Create(ISpecProvider? specProvider = null, bool isAura = false)
+        public static async Task<Context> Create(bool isAura = false)
         {
-            TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
+            TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build();
 
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
             IReceiptsMigration receiptsMigration = Substitute.For<IReceiptsMigration>();
             ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+
+            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+            blockchainBridge.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
+
             var factory = new DebugModuleFactory(
                 blockchain.WorldStateManager,
                 blockchain.DbProvider,
                 blockchain.BlockTree,
                 blockchain.RpcConfig,
-                Substitute.For<IBlockchainBridge>(),
+                blockchainBridge,
                 new BlocksConfig().SecondsPerSlot,
                 blockchain.BlockValidator,
                 blockchain.BlockPreprocessorStep,

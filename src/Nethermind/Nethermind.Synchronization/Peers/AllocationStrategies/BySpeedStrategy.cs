@@ -45,8 +45,6 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             _desiredPeersWithKnownSpeed = desiredPeersWithKnownSpeed;
         }
 
-        public bool CanBeReplaced => false;
-
         public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
             long nullSpeed = _priority ? -1 : long.MaxValue;
@@ -64,7 +62,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             long peerLeft = peerCount;
             foreach (PeerInfo info in peersAsList)
             {
-                (this as IPeerAllocationStrategy).CheckAsyncState(info);
+                info.EnsureInitialized();
 
                 long? speed = nodeStatsManager.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed(_speedType);
                 long averageTransferSpeed = speed ?? 0;

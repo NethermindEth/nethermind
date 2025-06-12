@@ -9,6 +9,7 @@ using DotNetty.Transport.Channels.Sockets;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
@@ -19,20 +20,20 @@ namespace Nethermind.Network.Discovery;
 public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
 {
     private readonly ILogger _logger;
-    private readonly IDiscoveryManager _discoveryManager;
+    private readonly IDiscoveryMsgListener _discoveryMsgListener;
     private readonly IChannel _channel;
     private readonly IMessageSerializationService _msgSerializationService;
     private readonly ITimestamper _timestamper;
 
     public NettyDiscoveryHandler(
-        IDiscoveryManager? discoveryManager,
+        IDiscoveryMsgListener? discoveryManager,
         IChannel? channel,
         IMessageSerializationService? msgSerializationService,
         ITimestamper? timestamper,
         ILogManager? logManager) : base(logManager)
     {
         _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
-        _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
+        _discoveryMsgListener = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
         _channel = channel ?? throw new ArgumentNullException(nameof(channel));
         _msgSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
@@ -107,6 +108,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         }
 
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
+        Metrics.DiscoveryMessagesSent.Increment(discoveryMsg.MsgType);
     }
 
     private bool TryParseMessage(DatagramPacket packet, out DiscoveryMsg? msg)
@@ -175,7 +177,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
 
             // Explicitly run it on the default scheduler to prevent something down the line hanging netty task scheduler.
             Task.Factory.StartNew(
-                () => _discoveryManager.OnIncomingMsg(msg),
+                () => _discoveryMsgListener.OnIncomingMsg(msg),
                 CancellationToken.None,
                 TaskCreationOptions.RunContinuationsAsynchronously,
                 TaskScheduler.Default
@@ -259,6 +261,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", msg.MsgType.ToString(), size);
         }
+        Metrics.DiscoveryMessagesReceived.Increment(msg.MsgType);
     }
 
     public event EventHandler? OnChannelActivated;

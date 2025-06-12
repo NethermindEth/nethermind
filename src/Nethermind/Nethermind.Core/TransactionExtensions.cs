@@ -38,10 +38,10 @@ namespace Nethermind.Core
                     effectiveGasPrice = UInt256.Zero;
                 }
 
-                return effectiveGasPrice * (ulong)tx.GasLimit + tx.Value;
+                return effectiveGasPrice * (ulong)tx.GasLimit + tx.ValueRef;
             }
 
-            return tx.GasPrice * (ulong)tx.GasLimit + tx.Value;
+            return tx.GasPrice * (ulong)tx.GasLimit + tx.ValueRef;
         }
 
         public static UInt256 CalculateEffectiveGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
@@ -79,13 +79,7 @@ namespace Nethermind.Core
             return item != null;
         }
 
-        public static ulong GetBlobGas(this Transaction tx)
-        {
-            return (uint)tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
-        }
-        public static int GetBlobCount(this Transaction tx)
-        {
-            return tx.BlobVersionedHashes?.Length ?? 0;
-        }
+        public static ulong GetBlobGas(this Transaction tx) => (uint)tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
+        public static int GetBlobCount(this Transaction tx) => tx.BlobVersionedHashes?.Length ?? 0;
     }
 }

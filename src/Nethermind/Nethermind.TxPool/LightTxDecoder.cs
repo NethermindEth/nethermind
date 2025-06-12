@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -14,15 +14,15 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.SenderAddress)
                + Rlp.LengthOf(tx.Nonce)
                + Rlp.LengthOf(tx.Hash)
-               + Rlp.LengthOf(tx.Value)
+               + Rlp.LengthOf(in tx.ValueRef)
                + Rlp.LengthOf(tx.GasLimit)
                + Rlp.LengthOf(tx.GasPrice)
                + Rlp.LengthOf(tx.DecodedMaxFeePerGas)
                + Rlp.LengthOf(tx.MaxFeePerBlobGas!.Value)
                + Rlp.LengthOf(tx.BlobVersionedHashes!)
                + Rlp.LengthOf(tx.PoolIndex)
-               + Rlp.LengthOf(tx.GetLength());
-
+               + Rlp.LengthOf(tx.GetLength())
+               + Rlp.LengthOf(sizeof(byte));
     }
 
     public static byte[] Encode(Transaction tx)
@@ -33,7 +33,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         rlpStream.Encode(tx.SenderAddress);
         rlpStream.Encode(tx.Nonce);
         rlpStream.Encode(tx.Hash);
-        rlpStream.Encode(tx.Value);
+        rlpStream.Encode(in tx.ValueRef);
         rlpStream.Encode(tx.GasLimit);
         rlpStream.Encode(tx.GasPrice);
         rlpStream.Encode(tx.DecodedMaxFeePerGas);
@@ -41,6 +41,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         rlpStream.Encode(tx.BlobVersionedHashes!);
         rlpStream.Encode(tx.PoolIndex);
         rlpStream.Encode(tx.GetLength());
+        rlpStream.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
 
         return rlpStream.Data.ToArray()!;
     }
@@ -60,6 +61,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             rlpStream.DecodeUInt256(),
             rlpStream.DecodeByteArrays(),
             rlpStream.DecodeUlong(),
-            rlpStream.DecodeInt());
+            rlpStream.DecodeInt(),
+            rlpStream.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)rlpStream.ReadByte() : default);
     }
 }

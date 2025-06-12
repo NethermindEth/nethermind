@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -23,6 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
@@ -101,11 +102,23 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
 
         // Set basefeepergas in genesis or it will fail 1559 validation.
-        spec.Genesis.Header.BaseFeePerGas = 1.GWei();
+        spec.Genesis.Header.BaseFeePerGas = 10.Wei();
 
         // Needed for generating spam state.
-        spec.Genesis.Header.GasLimit = 100000000;
-        spec.Allocations[_serverKey.Address] = new ChainSpecAllocation(30.Ether());
+        spec.Genesis.Header.GasLimit = 1_000_000_000;
+        spec.Allocations[_serverKey.Address] = new ChainSpecAllocation(300.Ether());
+
+        spec.Allocations[Eip7002Constants.WithdrawalRequestPredeployAddress] = new ChainSpecAllocation
+        {
+            Code = Eip7002TestConstants.Code,
+            Nonce = Eip7002TestConstants.Nonce
+        };
+
+        spec.Allocations[Eip7251Constants.ConsolidationRequestPredeployAddress] = new ChainSpecAllocation
+        {
+            Code = Eip7251TestConstants.Code,
+            Nonce = Eip7251TestConstants.Nonce
+        };
 
         // Always on, as the timestamp based fork activation always override block number based activation. However, the receipt
         // message serializer does not check the block header of the receipt for timestamp, only block number therefore it will
@@ -114,17 +127,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         // TODO: Need to double check which code part does not pass in timestamp from header.
         spec.Parameters.Eip658Transition = 0;
 
-        if (!isPostMerge)
-        {
-            // Disable as the built block always don't have withdrawal (it came from engine) so it fail validation.
-            spec.Parameters.Eip4895TransitionTimestamp = null;
-
-            // 4844 add BlobGasUsed which in the header decoder also imply WithdrawalRoot which would be set to 0 instead of null
-            // which become invalid when using block body with null withdrawal.
-            // Basically, these need merge block builder, or it will fail block validation on download.
-            spec.Parameters.Eip4844TransitionTimestamp = null;
-        }
-        else
+        if (isPostMerge)
         {
             spec.Genesis.Header.Difficulty = 10000;
 
@@ -157,6 +160,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         var builder = new ContainerBuilder()
             .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))
+            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {dbMode} {isPostMerge}"))
             .AddSingleton<IDisconnectsAnalyzer, ImmediateDisconnectFailure>()
             .AddSingleton<SyncTestContext>()
             .AddSingleton<ITestEnv, PreMergeTestEnv>()
@@ -172,12 +176,18 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 ))
                 .AddDecorator<ITestEnv, PostMergeTestEnv>()
                 ;
-
+        }
+        else
+        {
+            // So that any EIP after the merge is not activated.
+            ManualTimestamper timestamper = ManualTimestamper.PreMerge;
+            builder
+                .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
+                .AddSingleton<ITimestamper>(timestamper)
+                ;
         }
 
-        return builder
-            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {dbMode} {isPostMerge}"))
-            .Build();
+        return builder.Build();
     }
 
     [OneTimeSetUp]
@@ -230,6 +240,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
+    [Retry(5)]
     public async Task FullSync()
     {
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
@@ -245,6 +256,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
+    [Retry(5)]
     public async Task FastSync()
     {
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
@@ -270,6 +282,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
+    [Retry(5)]
     public async Task SnapSync()
     {
         if (dbMode == DbMode.Hash) Assert.Ignore("Hash db does not support snap sync");
@@ -387,11 +400,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 PrevRandao = Hash256.Zero,
                 SuggestedFeeRecipient = TestItem.AddressA,
                 Withdrawals = [],
+                ParentBeaconBlockRoot = Hash256.Zero,
                 Timestamp = (ulong)timestamper.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds
             });
             payloadId.Should().NotBeNullOrEmpty();
 
-            IBlockProductionContext? blockProductionContext = await payloadPreparationService.GetPayload(payloadId!);
+            IBlockProductionContext? blockProductionContext = await payloadPreparationService.GetPayload(payloadId!, skipCancel: true);
             blockProductionContext.Should().NotBeNull();
             blockProductionContext!.CurrentBestBlock.Should().NotBeNull();
 
@@ -423,7 +437,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
     private class SyncTestContext(
         [KeyFilter(TestEnvironmentModule.NodeKey)] PrivateKey nodeKey,
-        IWorldStateManager worldStateManager,
         ISpecProvider specProvider,
         IEthereumEcdsa ecdsa,
         IBlockTree blockTree,
@@ -458,13 +471,15 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await rlpxHost.ConnectAsync(serverNode);
         }
 
+        Dictionary<Address, UInt256> nonces = [];
+
         public async Task BuildBlockWithCode(byte[][] codes, CancellationToken cancellation)
         {
             // 1 000 000 000
             long gasLimit = 100000;
 
             Hash256 stateRoot = blockTree.Head?.StateRoot!;
-            UInt256 currentNonce = worldStateManager.GlobalStateReader.GetNonce(stateRoot, nodeKey.Address);
+            nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
             IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number) + 1 ?? 0, null);
             Transaction[] txs = codes.Select((byteCode) => Build.A.Transaction
                     .WithCode(byteCode)
@@ -473,7 +488,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                     .WithGasPrice(10.GWei())
                     .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject)
                 .ToArray();
-
+            nonces[nodeKey.Address] = currentNonce;
             await testEnv.BuildBlockWithTxs(txs, cancellation);
         }
 

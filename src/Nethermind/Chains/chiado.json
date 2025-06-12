@@ -83,27 +83,24 @@
     "transactionPermissionContract": "0x4000000000000000000000000000000000000001",
     "transactionPermissionContractTransition": "0x0",
     "terminalTotalDifficulty": "231707791542740786049188744689299064356246512",
-    "eip2537TransitionTimestamp": "0x67C96E4C",
-    "eip2935TransitionTimestamp": "0x67C96E4C",
-    "eip6110TransitionTimestamp": "0x67C96E4C",
-    "eip7002TransitionTimestamp": "0x67C96E4C",
-    "eip7251TransitionTimestamp": "0x67C96E4C",
-    "eip7623TransitionTimestamp": "0x67C96E4C",
-    "eip7702TransitionTimestamp": "0x67C96E4C",
-    "eip4844FeeCollectorTransitionTimestamp": "0x67C96E4C",
+    "eip2537TransitionTimestamp": "0x67c96e4c",
+    "eip2935TransitionTimestamp": "0x67c96e4c",
+    "eip6110TransitionTimestamp": "0x67c96e4c",
+    "eip7002TransitionTimestamp": "0x67c96e4c",
+    "eip7251TransitionTimestamp": "0x67c96e4c",
+    "eip7623TransitionTimestamp": "0x67c96e4c",
+    "eip7702TransitionTimestamp": "0x67c96e4c",
+    "eip4844FeeCollectorTransitionTimestamp": "0x67c96e4c",
     "depositContractAddress": "0xb97036A26259B7147018913bD58a774cf91acf25",
-    "blobSchedule": {
-      "cancun": {
-        "target": 1,
-        "max": 2,
-        "baseFeeUpdateFraction": "0x10fafa"
-      },
-      "prague": {
+    "blobSchedule": [
+      {
+        "name": "cancun",
+        "timestamp": "0x65ba8e4c",
         "target": 1,
         "max": 2,
         "baseFeeUpdateFraction": "0x10fafa"
       }
-    }
+    ]
   },
   "genesis": {
     "seal": {

@@ -22,7 +22,7 @@ namespace Nethermind.Api
 {
     public interface IBasicApi
     {
-        DisposableStack DisposeStack { get; }
+        IDisposableStack DisposeStack { get; }
 
         IAbiEncoder AbiEncoder { get; }
         [SkipServiceCollection]
@@ -33,13 +33,14 @@ namespace Nethermind.Api
         ICryptoRandom CryptoRandom { get; }
         IDbProvider? DbProvider { get; set; }
         IDbFactory? DbFactory { get; set; }
-        IEthereumEcdsa? EthereumEcdsa { get; set; }
+        IEthereumEcdsa EthereumEcdsa { get; }
         [SkipServiceCollection]
         IJsonSerializer EthereumJsonSerializer { get; }
         IFileSystem FileSystem { get; set; }
         IKeyStore? KeyStore { get; set; }
         [SkipServiceCollection]
         ILogManager LogManager { get; }
+        [SkipServiceCollection]
         IProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         [SkipServiceCollection]
@@ -60,8 +61,5 @@ namespace Nethermind.Api
 
         public IEnumerable<IConsensusWrapperPlugin> GetConsensusWrapperPlugins() =>
             Plugins.OfType<IConsensusWrapperPlugin>().Where(static p => p.Enabled);
-
-        public IEnumerable<ISynchronizationPlugin> GetSynchronizationPlugins() =>
-            Plugins.OfType<ISynchronizationPlugin>();
     }
 }

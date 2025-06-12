@@ -98,7 +98,8 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
     public override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter,
-        Dictionary<Address, AccountOverride>? stateOverride = null)
+        Dictionary<Address, AccountOverride>? stateOverride = null,
+        SearchResult<BlockHeader>? searchResult = null)
     {
         if (call.BlockStateCalls is null)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Must contain BlockStateCalls", ErrorCodes.InvalidParams);
@@ -107,12 +108,12 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                 $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.InvalidInputTooManyBlocks);
 
-        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+        searchResult ??= _blockFinder.SearchForHeader(blockParameter);
 
-        if (searchResult.IsError || searchResult.Object is null)
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(searchResult);
+        if (searchResult.Value.IsError || searchResult.Value.Object is null)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(searchResult.Value);
 
-        BlockHeader header = searchResult.Object.Header;
+        BlockHeader header = searchResult.Value.Object;
 
         if (!_blockchainBridge.HasStateForBlock(header!))
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"No state available for block {header.Hash}",

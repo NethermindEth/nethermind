@@ -7,7 +7,7 @@ using Nethermind.Blockchain.Find;
 
 namespace Nethermind.Blockchain.Filters
 {
-    public interface IFilterStore
+    public interface IFilterStore : IDisposable
     {
         bool FilterExists(int filterId);
         IEnumerable<T> GetFilters<T>() where T : FilterBase;
@@ -24,6 +24,7 @@ namespace Nethermind.Blockchain.Filters
 
         void SaveFilter(FilterBase filter);
         void RemoveFilter(int filterId);
+        void RefreshFilter(int filterId);
         FilterType GetFilterType(int filterId);
 
         event EventHandler<FilterEventArgs> FilterRemoved;

@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -106,6 +107,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewHeadBlock += OnNewHeadBlock;
 
         _stats = new ProcessingStats(stateReader, _logger);
+        _loopCancellationSource = new CancellationTokenSource();
     }
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -159,7 +161,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public void Start()
     {
-        _loopCancellationSource = new CancellationTokenSource();
+        _loopCancellationSource ??= new CancellationTokenSource();
         _recoveryTask = RunRecovery();
         _processorTask = RunProcessing();
     }
@@ -175,7 +177,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
         else
         {
-            _loopCancellationSource?.Cancel();
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _loopCancellationSource);
             _recoveryQueue.Writer.TryComplete();
             _blockQueue.Writer.TryComplete();
         }
@@ -212,7 +214,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Reader.Count} blocks waiting in the queue.");
         _lastProcessedBlock = DateTime.UtcNow;
-        await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(_loopCancellationSource.Token))
+        await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(CancellationToken))
         {
             try
             {
@@ -253,6 +255,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
+    private CancellationToken CancellationToken
+        => _loopCancellationSource?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken;
+
     private async Task RunProcessing()
     {
         _isMainProcessingThread.Value = IsMainProcessor;
@@ -279,7 +284,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         FireProcessingQueueEmpty();
 
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
-        await foreach (BlockRef blockRef in _blockQueue.Reader.ReadAllAsync(_loopCancellationSource.Token))
+        await foreach (BlockRef blockRef in _blockQueue.Reader.ReadAllAsync(CancellationToken))
         {
             using var handle = Thread.CurrentThread.BoostPriorityHighest();
             // Have block, switch off background GC timer
@@ -297,7 +302,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
                 _stats.Start();
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), out string? error);
+                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
 
                 if (processedBlock is null)
                 {
@@ -343,10 +348,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     int IBlockProcessingQueue.Count => _queueCount;
 
-    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer) =>
-        Process(suggestedBlock, options, tracer, out _);
+    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default) =>
+        Process(suggestedBlock, options, tracer, token, out _);
 
-    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, out string? error)
+    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error)
     {
         error = null;
         if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
@@ -375,7 +380,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
         _stopwatch.Restart();
-        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, out error);
+        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error);
         _stopwatch.Stop();
         if (processedBlocks is null)
         {
@@ -441,15 +446,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     processingBranch.BlocksToProcess,
                     options,
                     blockTracer);
+                BlockTraceDumper.LogDiagnosticTrace(blockTracer, processingBranch.BlocksToProcess, _logger);
             }
             catch (InvalidBlockException ex)
             {
                 BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlock.Hash!, _logger);
-                Metrics.BadBlocks++;
-                if (ex.InvalidBlock.IsByNethermindNode())
-                {
-                    Metrics.BadBlocksByNethermindNodes++;
-                }
             }
             catch (Exception ex)
             {
@@ -458,7 +459,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
-    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, out string? error)
+    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error)
     {
         void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Hash256 invalidBlockHash)
         {
@@ -480,7 +481,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 processingBranch.Root,
                 processingBranch.BlocksToProcess,
                 options,
-                tracer);
+                tracer,
+                token);
             error = null;
         }
         catch (InvalidBlockException ex)
@@ -491,6 +493,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Block? invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
             if (invalidBlock is not null)
             {
+                Metrics.BadBlocks++;
+                if (ex.InvalidBlock.IsByNethermindNode())
+                {
+                    Metrics.BadBlocksByNethermindNodes++;
+                }
                 InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
 
                 BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
@@ -539,9 +546,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
         else
         {
-            foreach (Block block in processingBranch.Blocks)
+            foreach (Block block in processingBranch.Blocks.AsSpan())
             {
-                _loopCancellationSource?.Token.ThrowIfCancellationRequested();
+                CancellationToken.ThrowIfCancellationRequested();
 
                 if (block.Hash is not null && _blockTree.WasProcessed(block.Number, block.Hash))
                 {
@@ -557,17 +564,30 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(firstBlock.ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidBlockException(firstBlock, $"Rejected a block from a different fork: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
-                    throw new InvalidBlockException(firstBlock, $"Rejected a block that is orphaned: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
+                    ThrowOrphanedBlock(firstBlock);
                 }
             }
         }
 
-        if (_logger.IsTrace) _logger.Trace($"Processing {blocksToProcess.Count} blocks from state root {processingBranch.Root}");
+        if (_logger.IsTrace) TraceProcessingBlocks(processingBranch, blocksToProcess);
+
         for (int i = 0; i < blocksToProcess.Count; i++)
         {
             /* this can happen if the block was loaded as an ancestor and did not go through the recovery queue */
             _recoveryStep.RecoverData(blocksToProcess[i]);
         }
+
+        // Uncommon logging and throws
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceProcessingBlocks(ProcessingBranch processingBranch, ArrayPoolList<Block> blocksToProcess)
+            => _logger.Trace($"Processing {blocksToProcess.Count} blocks from state root {processingBranch.Root}");
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowOrphanedBlock(Block firstBlock)
+            => throw new InvalidBlockException(firstBlock, $"Rejected a block that is orphaned: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
+
     }
 
     private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
@@ -579,12 +599,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         Block toBeProcessed = suggestedBlock;
         long iterations = 0;
+        bool isTrace = _logger.IsTrace;
         do
         {
             iterations++;
             if (iterations > MaxBranchSize)
             {
-                throw new InvalidOperationException($"Maximum size of branch reached ({MaxBranchSize}). This is unexpected.");
+                ThrowMaxBranchSizeReached();
             }
 
             if (!options.ContainsFlag(ProcessingOptions.Trace))
@@ -592,7 +613,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 blocksToBeAddedToMain.Add(toBeProcessed);
             }
 
-            if (_logger.IsTrace) _logger.Trace($"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
+            if (isTrace) TraceProcessingBlock(suggestedBlock, toBeProcessed);
             if (toBeProcessed.IsGenesis)
             {
                 break;
@@ -613,13 +634,15 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 break;
             }
 
-            if (_logger.IsTrace)
-                _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
+            if (isTrace) TraceParentSearch(toBeProcessed);
+
             toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
-            if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
+
+            if (isTrace) TraceParentBlock(toBeProcessed);
+
             if (toBeProcessed is null)
             {
-                if (_logger.IsDebug) _logger.Debug($"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
+                if (_logger.IsDebug) DebugParentNotFound(suggestedBlock);
                 break;
             }
 
@@ -634,20 +657,46 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             branchingCondition =
                 (notFoundTheBranchingPointYet || !hasState)
                 && notInForceProcessing;
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $" Current branching point: " +
-                    $"{branchingPoint.Number}," +
-                    $" {branchingPoint.Hash} " +
-                    $"TD: {branchingPoint.TotalDifficulty} " +
-                    $"Processing conditions " +
-                    $"notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, " +
-                    $"hasState: {hasState}, " +
-                    $"notInForceProcessing: {notInForceProcessing}, ");
+
+            if (isTrace) TraceBranchingConditions(branchingPoint, notFoundTheBranchingPointYet, hasState, notInForceProcessing);
 
         } while (branchingCondition);
 
-        if (_logger.IsTrace)
+        if (isTrace)
+        {
+            TraceBranchingPoint(branchingPoint);
+        }
+
+        Hash256 stateRoot = branchingPoint?.StateRoot;
+        if (isTrace) TraceStateRootLookup(stateRoot);
+
+        if (blocksToBeAddedToMain.Count > 1)
+            blocksToBeAddedToMain.Reverse();
+
+        return new ProcessingBranch(stateRoot, blocksToBeAddedToMain);
+
+        // Uncommon logging and throws
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void DebugParentNotFound(Block suggestedBlock)
+            => _logger.Debug($"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceBranchingConditions(BlockHeader branchingPoint, bool notFoundTheBranchingPointYet, bool hasState, bool notInForceProcessing)
+        {
+            _logger.Trace(
+                $" Current branching point: " +
+                $"{branchingPoint.Number}," +
+                $" {branchingPoint.Hash} " +
+                $"TD: {branchingPoint.TotalDifficulty} " +
+                $"Processing conditions " +
+                $"notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, " +
+                $"hasState: {hasState}, " +
+                $"notInForceProcessing: {notInForceProcessing}, ");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceBranchingPoint(BlockHeader branchingPoint)
         {
             if (branchingPoint is not null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {
@@ -660,10 +709,26 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
         }
 
-        Hash256 stateRoot = branchingPoint?.StateRoot;
-        if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
-        blocksToBeAddedToMain.Reverse();
-        return new ProcessingBranch(stateRoot, blocksToBeAddedToMain);
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceProcessingBlock(Block suggestedBlock, Block toBeProcessed)
+            => _logger.Trace($"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceParentSearch(Block toBeProcessed)
+            => _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceParentBlock(Block toBeProcessed)
+            => _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceStateRootLookup(Hash256 stateRoot)
+            => _logger.Trace($"State root lookup: {stateRoot}");
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowMaxBranchSizeReached()
+            => throw new InvalidOperationException($"Maximum size of branch reached ({MaxBranchSize}). This is unexpected.");
     }
 
     [Todo(Improve.Refactor, "This probably can be made conditional (in DEBUG only)")]
@@ -673,42 +738,67 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (suggestedBlock.Number != 0 &&
             !_blockTree.IsKnownBlock(suggestedBlock.Number - 1, suggestedBlock.ParentHash))
         {
-            if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with unknown parent");
+            if (_logger.IsDebug) LogUnknownParentBlock(suggestedBlock);
             return false;
         }
 
         if (suggestedBlock.Header.TotalDifficulty is null)
         {
+            ThrowUnknownTotalDifficulty(suggestedBlock);
+        }
+
+        if (!options.ContainsFlag(ProcessingOptions.NoValidation) && suggestedBlock.Hash is null)
+        {
+            ThrowUnknownBlockHash(suggestedBlock);
+        }
+
+        BlockHeader[] uncles = suggestedBlock.Uncles;
+        for (int i = 0; i < uncles.Length; i++)
+        {
+            if (uncles[i].Hash is null)
+            {
+                ThrowUnknownUncleHash(suggestedBlock, i);
+            }
+        }
+
+        return true;
+
+        // Uncommon logging and throws
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void LogUnknownParentBlock(Block suggestedBlock)
+            => _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with unknown parent");
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        void ThrowUnknownTotalDifficulty(Block suggestedBlock)
+        {
             if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without total difficulty");
             throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
         }
 
-        if (!options.ContainsFlag(ProcessingOptions.NoValidation) && suggestedBlock.Hash is null)
+        [DoesNotReturn]
+        [StackTraceHidden]
+        void ThrowUnknownBlockHash(Block suggestedBlock)
         {
             if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without calculated hash");
             throw new InvalidOperationException("Block hash should be known at this stage if running in a validating mode");
         }
 
-        for (int i = 0; i < suggestedBlock.Uncles.Length; i++)
+        [DoesNotReturn]
+        [StackTraceHidden]
+        void ThrowUnknownUncleHash(Block suggestedBlock, int i)
         {
-            if (suggestedBlock.Uncles[i].Hash is null)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with null uncle hash ar {i}");
-                throw new InvalidOperationException($"Uncle's {i} hash is null when processing block");
-            }
+            if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with null uncle hash ar {i}");
+            throw new InvalidOperationException($"Uncle's {i} hash is null when processing block");
         }
-
-        return true;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _recoveryComplete = true;
-        _recoveryQueue.Writer.TryComplete();
-        _blockQueue.Writer.TryComplete();
-        _loopCancellationSource?.Dispose();
         _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
+        await StopAsync(processRemainingBlocks: false);
     }
 
     [DebuggerDisplay("Root: {Root}, Length: {BlocksToProcess.Count}")]

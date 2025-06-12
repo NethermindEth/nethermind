@@ -16,6 +16,6 @@ public class IstanbulBlockChainTests : BlockchainTestBase
     private static IEnumerable<BlockchainTest> LoadTests()
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests/istanbul");
-        return loader.LoadTests().Cast<BlockchainTest>();
+        return loader.LoadTests<BlockchainTest>();
     }
 }

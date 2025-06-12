@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -18,7 +21,7 @@ namespace Nethermind.Consensus.Processing
     /// <summary>
     /// Not thread safe.
     /// </summary>
-    public class ReadOnlyChainProcessingEnv : IDisposable
+    public class ReadOnlyChainProcessingEnv : IAsyncDisposable
     {
         private readonly BlockchainProcessor _blockProcessingQueue;
         public IBlockProcessor BlockProcessor { get; }
@@ -65,15 +68,14 @@ namespace Nethermind.Consensus.Processing
                 transactionsExecutor,
                 scope.WorldState,
                 receiptStorage,
-                scope.TransactionProcessor,
                 new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
                 new BlockhashStore(specProvider, scope.WorldState),
-                logManager);
+                logManager,
+                new WithdrawalProcessor(scope.WorldState, logManager),
+                new ExecutionRequestsProcessor(scope.TransactionProcessor)
+            );
         }
 
-        public void Dispose()
-        {
-            _blockProcessingQueue?.Dispose();
-        }
+        public ValueTask DisposeAsync() => _blockProcessingQueue?.DisposeAsync() ?? default;
     }
 }

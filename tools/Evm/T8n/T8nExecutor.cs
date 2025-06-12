@@ -12,6 +12,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -34,18 +35,14 @@ public static class T8nExecutor
 
         KzgPolynomialCommitments.InitializeAsync();
 
-        IDb stateDb = new MemDb();
-        IDb codeDb = new MemDb();
-
-        TrieStore trieStore = new(stateDb, _logManager);
-        WorldState stateProvider = new(trieStore, codeDb, _logManager);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = worldStateManager.GlobalWorldState;
         CodeInfoRepository codeInfoRepository = new();
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
 
         IVirtualMachine virtualMachine = new VirtualMachine(
             blockhashProvider,
             test.SpecProvider,
-            codeInfoRepository,
             _logManager);
         TransactionProcessor transactionProcessor = new(
             test.SpecProvider,
@@ -76,6 +73,7 @@ public static class T8nExecutor
         blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
         blockReceiptsTracer.StartNewBlockTrace(block);
 
+        virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(block.Header, test.Spec));
         BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor, stateProvider);
         if (test.ParentBeaconBlockRoot is not null)
         {
@@ -102,7 +100,7 @@ public static class T8nExecutor
 
             blockReceiptsTracer.StartNewTxTrace(transaction);
             TransactionResult transactionResult = transactionProcessor
-                .Execute(transaction, new BlockExecutionContext(block.Header, test.Spec), blockReceiptsTracer);
+                .Execute(transaction, blockReceiptsTracer);
             blockReceiptsTracer.EndTxTrace();
 
             transactionExecutionReport.ValidTransactions.Add(transaction);
@@ -149,7 +147,7 @@ public static class T8nExecutor
         return t8NBlockHashProvider;
     }
 
-    private static void ApplyRewards(Block block, WorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
+    private static void ApplyRewards(Block block, IWorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
     {
         var rewardCalculator = new RewardCalculator(specProvider);
         BlockReward[] rewards = rewardCalculator.CalculateRewards(block);

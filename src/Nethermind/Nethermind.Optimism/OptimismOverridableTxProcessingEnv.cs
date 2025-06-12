@@ -17,7 +17,7 @@ public class OptimismOverridableTxProcessingEnv(
     IReadOnlyBlockTree readOnlyBlockTree,
     ISpecProvider specProvider,
     ILogManager logManager,
-    IL1CostHelper l1CostHelper,
+    ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper)
     : OverridableTxProcessingEnv(worldStateManager, readOnlyBlockTree, specProvider, logManager)
 {
@@ -26,7 +26,7 @@ public class OptimismOverridableTxProcessingEnv(
         ArgumentNullException.ThrowIfNull(LogManager);
 
         BlockhashProvider blockhashProvider = new(BlockTree, SpecProvider, StateProvider, LogManager);
-        VirtualMachine virtualMachine = new(blockhashProvider, SpecProvider, CodeInfoRepository, LogManager);
-        return new OptimismTransactionProcessor(SpecProvider, StateProvider, virtualMachine, LogManager, l1CostHelper, opSpecHelper, CodeInfoRepository);
+        VirtualMachine virtualMachine = new(blockhashProvider, SpecProvider, LogManager);
+        return new OptimismTransactionProcessor(SpecProvider, StateProvider, virtualMachine, LogManager, costHelper, opSpecHelper, CodeInfoRepository);
     }
 }
