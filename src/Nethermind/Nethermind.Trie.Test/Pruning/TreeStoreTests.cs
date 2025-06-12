@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -260,7 +261,7 @@ namespace Nethermind.Trie.Test.Pruning
                 tree.Commit();
             }
 
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 589124 : 659272L);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 545956 : 616104L);
             fullTrieStore.CommittedNodesCount.Should().Be(1349);
         }
 
@@ -942,7 +943,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
@@ -986,7 +987,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
@@ -1028,7 +1029,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
@@ -1041,7 +1042,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb.Count.Should().Be(61);
             fullTrieStore.Prune();
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 880 : 1088);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 752 : 960);
         }
 
         [Test]
@@ -1064,7 +1065,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new byte[2]);
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new SpanSource(new byte[2]));
                 using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
@@ -1156,7 +1157,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
@@ -1168,7 +1169,7 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             memDb.Count.Should().Be(0);
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 14080 : 17408);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 12032 : 15360);
 
             fullTrieStore.PersistCache(default);
             memDb.Count.Should().Be(64);
