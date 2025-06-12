@@ -31,27 +31,39 @@ namespace Nethermind.Evm.Precompiles
         {
             try
             {
-                Span<byte> extendedInput = stackalloc byte[96];
-                inputData[..Math.Min(96, inputData.Length)].Span
-                    .CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
-
-                UInt256 baseLength = new(extendedInput[..32], true);
-                UInt256 expLength = new(extendedInput.Slice(32, 32), true);
-                UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
-
-                UInt256 complexity = MultComplexity(UInt256.Max(baseLength, modulusLength));
-
-                byte[] expSignificantBytes = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)UInt256.Min(expLength, 32));
-
-                UInt256 lengthOver32 = expLength <= 32 ? 0 : expLength - 32;
-                UInt256 adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes);
-                UInt256 gas = complexity * UInt256.Max(adjusted, UInt256.One) / 20;
-                return gas > long.MaxValue ? long.MaxValue : (long)gas;
+                return inputData.Length >= 96
+                    ? DataGasCostInternal(inputData.Span.Slice(0, 96), inputData, releaseSpec)
+                    : DataGasCostInternal(inputData, releaseSpec);
             }
             catch (OverflowException)
             {
                 return long.MaxValue;
             }
+        }
+
+        private static long DataGasCostInternal(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        {
+            Span<byte> extendedInput = stackalloc byte[96];
+            inputData[..Math.Min(96, inputData.Length)].Span
+                .CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
+
+            return DataGasCostInternal(extendedInput, inputData, releaseSpec);
+        }
+
+        private static long DataGasCostInternal(ReadOnlySpan<byte> extendedInput, ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        {
+            UInt256 baseLength = new(extendedInput[..32], true);
+            UInt256 expLength = new(extendedInput.Slice(32, 32), true);
+            UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
+
+            UInt256 complexity = MultComplexity(UInt256.Max(baseLength, modulusLength));
+
+            byte[] expSignificantBytes = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)UInt256.Min(expLength, 32));
+
+            UInt256 lengthOver32 = expLength <= 32 ? 0 : expLength - 32;
+            UInt256 adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes);
+            UInt256 gas = complexity * UInt256.Max(adjusted, UInt256.One) / 20;
+            return gas > long.MaxValue ? long.MaxValue : (long)gas;
         }
 
         public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
@@ -75,7 +87,7 @@ namespace Nethermind.Evm.Precompiles
             return (BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength), true);
         }
 
-        private UInt256 MultComplexity(in UInt256 adjustedExponentLength)
+        private static UInt256 MultComplexity(in UInt256 adjustedExponentLength)
         {
             if (adjustedExponentLength <= 64)
             {

@@ -29,16 +29,14 @@ namespace Nethermind.Evm.Precompiles
 
         private readonly byte[] _zero31 = new byte[31];
 
-        [SkipLocalsInit]
         public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.EcRecoverPrecompile++;
+            return inputData.Length >= 128 ? RunInternal(inputData.Span) : RunInternal(inputData);
+        }
 
-            if (inputData.Length == 128)
-            {
-                return RunInternal(inputData.Span);
-            }
-
+        private (byte[], bool) RunInternal(ReadOnlyMemory<byte> inputData)
+        {
             Span<byte> inputDataSpan = stackalloc byte[128];
             inputData.Span[..Math.Min(128, inputData.Length)]
                 .CopyTo(inputDataSpan[..Math.Min(128, inputData.Length)]);

@@ -36,7 +36,6 @@ namespace Nethermind.Crypto
 
         public Address? RecoverAddress(Span<byte> signatureBytes65, Hash256 message) => RecoverAddress(signatureBytes65[..64], signatureBytes65[64], message.Bytes);
 
-        [SkipLocalsInit]
         public Address? RecoverAddress(Span<byte> signatureBytes64, byte v, Span<byte> message)
         {
             Span<byte> publicKey = stackalloc byte[65];
@@ -50,7 +49,6 @@ namespace Nethermind.Crypto
             return !success ? null : PublicKey.ComputeAddress(publicKey.Slice(1, 64));
         }
 
-        [SkipLocalsInit]
         public bool RecoverAddressRaw(ReadOnlySpan<byte> signatureBytes64, byte v, ReadOnlySpan<byte> message, Span<byte> resultPublicKey65) =>
             SpanSecP256k1.RecoverKeyFromCompact(
                 resultPublicKey65,
