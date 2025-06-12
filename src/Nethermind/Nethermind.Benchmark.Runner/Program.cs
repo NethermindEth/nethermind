@@ -29,6 +29,8 @@ using static Nethermind.Evm.VirtualMachine;
 using Microsoft.Diagnostics.Runtime;
 using BenchmarkDotNet.Columns;
 using Nethermind.Precompiles.Benchmark;
+using System.Threading.Tasks;
+using System.Threading;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -64,7 +66,7 @@ namespace Nethermind.Benchmark.Runner
     {
         public class Options
         {
-            [Option('m', "mode", Default = "full", Required = true, HelpText = "Available modes: full, evm, ilevm, ilevm-weth")]
+            [Option('m', "mode", Default = "full", Required = true, HelpText = "Available modes: full, evm, ilevm, ilevm-weth, evm-weth")]
             public string Mode { get; set; }
 
             [Option('b', "bytecode", Required = false, HelpText = "Hex encoded bytecode")]
@@ -96,18 +98,58 @@ namespace Nethermind.Benchmark.Runner
                 case "full":
                     RunFullBenchmark(args);
                     break;
+                case "evm-ilevm":
+                    // spawn a new process to run the EVM and IL EVM benchmarks
+                    RunIlemvBenchmarksInIsolation(); break;
                 case "evm":
                     RunEvmBenchmarks(options.Value);
                     break;
                 case "ilevm":
                     RunIlEvmBenchmarks(options.Value);
                     break;
+                case "weth-bench":
+                    // spawn a new process to run the WETH benchmarks
+                    RunWethBenchmarksInIsolation();
+                    break;
                 case "ilevm-weth":
-                    RunWethIlvmBenchmarks();
+                    RunWethIlvmBenchmarks<VirtualMachine.IsPrecompiling>();
+                    break;
+                case "evm-weth":
+                    RunWethIlvmBenchmarks<VirtualMachine.NotOptimizing>();
                     break;
                 default:
                     throw new Exception("Invalid mode");
             }
+        }
+
+        private static void RunIlemvBenchmarksInIsolation()
+        {
+            var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
+
+            RunIsolatedProcess(exePath, $"-m ilevm -c 0");
+            RunIsolatedProcess(exePath , $"-m ilevm -c 2");
+        }
+
+        private static void RunWethBenchmarksInIsolation()
+        {
+            var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
+
+            RunIsolatedProcess(exePath, $"-m evm-weth  -c 2");
+            RunIsolatedProcess(exePath, $"-m ilevm-weth  -c 2");
+        }
+
+        private static void RunIsolatedProcess(string exePath, string argument)
+        {
+            var process = new System.Diagnostics.Process();
+            process.StartInfo.FileName = exePath;
+            process.StartInfo.Arguments = argument;
+            process.StartInfo.UseShellExecute = true;
+            process.StartInfo.RedirectStandardOutput = false;
+            process.StartInfo.CreateNoWindow = false;
+            process.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
+
+            process.Start();
+            process.WaitForExit();
         }
 
         public static void RunEvmBenchmarks(Options options)
@@ -131,6 +173,8 @@ namespace Nethermind.Benchmark.Runner
                 Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.NAME", options.Name);
                 var summary = BenchmarkRunner.Run<CustomEvmBenchmarks>(new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core90)));
             }
+
+            Thread.Sleep(-1); // Give some time for the benchmark to finish and output to be flushed
         }
 
 
@@ -140,7 +184,7 @@ namespace Nethermind.Benchmark.Runner
 
             if (String.IsNullOrEmpty(options.ByteCode) || String.IsNullOrEmpty(options.Name))
             {
-                BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks), new DashboardConfig(Job.VeryLongRun.WithRuntime(CoreRuntime.Core90)));
+                BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks), new DashboardConfig(Job.LongRun.WithRuntime(CoreRuntime.Core90)));
             }
             else
             {
@@ -154,11 +198,18 @@ namespace Nethermind.Benchmark.Runner
                 Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.Name", options.Name);
                 var summary = BenchmarkRunner.Run<CustomEvmBenchmarks>(new DashboardConfig(Job.VeryLongRun.WithRuntime(CoreRuntime.Core90)));
             }
+
+            Thread.Sleep(-1); // Give some time for the benchmark to finish and output to be flushed
         }
 
-        public static void RunWethIlvmBenchmarks()
+        public static void RunWethIlvmBenchmarks<TIsIlvmEnabled>()
+            where TIsIlvmEnabled : struct, VirtualMachine.IIsOptimizing
         {
-            BenchmarkRunner.Run<WrapedEthBenchmarks>(new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core90)));
+            var config = new DashboardConfig(Job.VeryLongRun.WithRuntime(CoreRuntime.Core90));
+
+            BenchmarkRunner.Run<WrapedEthBenchmarksSetup<TIsIlvmEnabled>>(config);
+
+            Thread.Sleep(-1); // Give some time for the benchmark to finish and output to be flushed
         }
 
         public static void RunFullBenchmark(string[] args)
