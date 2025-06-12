@@ -64,7 +64,7 @@ namespace Nethermind.Evm.Precompiles
             }
 
             Span<byte> publicKey = stackalloc byte[65];
-            if (!_ecdsa.RecoverAddressRaw(inputDataSpan.Slice(64, 64), v, inputDataSpan[..32], publicKey))
+            if (!_ecdsa.RecoverAddressRaw(inputDataSpan.Slice(64, 64), Signature.GetRecoveryId(v), inputDataSpan[..32], publicKey))
             {
                 return ([], true);
             }
