@@ -30,7 +30,7 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
 
     protected abstract byte[] ByteCode { get; }
 
-    private bool UseIlEvm { get; }
+    protected bool UseIlEvm { get; }
 
     private readonly IVMConfig _config;
 
