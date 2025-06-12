@@ -48,12 +48,12 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
         // adding to infinity point has no effect
         if (x.IsInf())
         {
-            return (BlsConst.G1Inf, true);
+            return (inputData[BlsConst.LenG1..].ToArray(), true);
         }
 
         if (y.IsInf())
         {
-            return (BlsConst.G1Inf, true);
+            return (inputData[..BlsConst.LenG1].ToArray(), true);
         }
 
         G1 res = x.Add(y);
