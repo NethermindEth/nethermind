@@ -104,6 +104,13 @@ public ref struct BinarySpanWriter
         return startPosition;
     }
 
+    public Span<byte> Take(int size)
+    {
+        var span = _span[_position..(_position + size)];
+        _position += size;
+        return span;
+    }
+
     public void Scoped<TCtx>(TCtx ctx, BinarySpanWriterAction<TCtx> inner)
     {
         var writer = new BinarySpanWriter(_span[_position..]);

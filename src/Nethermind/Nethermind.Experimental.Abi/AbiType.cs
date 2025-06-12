@@ -18,9 +18,8 @@ public static partial class AbiType
         },
         Write = (ref BinarySpanWriter w, UInt256 v) =>
         {
-            Span<byte> bytes = stackalloc byte[32];
-            v.ToBigEndian(bytes);
-            w.Write(bytes);
+            var output = w.Take(32);
+            v.ToBigEndian(output);
         },
         Size = _ => 32,
     };
