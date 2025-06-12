@@ -35,7 +35,7 @@ public class DbModule : Module
         ConfigureColumnDb<ReceiptsColumns>(builder, DbNames.Receipts);
     }
 
-    private static void ConfigureDb(ContainerBuilder builder, string dbName)
+    public static void ConfigureDb(ContainerBuilder builder, string dbName)
     {
         builder.Register((ctx) =>
             {
