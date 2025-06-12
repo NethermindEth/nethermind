@@ -25,8 +25,6 @@ namespace Nethermind.Evm.Precompiles
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 3000L;
 
-        private readonly EthereumEcdsa _ecdsa = new(BlockchainIds.Mainnet);
-
         private readonly byte[] _zero31 = new byte[31];
 
         public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
@@ -62,7 +60,7 @@ namespace Nethermind.Evm.Precompiles
             }
 
             Span<byte> publicKey = stackalloc byte[65];
-            if (!_ecdsa.RecoverAddressRaw(inputDataSpan.Slice(64, 64), Signature.GetRecoveryId(v), inputDataSpan[..32], publicKey))
+            if (!EthereumEcdsa.RecoverAddressRaw(inputDataSpan.Slice(64, 64), Signature.GetRecoveryId(v), inputDataSpan[..32], publicKey))
             {
                 return ([], true);
             }
