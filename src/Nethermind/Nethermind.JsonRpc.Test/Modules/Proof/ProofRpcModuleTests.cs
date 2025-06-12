@@ -78,7 +78,7 @@ public class ProofRpcModuleTests
             _worldStateManager,
             _readOnlyTxProcessingEnvFactory,
             _blockTree,
-            new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
+            new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), _specProvider, LimboLogs.Instance)),
             receiptStorage,
             _specProvider,
             LimboLogs.Instance);
@@ -222,7 +222,7 @@ public class ProofRpcModuleTests
             _worldStateManager,
             _readOnlyTxProcessingEnvFactory,
             _blockTree,
-            new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
+            new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), _specProvider, LimboLogs.Instance)),
             _receiptFinder,
             _specProvider,
             LimboLogs.Instance);

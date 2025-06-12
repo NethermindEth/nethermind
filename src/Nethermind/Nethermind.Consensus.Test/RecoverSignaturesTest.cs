@@ -41,7 +41,6 @@ public class RecoverSignaturesTest
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         RecoverSignatures sut = new(
             _ecdsa,
-            NullTxPool.Instance,
             specProvider,
             Substitute.For<ILogManager>());
 
@@ -94,7 +93,6 @@ public class RecoverSignaturesTest
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         RecoverSignatures sut = new(
             _ecdsa,
-            txPool,
             specProvider,
             Substitute.For<ILogManager>());
 
