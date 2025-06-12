@@ -120,6 +120,10 @@ namespace Nethermind.Evm.Precompiles
             Metrics.ModExpPrecompile++;
 
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
+            if (ExceedsMaxInputSize(releaseSpec, (uint)baseLength, (uint)expLength, (uint)modulusLength))
+            {
+                return IPrecompile.Failure;
+            }
 
             // if both are 0, then expLength can be huge, which leads to potential buffer to big exception
             if (baseLength == 0 && modulusLength == 0)
