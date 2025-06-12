@@ -31,15 +31,15 @@ public class EraModule : Module
 
             // The admin export/import history method is here
             .RegisterSingletonJsonRpcModule<IEraAdminRpcModule, EraAdminRpcModule>()
-            ;
 
-        builder.RegisterBuildCallback((ctx) =>
-        {
-            IEraConfig eraConfig = ctx.Resolve<IEraConfig>();
-            if (string.IsNullOrWhiteSpace(eraConfig.NetworkName))
+            .AddDecorator<IEraConfig>((ctx, eraConfig) =>
             {
-                eraConfig.NetworkName = BlockchainIds.GetBlockchainName(ctx.Resolve<ISpecProvider>().NetworkId);
-            }
-        });
+                if (string.IsNullOrWhiteSpace(eraConfig.NetworkName))
+                {
+                    eraConfig.NetworkName = BlockchainIds.GetBlockchainName(ctx.Resolve<ISpecProvider>().NetworkId);
+                }
+                return eraConfig;
+            })
+            ;
     }
 }
