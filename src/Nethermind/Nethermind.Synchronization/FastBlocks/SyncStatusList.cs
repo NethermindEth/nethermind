@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <param name="blockExist"></param>
         /// <param name="infos"></param>
         /// <returns></returns>
-        public bool TryGetInfosForBatch(int batchSize, Func<BlockInfo, bool> blockExist, out BlockInfo?[] infos)
+        public bool TryGetInfosForBatch(int batchSize, IBlockDownloadStrategy blockDownloadStrategy, out BlockInfo?[] infos)
         {
             ArrayPoolList<BlockInfo?> workingArray = new(batchSize, batchSize);
             try
@@ -129,15 +129,15 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         if (workingArray[i] is not null)
                         {
-                            if (blockExist(workingArray[i]))
+                            if (blockDownloadStrategy.ShouldDownloadBlock(workingArray[i]))
+                            {
+                                hasNonNull = true;
+                            }
+                            else
                             {
                                 MarkInserted(workingArray[i].BlockNumber);
                                 hasInserted = true;
                                 workingArray[i] = null;
-                            }
-                            else
-                            {
-                                hasNonNull = true;
                             }
                         }
                     });
