@@ -69,7 +69,9 @@ namespace Nethermind.Evm.Precompiles
                 return ([], true);
             }
 
-            return (ValueKeccak.Compute(publicKey.Slice(1, 64)).ToByteArray(), true);
+            byte[] result = ValueKeccak.Compute(publicKey.Slice(1, 64)).ToByteArray();
+            result.AsSpan(0, 12).Clear();
+            return (result, true);
         }
     }
 }
