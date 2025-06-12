@@ -118,7 +118,7 @@ public ref struct BinarySpanWriter
         _position += writer._position;
     }
 
-    public void WriteOffset<TCtx>(int offset, TCtx ctx, BinarySpanWriterAction<TCtx> inner)
+    public void WriteOffset<TCtx>(int offset, in TCtx ctx, BinarySpanWriterAction<TCtx> inner)
     {
         Span<byte> offsetLocation = _span[offset..(offset + 32)];
         var position = (UInt256)_position;
