@@ -41,11 +41,11 @@ public class ReceiptTrie<TReceipt> : PatriciaTrie<TReceipt>
 
         foreach (TReceipt? receipt in receipts)
         {
-            CappedArray<byte> buffer = _decoder.EncodeToCappedArray(receipt, behavior, _bufferPool);
-            CappedArray<byte> keyBuffer = key.EncodeToCappedArray(_bufferPool);
+            SpanSource buffer = _decoder.EncodeToSpanSource(receipt, rlpBehaviors: behavior, bufferPool: _bufferPool);
+            SpanSource keyBuffer = key.EncodeToSpanSource(_bufferPool);
             key++;
 
-            Set(keyBuffer.AsSpan(), buffer);
+            Set(keyBuffer.Span, buffer);
         }
     }
 

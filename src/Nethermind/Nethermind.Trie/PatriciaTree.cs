@@ -332,10 +332,10 @@ namespace Nethermind.Trie
 
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
                 TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
-                ref readonly CappedArray<byte> result = ref Run(ref updatePathTreePath, in CappedArray<byte>.Empty, nibbles, isUpdate: false, startRootHash: rootHash);
+                SpanSource result = Run(ref updatePathTreePath, SpanSource.Empty, nibbles, isUpdate: false, startRootHash: rootHash);
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
 
-                return result.AsSpan();
+                return result.IsNull ? ReadOnlySpan<byte>.Empty : result.Span;
             }
             catch (TrieException e)
             {
@@ -350,9 +350,9 @@ namespace Nethermind.Trie
             try
             {
                 TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
-                CappedArray<byte> result = Run(ref updatePathTreePath, in CappedArray<byte>.Empty, nibbles, false, startRootHash: rootHash,
+                SpanSource result = Run(ref updatePathTreePath, SpanSource.Empty, nibbles, false, startRootHash: rootHash,
                     isNodeRead: true);
-                return result.ToArray() ?? [];
+                return result.ToArray();
             }
             catch (TrieException e)
             {
@@ -374,7 +374,7 @@ namespace Nethermind.Trie
                     [..nibblesCount]; // Slice to exact size;
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
                 TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
-                CappedArray<byte> result = Run(ref updatePathTreePath, in CappedArray<byte>.Empty, nibbles, false, startRootHash: rootHash,
+                SpanSource result = Run(ref updatePathTreePath, SpanSource.Empty, nibbles, false, startRootHash: rootHash,
                     isNodeRead: true);
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
                 return result.ToArray() ?? [];
@@ -430,14 +430,14 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public virtual void Set(ReadOnlySpan<byte> rawKey, byte[] value)
         {
-            Set(rawKey, new CappedArray<byte>(value));
+            Set(rawKey, new SpanSource(value));
         }
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual void Set(ReadOnlySpan<byte> rawKey, in CappedArray<byte> value)
+        public virtual void Set(ReadOnlySpan<byte> rawKey, SpanSource value)
         {
-            if (_logger.IsTrace) Trace(in rawKey, in value);
+            if (_logger.IsTrace) Trace(in rawKey, value);
 
             if (Interlocked.CompareExchange(ref _isWriteInProgress, 1, 0) != 0)
             {
@@ -459,7 +459,7 @@ namespace Nethermind.Trie
                 // lazy stack cleaning after the previous update
                 ClearNodeStack();
                 TreePath updatePathTreePath = TreePath.FromPath(rawKey); // Only used on update.
-                Run(ref updatePathTreePath, in value, nibbles, isUpdate: true);
+                Run(ref updatePathTreePath, value, nibbles, isUpdate: true);
 
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
@@ -468,9 +468,9 @@ namespace Nethermind.Trie
                 Volatile.Write(ref _isWriteInProgress, 0);
             }
 
-            void Trace(in ReadOnlySpan<byte> rawKey, in CappedArray<byte> value)
+            void Trace(in ReadOnlySpan<byte> rawKey, SpanSource value)
             {
-                _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
+                _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.Span.ToHexString(withZeroX: true)}")}");
             }
 
             [DoesNotReturn]
@@ -486,18 +486,18 @@ namespace Nethermind.Trie
         {
             if (value is null)
             {
-                Set(rawKey, in CappedArray<byte>.Empty);
+                Set(rawKey, SpanSource.Empty);
             }
             else
             {
-                CappedArray<byte> valueBytes = new(value.Bytes);
-                Set(rawKey, in valueBytes);
+                SpanSource valueBytes = new(value.Bytes);
+                Set(rawKey, valueBytes);
             }
         }
 
-        private ref readonly CappedArray<byte> Run(
+        private SpanSource Run(
             ref TreePath updatePathTreePath,
-            in CappedArray<byte> updateValue,
+            SpanSource updateValue,
             Span<byte> updatePath,
             bool isUpdate,
             Hash256? startRootHash = null,
@@ -512,9 +512,9 @@ namespace Nethermind.Trie
                 TreePath startingPath = TreePath.Empty;
                 TrieNode startNode = TrieStore.FindCachedOrUnknown(startingPath, startRootHash);
                 ResolveNode(startNode, in traverseContext, in startingPath);
-                return ref startNode.IsBranch ?
-                    ref TraverseBranches(startNode, ref startingPath, traverseContext) :
-                    ref TraverseNode(startNode, traverseContext, ref startingPath);
+                return startNode.IsBranch ?
+                    TraverseBranches(startNode, ref startingPath, traverseContext) :
+                    TraverseNode(startNode, traverseContext, ref startingPath);
             }
             else
             {
@@ -525,20 +525,20 @@ namespace Nethermind.Trie
                     {
                         if (_logger.IsTrace) TraceNewLeaf(in traverseContext);
                         byte[] key = updatePath.ToArray();
-                        RootRef = TrieNodeFactory.CreateLeaf(key, in traverseContext.UpdateValue);
+                        RootRef = TrieNodeFactory.CreateLeaf(key, traverseContext.UpdateValue);
                     }
 
                     if (_logger.IsTrace) TraceNull(in traverseContext);
-                    return ref traverseContext.UpdateValue;
+                    return traverseContext.UpdateValue;
                 }
                 else
                 {
                     TreePath startingPath = TreePath.Empty;
                     ResolveNode(RootRef, in traverseContext, in startingPath);
                     if (_logger.IsTrace) TraceNode(in traverseContext);
-                    return ref RootRef.IsBranch ?
-                        ref TraverseBranches(RootRef, ref startingPath, traverseContext) :
-                        ref TraverseNode(RootRef, traverseContext, ref startingPath);
+                    return RootRef.IsBranch ?
+                        TraverseBranches(RootRef, ref startingPath, traverseContext) :
+                        TraverseNode(RootRef, traverseContext, ref startingPath);
                 }
             }
 
@@ -586,23 +586,23 @@ namespace Nethermind.Trie
             }
         }
 
-        private ref readonly CappedArray<byte> TraverseNode(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
+        private SpanSource TraverseNode(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
         {
             if (_logger.IsTrace) Trace(node, traverseContext);
 
             if (traverseContext.IsNodeRead && traverseContext.RemainingUpdatePathLength == 0)
             {
-                return ref node.FullRlp;
+                return node.FullRlp;
             }
 
             switch (node.NodeType)
             {
                 case NodeType.Extension:
-                    return ref TraverseExtension(node, in traverseContext, ref path);
+                    return TraverseExtension(node, in traverseContext, ref path);
                 case NodeType.Leaf:
-                    return ref TraverseLeaf(node, in traverseContext, ref path);
+                    return TraverseLeaf(node, in traverseContext, ref path);
                 default:
-                    return ref TraverseInvalid(node);
+                    return TraverseInvalid(node);
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
@@ -613,36 +613,36 @@ namespace Nethermind.Trie
 
             [DoesNotReturn]
             [StackTraceHidden]
-            static ref readonly CappedArray<byte> TraverseInvalid(TrieNode node)
+            static SpanSource TraverseInvalid(TrieNode node)
             {
                 switch (node.NodeType)
                 {
                     case NodeType.Branch:
-                        return ref TraverseBranch(node);
+                        return TraverseBranch(node);
                     case NodeType.Unknown:
-                        return ref TraverseUnknown(node);
+                        return TraverseUnknown(node);
                     default:
-                        return ref ThrowNotSupported(node);
+                        return ThrowNotSupported(node);
                 }
             }
 
             [DoesNotReturn]
             [StackTraceHidden]
-            static ref readonly CappedArray<byte> TraverseBranch(TrieNode node)
+            static SpanSource TraverseBranch(TrieNode node)
             {
                 throw new InvalidOperationException($"Branch node {node.Keccak} should already be handled");
             }
 
             [DoesNotReturn]
             [StackTraceHidden]
-            static ref readonly CappedArray<byte> TraverseUnknown(TrieNode node)
+            static SpanSource TraverseUnknown(TrieNode node)
             {
                 throw new InvalidOperationException($"Cannot traverse unresolved node {node.Keccak}");
             }
 
             [DoesNotReturn]
             [StackTraceHidden]
-            static ref readonly CappedArray<byte> ThrowNotSupported(TrieNode node)
+            static SpanSource ThrowNotSupported(TrieNode node)
             {
                 throw new NotSupportedException($"Unknown node type {node.NodeType}");
             }
@@ -891,13 +891,13 @@ namespace Nethermind.Trie
                 => throw new InvalidOperationException($"An attempt to set a null node as a child of the {node}");
         }
 
-        private ref readonly CappedArray<byte> TraverseBranches(TrieNode node, scoped ref TreePath path, TraverseContext traverseContext)
+        private SpanSource TraverseBranches(TrieNode node, scoped ref TreePath path, TraverseContext traverseContext)
         {
             while (true)
             {
                 if (traverseContext.RemainingUpdatePathLength == 0)
                 {
-                    return ref ResolveBranchNode(node, in traverseContext);
+                    return ResolveBranchNode(node, in traverseContext);
                 }
 
                 int childIdx = traverseContext.UpdatePath[traverseContext.CurrentIndex];
@@ -910,7 +910,7 @@ namespace Nethermind.Trie
 
                 if (childNode is null)
                 {
-                    return ref ResolveCurrent(in traverseContext);
+                    return ResolveCurrent(in traverseContext);
                 }
 
                 ResolveNode(childNode, in traverseContext, in path);
@@ -918,7 +918,7 @@ namespace Nethermind.Trie
                 traverseContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + 1);
                 if (!childNode.IsBranch)
                 {
-                    return ref TraverseNode(childNode, in traverseContext, ref path);
+                    return TraverseNode(childNode, in traverseContext, ref path);
                 }
 
                 // Traverse next branch
@@ -926,7 +926,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private ref readonly CappedArray<byte> TraverseLeaf(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
+        private SpanSource TraverseLeaf(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
         {
             if (node.Key is null)
             {
@@ -947,17 +947,17 @@ namespace Nethermind.Trie
                 longerPath = remaining;
             }
 
-            ref readonly CappedArray<byte> shorterPathValue = ref Unsafe.NullRef<CappedArray<byte>>();
-            ref readonly CappedArray<byte> longerPathValue = ref Unsafe.NullRef<CappedArray<byte>>();
+            SpanSource shorterPathValue = default;
+            SpanSource longerPathValue = default;
             if (Bytes.AreEqual(shorterPath, node.Key))
             {
-                shorterPathValue = ref node.ValueRef;
-                longerPathValue = ref traverseContext.UpdateValue;
+                shorterPathValue = node.Value;
+                longerPathValue = traverseContext.UpdateValue;
             }
             else
             {
-                shorterPathValue = ref traverseContext.UpdateValue;
-                longerPathValue = ref node.ValueRef;
+                shorterPathValue = traverseContext.UpdateValue;
+                longerPathValue = node.Value;
             }
 
             int extensionLength = shorterPath.CommonPrefixLength(longerPath);
@@ -965,32 +965,32 @@ namespace Nethermind.Trie
             {
                 if (traverseContext.IsNodeRead)
                 {
-                    return ref node.FullRlp;
+                    return node.FullRlp;
                 }
                 if (traverseContext.IsReadValue)
                 {
-                    return ref node.ValueRef;
+                    return node.Value;
                 }
 
                 if (traverseContext.IsDelete)
                 {
                     ConnectNodes(null, in traverseContext);
-                    return ref traverseContext.UpdateValue;
+                    return traverseContext.UpdateValue;
                 }
 
-                if (!Bytes.AreEqual(node.Value, traverseContext.UpdateValue))
+                if (!node.Value.Equals(traverseContext.UpdateValue))
                 {
-                    TrieNode withUpdatedValue = node.CloneWithChangedValue(in traverseContext.UpdateValue);
+                    TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
                     ConnectNodes(withUpdatedValue, in traverseContext);
-                    return ref traverseContext.UpdateValue;
+                    return traverseContext.UpdateValue;
                 }
 
-                return ref traverseContext.UpdateValue;
+                return traverseContext.UpdateValue;
             }
 
             if (traverseContext.IsRead || traverseContext.IsDelete)
             {
-                return ref CappedArray<byte>.Null;
+                return SpanSource.Null;
             }
 
             if (extensionLength != 0)
@@ -1019,10 +1019,10 @@ namespace Nethermind.Trie
             PushToNodeStack(branch, traverseContext.CurrentIndex, longerPath[extensionLength]);
             ConnectNodes(withUpdatedKeyAndValue, in traverseContext);
 
-            return ref traverseContext.UpdateValue;
+            return traverseContext.UpdateValue;
         }
 
-        private ref readonly CappedArray<byte> TraverseExtension(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
+        private SpanSource TraverseExtension(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
         {
             if (node.Key is null)
             {
@@ -1049,14 +1049,14 @@ namespace Nethermind.Trie
 
                 ResolveNode(next, in traverseContext, in path);
                 TraverseContext newContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + extensionLength);
-                return ref next.IsBranch ?
-                    ref TraverseBranches(next, ref path, newContext) :
-                    ref TraverseNode(next, newContext, ref path);
+                return next.IsBranch ?
+                    TraverseBranches(next, ref path, newContext) :
+                    TraverseNode(next, newContext, ref path);
             }
 
             if (traverseContext.IsRead || traverseContext.IsDelete)
             {
-                return ref CappedArray<byte>.Null;
+                return SpanSource.Null;
             }
 
             byte[] pathBeforeUpdate = node.Key;
@@ -1076,7 +1076,7 @@ namespace Nethermind.Trie
             else
             {
                 byte[] remainingPath = remaining[(extensionLength + 1)..].ToArray();
-                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(remainingPath, in traverseContext.UpdateValue);
+                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(remainingPath, traverseContext.UpdateValue);
                 branch.SetChild(remaining[extensionLength], shortLeaf);
             }
 
@@ -1100,64 +1100,64 @@ namespace Nethermind.Trie
             }
 
             ConnectNodes(branch, in traverseContext);
-            return ref traverseContext.UpdateValue;
+            return traverseContext.UpdateValue;
         }
 
-        private ref readonly CappedArray<byte> ResolveCurrent(scoped in TraverseContext traverseContext)
+        private SpanSource ResolveCurrent(scoped in TraverseContext traverseContext)
         {
             if (traverseContext.IsRead || traverseContext.IsDelete)
             {
-                return ref CappedArray<byte>.Null;
+                return default;
             }
 
             int currentIndex = traverseContext.CurrentIndex + 1;
             byte[] leafPath = traverseContext.UpdatePath[
                 currentIndex..].ToArray();
-            TrieNode leaf = TrieNodeFactory.CreateLeaf(leafPath, in traverseContext.UpdateValue);
+            TrieNode leaf = TrieNodeFactory.CreateLeaf(leafPath, traverseContext.UpdateValue);
             ConnectNodes(leaf, in traverseContext);
 
-            return ref traverseContext.UpdateValue;
+            return traverseContext.UpdateValue;
         }
 
-        private ref readonly CappedArray<byte> ResolveBranchNode(TrieNode node, scoped in TraverseContext traverseContext)
+        private SpanSource ResolveBranchNode(TrieNode node, scoped in TraverseContext traverseContext)
         {
             // all these cases when the path ends on the branch assume a trie with values in the branches
             // which is not possible within the Ethereum protocol which has keys of the same length (64)
 
             if (traverseContext.IsNodeRead)
             {
-                return ref node.FullRlp;
+                return node.FullRlp;
             }
             if (traverseContext.IsReadValue)
             {
-                return ref node.ValueRef;
+                return node.Value;
             }
 
             if (traverseContext.IsDelete)
             {
                 if (node.Value.IsNull)
                 {
-                    return ref CappedArray<byte>.Null;
+                    return SpanSource.Null;
                 }
 
                 ConnectNodes(null, in traverseContext);
             }
-            else if (Bytes.AreEqual(traverseContext.UpdateValue, node.Value))
+            else if (traverseContext.UpdateValue.Equals(node.Value))
             {
-                return ref traverseContext.UpdateValue;
+                return traverseContext.UpdateValue;
             }
             else
             {
-                TrieNode withUpdatedValue = node.CloneWithChangedValue(in traverseContext.UpdateValue);
+                TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
                 ConnectNodes(withUpdatedValue, in traverseContext);
             }
 
-            return ref traverseContext.UpdateValue;
+            return traverseContext.UpdateValue;
         }
 
         private readonly ref struct TraverseContext
         {
-            public readonly ref readonly CappedArray<byte> UpdateValue;
+            public readonly SpanSource UpdateValue;
             public readonly ReadOnlySpan<byte> UpdatePath;
             public readonly ref readonly TreePath UpdatePathTreePath;
             public bool IsUpdate { get; }
@@ -1187,14 +1187,14 @@ namespace Nethermind.Trie
             public TraverseContext(
                 Span<byte> updatePath,
                 ref TreePath updatePathTreePath,
-                in CappedArray<byte> updateValue,
+                SpanSource updateValue,
                 bool isUpdate,
                 bool ignoreMissingDelete = true,
                 bool isNodeRead = false)
             {
                 UpdatePath = updatePath;
                 UpdatePathTreePath = ref updatePathTreePath;
-                UpdateValue = ref updateValue.IsNotNull && updateValue.Length == 0 ? ref CappedArray<byte>.Null : ref updateValue;
+                UpdateValue = updateValue.IsNotNull && updateValue.Length == 0 ? SpanSource.Null : updateValue;
                 IsUpdate = isUpdate;
                 CurrentIndex = 0;
                 IsNodeRead = isNodeRead;
