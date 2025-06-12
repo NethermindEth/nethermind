@@ -134,7 +134,10 @@ namespace Nethermind.Evm.Precompiles
             using mpz_t modulusInt = new();
 
             fixed (byte* ptr = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength))
-                Gmp.mpz_import(modulusInt, (nuint)modulusLength, 1, 1, 1, 0, (nint)ptr);
+            {
+                if (ptr is not null)
+                    Gmp.mpz_import(modulusInt, (nuint)modulusLength, 1, 1, 1, 0, (nint)ptr);
+            }
 
             if (Gmp.mpz_sgn(modulusInt) == 0)
             {
@@ -146,10 +149,16 @@ namespace Nethermind.Evm.Precompiles
             using mpz_t powmResult = new();
 
             fixed (byte* ptr = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength))
-                Gmp.mpz_import(baseInt, (nuint)baseLength, 1, 1, 1, 0, (nint)ptr);
+            {
+                if (ptr is not null)
+                    Gmp.mpz_import(baseInt, (nuint)baseLength, 1, 1, 1, 0, (nint)ptr);
+            }
 
             fixed (byte* ptr = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength))
-                Gmp.mpz_import(expInt, (nuint)expLength, 1, 1, 1, 0, (nint)ptr);
+            {
+                if (ptr is not null)
+                    Gmp.mpz_import(expInt, (nuint)expLength, 1, 1, 1, 0, (nint)ptr);
+            }
 
             Gmp.mpz_powm(powmResult, baseInt, expInt, modulusInt);
 
