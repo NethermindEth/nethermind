@@ -9,7 +9,7 @@ using Nethermind.JsonRpc.Modules;
 namespace Nethermind.Taiko.Rpc;
 
 [RpcModule(ModuleType.Eth)]
-public interface ITaikoExtendedEthRpcModule: IRpcModule
+public interface ITaikoExtendedEthRpcModule : IRpcModule
 {
     [JsonRpcMethod(
         Description = "Returns the latest L2 block's corresponding L1 origin.",
