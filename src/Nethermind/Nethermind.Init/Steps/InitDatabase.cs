@@ -52,12 +52,8 @@ namespace Nethermind.Init.Steps
                 bool useReceiptsDb = receiptConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
                 bool useBlobsDb = txPoolConfig.BlobsSupport.IsPersistentStorage();
                 InitDbApi(initConfig, dbConfig, receiptConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
-<<<<<<< feature/async-code-db
-                StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.DbFactory, _api.LogManager, _api.FileSystem);
-=======
                 _api.DisposeStack.Push(_api.DbProvider!);
-                StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.DbFactory, _api.FileSystem);
->>>>>>> master
+                StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.DbFactory, _api.LogManager, _api.FileSystem);
                 await dbInitializer.InitStandardDbsAsync(useReceiptsDb, useBlobsDb);
                 _api.BlobTxStorage = useBlobsDb
                     ? new BlobTxStorage(_api.DbProvider!.BlobTransactionsDb)
