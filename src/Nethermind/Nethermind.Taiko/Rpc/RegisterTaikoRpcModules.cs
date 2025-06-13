@@ -3,12 +3,9 @@
 
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
-using System;
 using Nethermind.Consensus;
 using Nethermind.Init.Steps.Migrations;
 
@@ -25,51 +22,4 @@ public class RegisterTaikoRpcModules : RegisterRpcModules
         _poSSwitcher = poSSwitcher;
     }
 
-    protected override void RegisterEthRpcModule(IRpcModuleProvider rpcModuleProvider)
-    {
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.StateReader);
-        StepDependencyException.ThrowIfNull(_api.TxPool);
-        StepDependencyException.ThrowIfNull(_api.TxSender);
-        StepDependencyException.ThrowIfNull(_api.Wallet);
-        StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
-        StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
-        StepDependencyException.ThrowIfNull(_api.Sealer);
-        StepDependencyException.ThrowIfNull(_api.L1OriginStore);
-        StepDependencyException.ThrowIfNull(_api.ProtocolsManager);
-
-        ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-
-        StepDependencyException.ThrowIfNull(syncConfig);
-
-        FeeHistoryOracle feeHistoryOracle = new(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
-        _api.DisposeStack.Push(feeHistoryOracle);
-
-
-        ModuleFactoryBase<ITaikoRpcModule> ethModuleFactory = new TaikoEthModuleFactory(
-            JsonRpcConfig,
-            _api,
-            _api.BlockTree.AsReadOnly(),
-            _api.ReceiptStorage,
-            _api.StateReader,
-            _api.TxPool,
-            _api.TxSender,
-            _api.Wallet,
-            _api.LogManager,
-            _api.SpecProvider,
-            _api.GasPriceOracle,
-            _api.EthSyncingInfo,
-            feeHistoryOracle,
-            _api.ProtocolsManager,
-            _api.ConfigProvider.GetConfig<IBlocksConfig>().SecondsPerSlot,
-
-            syncConfig,
-            _api.L1OriginStore);
-
-        rpcModuleProvider.RegisterBounded(ethModuleFactory,
-            JsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, JsonRpcConfig.Timeout);
-    }
 }

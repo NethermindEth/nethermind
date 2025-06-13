@@ -86,7 +86,7 @@ public class ParityStyleTracerTests
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor));
 
-        RecoverSignatures txRecovery = new(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, specProvider, LimboLogs.Instance);
+        RecoverSignatures txRecovery = new(new EthereumEcdsa(TestBlockchainIds.ChainId), specProvider, LimboLogs.Instance);
         _processor = new BlockchainProcessor(_blockTree, blockProcessor, txRecovery, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);
 
         Block genesis = Build.A.Block.Genesis.TestObject;

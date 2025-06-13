@@ -231,7 +231,7 @@ public class ProofRpcModuleTests
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddSingleton<ISpecProvider>(_specProvider)
-            .AddSingleton<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, _specProvider, LimboLogs.Instance)))
+            .AddSingleton<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), _specProvider, LimboLogs.Instance)))
             .AddSingleton<IBlockTree>(_blockTree)
             .AddSingleton<IReceiptFinder>(_receiptFinder)
             .AddSingleton<IDbProvider>(_dbProvider)
@@ -868,8 +868,8 @@ public class ProofRpcModuleTests
             // the exception will be thrown if the account did not exist before the call
             try
             {
-                CappedArray<byte> verifyOneProof = ProofVerifier.VerifyOneProof(accountProof.Proof!, block.StateRoot!);
-                new AccountDecoder().Decode(verifyOneProof.AsSpan());
+                SpanSource verifyOneProof = ProofVerifier.VerifyOneProof(accountProof.Proof!, block.StateRoot!);
+                new AccountDecoder().Decode(verifyOneProof.Span);
             }
             catch (Exception)
             {

@@ -110,7 +110,6 @@ public class ReorgTests
             blockProcessor,
             new RecoverSignatures(
                 ecdsa,
-                txPool,
                 specProvider,
                 LimboLogs.Instance),
             stateReader,
