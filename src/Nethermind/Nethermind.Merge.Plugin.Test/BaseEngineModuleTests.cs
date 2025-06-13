@@ -44,6 +44,7 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -150,6 +151,7 @@ public abstract partial class BaseEngineModuleTests
                 invalidChainTracker,
                 chain.BeaconSync,
                 chain.LogManager,
+                new BlockDecoder(),
                 newPayloadTimeout,
                 storeReceipts: true,
                 newPayloadCacheSize),

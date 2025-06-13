@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -44,6 +45,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly LruCache<ValueHash256, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
+    private readonly BlockDecoder _blockDecoder;
 
     private long _lastBlockNumber;
     private long _lastBlockGasLimit;
@@ -59,6 +61,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         IInvalidChainTracker invalidChainTracker,
         IMergeSyncController mergeSyncController,
         ILogManager logManager,
+        BlockDecoder blockDecoder,
         TimeSpan? timeout = null,
         bool storeReceipts = true,
         int cacheSize = 50)
@@ -72,6 +75,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _processingQueue = processingQueue;
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
+        _blockDecoder = blockDecoder;
         _logger = logManager.GetClassLogger();
         _defaultProcessingOptions = storeReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = timeout ?? TimeSpan.FromSeconds(7);
@@ -175,6 +179,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
+            using NettyRlpStream encodedBlock = _blockDecoder.EncodeToNewNettyStream(block);
+            block.EncodedSize = encodedBlock.Length;
+
             if (!_blockValidator.ValidateSuggestedBlock(block, out string? error, validateHashes: false))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"suggested block is invalid, {error}"));
@@ -196,7 +203,10 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             }
 
             _beaconPivot.EnsurePivot(block.Header, true);
-            _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, insertHeaderOptions);
+            _blockTree.Insert(block,
+                BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks,
+                insertHeaderOptions,
+                encodedBlock: encodedBlock);
 
             if (_logger.IsInfo) _logger.Info($"Syncing... Inserting block {block}.");
             return NewPayloadV1Result.Syncing;
@@ -221,7 +231,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
         _mergeSyncController.StopSyncing();
 
-        using var handle = Thread.CurrentThread.BoostPriority();
+        using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block
         (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
 

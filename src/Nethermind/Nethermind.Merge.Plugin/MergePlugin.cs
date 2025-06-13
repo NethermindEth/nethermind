@@ -35,6 +35,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -307,6 +308,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     _invalidChainTracker,
                     beaconSync,
                     _api.LogManager,
+                    new BlockDecoder(),
                     TimeSpan.FromSeconds(mergeConfig.NewPayloadTimeout),
                     _api.Config<IReceiptConfig>().StoreReceipts);
 
