@@ -473,6 +473,10 @@ namespace Nethermind.Serialization.Rlp
             Encode(input.Value.Span);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Encode(in ReadOnlyMemory<byte> input)
+            => Encode(input.Span);
+
         public void Encode(ReadOnlySpan<byte> input)
         {
             if (input.IsEmpty)

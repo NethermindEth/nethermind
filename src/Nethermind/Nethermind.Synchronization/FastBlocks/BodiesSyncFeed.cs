@@ -49,6 +49,8 @@ namespace Nethermind.Synchronization.FastBlocks
             || WithinOldBarrierDefault;
 
         public override bool IsFinished => AllDownloaded;
+        public override string FeedName => nameof(BodiesSyncFeed);
+
         public BodiesSyncFeed(
             ISpecProvider specProvider,
             IBlockTree blockTree,

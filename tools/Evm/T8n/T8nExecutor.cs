@@ -35,11 +35,8 @@ public static class T8nExecutor
 
         KzgPolynomialCommitments.InitializeAsync();
 
-        IDb stateDb = new MemDb();
-        IDb codeDb = new MemDb();
-
-        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, _logManager);
-        WorldState stateProvider = new(trieStore, codeDb, _logManager);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = worldStateManager.GlobalWorldState;
         CodeInfoRepository codeInfoRepository = new();
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
 
@@ -76,11 +73,11 @@ public static class T8nExecutor
         blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
         blockReceiptsTracer.StartNewBlockTrace(block);
 
-        var blkCtx = new BlockExecutionContext(block.Header, test.Spec);
+        virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(block.Header, test.Spec));
         BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor, stateProvider);
         if (test.ParentBeaconBlockRoot is not null)
         {
-            beaconBlockRootHandler.StoreBeaconRoot(block, in blkCtx, test.Spec, storageTxTracer);
+            beaconBlockRootHandler.StoreBeaconRoot(block, test.Spec, storageTxTracer);
         }
 
         int txIndex = 0;
@@ -103,7 +100,7 @@ public static class T8nExecutor
 
             blockReceiptsTracer.StartNewTxTrace(transaction);
             TransactionResult transactionResult = transactionProcessor
-                .Execute(transaction, in blkCtx, blockReceiptsTracer);
+                .Execute(transaction, blockReceiptsTracer);
             blockReceiptsTracer.EndTxTrace();
 
             transactionExecutionReport.ValidTransactions.Add(transaction);
@@ -150,7 +147,7 @@ public static class T8nExecutor
         return t8NBlockHashProvider;
     }
 
-    private static void ApplyRewards(Block block, WorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
+    private static void ApplyRewards(Block block, IWorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
     {
         var rewardCalculator = new RewardCalculator(specProvider);
         BlockReward[] rewards = rewardCalculator.CalculateRewards(block);

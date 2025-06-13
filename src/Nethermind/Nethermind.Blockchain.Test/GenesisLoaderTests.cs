@@ -56,10 +56,8 @@ public class GenesisLoaderTests
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, chainspecPath);
         ChainSpec chainSpec = LoadChainSpec(path);
-        IDb stateDb = new MemDb();
-        IDb codeDb = new MemDb();
-        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
-        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = worldStateManager.GlobalWorldState;
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();

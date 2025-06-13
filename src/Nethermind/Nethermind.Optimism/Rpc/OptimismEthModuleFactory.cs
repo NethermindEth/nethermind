@@ -18,6 +18,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Client;
+using Nethermind.Network;
 
 namespace Nethermind.Optimism.Rpc;
 
@@ -35,6 +36,7 @@ public class OptimismEthModuleFactory(
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
+        IProtocolsManager protocolsManager,
         ulong? secondsPerSlot,
         IJsonRpcClient? sequencerRpcClient,
         IEthereumEcdsa ecdsa,
@@ -59,6 +61,7 @@ public class OptimismEthModuleFactory(
     private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
     private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
     private readonly IOptimismSpecHelper _opSpecHelper = opSpecHelper ?? throw new ArgumentNullException(nameof(opSpecHelper));
+    private readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
 
     public override IOptimismEthRpcModule Create()
     {
@@ -76,6 +79,7 @@ public class OptimismEthModuleFactory(
             _gasPriceOracle,
             _ethSyncingInfo,
             _feeHistoryOracle,
+            _protocolsManager,
             secondsPerSlot,
 
             sequencerRpcClient,

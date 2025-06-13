@@ -15,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
@@ -193,6 +194,12 @@ public class ProtocolsManagerTests
         public Context VerifyInitialized()
         {
             Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
+            return this;
+        }
+
+        public Context VerifyProtocolVersion(string protocol, int version)
+        {
+            Assert.That(_manager.GetHighestProtocolVersion(protocol), Is.EqualTo(version));
             return this;
         }
 
@@ -480,5 +487,16 @@ public class ProtocolsManagerTests
             .VerifyInitialized()
             .ReceiveHelloEth(66)
             .VerifyInitialized();
+    }
+
+    [Test]
+    public void Has_correct_highest_eth_protocol_version()
+    {
+        When
+            .CreateIncomingSession()
+            .ActivateChannel()
+            .Handshake()
+            .Init()
+            .VerifyProtocolVersion(Protocol.Eth, 68);
     }
 }

@@ -5,13 +5,15 @@ using System;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json;
 
-public class BlobScheduleSettings : IComparable<BlobScheduleSettings>
+public record class BlobScheduleSettings : IComparable<BlobScheduleSettings>
 {
     public ulong Timestamp { get; set; }
 
     public ulong Target { get; set; }
 
     public ulong Max { get; set; }
+
+    public ulong? MaxBlobsPerTx { get; set; }
 
     public ulong BaseFeeUpdateFraction { get; set; }
 

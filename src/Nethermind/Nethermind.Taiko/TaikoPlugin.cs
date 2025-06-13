@@ -35,6 +35,7 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
@@ -74,8 +75,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         _blockCacheService = _api.Context.Resolve<IBlockCacheService>();
         _api.FinalizationManager = new ManualBlockFinalizationManager();
 
-        _api.RewardCalculatorSource = NoBlockRewards.Instance;
-        _api.SealValidator = NullSealEngine.Instance;
         _api.GossipPolicy = ShouldNotGossip.Instance;
 
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
@@ -99,10 +98,10 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         _api.L1OriginStore = new(_api.DbProvider.GetDb<IDb>(L1OriginDbName), r1OriginDecoder);
     }
 
-    public async Task InitRpcModules()
+    public Task InitRpcModules()
     {
         if (_api is null)
-            return;
+            return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
@@ -120,12 +119,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_api.EngineRequestsTracker);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
-
-        // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
-        // Then we will wait 5s more to ensure everything is processed
-        while (!_api.BlockProcessingQueue.IsEmpty)
-            await Task.Delay(100);
-        await Task.Delay(5000);
 
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
@@ -196,6 +189,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         _api.RpcModuleProvider.RegisterSingle(engine);
 
         if (_logger.IsInfo) _logger.Info("Taiko Engine Module has been enabled");
+        return Task.CompletedTask;
     }
 
     private static TaikoPayloadPreparationService CreatePayloadPreparationService(TaikoNethermindApi api, IRlpStreamDecoder<Transaction> txDecoder)
@@ -260,7 +254,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         throw new NotSupportedException();
     }
 
-    public IBlockProducer InitBlockProducer(ITxSource? _ = null)
+    public IBlockProducer InitBlockProducer()
     {
         throw new NotSupportedException();
     }
@@ -301,6 +295,9 @@ public class TaikoModule : Module
             .AddSingleton<IUnclesValidator>(Always.Valid)
 
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
+
+            .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>
+                new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))
             ;
     }
 }

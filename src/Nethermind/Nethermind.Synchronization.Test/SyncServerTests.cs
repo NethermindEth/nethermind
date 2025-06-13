@@ -39,6 +39,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test;
 
+// TODO: add tests for new block notification for eth/69
 [Parallelizable(ParallelScope.All)]
 public class SyncServerTests
 {
@@ -428,11 +429,9 @@ public class SyncServerTests
             testSpecProvider,
             new ChainSpec(),
             LimboLogs.Instance);
-        MergeSealEngine sealEngine = new(
-            new SealEngine(new NethDevSealEngine(), Always.Valid),
-            poSSwitcher,
-            new MergeSealValidator(poSSwitcher, Always.Valid),
-            LimboLogs.Instance);
+        MergeSealer mergeSealer = new(new NethDevSealEngine(), poSSwitcher);
+        MergeSealValidator mergeSealValidator = new MergeSealValidator(poSSwitcher, Always.Valid);
+        SealEngine sealEngine = new(mergeSealer, mergeSealValidator);
         HeaderValidator headerValidator = new(
             localBlockTree,
             sealEngine,
@@ -666,6 +665,57 @@ public class SyncServerTests
 
         Assert.That(() => count, Is.EqualTo(expectedPeers).After(5000, 100));
         await Task.WhenAll(peers.Select(p => ((SyncPeerMock)p.SyncPeer).Close()).ToArray());
+    }
+
+    [Test]
+    public void Broadcast_BlockRangeUpdate_when_latest_increased_enough()
+    {
+        Context ctx = new();
+
+        const int frequency = 32;
+        BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
+
+        ctx.SyncServer = new SyncServer(
+            ctx.WorldStateManager,
+            new MemDb(),
+            localBlockTree,
+            NullReceiptStorage.Instance,
+            Always.Valid,
+            Always.Valid,
+            ctx.PeerPool,
+            StaticSelector.Full,
+            new TestSyncConfig(),
+            Policy.FullGossip,
+            MainnetSpecProvider.Instance,
+            LimboLogs.Instance);
+
+        PeerInfo[] peers = Enumerable.Range(0, 3)
+            .Select(_ => Substitute.For<ISyncPeer>())
+            .Select(p => new PeerInfo(p))
+            .ToArray();
+
+        ctx.PeerPool.AllPeers.Returns(peers);
+        ctx.PeerPool.PeerCount.Returns(peers.Length);
+
+        const int blocksCount = 100;
+        var startBlock = (int)localBlockTree.Head!.Number;
+        localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
+
+        var expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
+            .Where(x => x % frequency == 0)
+            .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: x))
+            .ToArray();
+
+        foreach (PeerInfo peerInfo in peers)
+        {
+            Assert.That(
+                () => peerInfo.SyncPeer.ReceivedCalls()
+                    .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
+                    .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
+                    .Select(a => (earliest: a[0], latest: a[1])),
+                Is.EquivalentTo(expectedUpdates).After(5000, 100) // Wait for background notifications to finish
+            );
+        }
     }
 
     [Test]

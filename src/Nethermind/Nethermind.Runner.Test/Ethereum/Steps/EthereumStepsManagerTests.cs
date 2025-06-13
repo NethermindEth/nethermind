@@ -110,6 +110,28 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             await act.Should().ThrowAsync<StepDependencyException>();
         }
 
+        [Test]
+        [CancelAfter(1000)]
+        public async Task With_dependent_step(CancellationToken cancellationToken)
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                new StepInfo(typeof(StepB)),
+                new StepInfo(typeof(StepCStandard)),
+                new StepInfo(typeof(StepE))
+            );
+
+            EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
+            Task initTask = stepsManager.InitializeAll(cancellationToken);
+            await Task.Delay(100, cancellationToken);
+            initTask.IsCompleted.Should().BeFalse();
+
+            container.Resolve<StepB>().WasExecuted.Should().BeFalse();
+            container.Resolve<StepE>().Waiter.SetResult();
+            await initTask;
+
+            container.Resolve<StepB>().WasExecuted.Should().BeTrue();
+        }
+
         private static IContainer CreateNethermindEnvironment(params IEnumerable<StepInfo> stepInfos)
         {
             IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
@@ -144,6 +166,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 .AddSingleton<ChainSpec>(new ChainSpec())
                 .AddSingleton<ISpecProvider>(Substitute.For<ISpecProvider>())
                 .AddSingleton<IProcessExitSource>(Substitute.For<IProcessExitSource>())
+                .AddSingleton<IDisposableStack, AutofacDisposableStack>()
                 .AddSingleton<IEthereumStepsLoader, EthereumStepsLoader>()
                 .AddSingleton<EthereumStepsManager>()
                 .AddSingleton<ILogManager>(LimboLogs.Instance);
@@ -223,8 +246,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     [RunnerStepDependencies(typeof(StepC))]
     public class StepB : IStep
     {
+        public bool WasExecuted = false;
+
         public Task Execute(CancellationToken cancellationToken)
         {
+            WasExecuted = true;
             return Task.CompletedTask;
         }
 
@@ -246,6 +272,17 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         public virtual Task Execute(CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
+        }
+    }
+
+    [RunnerStepDependencies(dependencies: [], dependents: [typeof(StepB)])]
+    public class StepE : IStep
+    {
+        public TaskCompletionSource Waiter = new TaskCompletionSource();
+
+        public virtual Task Execute(CancellationToken cancellationToken)
+        {
+            return Waiter.Task;
         }
     }
 

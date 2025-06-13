@@ -96,6 +96,17 @@ public sealed unsafe partial class VirtualMachine(
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
 
+    private BlockExecutionContext _blockExecutionContext;
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
+    public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
+
+    private TxExecutionContext _txExecutionContext;
+    public ref readonly TxExecutionContext TxExecutionContext => ref _txExecutionContext;
+    /// <summary>
+    /// Transaction context
+    /// </summary>
+    public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
+
     private EvmState _vmState;
     public EvmState EvmState { get => _vmState; private set => _vmState = value; }
     public int SectionIndex { get; set; }
@@ -127,15 +138,11 @@ public sealed unsafe partial class VirtualMachine(
         _txTracer = txTracer;
         _worldState = worldState;
 
-        // Extract the transaction execution context from the EVM environment.
-        ref readonly TxExecutionContext txExecutionContext = ref evmState.Env.TxExecutionContext;
-
         // Prepare the specification and opcode mapping based on the current block header.
-        IReleaseSpec spec = PrepareSpecAndOpcodes<TTracingInst>(
-            txExecutionContext.BlockExecutionContext.Header);
+        IReleaseSpec spec = PrepareSpecAndOpcodes<TTracingInst>(BlockExecutionContext.Header);
 
         // Initialize the code repository and set up the initial execution state.
-        _codeInfoRepository = txExecutionContext.CodeInfoRepository;
+        _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = evmState;
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;

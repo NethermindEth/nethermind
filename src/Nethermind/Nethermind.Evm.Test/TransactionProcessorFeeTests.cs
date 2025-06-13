@@ -27,7 +27,7 @@ public class TransactionProcessorFeeTests
 {
     private TestSpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
-    private TransactionProcessor _transactionProcessor;
+    private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
     private OverridableReleaseSpec _spec;
 
@@ -37,9 +37,8 @@ public class TransactionProcessorFeeTests
         _spec = new(PragueGnosis.Instance);
         _specProvider = new TestSpecProvider(_spec);
 
-        TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
-
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);

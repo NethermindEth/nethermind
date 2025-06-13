@@ -59,4 +59,8 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "null",
         Description = "The current transaction pool state reporting interval, in minutes.")]
     int? ReportMinutes { get; set; }
+
+    [ConfigItem(DefaultValue = "false",
+        Description = "Accept transactions when not synced.")]
+    bool AcceptTxWhenNotSynced { get; set; }
 }

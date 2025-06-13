@@ -62,11 +62,10 @@ public class ParityStyleTracerTests
             .WithSpecProvider(specProvider)
             .TestObject;
 
-        MemDb stateDb = new();
-        MemDb codeDb = new();
-        ITrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance).AsReadOnly();
-        WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
-        _stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
+        IDbProvider dbProvider = TestMemDbProvider.Init();
+        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        _stateReader = worldStateManager.GlobalStateReader;
 
         BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new();
@@ -87,7 +86,7 @@ public class ParityStyleTracerTests
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor));
 
-        RecoverSignatures txRecovery = new(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, specProvider, LimboLogs.Instance);
+        RecoverSignatures txRecovery = new(new EthereumEcdsa(TestBlockchainIds.ChainId), specProvider, LimboLogs.Instance);
         _processor = new BlockchainProcessor(_blockTree, blockProcessor, txRecovery, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);
 
         Block genesis = Build.A.Block.Genesis.TestObject;

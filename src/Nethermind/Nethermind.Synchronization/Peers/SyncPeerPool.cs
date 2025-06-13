@@ -408,7 +408,8 @@ namespace Nethermind.Synchronization.Peers
                     {
                         UpgradeAllocations();
                         // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
-                        if (syncPeer.TotalDifficulty == _blockTree.BestSuggestedHeader?.TotalDifficulty && syncPeer.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
+                        if (syncPeer.TotalDifficulty is { } syncPeerTD && syncPeerTD == _blockTree.BestSuggestedHeader?.TotalDifficulty &&
+                            syncPeer.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
                         {
                             Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash!, BlockTreeLookupOptions.None);
                             if (block is not null) // can be null if fast syncing headers only
@@ -483,7 +484,9 @@ namespace Nethermind.Synchronization.Peers
                     return "LOWEST NUMBER";
                 }
 
-                if (toCompare.TotalDifficulty < currentPeer.TotalDifficulty)
+                if (toCompare.TotalDifficulty is not null &&
+                    currentPeer.TotalDifficulty is not null &&
+                    toCompare.TotalDifficulty < currentPeer.TotalDifficulty)
                 {
                     return "LOWEST DIFFICULTY";
                 }

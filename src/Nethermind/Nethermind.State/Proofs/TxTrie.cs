@@ -29,11 +29,11 @@ public class TxTrie : PatriciaTrie<Transaction>
 
         foreach (Transaction? transaction in list)
         {
-            CappedArray<byte> buffer = _txDecoder.EncodeToCappedArray(transaction, RlpBehaviors.SkipTypedWrapping, _bufferPool);
-            CappedArray<byte> keyBuffer = key.EncodeToCappedArray(_bufferPool);
+            SpanSource buffer = _txDecoder.EncodeToSpanSource(transaction, rlpBehaviors: RlpBehaviors.SkipTypedWrapping, bufferPool: _bufferPool);
+            SpanSource keyBuffer = key.EncodeToSpanSource(_bufferPool);
             key++;
 
-            Set(keyBuffer.AsSpan(), buffer);
+            Set(keyBuffer.Span, buffer);
         }
     }
 

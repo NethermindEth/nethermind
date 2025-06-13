@@ -84,12 +84,13 @@ namespace Nethermind.Network.Test.P2P
         public void On_init_sends_a_hello_message_with_capabilities()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            string[] expectedCapabilities = ["eth66", "eth67", "eth68", "nodedata1"];
+            string[] expectedCapabilities = ["eth66", "eth67", "eth68", "eth69", "nodedata1"];
 
             // These are called by ProtocolsManager.
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 66));
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 67));
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 69));
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.NodeData, 1));
 
             p2PProtocolHandler.Init();

@@ -476,11 +476,9 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(BlobTransactionOrderingTestCases))]
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
-            MemDb stateDb = new();
-            MemDb codeDb = new();
-            TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
-            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
-            StateReader _ = new(TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            IWorldState stateProvider = worldStateManager.GlobalWorldState;
+            IStateReader _ = worldStateManager.GlobalStateReader;
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)

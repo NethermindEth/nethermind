@@ -395,7 +395,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (paymentTx.Data != null && paymentTx.Data.Value.Length != 0)
+        if (paymentTx.Data.Length != 0)
         {
             error = "Proposer payment transaction data is not empty";
             return false;
