@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.State.Repositories;
 
 namespace Nethermind.Blockchain;
 
@@ -220,6 +221,10 @@ public class BlockTreeOverlay : IBlockTree
     public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false) =>
         _overlayTree.DeleteChainSlice(startNumber, endNumber, force);
 
+
+    // public IEnumerable<Block> DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken) =>
+    //     _overlayTree.DeleteBlocksBeforeTimestamp(cutoffTimestamp, cancellationToken);
+
     public bool IsBetterThanHead(BlockHeader? header) => _overlayTree.IsBetterThanHead(header) || _baseTree.IsBetterThanHead(header);
 
     public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint) =>
@@ -261,4 +266,7 @@ public class BlockTreeOverlay : IBlockTree
 
 
     public long GetLowestBlock() => _baseTree.GetLowestBlock();
+
+    public void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256 nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null, bool isOldBlock = false)
+        => _baseTree.DeleteBlock(currentNumber, currentHash, nextHash, batch, currentLevel, isOldBlock);
 }

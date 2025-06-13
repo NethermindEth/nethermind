@@ -41,6 +41,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncPointers _syncPointers;
         private readonly IDb _blocksDb;
+        private readonly BodiesDownloadStrategy _bodiesDownloadStrategy;
 
         private SyncStatusList _syncStatusList;
 
@@ -73,6 +74,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport = syncReport;
             _blocksDb = blocksDb;
             _flushDbInterval = flushDbInterval;
+            _bodiesDownloadStrategy = new(_blockTree, _syncReport);
 
             if (!_syncConfig.FastSync)
             {
@@ -143,12 +145,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, _approximateAllocationStrategy, AllocationContexts.Bodies, token))
                     ?? GethSyncLimits.MaxBodyFetch;
 
-                while (!_syncStatusList.TryGetInfosForBatch(requestSize, (info) =>
-                       {
-                           bool hasBlock = _blockTree.HasBlock(info.BlockNumber, info.BlockHash);
-                           if (hasBlock) _syncReport.FastBlocksBodies.IncrementSkipped();
-                           return hasBlock;
-                       }, out infos))
+                while (!_syncStatusList.TryGetInfosForBatch(requestSize, _bodiesDownloadStrategy, out infos))
                 {
                     token.ThrowIfCancellationRequested();
 
@@ -301,6 +298,16 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             _syncReport.FastBlocksBodies.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
             _syncReport.FastBlocksBodies.CurrentQueued = _syncStatusList.QueueSize;
+        }
+
+        private class BodiesDownloadStrategy(IBlockTree blockTree, ISyncReport syncReport) : IBlockDownloadStrategy
+        {
+            public bool ShouldDownloadBlock(BlockInfo info)
+            {
+                bool hasBlock = blockTree.HasBlock(info.BlockNumber, info.BlockHash);
+                if (hasBlock) syncReport.FastBlocksBodies.IncrementSkipped();
+                return !hasBlock;
+            }
         }
     }
 }

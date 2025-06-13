@@ -87,6 +87,15 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
+        public void RemoveReceipts(Block block)
+        {
+            _receipts.TryRemove(block.Hash, out _);
+            foreach (var tx in block.Transactions)
+            {
+                _transactions.TryRemove(tx.Hash, out _);
+            }
+        }
+
         public long MigratedBlockNumber { get; set; }
 
         public int Count => _transactions.Count;

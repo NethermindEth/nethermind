@@ -51,6 +51,7 @@ using Nethermind.Sockets;
 using Nethermind.Trie;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Facade.Find;
+using Nethermind.Blockchain.HistoryPruning;
 
 namespace Nethermind.Api
 {
@@ -137,6 +138,8 @@ namespace Nethermind.Api
         public IFilterManager? FilterManager { get; set; }
         public IUnclesValidator? UnclesValidator => Context.Resolve<IUnclesValidator>();
         public IGrpcServer? GrpcServer { get; set; }
+        public IHistoryPruner? HistoryPruner { get; set; }
+        // public IHistoryPruner? HistoryPruner => Context.Resolve<IHistoryPruner>();
         public IHeaderValidator? HeaderValidator => Context.Resolve<IHeaderValidator>();
         public IEngineRequestsTracker EngineRequestsTracker => Context.Resolve<IEngineRequestsTracker>();
 
