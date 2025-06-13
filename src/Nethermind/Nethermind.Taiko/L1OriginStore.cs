@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -11,8 +12,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Taiko;
 
-public class L1OriginStore(IDb db, IRlpStreamDecoder<L1Origin> decoder) : IL1OriginStore
+public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, IRlpStreamDecoder<L1Origin> decoder) : IL1OriginStore
 {
+    public const string L1OriginDbName = "L1Origin";
     private const int UInt256BytesLength = 32;
     private static readonly byte[] L1OriginHeadKey = UInt256.MaxValue.ToBigEndian();
 
