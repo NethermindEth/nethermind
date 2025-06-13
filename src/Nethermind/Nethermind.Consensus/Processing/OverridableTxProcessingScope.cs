@@ -10,21 +10,25 @@ namespace Nethermind.Consensus.Processing;
 
 public class OverridableTxProcessingScope : IOverridableTxProcessingScope
 {
-    private readonly IOverridableWorldState _worldState;
+    private readonly IWorldState _worldState;
+    private readonly IOverridableWorldScope _worldScope;
 
-    public OverridableTxProcessingScope(IOverridableCodeInfoRepository codeInfoRepository,
+    public OverridableTxProcessingScope(
+        IOverridableCodeInfoRepository codeInfoRepository,
         ITransactionProcessor transactionProcessor,
-        IOverridableWorldState worldState,
+        IOverridableWorldScope worldScope,
         Hash256 stateRoot)
     {
         CodeInfoRepository = codeInfoRepository;
         TransactionProcessor = transactionProcessor;
-        _worldState = worldState;
+        _worldScope = worldScope;
+        _worldState = _worldScope.WorldState;
         Reset();
         _worldState.StateRoot = stateRoot;
     }
 
     public IOverridableCodeInfoRepository CodeInfoRepository { get; }
+    public IStateReader StateReader => _worldScope.GlobalStateReader;
 
     public ITransactionProcessor TransactionProcessor { get; }
 
@@ -35,7 +39,7 @@ public class OverridableTxProcessingScope : IOverridableTxProcessingScope
     public void Reset()
     {
         _worldState.Reset();
-        _worldState.ResetOverrides();
         CodeInfoRepository.ResetOverrides();
+        _worldScope.ResetOverrides();
     }
 }

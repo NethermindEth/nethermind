@@ -224,7 +224,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public IEnumerable<StepInfo> GetSteps()
     {
         yield return typeof(InitializeBlockchainTaiko);
-        yield return typeof(RegisterTaikoRpcModules);
     }
 
     // IConsensusPlugin
@@ -281,10 +280,13 @@ public class TaikoModule : Module
             .AddSingleton<IHeaderValidator, TaikoHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
 
+            // Blok proccessing
+            .AddScoped<IValidationTransactionExecutor, TaikoBlockValidationTransactionExecutor>()
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
 
             .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>
                 new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))
+
 
             // Rpc
             .RegisterSingletonJsonRpcModule<ITaikoExtendedEthRpcModule, TaikoExtendedEthModule>()

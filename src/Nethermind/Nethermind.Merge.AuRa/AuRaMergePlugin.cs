@@ -71,7 +71,6 @@ namespace Nethermind.Merge.AuRa
         public override IEnumerable<StepInfo> GetSteps()
         {
             yield return typeof(InitializeBlockchainAuRaMerge);
-            yield return typeof(RegisterAuRaMergeRpcModules);
         }
 
         public override IModule Module => new AuraMergeModule();
@@ -90,6 +89,8 @@ namespace Nethermind.Merge.AuRa
                 // Aura (non merge) use `BlockProducerStarter` directly.
                 .AddSingleton<IBlockProducerEnvFactory, AuRaMergeBlockProducerEnvFactory>()
                 .AddSingleton<IBlockProducerTxSourceFactory, AuRaMergeBlockProducerTxSourceFactory>()
+
+                .AddSingleton<IAuRaBlockProcessorFactory, AuRaMergeBlockProcessorFactory>()
                 ;
         }
     }

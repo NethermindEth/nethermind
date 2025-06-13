@@ -88,7 +88,7 @@ public class MergeSynchronizerModule : Module
 
     private void ConfigureBeaconHeader(ContainerBuilder scopeConfig)
     {
-        scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch>, BeaconHeadersSyncFeed>()
+        scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch?>, BeaconHeadersSyncFeed>()
             .AddScoped<ISyncDownloader<HeadersSyncBatch>, BeaconHeadersSyncDownloader>();
     }
 }

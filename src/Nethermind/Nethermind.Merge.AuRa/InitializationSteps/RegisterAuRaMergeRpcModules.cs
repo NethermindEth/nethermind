@@ -21,25 +21,17 @@ using Nethermind.State;
 
 namespace Nethermind.Merge.AuRa.InitializationSteps;
 
-public class RegisterAuRaMergeRpcModules(AuRaNethermindApi api, IPoSSwitcher poSSwitcher) : RegisterAuRaRpcModules(api, poSSwitcher)
+public class AuRaMergeBlockProcessorFactory : IAuRaBlockProcessorFactory
 {
-    protected override IAuRaBlockProcessorFactory CreateFactory()
+    public AuRaBlockProcessor Create(ISpecProvider specProvider, IBlockValidator blockValidator,
+        IRewardCalculator rewardCalculator, IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor, IWorldState stateProvider,
+        IReceiptStorage receiptStorage, IBeaconBlockRootHandler beaconBlockRootHandler, ILogManager logManager,
+        IBlockFinder blockTree, IWithdrawalProcessor withdrawalProcessor, IExecutionRequestsProcessor executionRequestsProcessor,
+        IAuRaValidator? auRaValidator, ITxFilter? txFilter = null, AuRaContractGasLimitOverride? gasLimitOverride = null,
+        ContractRewriter? contractRewriter = null, IBlockCachePreWarmer? preWarmer = null)
     {
-        return new AuRaMergeBlockProcessorFactory();
-    }
-
-    private class AuRaMergeBlockProcessorFactory : IAuRaBlockProcessorFactory
-    {
-        public AuRaBlockProcessor Create(ISpecProvider specProvider, IBlockValidator blockValidator,
-            IRewardCalculator rewardCalculator, IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor, IWorldState stateProvider,
-            IReceiptStorage receiptStorage, IBeaconBlockRootHandler beaconBlockRootHandler, ILogManager logManager,
-            IBlockFinder blockTree, IWithdrawalProcessor withdrawalProcessor, IExecutionRequestsProcessor executionRequestsProcessor,
-            IAuRaValidator? auRaValidator, ITxFilter? txFilter = null, AuRaContractGasLimitOverride? gasLimitOverride = null,
-            ContractRewriter? contractRewriter = null, IBlockCachePreWarmer? preWarmer = null)
-        {
-            return new AuRaMergeBlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-                stateProvider, receiptStorage, beaconBlockRootHandler, logManager, blockTree, withdrawalProcessor,
-                executionRequestsProcessor, auRaValidator, txFilter, gasLimitOverride, contractRewriter, preWarmer);
-        }
+        return new AuRaMergeBlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
+            stateProvider, receiptStorage, beaconBlockRootHandler, logManager, blockTree, withdrawalProcessor,
+            executionRequestsProcessor, auRaValidator, txFilter, gasLimitOverride, contractRewriter, preWarmer);
     }
 }

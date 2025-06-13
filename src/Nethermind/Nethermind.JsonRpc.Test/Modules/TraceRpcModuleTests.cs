@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using FluentAssertions.Execution;
 using FluentAssertions.Json;
@@ -17,7 +18,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
 using NUnit.Framework;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -30,9 +30,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Newtonsoft.Json.Linq;
-using NSubstitute;
-using Nethermind.Facade;
-using Nethermind.Config;
+using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -65,25 +63,10 @@ public class TraceRpcModuleTests
                 stateRoot = Blockchain.BlockTree.Head!.StateRoot!;
             }
 
-            Factory = new(
-                Blockchain.WorldStateManager,
-                Blockchain.BlockTree,
-                JsonRpcConfig,
-                Substitute.For<IBlockchainBridge>(),
-                new BlocksConfig().SecondsPerSlot,
-                Blockchain.BlockPreprocessorStep,
-                new RewardCalculator(Blockchain.SpecProvider),
-                Blockchain.ReceiptStorage,
-                Blockchain.SpecProvider,
-                Blockchain.PoSSwitcher,
-                Blockchain.LogManager
-            );
-
-            TraceRpcModule = Factory.Create();
+            TraceRpcModule = Blockchain.TraceRpcModule;
         }
 
         public ITraceRpcModule TraceRpcModule { get; private set; } = null!;
-        public TraceModuleFactory Factory { get; private set; } = null!;
         public IJsonRpcConfig JsonRpcConfig { get; private set; } = null!;
         public TestRpcBlockchain Blockchain { get; set; } = null!;
 

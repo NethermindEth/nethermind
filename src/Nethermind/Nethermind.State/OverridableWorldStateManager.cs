@@ -11,17 +11,21 @@ namespace Nethermind.State;
 public class OverridableWorldStateManager : IOverridableWorldScope
 {
     private readonly StateReader _reader;
+    private readonly IReadOnlyDbProvider _dbProvider;
 
     public OverridableWorldStateManager(IDbProvider dbProvider, IReadOnlyTrieStore trieStore, ILogManager? logManager)
     {
         IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
+        _dbProvider = readOnlyDbProvider;
         OverlayTrieStore overlayTrieStore = new(readOnlyDbProvider.StateDb, trieStore);
-
         _reader = new(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager);
-
-        WorldState = new OverridableWorldState(overlayTrieStore, readOnlyDbProvider, logManager);
+        WorldState = new WorldState(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager, null, true);
     }
 
-    public IOverridableWorldState WorldState { get; }
+    public IWorldState WorldState { get; }
     public IStateReader GlobalStateReader => _reader;
+    public void ResetOverrides()
+    {
+        _dbProvider.ClearTempChanges();
+    }
 }

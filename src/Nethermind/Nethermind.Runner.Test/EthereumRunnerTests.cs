@@ -28,6 +28,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -205,7 +206,6 @@ public class EthereumRunnerTests
         api.FileSystem = Substitute.For<IFileSystem>();
         api.BlockTree = Substitute.For<IBlockTree>();
         api.ReceiptStorage = Substitute.For<IReceiptStorage>();
-        api.ReceiptFinder = Substitute.For<IReceiptFinder>();
         api.DbFactory = new MemDbFactory();
         api.DbProvider = await TestMemDbProvider.InitAsync();
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
@@ -293,6 +293,7 @@ public class EthereumRunnerTests
                 typeof(IProtectedPrivateKey),
                 typeof(PublicKey),
                 typeof(IPrivateKeyGenerator),
+                typeof(ITracer), // Completely different construction on every case
                 typeof(string),
             ];
 

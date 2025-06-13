@@ -30,8 +30,6 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 
     protected override async Task InitBlockchain()
     {
-        api.SimulateTransactionProcessorFactory = new SimulateOptimismTransactionProcessorFactory(api.L1CostHelper, api.SpecHelper);
-
         await base.InitBlockchain();
 
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);

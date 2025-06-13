@@ -5,7 +5,9 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
+// TODO: Separate this from ReadOnlyTxProcessingScope
 public interface IOverridableTxProcessingScope : IReadOnlyTxProcessingScope
 {
     IOverridableCodeInfoRepository CodeInfoRepository { get; }
+    IStateReader StateReader { get; }
 }

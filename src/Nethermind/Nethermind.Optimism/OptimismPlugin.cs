@@ -36,8 +36,11 @@ using Nethermind.Optimism.ProtocolVersion;
 using Nethermind.Optimism.Cl.Rpc;
 using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Blockchain.Services;
+using Nethermind.Consensus.Processing;
 using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Simulate;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
 
@@ -349,6 +352,8 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
             // Block processing
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
+            .AddScoped<IBlockProcessor, OptimismBlockProcessor>()
+            .AddScoped<Create2DeployerContractRewriter>()
 
             .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddSingleton<IBlockProducerEnvFactory, OptimismBlockProducerEnvFactory>()
@@ -356,6 +361,9 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
             .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddSingleton<IBlockProducerEnvFactory, OptimismBlockProducerEnvFactory>()
+
+            .AddSingleton<IRpcModuleFactory<ITraceRpcModule>, OptimismTraceModuleFactory>()
+            .AddSingleton<ISimulateTransactionProcessorFactory, SimulateOptimismTransactionProcessorFactory>()
 
             .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>
                 new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))

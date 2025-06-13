@@ -14,8 +14,8 @@ public interface ISimulateTransactionProcessorFactory
     ITransactionProcessor CreateTransactionProcessor(
         ISpecProvider specProvider,
         IWorldState stateProvider,
-        SimulateVirtualMachine virtualMachine,
-        OverridableCodeInfoRepository codeInfoRepository,
+        IVirtualMachine virtualMachine,
+        ICodeInfoRepository codeInfoRepository,
         ILogManager? logManager,
         bool validate);
 }

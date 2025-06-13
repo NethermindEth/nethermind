@@ -5,6 +5,7 @@ using System.IO.Abstractions;
 using System.Reflection;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Specs;
@@ -12,11 +13,13 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.TxPool;
 using Module = Autofac.Module;
 
 namespace Nethermind.Core.Test.Modules;
@@ -56,6 +59,12 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             // Crypto
             .AddSingleton<ICryptoRandom>(new CryptoRandom())
+
+            .AddSingleton<IFilterStore, ITimerFactory, IJsonRpcConfig>((timerFactory, rpcConfig) => new FilterStore(timerFactory, rpcConfig.FiltersTimeout))
+
+            .AddSingleton<IFilterManager, IFilterStore, IMainProcessingContext, ITxPool, ILogManager>((store, processingContext, txPool, logManager) =>
+                    new FilterManager(store, processingContext.BlockProcessor, txPool, logManager))
+
             ;
 
 
