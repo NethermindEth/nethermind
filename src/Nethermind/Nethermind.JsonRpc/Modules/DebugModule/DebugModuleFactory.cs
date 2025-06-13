@@ -12,17 +12,19 @@ using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
-public class AutoDebugModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : IRpcModuleFactory<IDebugRpcModule>
+public class DebugModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : IRpcModuleFactory<IDebugRpcModule>
 {
     protected virtual ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder)
     {
         return builder
-                .AddScoped<ChangeableTransactionProcessorAdapter>()
-                .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
+                // Standard configuration
+                // Note: Not overriding `IReceiptStorage` to null.
                 .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
                 .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
                 .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
-                .AddScoped<IOverridableTxProcessorSource, AutoOverridableTxProcessingEnv>()
+
+                // So the debug rpc change the adapter sometime.
+                .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
             ;
     }
 
@@ -37,6 +39,7 @@ public class AutoDebugModuleFactory(IWorldStateManager worldStateManager, Func<I
                 .AddSingleton<IWorldState>(overridableScope.WorldState)
                 .AddSingleton<ICodeInfoRepository>(codeInfoRepository)
 
+                .AddScoped<IOverridableTxProcessorSource, OverridableTxProcessingEnv>() // GethStyleTracer still need this
                 .AddScoped<IOverridableWorldScope>(overridableScope)
                 .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository);
         });

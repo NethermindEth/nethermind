@@ -11,15 +11,11 @@ using Nethermind.State;
 
 namespace Nethermind.Optimism.Rpc;
 
-public class AutoOptimismTraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : AutoTraceModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)
+public class OptimismTraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : TraceModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)
 {
-    protected override ContainerBuilder ConfigureCommonBlockProcessing<T>(
-        ContainerBuilder builder,
-        ICodeInfoRepository codeInfoRepository,
-        IWorldState worldState
-    )
+    protected override ContainerBuilder ConfigureCommonBlockProcessing<T>(ContainerBuilder builder)
     {
-        return base.ConfigureCommonBlockProcessing<T>(builder, codeInfoRepository, worldState)
+        return base.ConfigureCommonBlockProcessing<T>(builder)
             .AddScoped<IWithdrawalProcessor>(new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor())); // Why? Is this global all the time
     }
 }

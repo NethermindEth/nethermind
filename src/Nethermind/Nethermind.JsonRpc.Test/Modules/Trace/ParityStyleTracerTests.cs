@@ -95,8 +95,8 @@ public class ParityStyleTracerTests
 
         IOverridableTxProcessorSource txProcessingSource = Substitute.For<IOverridableTxProcessorSource>();
         _tracer = new Tracer(stateProvider, _processor, _processor);
-        var sc = new TracerEnv(_tracer, txProcessingSource);
-        _traceRpcModule = new(NullReceiptStorage.Instance, sc, _blockTree, _jsonRpcConfig, _stateReader, Substitute.For<IBlockchainBridge>(), new BlocksConfig());
+        var env = new TracerEnv(_tracer, txProcessingSource);
+        _traceRpcModule = new(NullReceiptStorage.Instance, env, _blockTree, _jsonRpcConfig, _stateReader, Substitute.For<IBlockchainBridge>(), new BlocksConfig());
     }
 
     [TearDown]

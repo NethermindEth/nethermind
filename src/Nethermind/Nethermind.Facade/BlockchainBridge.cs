@@ -450,9 +450,10 @@ namespace Nethermind.Facade
                     .AddScoped<ICodeInfoRepository>(codeInfoRepository)
                     .AddScoped<IOverridableWorldScope>(overridableScope)
                     .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository)
-                    .AddScoped<IOverridableTxProcessorSource, AutoOverridableTxProcessingEnv>();
+                    .AddScoped<IOverridableTxProcessorSource, OverridableTxProcessingEnv>();
             });
 
+            // Split it out to isolate the world state and processing components
             ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) =>
             {
                 builder

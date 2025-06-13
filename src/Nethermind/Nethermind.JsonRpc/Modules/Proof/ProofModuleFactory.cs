@@ -15,7 +15,7 @@ using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
-    public class AutoProofModuleFactory(
+    public class ProofModuleFactory(
         ILifetimeScope rootLifetimeScope,
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory
     ) : ModuleFactoryBase<IProofRpcModule>
@@ -23,25 +23,30 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         public override IProofRpcModule Create()
         {
-            // Note: No overridable world scope here. So the aren't any risk of leaking KV store.
+            // Note: No overridable world scope here. So there aren't any risk of leaking KV store.
             IReadOnlyTxProcessingScope txProcessingEnv = readOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
 
             ILifetimeScope tracerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             {
                 builder
-                    .AddScoped<IWorldState>(txProcessingEnv.WorldState)
-                    .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
+
+                    // Standard read only chain setting
                     .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
                     .AddScoped<ITransactionProcessorAdapter, TraceTransactionProcessorAdapter>()
                     .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-                    .AddScoped<IRewardCalculator>(NoBlockRewards.Instance)
-                    .AddScoped<IBlockValidator>(Always.Valid) // Why?
                     .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+                    .AddScoped<IBlockValidator>(Always.Valid) // Why?
+
+                    // Specific for proof rpc
+                    .AddScoped<IReceiptStorage>(new InMemoryReceiptStorage()) // Umm.... not `NullReceiptStorage`?
+                    .AddScoped<IRewardCalculator>(NoBlockRewards.Instance)
+
+                    .AddScoped<IWorldState>(txProcessingEnv.WorldState)
                     .AddScoped<ITracer, Tracer>()
                     ;
             });
 
-            // The tracer need a null receipts while the proof does not.
+            // The tracer need a in memory receipts while the proof RPC does not.
             // Eh, its a good idea to separate what need block processing and what does not anyway.
             ILifetimeScope proofRpcScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             {
