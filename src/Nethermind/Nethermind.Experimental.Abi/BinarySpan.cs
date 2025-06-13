@@ -134,7 +134,9 @@ public static class Math
     // TODO: Use `UInt256` when dealing with lengths
     public static int PadTo32(int length)
     {
-        int rem = length % 32;
-        return rem == 0 ? length : length + (32 - rem);
+        return (length + 31) & ~31;
+        // Equivalent to:
+        // int rem = length % 32;
+        // return rem == 0 ? length : length + (32 - rem);
     }
 }
