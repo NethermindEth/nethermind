@@ -130,7 +130,6 @@ namespace Nethermind.JsonRpc.Benchmark
                 blockProcessor,
                 new RecoverSignatures(
                     ecdsa,
-                    NullTxPool.Instance,
                     specProvider,
                     LimboLogs.Instance),
                 stateReader,
