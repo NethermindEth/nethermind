@@ -28,9 +28,9 @@ public class MathTests
         yield return new TestCaseData(129, 160);
         yield return new TestCaseData(1024, 1024);
         yield return new TestCaseData(1025, 1056);
-        yield return new TestCaseData(int.MaxValue - 33 , int.MaxValue - 31);
-        yield return new TestCaseData(int.MaxValue - 32 , int.MaxValue - 31);
-        yield return new TestCaseData(int.MaxValue - 31 , int.MaxValue - 31);
+        yield return new TestCaseData(int.MaxValue - 33, int.MaxValue - 31);
+        yield return new TestCaseData(int.MaxValue - 32, int.MaxValue - 31);
+        yield return new TestCaseData(int.MaxValue - 31, int.MaxValue - 31);
     }
 
     [TestCaseSource(nameof(PadTo32TestCases))]
