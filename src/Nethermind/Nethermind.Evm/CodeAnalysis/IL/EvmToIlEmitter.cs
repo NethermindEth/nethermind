@@ -366,11 +366,12 @@ internal static class OpcodeEmitters
         using Local keccak = method.DeclareLocal(typeof(ValueHash256), locals.GetLocalName());
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A); // position
+        method.LoadLocalAddress(locals.uint256A); // position
+        method.Call(Word.GetUInt256ByRef);
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256B); // length
+        method.LoadLocalAddress(locals.uint256B); // length
+        method.Call(Word.GetUInt256ByRef);
+
                                             // UpdateMemoryCost
         method.LoadVmState(locals, false);
 
@@ -468,8 +469,8 @@ internal static class OpcodeEmitters
         method.Duplicate();
         method.CallGetter(Word.GetUInt0, BitConverter.IsLittleEndian);
         method.StoreLocal(locals.uint32A);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
 
         method.LoadLocalAddress(locals.uint256A);
         method.LoadConstant(32);
@@ -520,8 +521,8 @@ internal static class OpcodeEmitters
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
 
         method.LoadLocalAddress(locals.uint256A);
         method.Call(typeof(UInt256Extensions).GetMethod(nameof(UInt256Extensions.ToLong), BindingFlags.Static | BindingFlags.Public, [typeof(UInt256).MakeByRefType()]));
@@ -570,8 +571,8 @@ internal static class OpcodeEmitters
         method.BranchIfEqual(blobVersionedHashNotFound);
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
 
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocal(byteMatrix);
@@ -618,7 +619,7 @@ internal static class OpcodeEmitters
 
         method.MarkLabel(isPostMergeBranch);
         method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.Difficulty), false, out _));
-        method.Call(Word.SetUInt256);
+        method.Call(Word.SetUInt256ByVal);
 
         method.MarkLabel(endOfOpcode);
         return;
@@ -634,7 +635,7 @@ internal static class OpcodeEmitters
         method.StoreLocal(uint256Nullable);
         method.LoadLocalAddress(uint256Nullable);
         method.Call(GetPropertyInfo(typeof(UInt256?), nameof(Nullable<UInt256>.Value), false, out _));
-        method.Call(Word.SetUInt256);
+        method.Call(Word.SetUInt256ByVal);
     }
 
     internal static void EmitBaseFeeInstruction<TDelegateType>(
@@ -645,7 +646,7 @@ internal static class OpcodeEmitters
         method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
         method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.BaseFeePerGas), false, out _));
-        method.Call(Word.SetUInt256);
+        method.Call(Word.SetUInt256ByVal);
         return;
     }
 
@@ -653,11 +654,13 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
+
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256B);
+        method.LoadLocalAddress(locals.uint256B);
+        method.Call(Word.GetUInt256ByRef);
+
 
         method.LoadVmState(locals, false);
 
@@ -696,14 +699,16 @@ internal static class OpcodeEmitters
 
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
+
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256B);
+        method.LoadLocalAddress(locals.uint256B);
+        method.Call(Word.GetUInt256ByRef);
+
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256C);
+        method.LoadLocalAddress(locals.uint256C);
+        method.Call(Word.GetUInt256ByRef);
 
         method.LoadLocalAddress(locals.uint256B);
         method.LoadLocalAddress(locals.uint256C);
@@ -784,8 +789,9 @@ internal static class OpcodeEmitters
     {
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256C);
+        method.LoadLocalAddress(locals.uint256C);
+        method.Call(Word.GetUInt256ByRef);
+
 
         method.LoadLocal(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256C);
@@ -800,11 +806,13 @@ internal static class OpcodeEmitters
         method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
+
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256B);
+        method.LoadLocalAddress(locals.uint256B);
+        method.Call(Word.GetUInt256ByRef);
+
 
         method.LoadLocalAddress(locals.uint256C);
         method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
@@ -886,11 +894,13 @@ internal static class OpcodeEmitters
         MethodInfo refWordToRefValueHashMethod = GetAsMethodInfo<Word, ValueHash256>();
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
+
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256B);
+        method.LoadLocalAddress(locals.uint256B);
+        method.Call(Word.GetUInt256ByRef);
+
 
         method.LoadLocal(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256B);
@@ -926,16 +936,16 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256B);
+        method.LoadLocalAddress(locals.uint256B);
+        method.Call(Word.GetUInt256ByRef);
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256C);
+        method.LoadLocalAddress(locals.uint256C);
+        method.Call(Word.GetUInt256ByRef);
 
         method.LoadLocal(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256C);
@@ -975,8 +985,8 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
 
         method.LoadVmState(locals, false);
 
@@ -1006,8 +1016,8 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
         method.CallGetter(Word.GetByte0, BitConverter.IsLittleEndian);
         method.StoreLocal(locals.byte8A);
@@ -1035,8 +1045,8 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
         method.StoreLocal(locals.wordRef256B);
 
@@ -1130,8 +1140,8 @@ internal static class OpcodeEmitters
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         method.LoadEnv(locals, false);
 
-        method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
-        method.Call(Word.SetUInt256);
+        method.LoadFieldAddress(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
+        method.Call(Word.SetUInt256ByRef);
         return;
     }
 
@@ -1141,14 +1151,16 @@ internal static class OpcodeEmitters
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
+
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256B);
+        method.LoadLocalAddress(locals.uint256B);
+        method.Call(Word.GetUInt256ByRef);
+
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256C);
+        method.LoadLocalAddress(locals.uint256C);
+        method.Call(Word.GetUInt256ByRef);
 
         method.LoadLocal(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256C);
@@ -1196,8 +1208,8 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
 
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
 
@@ -1226,7 +1238,7 @@ internal static class OpcodeEmitters
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         method.LoadTxContext(locals, true);
         method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.GasPrice), false, out _));
-        method.Call(Word.SetUInt256);
+        method.Call(Word.SetUInt256ByVal);
         return;
     }
 
@@ -1348,14 +1360,15 @@ internal static class OpcodeEmitters
         Label endOfExpImpl = method.DefineLabel(locals.GetLabelName());
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
+
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
         method.Duplicate();
         method.Call(Word.LeadingZeroProp);
         method.StoreLocal(locals.uint64A);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256B);
+        method.LoadLocalAddress(locals.uint256B);
+        method.Call(Word.GetUInt256ByRef);
 
         method.LoadLocalAddress(locals.uint256B);
         method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
@@ -1385,8 +1398,8 @@ internal static class OpcodeEmitters
         method.Call(typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!);
 
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-        method.LoadLocal(locals.uint256R);
-        method.Call(Word.SetUInt256);
+        method.LoadLocalAddress(locals.uint256R);
+        method.Call(Word.SetUInt256ByRef);
 
         method.Branch(endOfExpImpl);
 
@@ -1398,8 +1411,8 @@ internal static class OpcodeEmitters
 
         method.MarkLabel(baseIsOneOrZero);
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-        method.LoadLocal(locals.uint256A);
-        method.Call(Word.SetUInt256);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.SetUInt256ByRef);
         method.Branch(endOfExpImpl);
 
         method.MarkLabel(endOfExpImpl);
@@ -1419,7 +1432,7 @@ internal static class OpcodeEmitters
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
         method.StoreLocal(locals.wordRef256C);
 
-        // since (a * b) % c 
+        // since (a * b) % c
         // if a or b are 0 then the result is 0
         // if c is 0 or 1 then the result is 0
         method.EmitCheck(nameof(Word.IsZero), locals.wordRef256A);
@@ -1525,8 +1538,8 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
         method.Call(Word.GetArray);
@@ -1549,8 +1562,8 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
 
         method.LoadEnv(locals, false);
 
@@ -1582,8 +1595,8 @@ internal static class OpcodeEmitters
         method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
 
         method.LoadEnv(locals, false);
 
@@ -1660,8 +1673,8 @@ internal static class OpcodeEmitters
     {
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 4);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256C);
+        method.LoadLocalAddress(locals.uint256C);
+        method.Call(Word.GetUInt256ByRef);
 
         method.LoadLocal(locals.gasAvailable);
         method.LoadSpec(locals, false);
@@ -1682,11 +1695,12 @@ internal static class OpcodeEmitters
         method.Call(Word.GetAddress);
         method.StoreLocal(locals.address);
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
+
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256B);
+        method.LoadLocalAddress(locals.uint256B);
+        method.Call(Word.GetUInt256ByRef);
 
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadVmState(locals, false);
@@ -1803,7 +1817,7 @@ internal static class OpcodeEmitters
 
         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
         method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
-        method.Call(Word.SetUInt256);
+        method.Call(Word.SetUInt256ByVal);
     }
 
     internal static void EmitBalanceInstruction<TDelegateType>(
@@ -1838,7 +1852,7 @@ internal static class OpcodeEmitters
         method.LoadWorldState(locals, false);
         method.LoadLocal(locals.address);
         method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
-        method.Call(Word.SetUInt256);
+        method.Call(Word.SetUInt256ByVal);
     }
 
     internal static void EmitDivInstruction<TDelegateType>(
@@ -1939,11 +1953,12 @@ internal static class OpcodeEmitters
         method.StoreLocal(locals.wordRef256B);
 
         method.LoadLocal(locals.wordRef256A);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
+
         method.LoadLocal(locals.wordRef256B);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256B);
+        method.LoadLocalAddress(locals.uint256B);
+        method.Call(Word.GetUInt256ByRef);
 
         method.EmitCheck(nameof(Word.IsZero), locals.wordRef256A);
         method.BranchIfTrue(push0Zero);
@@ -2078,8 +2093,9 @@ internal static class OpcodeEmitters
     {
         Label endOfOpcode;
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.Call(Word.GetUInt256);
-        method.StoreLocal(locals.uint256A);
+        method.LoadLocalAddress(locals.uint256A);
+        method.Call(Word.GetUInt256ByRef);
+
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
         method.Call(Word.GetReadOnlySpan);
         method.StoreLocal(locals.localReadonOnlySpan);
@@ -2242,7 +2258,7 @@ internal static class OpcodeEmitters
         var index = 1;
         // load gasLimit
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-        method.Call(Word.GetUInt256);
+        method.Call(Word.GetUInt256ByVal);
 
         // load codeSource
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
@@ -2260,25 +2276,23 @@ internal static class OpcodeEmitters
         else
         {
             method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-            method.Call(Word.GetUInt256);
+            method.Call(Word.GetUInt256ByVal);
         }
         // load dataoffset
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-        method.Call(Word.GetUInt256);
+        method.Call(Word.GetUInt256ByVal);
 
         // load datalength
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-        method.Call(Word.GetUInt256);
+        method.Call(Word.GetUInt256ByVal);
 
         // load outputOffset
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-        method.Call(Word.GetUInt256);
-
+        method.Call(Word.GetUInt256ByRef);
 
         // load outputLength
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
-        method.Call(Word.GetUInt256);
-
+        method.Call(Word.GetUInt256ByVal);
 
         method.LoadLocalAddress(toPushToStack);
 
@@ -2338,7 +2352,7 @@ internal static class OpcodeEmitters
             EmitCallToEndInstructionTrace(method, locals.gasAvailable, locals);
         }
 
-        // cast object to CallResult and store it in 
+        // cast object to CallResult and store it in
         method.LoadResult(locals, true);
         method.Duplicate();
         method.LoadLocal(newStateToExe);
@@ -2357,7 +2371,7 @@ internal static class OpcodeEmitters
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
         method.LoadLocalAddress(toPushToStack);
         method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.Value)).GetGetMethod());
-        method.Call(Word.SetUInt256);
+        method.Call(Word.SetUInt256ByVal);
 
         method.MarkLabel(hasNoItemsToPush);
     }
@@ -2391,15 +2405,15 @@ internal static class OpcodeEmitters
 
         // load value
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-        method.Call(Word.GetUInt256);
+        method.Call(Word.GetUInt256ByVal);
 
         // load memory offset
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-        method.Call(Word.GetUInt256);
+        method.Call(Word.GetUInt256ByVal);
 
         // load initcode len
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-        method.Call(Word.GetUInt256);
+        method.Call(Word.GetUInt256ByVal);
 
         // load callvalue
         if (op is Instruction.CREATE2)
@@ -2461,7 +2475,7 @@ internal static class OpcodeEmitters
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
         method.LoadLocalAddress(toPushToStack);
         method.Call(typeof(UInt256?).GetProperty(nameof(Nullable<UInt256>.Value)).GetGetMethod());
-        method.Call(Word.SetUInt256);
+        method.Call(Word.SetUInt256ByVal);
 
         method.MarkLabel(hasNoItemsToPush);
 

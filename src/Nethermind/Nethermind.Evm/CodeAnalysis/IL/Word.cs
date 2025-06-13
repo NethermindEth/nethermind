@@ -185,6 +185,16 @@ public struct Word
             Span = value.Bytes;
     }
 
+    public UInt256 UInt256
+    {
+        get
+        {
+            PopUInt256(out UInt256 val);
+            return val;
+        }
+        set => PushUInt256(value);
+    }
+
     public unsafe void PopUInt256(out UInt256 result)
     {
         ref byte bytes = ref _buffer[0];
@@ -339,8 +349,11 @@ public struct Word
 
     public static readonly MethodInfo AreEqual = typeof(Word).GetMethod(nameof(CheckIfEqual))!;
 
-    public static readonly MethodInfo GetUInt256 = typeof(Word).GetMethod(nameof(PopUInt256));
-    public static readonly MethodInfo SetUInt256 = typeof(Word).GetMethod(nameof(PushUInt256));
+    public static readonly MethodInfo GetUInt256ByRef = typeof(Word).GetMethod(nameof(PopUInt256));
+    public static readonly MethodInfo SetUInt256ByRef = typeof(Word).GetMethod(nameof(PushUInt256));
+
+    public static readonly MethodInfo GetUInt256ByVal = typeof(Word).GetProperty(nameof(UInt256)).GetMethod;
+    public static readonly MethodInfo SetUInt256ByVal = typeof(Word).GetProperty(nameof(UInt256)).SetMethod;
 
     public static readonly MethodInfo GetAddress = typeof(Word).GetProperty(nameof(Address))!.GetMethod;
     public static readonly MethodInfo SetAddress = typeof(Word).GetProperty(nameof(Address))!.SetMethod;
