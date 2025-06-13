@@ -245,6 +245,25 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
         }
 
+        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_repeatBlock(BlockParameter blockParameter)
+        {
+            SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(blockParameter);
+            if (blockSearch.IsError)
+            {
+                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);
+            }
+
+            Block block = blockSearch.Object!;
+
+            if (!_stateReader.HasStateForBlock(block.Header))
+            {
+                return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
+            }
+
+            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new(ParityTraceTypes.Rewards));
+            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
+        }
+
         /// <summary>
         /// Traces one transaction. As it replays existing transaction will charge gas
         /// </summary>
