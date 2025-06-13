@@ -185,7 +185,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         Span<byte> txType = [(byte)TxType.Blob];
         hash.Update(txType);
         hash.Update(transactionSequence);
-        return new Hash256(hash.Hash);
+        return new Hash256(hash.GenerateValueHash());
     }
 
     protected override int GetContentLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning,

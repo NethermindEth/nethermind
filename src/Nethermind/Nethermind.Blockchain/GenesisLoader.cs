@@ -15,78 +15,79 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 
-namespace Nethermind.Blockchain;
-
-public class GenesisLoader(
-    ChainSpec chainSpec,
-    ISpecProvider specProvider,
-    IWorldState stateProvider,
-    ITransactionProcessor transactionProcessor)
+namespace Nethermind.Blockchain
 {
-    private readonly ChainSpec _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
-    private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    private readonly IWorldState _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-    private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-
-    public Block Load()
+    public class GenesisLoader(
+        ChainSpec chainSpec,
+        ISpecProvider specProvider,
+        IWorldState stateProvider,
+        ITransactionProcessor transactionProcessor)
     {
-        Block genesis = _chainSpec.Genesis;
-        Preallocate(genesis);
+        private readonly ChainSpec _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
+        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        private readonly IWorldState _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+        private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
 
-        // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
-        _chainSpec.Allocations = null;
-
-        if (!_chainSpec.GenesisStateUnavailable)
+        public Block Load()
         {
-            _stateProvider.Commit(_specProvider.GenesisSpec, true);
+            Block genesis = _chainSpec.Genesis;
+            Preallocate(genesis);
 
-            _stateProvider.CommitTree(0);
+            // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
+            _chainSpec.Allocations = null;
 
-            genesis.Header.StateRoot = _stateProvider.StateRoot;
+            if (!_chainSpec.GenesisStateUnavailable)
+            {
+                _stateProvider.Commit(_specProvider.GenesisSpec, true);
+
+                _stateProvider.CommitTree(0);
+
+                genesis.Header.StateRoot = _stateProvider.StateRoot;
+            }
+
+            genesis.Header.Hash = genesis.Header.CalculateHash();
+
+            return genesis;
         }
 
-        genesis.Header.Hash = genesis.Header.CalculateHash();
-
-        return genesis;
-    }
-
-    private void Preallocate(Block genesis)
-    {
-        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(genesis.Header, specProvider.GetSpec(genesis.Header)));
-        foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(static a => a.Key))
+        private void Preallocate(Block genesis)
         {
-            _stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce);
-
-            if (allocation.Code is not null)
+            _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(genesis.Header, specProvider.GetSpec(genesis.Header)));
+            foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(static a => a.Key))
             {
-                _stateProvider.InsertCode(address, allocation.Code, _specProvider.GenesisSpec, true);
-            }
+                _stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce);
 
-            if (allocation.Storage is not null)
-            {
-                foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
+                if (allocation.Code is not null)
                 {
-                    _stateProvider.Set(new StorageCell(address, storage.Key),
-                        storage.Value.WithoutLeadingZeros().ToArray());
+                    _stateProvider.InsertCode(address, allocation.Code, _specProvider.GenesisSpec, true);
                 }
-            }
 
-            if (allocation.Constructor is not null)
-            {
-                Transaction constructorTransaction = new SystemTransaction()
+                if (allocation.Storage is not null)
                 {
-                    SenderAddress = address,
-                    Data = allocation.Constructor,
-                    GasLimit = genesis.GasLimit
-                };
+                    foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
+                    {
+                        _stateProvider.Set(new StorageCell(address, storage.Key),
+                            storage.Value.WithoutLeadingZeros().ToArray());
+                    }
+                }
 
-                CallOutputTracer outputTracer = new();
-                _transactionProcessor.Execute(constructorTransaction, outputTracer);
-
-                if (outputTracer.StatusCode != StatusCode.Success)
+                if (allocation.Constructor is not null)
                 {
-                    throw new InvalidOperationException(
-                        $"Failed to initialize constructor for address {address}. Error: {outputTracer.Error}");
+                    Transaction constructorTransaction = new SystemTransaction()
+                    {
+                        SenderAddress = address,
+                        Data = allocation.Constructor,
+                        GasLimit = genesis.GasLimit
+                    };
+
+                    CallOutputTracer outputTracer = new();
+                    _transactionProcessor.Execute(constructorTransaction, outputTracer);
+
+                    if (outputTracer.StatusCode != StatusCode.Success)
+                    {
+                        throw new InvalidOperationException(
+                            $"Failed to initialize constructor for address {address}. Error: {outputTracer.Error}");
+                    }
                 }
             }
         }
