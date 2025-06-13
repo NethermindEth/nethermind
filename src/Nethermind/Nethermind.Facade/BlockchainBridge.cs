@@ -31,6 +31,9 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
 using System.Linq;
+using Nethermind.Consensus.Stateless;
+using Nethermind.Core.Collections;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Facade
 {
@@ -56,9 +59,11 @@ namespace Nethermind.Facade
         private readonly IBlocksConfig _blocksConfig;
         private readonly SimulateBridgeHelper _simulateBridgeHelper;
         private readonly SimulateReadOnlyBlocksProcessingEnvFactory _simulateProcessingEnvFactory;
+        private readonly StatelessBlocksProcessingEnv _statelessBlocksProcessingEnv;
 
         public BlockchainBridge(OverridableTxProcessingEnv processingEnv,
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
+            StatelessBlocksProcessingEnv statelessBlocksProcessingEnv,
             ITxPool? txPool,
             IReceiptFinder? receiptStorage,
             IFilterStore? filterStore,
@@ -84,6 +89,7 @@ namespace Nethermind.Facade
             _blocksConfig = blocksConfig;
             IsMining = isMining;
             _simulateProcessingEnvFactory = simulateProcessingEnvFactory ?? throw new ArgumentNullException(nameof(simulateProcessingEnvFactory));
+            _statelessBlocksProcessingEnv = statelessBlocksProcessingEnv;
             _simulateBridgeHelper = new SimulateBridgeHelper(_blocksConfig, _specProvider);
         }
 
@@ -431,6 +437,74 @@ namespace Nethermind.Facade
             };
 
             return error is null ? null : $"err: {error} (supplied gas {gasLimit})";
+        }
+
+        public bool ExecuteWitness(BlockParameter blockParameter, Witness witness)
+        {
+            Block block = _blockTree.FindBlock(blockParameter);
+            RecoverTxSenders(block);
+            Block parent = _blockTree.FindBlock(block.ParentHash);
+            IBlockProcessor blockProcessor = _statelessBlocksProcessingEnv.GetProcessor(witness, parent.StateRoot);
+            Hash256 expectedHash = block.Hash;
+            Block[] result = blockProcessor.Process(parent.StateRoot, [block], ProcessingOptions.DoNotUpdateHead & ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
+            return expectedHash == result[0].Hash;
+        }
+
+        public Witness GenerateExecutionWitness(BlockParameter blockParameter)
+        {
+            Block block = _blockTree.FindBlock(blockParameter);
+            RecoverTxSenders(block);
+            Block parent = _blockTree.FindBlock(block.ParentHash);
+            (IBlockProcessor blockProcessor, WitnessGeneratingWorldState state) = _statelessBlocksProcessingEnv.CreateWitnessGeneratingBlockProcessor();
+            blockProcessor.Process(parent.StateRoot, [block], ProcessingOptions.DoNotUpdateHead & ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
+            HashSet<byte[]> stateNodes = new(new ByteArrayComparer());
+            HashSet<byte[]> codes = new(new ByteArrayComparer());
+            foreach ((Address account, HashSet<UInt256> slots) in state.StorageSlots)
+            {
+                AccountProofCollector accountProofCollector = new(account, slots.ToArray());
+                state.Accept(accountProofCollector, parent.StateRoot);
+                AccountProof accountProof = accountProofCollector.BuildResult();
+                codes.Add(state.GetCode(accountProof.CodeHash));
+                stateNodes.AddRange(accountProof.Proof);
+                stateNodes.AddRange(accountProof.StorageProofs.SelectMany(storageProof => storageProof.Proof));
+            }
+            Witness witness = new()
+            {
+                Keys = state.Keys,
+                Codes = codes.ToArray(),
+                Headers = [],
+                State = stateNodes.ToArray(),
+            };
+
+
+            // Cross-verify
+            bool isValid = ExecuteWitness(blockParameter, witness);
+            if (!isValid)
+            {
+                throw new Exception("Failed to cross-verify generated witness");
+            }
+
+            return witness;
+        }
+
+        private class ByteArrayComparer : IEqualityComparer<byte[]>
+        {
+            public bool Equals(byte[]? x, byte[]? y)
+            {
+                if (ReferenceEquals(x, y)) return true;
+                if (x == null || y == null) return false;
+                return x.SequenceEqual(y);
+            }
+
+            public int GetHashCode(byte[] obj)
+            {
+                int hash = 17;
+                foreach (var b in obj)
+                {
+                    hash = hash * 23 + b;
+                }
+                return hash;
+            }
         }
     }
 }
