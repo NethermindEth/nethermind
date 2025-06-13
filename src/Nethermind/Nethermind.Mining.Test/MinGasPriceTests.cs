@@ -34,9 +34,9 @@ namespace Nethermind.Mining.Test
             {
                 MinGasPrice = (UInt256)minimum
             };
-            MinGasPriceTxFilter _filter = new(blocksConfig, specProvider);
+            MinGasPriceTxFilter _filter = new(blocksConfig);
             Transaction tx = Build.A.Transaction.WithGasPrice((UInt256)actual).TestObject;
-            _filter.IsAllowed(tx, null).Equals(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow).Should().BeTrue();
+            _filter.IsAllowed(tx, null, null).Equals(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow).Should().BeTrue();
         }
 
         [TestCase(0L, 0L, 0L, true)]
@@ -62,13 +62,13 @@ namespace Nethermind.Mining.Test
             {
                 MinGasPrice = (UInt256)minimum
             };
-            MinGasPriceTxFilter _filter = new(blocksConfig, specProvider);
+            MinGasPriceTxFilter _filter = new(blocksConfig);
             Transaction tx = Build.A.Transaction.WithGasPrice(0)
                 .WithMaxFeePerGas((UInt256)maxFeePerGas)
                 .WithMaxPriorityFeePerGas((UInt256)maxPriorityFeePerGas)
                 .WithType(TxType.EIP1559).TestObject;
             BlockBuilder blockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithGasLimit(10000).WithBaseFeePerGas((UInt256)1000);
-            _filter.IsAllowed(tx, blockBuilder.TestObject.Header).Equals(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow).Should().BeTrue();
+            _filter.IsAllowed(tx, blockBuilder.TestObject.Header, specProvider.GetSpec(blockBuilder.TestObject.Header)).Equals(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow).Should().BeTrue();
         }
     }
 }

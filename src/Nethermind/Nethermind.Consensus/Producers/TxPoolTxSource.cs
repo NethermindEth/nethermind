@@ -49,11 +49,12 @@ namespace Nethermind.Consensus.Producers
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
-            Func<Transaction, bool> filter = (tx) => _txFilterPipeline.Execute(tx, parent);
 
-            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, filter, gasLimit);
+            Func<Transaction, bool> filter = (tx) => _txFilterPipeline.Execute(tx, parent, spec);
+
+            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, filter, gasLimit).ToArray();
             IEnumerable<(Transaction tx, long blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, filter, (int)spec.MaxBlobCount);
-            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
+            if (_logger.IsInfo) _logger.Info($"Collecting pending transactions at block gas limit {gasLimit}. {pendingTransactions.Sum(x => x.Value.Length)} / {transactions.Count()}");
 
             int checkedTransactions = 0;
             int selectedTransactions = 0;
