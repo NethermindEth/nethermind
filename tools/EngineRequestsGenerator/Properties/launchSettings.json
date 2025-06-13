@@ -1,0 +1,13 @@
+﻿{
+  "$schema": "http://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "EngineRequestsGenerator": {
+      "commandName": "Project",
+      "commandLineArgs": "-c benchmarks_chainspec.json -t Modexp215GasExpHeavy -o testcases"
+    },
+    "MetadataGenerator": {
+      "commandName": "Project",
+      "commandLineArgs": "-m true -o testcases"
+    }
+  }
+}
