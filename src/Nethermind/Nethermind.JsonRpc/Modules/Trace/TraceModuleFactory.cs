@@ -57,10 +57,10 @@ public class TraceModuleFactory(
                 transactionsExecutor);
 
     protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateRpcBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
-        => new RpcBlockTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
+        => new BlockProcessor.BlockValidationTransactionsExecutor(new TraceTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState);
 
     protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
-        => new BlockProcessor.BlockValidationTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
+        => new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState);
 
     public override ITraceRpcModule Create()
     {
