@@ -10,6 +10,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -268,7 +269,7 @@ public class InitializeNetwork : IStep
         await _api.TrustedNodesManager.InitAsync();
 
         ISyncServer syncServer = _api.SyncServer!;
-        ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
+        ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis?.Hash ?? Hash256.Zero);
 
         ProtocolValidator protocolValidator = new(
             _nodeStatsManager!,

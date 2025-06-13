@@ -30,6 +30,7 @@ namespace Nethermind.JsonRpc.Modules
         public const string Health = nameof(Health);
         public const string Rpc = nameof(Rpc);
         public const string Rbuilder = nameof(Rbuilder);
+        public const string Arbitrum = nameof(Arbitrum);
 
         public static IEnumerable<string> AllBuiltInModules { get; } = new List<string>()
         {

@@ -45,7 +45,7 @@ namespace Nethermind.Init.Steps
             // if we already have a database with blocks then we do not need to load genesis from spec
             if (_api.BlockTree.Genesis is null)
             {
-                Load(mainProcessingContext);
+                await Load(mainProcessingContext);
             }
 
             ValidateGenesisHash(expectedGenesisHash, mainProcessingContext.WorldState);
@@ -57,7 +57,7 @@ namespace Nethermind.Init.Steps
             }
         }
 
-        protected virtual void Load(IMainProcessingContext mainProcessingContext)
+        protected virtual Task Load(IMainProcessingContext mainProcessingContext)
         {
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
@@ -87,13 +87,15 @@ namespace Nethermind.Init.Steps
             {
                 throw new TimeoutException($"Genesis block was not processed after {_genesisProcessedTimeout.TotalSeconds} seconds. If you are running custom chain with very big genesis file consider increasing {nameof(BlocksConfig)}.{nameof(IBlocksConfig.GenesisTimeoutMs)}.");
             }
+
+            return Task.CompletedTask;
         }
 
         /// <summary>
         /// If <paramref name="expectedGenesisHash"/> is <value>null</value> then it means that we do not care about the genesis hash (e.g. in some quick testing of private chains)/>
         /// </summary>
         /// <param name="expectedGenesisHash"></param>
-        private void ValidateGenesisHash(Hash256? expectedGenesisHash, IWorldState worldState)
+        protected virtual void ValidateGenesisHash(Hash256? expectedGenesisHash, IWorldState worldState)
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 

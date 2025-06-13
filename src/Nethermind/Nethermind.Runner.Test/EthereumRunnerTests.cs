@@ -72,6 +72,10 @@ public class EthereumRunnerTests
 {
     static EthereumRunnerTests()
     {
+        // Trigger plugins loading early to ensure TypeDiscovery caches plugin's types
+        PluginLoader pluginLoader = new("plugins", new FileSystem(), NullLogger.Instance);
+        pluginLoader.Load();
+
         AssemblyLoadContext.Default.Resolving += static (_, _) => null;
     }
 
