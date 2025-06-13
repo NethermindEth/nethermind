@@ -79,17 +79,14 @@ namespace Nethermind.Config
                 {
                     throw new InvalidConfigurationException($"Extra Data length was more than 32 bytes. You provided: {_extraDataString}",
                         ExitCodes.TooLongExtraData);
-
                 }
 
                 _extraDataString = value;
                 _extraDataBytes = bytes;
             }
         }
-        public byte[] GetExtraDataBytes()
-        {
-            return _extraDataBytes;
-        }
+        
+        public byte[] GetExtraDataBytes() => _extraDataBytes;
 
         public string GasToken { get => GasTokenTicker; set => GasTokenTicker = value; }
 
