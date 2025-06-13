@@ -12,6 +12,7 @@ namespace Nethermind.Crypto
 {
     public static class EthereumEcdsaExtensions
     {
+        private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
         public static AuthorizationTuple Sign(this IEthereumEcdsa ecdsa, PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
         {
             using NettyRlpStream rlp = AuthorizationTupleDecoder.Instance.EncodeWithoutSignature(chainId, codeAddress, nonce);
@@ -75,9 +76,11 @@ namespace Nethermind.Crypto
                 TxType.Legacy => ecdsa.ChainId,
                 _ => tx.ChainId!.Value,
             };
-            Hash256 hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
 
-            return ecdsa.RecoverAddress(tx.Signature, hash);
+            KeccakRlpStream stream = new();
+            _txDecoder.EncodeTx(stream, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
+
+            return ecdsa.RecoverAddress(tx.Signature, stream.GetHash());
         }
 
         public static ulong CalculateV(ulong chainId, bool addParity = true) => chainId * 2 + 35ul + (addParity ? 1u : 0u);
