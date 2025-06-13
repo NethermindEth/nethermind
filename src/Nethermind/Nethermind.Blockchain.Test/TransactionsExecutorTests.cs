@@ -5,6 +5,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -312,11 +313,7 @@ namespace Nethermind.Blockchain.Test
             }
 
             BlockProcessor.BlockProductionTransactionsExecutor txExecutor =
-                new(
-                    transactionProcessor,
-                    stateProvider,
-                    specProvider,
-                    LimboLogs.Instance);
+                new BlockProcessor.BlockProductionTransactionsExecutor(new BuildUpTransactionProcessorAdapter(transactionProcessor), stateProvider, new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes), LimboLogs.Instance);
 
             SetAccountStates(testCase.MissingAddresses);
 

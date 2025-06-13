@@ -206,6 +206,7 @@ public class EthereumRunnerTests
         api.BlockTree = Substitute.For<IBlockTree>();
         api.ReceiptStorage = Substitute.For<IReceiptStorage>();
         api.ReceiptFinder = Substitute.For<IReceiptFinder>();
+        api.DbFactory = new MemDbFactory();
         api.DbProvider = await TestMemDbProvider.InitAsync();
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
 

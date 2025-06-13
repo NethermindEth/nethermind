@@ -71,7 +71,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             api.SpecProvider,
             api.BlockValidator,
             api.RewardCalculatorSource.Get(transactionProcessor),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
             worldState,
             api.ReceiptStorage!,
             new BlockhashStore(api.SpecProvider, worldState),

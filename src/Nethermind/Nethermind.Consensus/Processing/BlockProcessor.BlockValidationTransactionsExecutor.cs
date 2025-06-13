@@ -25,11 +25,6 @@ namespace Nethermind.Consensus.Processing
             IWorldState stateProvider)
             : IBlockProcessor.IBlockTransactionsExecutor
         {
-            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider)
-                : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
-            {
-            }
-
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
