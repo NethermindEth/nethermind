@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Numerics;
-using System.Runtime.InteropServices;
+using Ethentials.GmpBindings;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using MathGmp.Native;
+using System;
+using System.Numerics;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -101,19 +101,6 @@ namespace Nethermind.Evm.Precompiles
             => releaseSpec.IsEip7823Enabled &&
                 (baseLength > ModExpMaxInputSizeEip7823 || expLength > ModExpMaxInputSizeEip7823 || modulusLength > ModExpMaxInputSizeEip7823);
 
-        private static mpz_t ImportDataToGmp(byte[] data)
-        {
-            mpz_t result = new();
-            gmp_lib.mpz_init(result);
-            ulong memorySize = (ulong)data.Length;
-            using void_ptr memoryChunk = gmp_lib.allocate(memorySize);
-
-            Marshal.Copy(data, 0, memoryChunk.ToIntPtr(), data.Length);
-            gmp_lib.mpz_import(result, memorySize, 1, 1, 1, 0, memoryChunk);
-
-            return result;
-        }
-
         private static (int, int, int) GetInputLengths(ReadOnlyMemory<byte> inputData)
         {
             Span<byte> extendedInput = stackalloc byte[96];
@@ -128,7 +115,7 @@ namespace Nethermind.Evm.Precompiles
             return (baseLength, expLength, modulusLength);
         }
 
-        public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.ModExpPrecompile++;
 
@@ -138,39 +125,49 @@ namespace Nethermind.Evm.Precompiles
                 return IPrecompile.Failure;
             }
 
-            // if both are 0, then expLength can be huge, which leads to a potential buffer too big exception
+            // if both are 0, then expLength can be huge, which leads to potential buffer to big exception
             if (baseLength == 0 && modulusLength == 0)
             {
                 return (Bytes.Empty, true);
             }
 
-            byte[] modulusData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength);
-            using mpz_t modulusInt = ImportDataToGmp(modulusData);
+            using mpz_t modulusInt = new();
 
-            if (gmp_lib.mpz_sgn(modulusInt) == 0)
+            fixed (byte* ptr = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength))
+            {
+                if (ptr is not null)
+                    Gmp.mpz_import(modulusInt, (nuint)modulusLength, 1, 1, 1, 0, (nint)ptr);
+            }
+
+            if (Gmp.mpz_sgn(modulusInt) == 0)
             {
                 return (new byte[modulusLength], true);
             }
 
-            byte[] baseData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength);
-            using mpz_t baseInt = ImportDataToGmp(baseData);
-
-            byte[] expData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength);
-            using mpz_t expInt = ImportDataToGmp(expData);
-
+            using mpz_t baseInt = new();
+            using mpz_t expInt = new();
             using mpz_t powmResult = new();
-            gmp_lib.mpz_init(powmResult);
-            gmp_lib.mpz_powm(powmResult, baseInt, expInt, modulusInt);
 
+            fixed (byte* ptr = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength))
+            {
+                if (ptr is not null)
+                    Gmp.mpz_import(baseInt, (nuint)baseLength, 1, 1, 1, 0, (nint)ptr);
+            }
 
-            using void_ptr data = gmp_lib.allocate((size_t)modulusLength);
-            ptr<size_t> countp = new(0);
-            gmp_lib.mpz_export(data, countp, 1, 1, 1, 0, powmResult);
-            int count = (int)countp.Value;
+            fixed (byte* ptr = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength))
+            {
+                if (ptr is not null)
+                    Gmp.mpz_import(expInt, (nuint)expLength, 1, 1, 1, 0, (nint)ptr);
+            }
 
+            Gmp.mpz_powm(powmResult, baseInt, expInt, modulusInt);
 
             byte[] result = new byte[modulusLength];
-            Marshal.Copy(data.ToIntPtr(), result, modulusLength - count, count);
+            var powmResultLen = (int)(Gmp.mpz_sizeinbase(powmResult, 2) + 7) / 8;
+            var offset = modulusLength - powmResultLen;
+
+            fixed (byte* ptr = result)
+                Gmp.mpz_export((nint)(ptr + offset), 0, 1, 1, 1, 0, powmResult);
 
             return (result, true);
         }
