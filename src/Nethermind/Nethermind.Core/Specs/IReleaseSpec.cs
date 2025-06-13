@@ -337,7 +337,8 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// Secp256r1 precompile
         /// </summary>
-        bool IsRip7212Enabled { get; }
+        /// <remarks>Previously known as RIP-7212</remarks>
+        bool IsEip7951Enabled { get; }
 
         /// OP Granite
         bool IsOpGraniteEnabled { get; }
@@ -362,6 +363,12 @@ namespace Nethermind.Core.Specs
         ///  Increase ModExp Gas Cost
         /// </summary>
         bool IsEip7883Enabled { get; }
+
+        /// <summary>
+        ///  RLP Execution Block Size Limit
+        /// </summary>
+        bool IsEip7934Enabled { get; }
+        int Eip7934MaxRlpBlockSize { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.
