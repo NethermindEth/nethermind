@@ -9,7 +9,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.State;
 
-using static Nethermind.Evm.VirtualMachine;
+using static Nethermind.Evm.VirtualMachineBase;
 
 namespace Nethermind.Evm;
 
@@ -90,7 +90,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionCall<TOpCall, TTracingInst>(
-        VirtualMachine vm,
+        VirtualMachineBase vm,
         ref EvmStack stack,
         ref long gasAvailable,
         ref int programCounter)
@@ -279,7 +279,7 @@ internal static partial class EvmInstructions
 
         // Fast-call path for non-contract calls:
         // Directly credit the target account and avoid constructing a full call frame.
-        static EvmExceptionType FastCall(VirtualMachine vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
+        static EvmExceptionType FastCall(VirtualMachineBase vm, IReleaseSpec spec, in UInt256 transferValue, Address target)
         {
             IWorldState state = vm.WorldState;
             state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
@@ -311,7 +311,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionReturn(
-        VirtualMachine vm,
+        VirtualMachineBase vm,
         ref EvmStack stack,
         ref long gasAvailable,
         ref int programCounter)

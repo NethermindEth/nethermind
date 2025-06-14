@@ -16,6 +16,5 @@ namespace Nethermind.Evm
         ref readonly TxExecutionContext TxExecutionContext { get; }
         void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
         void SetTxExecutionContext(in TxExecutionContext txExecutionContext);
-        VirtualMachine.CallResult RunPrecompile(EvmState state);
     }
 }

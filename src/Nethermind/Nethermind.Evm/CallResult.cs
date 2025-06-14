@@ -6,9 +6,9 @@ using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm;
 
-public unsafe partial class VirtualMachine
+public unsafe partial class VirtualMachineBase
 {
-    public readonly ref struct CallResult
+    protected readonly ref struct CallResult
     {
         public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
         public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);

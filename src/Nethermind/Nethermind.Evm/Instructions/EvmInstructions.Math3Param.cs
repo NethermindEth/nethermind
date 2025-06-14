@@ -16,7 +16,7 @@ internal static partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath3Param<TOpMath, TTracingInst>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMath3Param<TOpMath, TTracingInst>(VirtualMachineBase _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpMath : struct, IOpMath3Param
         where TTracingInst : struct, IFlag
     {

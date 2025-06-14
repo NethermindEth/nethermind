@@ -22,8 +22,6 @@ public class SimulateVirtualMachine(IVirtualMachine virtualMachine) : IVirtualMa
         return virtualMachine.ExecuteTransaction<TTracingInst>(state, worldState, txTracer);
     }
 
-    public VirtualMachine.CallResult RunPrecompile(EvmState state) => virtualMachine.RunPrecompile(state);
-
     private static bool TryGetLogsMutator(ITxTracer txTracer, [NotNullWhen(true)] out ITxLogsMutator? txLogsMutator)
     {
         switch (txTracer)

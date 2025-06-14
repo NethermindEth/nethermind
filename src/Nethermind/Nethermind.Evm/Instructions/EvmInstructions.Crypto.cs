@@ -19,7 +19,7 @@ internal static partial class EvmInstructions
     /// and pushes the resulting 256-bit hash onto the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionKeccak256<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionKeccak256<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         // Ensure two 256-bit words are available (memory offset and length).
