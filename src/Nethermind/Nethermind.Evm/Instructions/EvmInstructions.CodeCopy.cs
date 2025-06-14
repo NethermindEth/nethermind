@@ -23,7 +23,7 @@ internal static partial class EvmInstructions
         /// </summary>
         /// <param name="vm">The virtual machine instance providing execution context.</param>
         /// <returns>A read-only span of bytes containing the code.</returns>
-        abstract static ReadOnlySpan<byte> GetCode(VirtualMachine vm);
+        abstract static ReadOnlySpan<byte> GetCode(VirtualMachineBase vm);
     }
 
     /// <summary>
@@ -46,7 +46,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionCodeCopy<TOpCodeCopy, TTracingInst>(
-        VirtualMachine vm,
+        VirtualMachineBase vm,
         ref EvmStack stack,
         ref long gasAvailable,
         ref int programCounter)
@@ -96,7 +96,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCallDataCopy : IOpCodeCopy
     {
-        public static ReadOnlySpan<byte> GetCode(VirtualMachine vm)
+        public static ReadOnlySpan<byte> GetCode(VirtualMachineBase vm)
             => vm.EvmState.Env.InputData.Span;
     }
 
@@ -105,7 +105,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCodeCopy : IOpCodeCopy
     {
-        public static ReadOnlySpan<byte> GetCode(VirtualMachine vm)
+        public static ReadOnlySpan<byte> GetCode(VirtualMachineBase vm)
             => vm.EvmState.Env.CodeInfo.MachineCode.Span;
     }
 
@@ -126,7 +126,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionExtCodeCopy<TTracingInst>(
-        VirtualMachine vm,
+        VirtualMachineBase vm,
         ref EvmStack stack,
         ref long gasAvailable,
         ref int programCounter)
@@ -204,7 +204,7 @@ internal static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionExtCodeSize<TTracingInst>(
-        VirtualMachine vm,
+        VirtualMachineBase vm,
         ref EvmStack stack,
         ref long gasAvailable,
         ref int programCounter)
