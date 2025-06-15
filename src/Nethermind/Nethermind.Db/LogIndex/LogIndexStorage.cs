@@ -28,6 +28,7 @@ namespace Nethermind.Db
         // Use value that we won't encounter during iterator Seek or SeekForPrev
         private static readonly byte[] LastBlockNumKey = Enumerable.Repeat(byte.MaxValue, Math.Max(Address.Size, Hash256.Size) + 1).ToArray();
 
+        private readonly IColumnsDb<LogIndexColumns> _columnsDb;
         private readonly IDb _addressDb;
         private readonly IDb _topicsDb;
         private readonly ILogger _logger;
@@ -45,7 +46,7 @@ namespace Nethermind.Db
         public static void EnqueueCompress(byte[] dbKey) => CompressQueue.TryAdd(dbKey, true);
 
         // TODO: ensure class is singleton
-        public LogIndexStorage(IColumnsDb<LogIndexColumns> columnsDb, ILogger logger,
+        public LogIndexStorage(IDbFactory dbFactory, ILogger logger,
             int ioParallelism, int compactionDistance)
         {
             if (ioParallelism < 1) throw new ArgumentException("IO parallelism degree must be a positive value.", nameof(ioParallelism));
@@ -56,8 +57,9 @@ namespace Nethermind.Db
 
             _logger = logger;
 
-            _addressDb = columnsDb.GetColumnDb(LogIndexColumns.Addresses);
-            _topicsDb = columnsDb.GetColumnDb(LogIndexColumns.Topics);
+            _columnsDb = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex));
+            _addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
+            _topicsDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
         }
 
         // TODO: remove if unused
@@ -93,7 +95,9 @@ namespace Nethermind.Db
         {
             CompressQueue.Clear();
 
+            // TODO: dispose ColumnsDB?
             _setReceiptsSemaphore.Dispose();
+            _columnsDb.Dispose();
             _addressDb.Dispose();
             _topicsDb.Dispose();
 

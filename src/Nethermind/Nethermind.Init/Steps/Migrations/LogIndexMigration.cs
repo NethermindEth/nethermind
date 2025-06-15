@@ -185,7 +185,7 @@ namespace Nethermind.Init.Steps.Migrations
                     $"\n\t\t\tCompressing: {last.PostMergeProcessing.CompressingValue} ( {total.PostMergeProcessing.CompressingValue} in total )" +
                     $"\n\t\t\tPutting: {last.PostMergeProcessing.PuttingValues} ( {total.PostMergeProcessing.PuttingValues} in total )" +
                     $"\n\t\t\tCompressed keys: {last.PostMergeProcessing.CompressedAddressKeys:N0} address, {last.PostMergeProcessing.CompressedTopicKeys:N0} topic ( {total.PostMergeProcessing.CompressedAddressKeys:N0} address, {total.PostMergeProcessing.CompressedTopicKeys:N0} topic in total )" +
-                    $"\n\t\tDB size: {GetFolderSize(Path.Combine(_initConfig.BaseDbPath, DbNames.LogIndexStorage))}"
+                    $"\n\t\tDB size: {GetFolderSize(Path.Combine(_initConfig.BaseDbPath, DbNames.LogIndex))}"
                 );
             }
         }

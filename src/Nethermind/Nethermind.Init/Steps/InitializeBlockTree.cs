@@ -98,7 +98,7 @@ namespace Nethermind.Init.Steps
             IReceiptFinder receiptFinder = _set.ReceiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
 
             ILogIndexStorage logIndexStorage = _set.LogIndexStorage = new LogIndexStorage(
-                _get.DbProvider.LogIndexDb,
+                _get.DbFactory!,
                 _get.LogManager.GetClassLogger<LogIndexStorage>(),
                 receiptConfig.LogIndexIOParallelism,
                 receiptConfig.LogIndexCompactionDistance

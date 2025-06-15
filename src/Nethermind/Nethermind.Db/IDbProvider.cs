@@ -11,7 +11,6 @@ namespace Nethermind.Db
         public IDb StateDb => GetDb<IDb>(DbNames.State);
         public IDb CodeDb => GetDb<IDb>(DbNames.Code);
         public IColumnsDb<ReceiptsColumns> ReceiptsDb => GetColumnDb<ReceiptsColumns>(DbNames.Receipts);
-        public IColumnsDb<LogIndexColumns> LogIndexDb => GetColumnDb<LogIndexColumns>(DbNames.LogIndexStorage);
         public IDb BlocksDb => GetDb<IDb>(DbNames.Blocks);
         public IDb HeadersDb => GetDb<IDb>(DbNames.Headers);
         public IDb BlockNumbersDb => GetDb<IDb>(DbNames.BlockNumbers);

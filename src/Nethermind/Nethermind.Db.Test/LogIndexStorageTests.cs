@@ -29,12 +29,12 @@ namespace Nethermind.Db.Test
 
         private ILogger _logger;
         private string _dbPath = null!;
-        private ColumnsDb<LogIndexColumns> _columnsDb = null!;
+        private IDbFactory _dbFactory = null!;
 
         private LogIndexStorage CreateLogIndexStorage(int ioParallelism = 16, int compactionDistance = 262_144,
-            ColumnsDb<LogIndexColumns>? columnsDb = null)
+            IDbFactory? dbFactory = null)
         {
-            return new(columnsDb ?? _columnsDb, _logger, ioParallelism, compactionDistance);
+            return new(dbFactory ?? _dbFactory, _logger, ioParallelism, compactionDistance);
         }
 
         [SetUp]
@@ -50,20 +50,12 @@ namespace Nethermind.Db.Test
 
             Directory.CreateDirectory(_dbPath);
 
-            _columnsDb = new(
-                _dbPath,
-                new(DbNames.LogIndexStorage, DbNames.LogIndexStorage) { DeleteOnStart = true },
-                new DbConfig(),
-                LimboLogs.Instance,
-                Enum.GetValues<LogIndexColumns>()
-            );
+            _dbFactory = new RocksDbFactory(new DbConfig(), new TestLogManager(), _dbPath);
         }
 
         [TearDown]
         public void TearDown()
         {
-            _columnsDb.Dispose();
-
             if (Directory.Exists(_dbPath))
                 Directory.Delete(_dbPath, true);
         }
@@ -297,7 +289,7 @@ namespace Nethermind.Db.Test
                 $"\n\t\tCompressing: {totalStats.PostMergeProcessing.CompressingValue}" +
                 $"\n\t\tPutting: {totalStats.PostMergeProcessing.PuttingValues}" +
                 $"\n\t\tCompressed keys: {totalStats.PostMergeProcessing.CompressedAddressKeys:N0} address, {totalStats.PostMergeProcessing.CompressedTopicKeys:N0} topic" +
-                $"\n\tDB size: {LogIndexMigration.GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndexStorage))}");
+                $"\n\tDB size: {LogIndexMigration.GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndex))}");
         }
 
         private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData, int? maxBlock = null)
