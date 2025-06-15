@@ -82,6 +82,30 @@ namespace Nethermind.Db.Test
         }
 
         [Combinatorial]
+        // TODO: test reverting in the middle
+        // TODO: test reverting block with unexisting data
+        // TODO: test reverting already compressed block
+        public async Task Set_RevertLast_Get_Test(
+            [Values(1, 8)] int ioParallelism,
+            [Values(1, 5, 20)] int revertCount,
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            await using var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance);
+
+            await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            BlockReceipts[] revertBlocks = _testData.Batches.SelectMany(b => b).TakeLast(revertCount).ToArray();
+            foreach (BlockReceipts revertBlock in revertBlocks)
+            {
+                await logIndexStorage.RevertFrom(revertBlock);
+            }
+
+            var lastBlock = _testData.Batches[^1][^1].BlockNumber;
+            VerifyReceipts(logIndexStorage, _testData, maxBlock: lastBlock - revertCount);
+        }
+
+        [Combinatorial]
         public async Task SetMultiInstance_Get_Test(
             [Values(1, 8)] int ioParallelism,
             [Values(100, int.MaxValue)] int compactionDistance
@@ -254,7 +278,7 @@ namespace Nethermind.Db.Test
             //totalStats.Combine(logIndexStorage.Compact());
 
             // Log statistics
-            await TestContext.Out.WriteLineAsync($"{nameof(LogIndexStorage.SetReceiptsAsync)} in {Stopwatch.GetElapsedTime(timestamp)}:" +
+            await TestContext.Out.WriteLineAsync($"{nameof(LogIndexStorage.EnqueueCompress)} in {Stopwatch.GetElapsedTime(timestamp)}:" +
                 $"\n\tTxs: +{totalStats.TxAdded:N0}" +
                 $"\n\tLogs: +{totalStats.LogsAdded:N0}" +
                 $"\n\tTopics: +{totalStats.TopicsAdded:N0}" +

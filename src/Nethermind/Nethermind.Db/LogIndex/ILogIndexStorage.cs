@@ -21,6 +21,7 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     Task CheckMigratedData();
     Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync);
     Task<SetReceiptsStats> SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync);
+    Task RevertFrom(BlockReceipts block);
     SetReceiptsStats Compact();
     SetReceiptsStats Recompact(int maxUncompressedLength = LogIndexStorage.MaxUncompressedLength);
 

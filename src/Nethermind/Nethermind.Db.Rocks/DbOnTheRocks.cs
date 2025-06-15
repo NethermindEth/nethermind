@@ -18,6 +18,7 @@ using System.Threading.Tasks;
 using ConcurrentCollections;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -1912,6 +1913,43 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             { "LogIndexStorage.Merge", MergeOperators.Create("LogIndexStorage.Merge", ConcatenatePartialMerge, ConcatenateFullMerge) }
         };
 
+        private static int BinarySearchInt32LE(ReadOnlySpan<byte> data, int target)
+        {
+            int count = data.Length / sizeof(int);
+            int left = 0, right = count - 1;
+
+            while (left <= right)
+            {
+                int mid = left + (right - left) / 2;
+                int offset = mid * 4;
+
+                int value = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(offset, sizeof(int)));
+
+                if (value == target)
+                    return offset;
+                if (value < target)
+                    left = mid + 1;
+                else
+                    right = mid - 1;
+            }
+
+            return ~(left * sizeof(int));
+        }
+
+        private const byte RevertOperator = LogIndexStorage.RevertOperator;
+
+        private static bool IsRevertBlockOp(ReadOnlySpan<byte> operand, out int blockNumber)
+        {
+            if (operand.Length == LogIndexStorage.BlockNumSize + 1 && operand[0] == RevertOperator)
+            {
+                blockNumber = LogIndexStorage.ReadValLastBlockNum(operand);
+                return true;
+            }
+
+            blockNumber = 0;
+            return false;
+        }
+
         // TODO: inherit MergeOperator instead, to improve performance and minimize allocations
         private static byte[] ConcatenateMerge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
         {
@@ -1922,15 +1960,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             {
                 success = true;
 
-                // TODO: avoid array copying
-                if (existingValue.IsEmpty && operands.Count == 1)
-                    return operands.Get(0).ToArray();
-
-                // TODO: does Get involve IO request? if yes - use single Get per operand
+                // TODO: avoid array copying in case of a single value?
                 var resultLength = existingValue.Length;
                 for (int i = 0; i < operands.Count; i++)
                 {
-                    resultLength += operands.Get(i).Length;
+                    ReadOnlySpan<byte> operand = operands.Get(i);
+
+                    if(!IsRevertBlockOp(operand, out _))
+                        resultLength += operand.Length;
                 }
 
                 // TODO: can ArrayPool be used?
@@ -1945,18 +1982,22 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 var shift = existingValue.Length;
                 for (int i = 0; i < operands.Count; i++)
                 {
-                    var operand = operands.Get(i);
+                    ReadOnlySpan<byte> operand = operands.Get(i);
+
+                    if (IsRevertBlockOp(operand, out int revertBlock))
+                    {
+                        // TODO: detect if revert block is already compressed
+                        var revertIndex = BinarySearchInt32LE(result.AsSpan(..shift), revertBlock);
+                        shift = revertIndex >= 0 ? revertIndex : ~revertIndex;
+                        continue;
+                    }
 
                     // Validate we are merging non-intersecting segments - to prevent data corruption
                     if (lastBlockNum != -1 && LogIndexStorage.ReadValBlockNum(operand) <= lastBlockNum)
                     {
-                        success = false;
-
-                        // setting success=false during background merge may simply hide the error
+                        // setting success=false instead of throwing during background merge may simply hide the error
                         // TODO: check if this can be handled better, for example via paranoid_checks=true
                         throw new InvalidOperationException($"Merge error: {lastBlockNum} -> {LogIndexStorage.ReadValBlockNum(operand)}");
-
-                        //return result;
                     }
                     else
                     {
@@ -1972,7 +2013,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                     LogIndexStorage.EnqueueCompress(key.ToArray());
                 }
 
-                return result;
+                return result.Length == shift ? result : result[..shift];
             }
             finally
             {

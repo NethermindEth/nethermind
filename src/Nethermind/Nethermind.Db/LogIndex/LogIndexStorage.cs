@@ -35,6 +35,7 @@ namespace Nethermind.Db
         public const int BlockNumSize = sizeof(int);
         public const int BlockMaxVal = int.MaxValue;
         public const int MaxUncompressedLength = 128 * BlockNumSize;
+        public const byte RevertOperator = (byte)'-';
 
         private readonly int _compactionDistance;
 
@@ -319,6 +320,48 @@ namespace Nethermind.Db
             return SetReceiptsAsync([new(blockNumber, receipts)], isBackwardSync);
         }
 
+        public Task RevertFrom(BlockReceipts block)
+        {
+            var keyArray = ArrayPool<byte>.Shared.Rent(Hash256.Size + BlockNumSize);
+            var valueArray = ArrayPool<byte>.Shared.Rent(BlockNumSize + 1);
+
+            Span<byte> addressKey = keyArray.AsSpan(0, Address.Size + BlockNumSize);
+            Span<byte> topicKey = keyArray.AsSpan(0, Hash256.Size + BlockNumSize);
+
+            IWriteBatch addressBatch = _addressDb.StartWriteBatch();
+            IWriteBatch topicBatch = _topicsDb.StartWriteBatch();
+
+            Span<byte> dbValue = valueArray.AsSpan(0, BlockNumSize + 1);
+            dbValue[0] = RevertOperator;
+            WriteValBlockNum(dbValue[1..], block.BlockNumber);
+
+            try
+            {
+                foreach (TxReceipt receipt in block.Receipts)
+                foreach (LogEntry log in receipt.Logs ?? [])
+                {
+                    CreateDbKey(log.Address.Bytes, BlockMaxVal, addressKey);
+                    addressBatch.Merge(addressKey, dbValue);
+
+                    foreach (Hash256 topic in log.Topics)
+                    {
+                        CreateDbKey(topic.Bytes, BlockMaxVal, topicKey);
+                        topicBatch.Merge(topicKey, dbValue);
+                    }
+                }
+
+                addressBatch.Dispose();
+                topicBatch.Dispose();
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(keyArray);
+                ArrayPool<byte>.Shared.Return(valueArray);
+            }
+
+            return Task.CompletedTask;
+        }
+
         public SetReceiptsStats Compact()
         {
             var stats = new SetReceiptsStats();
@@ -551,6 +594,7 @@ namespace Nethermind.Db
         private static Exception ValidationException(string message) => new InvalidOperationException(message);
 
         // TODO: optimize allocations
+        // TODO: set max block value to compress at, as revert only works for uncompressed numbers
         private void CompressPostMerge(PostMergeProcessingStats stats)
         {
             var execTimestamp = Stopwatch.GetTimestamp();
