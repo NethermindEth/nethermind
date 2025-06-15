@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Find;
@@ -24,11 +25,13 @@ namespace Nethermind.Init.Steps
     [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(InitDatabase), typeof(MigrateConfigs), typeof(SetupKeyStore))]
     public class InitializeBlockTree : IStep
     {
+        private readonly IServiceStopper _stopper;
         private readonly IBasicApi _get;
         private readonly IApiWithStores _set;
 
-        public InitializeBlockTree(INethermindApi api)
+        public InitializeBlockTree(INethermindApi api, IServiceStopper stopper)
         {
+            _stopper = stopper;
             (_get, _set) = api.ForInit;
         }
 
@@ -100,6 +103,7 @@ namespace Nethermind.Init.Steps
                 receiptConfig.LogIndexIOParallelism,
                 receiptConfig.LogIndexCompactionDistance
             );
+            _stopper.AddStoppable(logIndexStorage);
 
             _get.DisposeStack.Push(logIndexStorage);
 

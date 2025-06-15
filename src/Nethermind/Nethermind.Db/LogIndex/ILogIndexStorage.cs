@@ -6,12 +6,13 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ServiceStopper;
 
 namespace Nethermind.Db;
 
 public readonly record struct BlockReceipts(int BlockNumber, TxReceipt[] Receipts);
 
-public interface ILogIndexStorage : IAsyncDisposable
+public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
 {
     int GetLastKnownBlockNumber();
     IEnumerable<int> GetBlockNumbersFor(Address address, int from, int to);
@@ -22,7 +23,6 @@ public interface ILogIndexStorage : IAsyncDisposable
     Task<SetReceiptsStats> SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync);
     SetReceiptsStats Compact();
     SetReceiptsStats Recompact(int maxUncompressedLength = LogIndexStorage.MaxUncompressedLength);
-    Task StopAsync();
 
     PagesStats PagesStats => default;
     string TempFilePath => "";
