@@ -11,18 +11,6 @@ namespace Nethermind.Network.P2P
 {
     public static class P2PProtocolInfoProvider
     {
-        public static int GetHighestVersionOfEthProtocol()
-        {
-            int highestVersion = 0;
-            foreach (Capability ethProtocol in ProtocolsManager.DefaultCapabilities)
-            {
-                if (ethProtocol.ProtocolCode == Protocol.Eth && highestVersion < ethProtocol.Version)
-                    highestVersion = ethProtocol.Version;
-            }
-
-            return highestVersion;
-        }
-
         public static string DefaultCapabilitiesToString()
         {
             IEnumerable<string> capabilities = ProtocolsManager.DefaultCapabilities

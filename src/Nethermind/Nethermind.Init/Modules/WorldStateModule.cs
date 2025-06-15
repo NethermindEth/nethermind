@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
@@ -10,7 +12,7 @@ using Nethermind.State;
 
 namespace Nethermind.Init.Modules;
 
-public class WorldStateModule : Module
+public class WorldStateModule(IInitConfig initConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -34,6 +36,11 @@ public class WorldStateModule : Module
             // Prevent multiple concurrent verify trie.
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
             ;
+
+        if (initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)
+        {
+            builder.AddStep(typeof(RunVerifyTrie));
+        }
     }
 
     // Just a wrapper to easily extract the output of `PruningTrieStateFactory` which do the actual initializations.

@@ -1473,7 +1473,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Should_return_capabilities()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()
             .Select(static m => m.Name)

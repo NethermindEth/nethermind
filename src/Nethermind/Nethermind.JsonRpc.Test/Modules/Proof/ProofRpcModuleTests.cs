@@ -20,7 +20,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using System.Threading.Tasks;
@@ -47,6 +46,7 @@ public class ProofRpcModuleTests
     private IDbProvider _dbProvider = null!;
     private TestSpecProvider _specProvider = null!;
     private WorldStateManager _worldStateManager = null!;
+    private IReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory = null!;
 
     public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
     {
@@ -72,8 +72,11 @@ public class ProofRpcModuleTests
             .OfChainLength(10)
             .TestObject;
 
+        _readOnlyTxProcessingEnvFactory = new ReadOnlyTxProcessingEnvFactory(_worldStateManager, _blockTree, _specProvider, LimboLogs.Instance);
+
         ProofModuleFactory moduleFactory = new(
             _worldStateManager,
+            _readOnlyTxProcessingEnvFactory,
             _blockTree,
             new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
             receiptStorage,
@@ -217,6 +220,7 @@ public class ProofRpcModuleTests
 
         ProofModuleFactory moduleFactory = new ProofModuleFactory(
             _worldStateManager,
+            _readOnlyTxProcessingEnvFactory,
             _blockTree,
             new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
             _receiptFinder,
@@ -242,7 +246,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call()
     {
-        WorldState stateProvider = CreateInitialState(null);
+        IWorldState stateProvider = CreateInitialState(null);
 
         Hash256 root = stateProvider.StateRoot;
         Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).TestObject;
@@ -266,7 +270,7 @@ public class ProofRpcModuleTests
     [TestCase]
     public async Task Can_call_by_hash()
     {
-        WorldState stateProvider = CreateInitialState(null);
+        IWorldState stateProvider = CreateInitialState(null);
 
         Hash256 root = stateProvider.StateRoot;
         Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).TestObject;
@@ -766,7 +770,7 @@ public class ProofRpcModuleTests
 
     private async Task<CallResultWithProof> TestCallWithCode(byte[] code, Address? from = null)
     {
-        WorldState stateProvider = CreateInitialState(code);
+        IWorldState stateProvider = CreateInitialState(code);
 
         Hash256 root = stateProvider.StateRoot;
         Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
@@ -803,7 +807,7 @@ public class ProofRpcModuleTests
 
     private async Task TestCallWithStorageAndCode(byte[] code, UInt256 gasPrice, Address? from = null)
     {
-        WorldState stateProvider = CreateInitialState(code);
+        IWorldState stateProvider = CreateInitialState(code);
 
         for (int i = 0; i < 10000; i++)
         {
@@ -854,8 +858,8 @@ public class ProofRpcModuleTests
             // the exception will be thrown if the account did not exist before the call
             try
             {
-                CappedArray<byte> verifyOneProof = ProofVerifier.VerifyOneProof(accountProof.Proof!, block.StateRoot!);
-                new AccountDecoder().Decode(verifyOneProof.AsSpan());
+                SpanSource verifyOneProof = ProofVerifier.VerifyOneProof(accountProof.Proof!, block.StateRoot!);
+                new AccountDecoder().Decode(verifyOneProof.Span);
             }
             catch (Exception)
             {
@@ -873,9 +877,10 @@ public class ProofRpcModuleTests
         Assert.That(response.Contains("\"result\""), Is.True);
     }
 
-    private WorldState CreateInitialState(byte[]? code)
+    private IWorldState CreateInitialState(byte[]? code)
     {
-        WorldState stateProvider = new(TestTrieStoreFactory.Build(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
+        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(_dbProvider, LimboLogs.Instance);
+        IWorldState stateProvider = worldStateManager.GlobalWorldState;
         AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
         AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 
@@ -894,13 +899,13 @@ public class ProofRpcModuleTests
         return stateProvider;
     }
 
-    private void AddAccount(WorldState stateProvider, Address account, UInt256 initialBalance)
+    private void AddAccount(IWorldState stateProvider, Address account, UInt256 initialBalance)
     {
         stateProvider.CreateAccount(account, initialBalance);
         stateProvider.Commit(MuirGlacier.Instance, NullStateTracer.Instance);
     }
 
-    private void AddCode(WorldState stateProvider, Address account, byte[] code)
+    private void AddCode(IWorldState stateProvider, Address account, byte[] code)
     {
         stateProvider.InsertCode(account, code, MuirGlacier.Instance);
         stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);

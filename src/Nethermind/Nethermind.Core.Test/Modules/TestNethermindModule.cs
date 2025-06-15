@@ -20,6 +20,10 @@ namespace Nethermind.Core.Test.Modules;
 /// <param name="configProvider"></param>
 public class TestNethermindModule(IConfigProvider configProvider) : Module
 {
+    public TestNethermindModule() : this(new ConfigProvider())
+    {
+    }
+
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);

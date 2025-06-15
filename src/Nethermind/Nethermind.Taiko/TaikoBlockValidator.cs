@@ -75,16 +75,16 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        if (tx.Data is null
-            || (!AnchorSelector.AsSpan().SequenceEqual(tx.Data.Value.Span[0..4])
-                && !AnchorV2Selector.AsSpan().SequenceEqual(tx.Data.Value.Span[0..4])
-                && !AnchorV3Selector.AsSpan().SequenceEqual(tx.Data.Value.Span[0..4])))
+        if (tx.Data.Length == 0
+            || (!AnchorSelector.AsSpan().SequenceEqual(tx.Data.Span[0..4])
+                && !AnchorV2Selector.AsSpan().SequenceEqual(tx.Data.Span[0..4])
+                && !AnchorV3Selector.AsSpan().SequenceEqual(tx.Data.Span[0..4])))
         {
             errorMessage = "Anchor transaction must have valid selector";
             return false;
         }
 
-        if (!tx.Value.IsZero)
+        if (!tx.ValueRef.IsZero)
         {
             errorMessage = "Anchor transaction must have value of 0";
             return false;

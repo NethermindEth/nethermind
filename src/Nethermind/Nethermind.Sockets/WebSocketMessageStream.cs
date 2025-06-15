@@ -1,17 +1,19 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Logging;
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 
 namespace Nethermind.Sockets;
 
-public class WebSocketMessageStream : Stream, IMessageBorderPreservingStream
+public sealed class WebSocketMessageStream : Stream, IMessageBorderPreservingStream
 {
     private readonly WebSocket _socket;
     private readonly ILogger _logger;
@@ -34,17 +36,18 @@ public class WebSocketMessageStream : Stream, IMessageBorderPreservingStream
     }
 
     public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        => await ReadAsync(new Memory<byte>(buffer, offset, count), cancellationToken);
+
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        _ = _socket ?? throw new InvalidOperationException($"The underlying {nameof(WebSocket)} is null");
 
         if (_socket.State is WebSocketState.Closed or WebSocketState.CloseReceived or WebSocketState.CloseSent)
         {
             return 0;
         }
 
-        ArraySegment<byte> segment = new(buffer, offset, count);
-        WebSocketReceiveResult result = await _socket.ReceiveAsync(segment, cancellationToken);
+        ValueWebSocketReceiveResult result = await _socket.ReceiveAsync(buffer, cancellationToken);
 
         if (result.MessageType == WebSocketMessageType.Close)
         {
@@ -56,109 +59,90 @@ public class WebSocketMessageStream : Stream, IMessageBorderPreservingStream
     }
 
     public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        => await WriteAsync(new ReadOnlyMemory<byte>(buffer, offset, count), cancellationToken);
+
+    public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        _ = _socket ?? throw new ArgumentNullException(nameof(_socket));
-        if (_socket.State != WebSocketState.Open) { throw new IOException($"WebSocket not open ({_socket.State})"); }
 
-        ArraySegment<byte> segment = new(buffer, offset, count);
-        await _socket.SendAsync(segment, WebSocketMessageType.Text, false, cancellationToken);
+        if (_socket.State != WebSocketState.Open) { ThrowSocketNotOpen(); }
+
+        await _socket.SendAsync(buffer, WebSocketMessageType.Text, endOfMessage: false, cancellationToken);
     }
+
+    [DoesNotReturn]
+    [StackTraceHidden]
+    private void ThrowSocketNotOpen() => throw new IOException($"WebSocket not open ({_socket.State})");
 
     public override void Flush() { }
 
-    public override int Read(byte[] buffer, int offset, int count)
-    {
-        return ReadAsync(buffer, offset, count).GetAwaiter().GetResult();
-    }
+    public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    public override long Seek(long offset, SeekOrigin origin)
-    {
-        throw new NotSupportedException();
-    }
+    public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer, offset, count).GetAwaiter().GetResult();
 
-    public override void SetLength(long value)
-    {
-        throw new NotSupportedException();
-    }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
 
-    public override void Write(byte[] buffer, int offset, int count)
-    {
-        WriteAsync(buffer, offset, count).GetAwaiter().GetResult();
-    }
+    public override void SetLength(long value) => throw new NotSupportedException();
 
-    public async Task<int> WriteEndOfMessageAsync()
+    public override void Write(byte[] buffer, int offset, int count) => WriteAsync(buffer, offset, count).GetAwaiter().GetResult();
+
+    public async ValueTask<int> WriteEndOfMessageAsync()
     {
         await _socket.SendAsync(ReadOnlyMemory<byte>.Empty, WebSocketMessageType.Text, true, CancellationToken.None);
         return 0;
     }
 
-    private void ThrowIfDisposed()
-    {
-        ObjectDisposedException.ThrowIf(_socket is null, _socket);
-    }
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_socket is null, _socket);
 
-    public async Task<ReceiveResult?> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
+    public async ValueTask<ReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
     {
-        ReceiveResult? result = null;
-        if (_socket.State == WebSocketState.Open)
+        if (_socket.State != WebSocketState.Open) return default;
+
+        try
         {
-            Task<WebSocketReceiveResult> resultTask = _socket.ReceiveAsync(buffer, cancellationToken);
-
-            await resultTask.ContinueWith(t =>
+            ValueWebSocketReceiveResult result = await _socket.ReceiveAsync(buffer.AsMemory(), cancellationToken);
+            return new ReceiveResult()
             {
-                if (t.IsFaulted)
-                {
-                    Exception? innerException = t.Exception;
-                    while (innerException?.InnerException is not null)
-                    {
-                        innerException = innerException.InnerException;
-                    }
-
-                    if (innerException is SocketException socketException)
-                    {
-                        if (socketException.SocketErrorCode == SocketError.ConnectionReset)
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message}.");
-                        }
-                        else
-                        {
-                            if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets ({socketException.SocketErrorCode}: {socketException.ErrorCode}). {innerException.Message}");
-                        }
-                    }
-                    else if (innerException is WebSocketException webSocketException)
-                    {
-                        if (webSocketException.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message}.");
-                        }
-                        else
-                        {
-                            if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets ({webSocketException.WebSocketErrorCode}: {webSocketException.ErrorCode}). {innerException.Message}");
-                        }
-                    }
-                    else
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets. {innerException?.Message}");
-                    }
-
-                    result = new WebSocketsReceiveResult() { Closed = true };
-                }
-
-                if (t.IsCompletedSuccessfully)
-                {
-                    result = new WebSocketsReceiveResult()
-                    {
-                        Closed = t.Result.MessageType == WebSocketMessageType.Close,
-                        Read = t.Result.Count,
-                        EndOfMessage = t.Result.EndOfMessage,
-                        CloseStatus = t.Result.CloseStatus,
-                        CloseStatusDescription = t.Result.CloseStatusDescription
-                    };
-                }
-            });
+                Closed = result.MessageType == WebSocketMessageType.Close,
+                Read = result.Count,
+                EndOfMessage = result.EndOfMessage
+            };
         }
+        catch (Exception innerException)
+        {
+            while (innerException?.InnerException is not null)
+            {
+                innerException = innerException.InnerException;
+            }
 
-        return result;
+            if (innerException is SocketException socketException)
+            {
+                if (socketException.SocketErrorCode == SocketError.ConnectionReset)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message}.");
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets ({socketException.SocketErrorCode}: {socketException.ErrorCode}). {innerException.Message}");
+                }
+            }
+            else if (innerException is WebSocketException webSocketException)
+            {
+                if (webSocketException.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message}.");
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets ({webSocketException.WebSocketErrorCode}: {webSocketException.ErrorCode}). {innerException.Message}");
+                }
+            }
+            else
+            {
+                if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets. {innerException?.Message}");
+            }
+
+            return new ReceiveResult() { Closed = true };
+        }
     }
 }

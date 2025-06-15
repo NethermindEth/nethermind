@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -37,11 +38,21 @@ using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Test;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
+using Nethermind.Network;
+using Nethermind.Network.Config;
+using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.Rlpx;
+using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using NSubstitute;
 
 namespace Nethermind.JsonRpc.Benchmark
@@ -107,10 +118,11 @@ namespace Nethermind.JsonRpc.Benchmark
                 transactionsExecutor,
                 stateProvider,
                 NullReceiptStorage.Instance,
-                transactionProcessor,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 new BlockhashStore(specProvider, stateProvider),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+                new ExecutionRequestsProcessor(transactionProcessor));
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId);
             BlockchainProcessor blockchainProcessor = new(
@@ -170,6 +182,25 @@ namespace Nethermind.JsonRpc.Benchmark
             ISyncConfig syncConfig = new SyncConfig();
             EthSyncingInfo ethSyncingInfo = new(blockTree, Substitute.For<ISyncPointers>(), syncConfig, new StaticSelector(SyncMode.All), null, LimboLogs.Instance);
 
+            ProtocolsManager protocolsManager = new(
+                Substitute.For<ISyncPeerPool>(),
+                Substitute.For<ISyncServer>(),
+                Substitute.For<IBackgroundTaskScheduler>(),
+                Substitute.For<ITxPool>(),
+                Substitute.For<IPooledTxsRequestor>(),
+                Substitute.For<IDiscoveryApp>(),
+                Substitute.For<IMessageSerializationService>(),
+                Substitute.For<IRlpxHost>(),
+                Substitute.For<INodeStatsManager>(),
+                Substitute.For<IProtocolValidator>(),
+                Substitute.For<INetworkStorage>(),
+                new ForkInfo(specProvider, genesisBlock.Hash!),
+                Substitute.For<IGossipPolicy>(),
+                stateManager,
+                LimboLogs.Instance,
+                Substitute.For<ITxGossipPolicy>()
+            );
+
             _ethModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 bridge,
@@ -184,6 +215,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 gasPriceOracle,
                 ethSyncingInfo,
                 feeHistoryOracle,
+                protocolsManager,
                 new BlocksConfig().SecondsPerSlot);
         }
 

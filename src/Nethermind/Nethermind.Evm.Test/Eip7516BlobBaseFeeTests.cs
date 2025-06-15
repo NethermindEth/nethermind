@@ -12,6 +12,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
+[TestFixture]
 public class Eip7516BlobBaseFeeTests : VirtualMachineTestsBase
 {
 

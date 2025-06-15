@@ -55,7 +55,7 @@ public class BlockHeader
     public Hash256? TxRoot { get; set; }
     public Hash256? ReceiptsRoot { get; set; }
     public Bloom? Bloom { get; set; }
-    public UInt256 Difficulty { get; set; }
+    public UInt256 Difficulty;
     public long Number { get; set; }
     public long GasUsed { get; set; }
     public long GasLimit { get; set; }
@@ -69,7 +69,7 @@ public class BlockHeader
     public UInt256? TotalDifficulty { get; set; }
     public byte[]? AuRaSignature { get; set; }
     public long? AuRaStep { get; set; }
-    public UInt256 BaseFeePerGas { get; set; }
+    public UInt256 BaseFeePerGas;
     public Hash256? WithdrawalsRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
     public Hash256? RequestsHash { get; set; }

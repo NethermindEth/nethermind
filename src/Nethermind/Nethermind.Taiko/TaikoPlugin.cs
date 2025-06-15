@@ -35,6 +35,8 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain.Services;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -73,8 +75,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         _blockCacheService = _api.Context.Resolve<IBlockCacheService>();
         _api.FinalizationManager = new ManualBlockFinalizationManager();
 
-        _api.RewardCalculatorSource = NoBlockRewards.Instance;
-        _api.SealValidator = NullSealEngine.Instance;
         _api.GossipPolicy = ShouldNotGossip.Instance;
 
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
@@ -98,10 +98,10 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         _api.L1OriginStore = new(_api.DbProvider.GetDb<IDb>(L1OriginDbName), r1OriginDecoder);
     }
 
-    public async Task InitRpcModules()
+    public Task InitRpcModules()
     {
         if (_api is null)
-            return;
+            return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
@@ -120,20 +120,12 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
 
-        // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
-        // Then we will wait 5s more to ensure everything is processed
-        while (!_api.BlockProcessingQueue.IsEmpty)
-            await Task.Delay(100);
-        await Task.Delay(5000);
-
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
         ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
         IRlpStreamDecoder<Transaction> txDecoder = Rlp.GetStreamDecoder<Transaction>() ?? throw new ArgumentNullException(nameof(IRlpStreamDecoder<Transaction>));
-        TaikoPayloadPreparationService payloadPreparationService = CreatePayloadPreparationService(_api, readonlyBlockTree, txDecoder);
+        TaikoPayloadPreparationService payloadPreparationService = CreatePayloadPreparationService(_api, txDecoder);
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
-
-        ReadOnlyTxProcessingEnvFactory readonlyTxProcessingEnvFactory = new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
         var poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
         var invalidChainTracker = _api.Context.Resolve<IInvalidChainTracker>();
@@ -146,6 +138,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+            new GetPayloadV5Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
@@ -179,6 +172,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             new ExchangeTransitionConfigurationV1Handler(poSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
+            new GetBlobsHandlerV2(_api.TxPool),
             _api.EngineRequestsTracker,
             _api.SpecProvider,
             new GCKeeper(
@@ -188,44 +182,43 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _api.LogManager,
             _api.TxPool,
             readonlyBlockTree,
-            readonlyTxProcessingEnvFactory,
+            _api.ReadOnlyTxProcessingEnvFactory,
             txDecoder
         );
 
         _api.RpcModuleProvider.RegisterSingle(engine);
 
         if (_logger.IsInfo) _logger.Info("Taiko Engine Module has been enabled");
+        return Task.CompletedTask;
     }
 
-    private static TaikoPayloadPreparationService CreatePayloadPreparationService(TaikoNethermindApi api, IReadOnlyBlockTree readonlyBlockTree, IRlpStreamDecoder<Transaction> txDecoder)
+    private static TaikoPayloadPreparationService CreatePayloadPreparationService(TaikoNethermindApi api, IRlpStreamDecoder<Transaction> txDecoder)
     {
         ArgumentNullException.ThrowIfNull(api.L1OriginStore);
         ArgumentNullException.ThrowIfNull(api.SpecProvider);
 
-        TaikoReadOnlyTxProcessingEnv txProcessingEnv =
-            new(api.WorldStateManager!, readonlyBlockTree, api.SpecProvider, api.LogManager);
-
+        IReadOnlyTxProcessorSource txProcessingEnv = api.ReadOnlyTxProcessingEnvFactory.Create();
         IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
-        BlockProcessor blockProcessor =
-            new(api.SpecProvider,
-                api.BlockValidator,
-                NoBlockRewards.Instance,
-                new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
-                scope.WorldState,
-                api.ReceiptStorage,
-                scope.TransactionProcessor,
-                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
-                new BlockhashStore(api.SpecProvider, scope.WorldState),
-                api.LogManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, api.LogManager)));
+        BlockProcessor blockProcessor = new BlockProcessor(
+            api.SpecProvider,
+            api.BlockValidator,
+            NoBlockRewards.Instance,
+            new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
+            scope.WorldState,
+            api.ReceiptStorage!,
+            new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
+            new BlockhashStore(api.SpecProvider, scope.WorldState),
+            api.LogManager,
+            new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, api.LogManager)),
+            new ExecutionRequestsProcessor(scope.TransactionProcessor));
 
         IBlockchainProcessor blockchainProcessor =
             new BlockchainProcessor(
                 api.BlockTree,
                 blockProcessor,
                 api.BlockPreprocessor,
-                txProcessingEnv.StateReader,
+                api.StateReader!,
                 api.LogManager,
                 BlockchainProcessor.Options.NoReceipts);
 
@@ -261,7 +254,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         throw new NotSupportedException();
     }
 
-    public IBlockProducer InitBlockProducer(ITxSource? _ = null)
+    public IBlockProducer InitBlockProducer()
     {
         throw new NotSupportedException();
     }
@@ -301,6 +294,10 @@ public class TaikoModule : Module
             .AddSingleton<IHeaderValidator, TaikoHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
 
+            .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
+
+            .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>
+                new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))
             ;
     }
 }

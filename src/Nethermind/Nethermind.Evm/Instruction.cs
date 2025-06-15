@@ -42,6 +42,7 @@ public enum Instruction : byte
     SHL = 0x1b, // EIP-145
     SHR = 0x1c, // EIP-145
     SAR = 0x1d, // EIP-145
+    CLZ = 0x1e, // EIP-7939
 
     KECCAK256 = 0x20,
 
@@ -394,12 +395,11 @@ public static class InstructionExtensions
         };
     }
 
-    public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null)
+    public static string? GetName(this Instruction instruction, IReleaseSpec? spec = null)
     {
         spec ??= Frontier.Instance;
         return instruction switch
         {
-            Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
             Instruction.JUMPDEST => spec.IsEofEnabled ? "NOP" : "JUMPDEST",
             _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
         };

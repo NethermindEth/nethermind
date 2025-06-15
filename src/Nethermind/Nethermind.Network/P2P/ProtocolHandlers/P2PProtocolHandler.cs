@@ -29,7 +29,6 @@ public class P2PProtocolHandler(
     PublicKey localNodeId,
     INodeStatsManager nodeStatsManager,
     IMessageSerializationService serializer,
-    Regex? clientIdPattern,
     ILogManager logManager)
     : ProtocolHandlerBase(session, nodeStatsManager, serializer, logManager), IPingSender, IP2PProtocolHandler
 {
@@ -217,13 +216,6 @@ public class P2PProtocolHandler(
             Session.InitiateDisconnect(
                 DisconnectReason.NoCapabilityMatched,
                 $"capabilities: {string.Join(", ", capabilities)}");
-        }
-
-        if (clientIdPattern?.IsMatch(hello.ClientId) == false)
-        {
-            Session.InitiateDisconnect(
-                DisconnectReason.ClientFiltered,
-                $"clientId: {hello.ClientId}");
         }
 
         ReceivedProtocolInitMsg(hello);

@@ -18,13 +18,13 @@ public class AuRaBetterPeerStrategy : IBetterPeerStrategy
         _logger = logManager.GetClassLogger();
     }
 
-    public int Compare(in (UInt256 TotalDifficulty, long Number) valueX, in (UInt256 TotalDifficulty, long Number) valueY)
+    public int Compare(in (UInt256? TotalDifficulty, long Number) valueX, in (UInt256? TotalDifficulty, long Number) valueY)
         => _betterPeerStrategy.Compare(valueX, valueY);
 
-    public bool IsBetterThanLocalChain(in (UInt256 TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestBlock) =>
+    public bool IsBetterThanLocalChain(in (UInt256? TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestBlock) =>
         _betterPeerStrategy.IsBetterThanLocalChain(bestPeerInfo, bestBlock);
 
-    public bool IsDesiredPeer(in (UInt256 TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestHeader)
+    public bool IsDesiredPeer(in (UInt256? TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestHeader)
     {
         if (_betterPeerStrategy.IsDesiredPeer(bestPeerInfo, bestHeader))
         {

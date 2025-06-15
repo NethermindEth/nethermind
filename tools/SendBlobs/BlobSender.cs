@@ -1,5 +1,6 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
+
 extern alias BouncyCastle;
 
 using Nethermind.Consensus;
@@ -118,7 +119,7 @@ internal class BlobSender
                 switch (@break)
                 {
                     case "1": blobCount = 0; break;
-                    case "2": blobCount = 7; break;
+                    case "2": blobCount = (int)spec.MaxBlobCount + 1; break;
                     case "14": blobCount = 100; break;
                     case "15": blobCount = 1000; break;
                 }
@@ -141,8 +142,12 @@ internal class BlobSender
                     }
                 }
 
-                (byte[][] blobHashes, ShardBlobNetworkWrapper blobsContainer) = GenerateBlobData(blobs);
+                IBlobProofsManager proofs = IBlobProofsManager.For(spec.BlobProofVersion);
 
+                ShardBlobNetworkWrapper blobsContainer = proofs.AllocateWrapper(blobs);
+                proofs.ComputeProofsAndCommitments(blobsContainer);
+
+                byte[][] blobHashes = proofs.ComputeHashes(blobsContainer);
 
                 BlockModel<Hash256>? blockResult = await _rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
 
@@ -160,17 +165,17 @@ internal class BlobSender
 
                 switch (@break)
                 {
-                    case "3": blobs[0] = blobs[0].Take(blobs.Length - 2).ToArray(); break;
+                    case "3": blobsContainer.Blobs[0] = blobsContainer.Blobs[0].Take(blobsContainer.Blobs[0].Length - 2).ToArray(); break;
                     case "4": blobsContainer.Proofs[0][2] = (byte)~blobsContainer.Proofs[0][2]; break;
                     case "5": blobsContainer.Commitments[0][2] = (byte)~blobsContainer.Commitments[0][2]; break;
                     case "6":
-                        Array.Copy(KzgPolynomialCommitments.BlsModulus.ToBigEndian(), blobs[0], 32);
-                        blobs[0][31] += 1;
+                        Array.Copy(KzgPolynomialCommitments.BlsModulus.ToBigEndian(), blobsContainer.Blobs[0], 32);
+                        blobsContainer.Blobs[0][31] += 1;
                         break;
                     case "7": maxFeePerBlobGas = UInt256.MaxValue; break;
                     //case "8": maxFeePerBlobGas = 42_000_000_000; break;
-                    case "9": blobsContainer.Proofs = blobsContainer.Proofs.Skip(1).ToArray(); break;
-                    case "10": blobsContainer.Commitments = blobsContainer.Commitments.Skip(1).ToArray(); break;
+                    case "9": blobsContainer = blobsContainer with { Proofs = blobsContainer.Proofs.Skip(1).ToArray() }; break;
+                    case "10": blobsContainer = blobsContainer with { Commitments = blobsContainer.Commitments.Skip(1).ToArray() }; break;
                     case "11": maxFeePerBlobGas = UInt256.MaxValue / Eip4844Constants.GasPerBlob + 1; break;
                 }
 
@@ -240,7 +245,12 @@ internal class BlobSender
             Array.Copy(data, blobIndex * Ckzg.BytesPerBlob, blobs[blobIndex], 0, Math.Min(data.Length - blobIndex * Ckzg.BytesPerBlob, Ckzg.BytesPerBlob));
         }
 
-        (byte[][] blobHashes, ShardBlobNetworkWrapper blobsContainer) = GenerateBlobData(blobs);
+        IBlobProofsManager proofs = IBlobProofsManager.For(spec.BlobProofVersion);
+
+        ShardBlobNetworkWrapper blobsContainer = proofs.AllocateWrapper(blobs);
+        proofs.ComputeProofsAndCommitments(blobsContainer);
+
+        byte[][] blobHashes = proofs.ComputeHashes(blobsContainer);
 
         BlockModel<Hash256>? blockResult = await _rpcClient.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
 
@@ -306,29 +316,6 @@ internal class BlobSender
         return result;
     }
 
-    private static (byte[][] hashes, ShardBlobNetworkWrapper blobsContainer) GenerateBlobData(byte[][] blobs)
-    {
-        byte[][] commitments = new byte[blobs.Length][];
-        byte[][] proofs = new byte[blobs.Length][];
-        byte[][] blobhashes = new byte[blobs.Length][];
-
-        int blobIndex = 0;
-        foreach (var blob in blobs)
-        {
-            commitments[blobIndex] = new byte[Ckzg.BytesPerCommitment];
-            proofs[blobIndex] = new byte[Ckzg.BytesPerProof];
-            blobhashes[blobIndex] = new byte[32];
-
-            KzgPolynomialCommitments.KzgifyBlob(
-                blobs[blobIndex].AsSpan(),
-                commitments[blobIndex].AsSpan(),
-                proofs[blobIndex].AsSpan(),
-                blobhashes[blobIndex].AsSpan());
-            blobIndex++;
-        }
-        return (blobhashes, new ShardBlobNetworkWrapper(blobs, commitments, proofs));
-    }
-
     private async Task<Hash256?> SendTransaction(ulong chainId, ulong nonce,
         UInt256 gasPrice, UInt256 maxPriorityFeePerGas, UInt256 maxFeePerBlobGas,
         string receiver, byte[][] blobhashes, ShardBlobNetworkWrapper blobsContainer, ISigner signer)
@@ -356,6 +343,7 @@ internal class BlobSender
         string? result = await _rpcClient.Post<string>("eth_sendRawTransaction", $"0x{txRlp}");
 
         Console.WriteLine("Sending tx result:" + result);
+        Console.WriteLine("Blob hashes:" + string.Join(",", tx.BlobVersionedHashes.Select(bvh => $"0x{Hex.ToHexString(bvh)}")));
 
         return result is not null ? tx.CalculateHash() : null;
     }

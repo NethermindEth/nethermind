@@ -1,16 +1,18 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO.Abstractions;
+using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
@@ -27,24 +29,21 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             set => base.FinalizationManager = value;
         }
 
-        private PermissionBasedTxFilter.Cache? _txFilterCache = null;
-        public PermissionBasedTxFilter.Cache TxFilterCache => _txFilterCache ??= new PermissionBasedTxFilter.Cache();
+        public TxAuRaFilterBuilders TxAuRaFilterBuilders => Context.Resolve<TxAuRaFilterBuilders>();
+        public IValidatorStore ValidatorStore => Context.Resolve<IValidatorStore>();
+        public AuRaContractGasLimitOverride.Cache GasLimitCalculatorCache => Context.Resolve<AuRaContractGasLimitOverride.Cache>();
+        public AuraStatefulComponents AuraStatefulComponents => Context.Resolve<AuraStatefulComponents>();
+        public IReportingValidator ReportingValidator => Context.Resolve<IReportingValidator>();
+        public ReportingContractBasedValidator.Cache ReportingContractValidatorCache => Context.Resolve<ReportingContractBasedValidator.Cache>();
+        public StartBlockProducerAuRa CreateStartBlockProducer() => Context.Resolve<StartBlockProducerAuRa>();
+    }
 
-        private IValidatorStore? _validatorStore = null;
-        public IValidatorStore ValidatorStore => _validatorStore ??= new ValidatorStore(DbProvider!.BlockInfosDb);
-
+    public class AuraStatefulComponents(IAuraConfig auraConfig, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager)
+    {
         public LruCache<ValueHash256, UInt256> TransactionPermissionContractVersions { get; }
             = new(
                 PermissionBasedTxFilter.Cache.MaxCacheSize,
                 nameof(TransactionPermissionContract));
-
-
-        private AuRaContractGasLimitOverride.Cache? _gasLimitCalculatorCache = null;
-        public AuRaContractGasLimitOverride.Cache GasLimitCalculatorCache => _gasLimitCalculatorCache ??= new AuRaContractGasLimitOverride.Cache();
-
-        public IReportingValidator? ReportingValidator { get; set; }
-
-        public ReportingContractBasedValidator.Cache ReportingContractValidatorCache { get; } = new ReportingContractBasedValidator.Cache();
 
 
         private TxPriorityContract.LocalDataSource? _txPriorityContractLocalDataSource = null;
@@ -54,24 +53,20 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             {
                 if (_txPriorityContractLocalDataSource is not null) return _txPriorityContractLocalDataSource;
 
-                IAuraConfig config = this.Config<IAuraConfig>();
+                IAuraConfig config = auraConfig;
                 string? auraConfigTxPriorityConfigFilePath = config.TxPriorityConfigFilePath;
                 bool usesTxPriorityLocalData = auraConfigTxPriorityConfigFilePath is not null;
                 if (usesTxPriorityLocalData)
                 {
                     _txPriorityContractLocalDataSource = new TxPriorityContract.LocalDataSource(
                         auraConfigTxPriorityConfigFilePath,
-                        EthereumJsonSerializer,
-                        FileSystem,
-                        LogManager);
+                        jsonSerializer,
+                        fileSystem,
+                        logManager);
                 }
 
                 return _txPriorityContractLocalDataSource;
             }
         }
-
-        public ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
-            new ReadOnlyTxProcessingEnv(WorldStateManager!, BlockTree!.AsReadOnly(), SpecProvider!, LogManager!);
-
     }
 }

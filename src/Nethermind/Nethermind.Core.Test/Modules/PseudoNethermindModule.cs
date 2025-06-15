@@ -14,7 +14,7 @@ using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.Config;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Module = Autofac.Module;
@@ -40,10 +40,9 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             .AddModule(new PsudoNetworkModule())
             .AddModule(new BlockTreeModule())
-            .AddModule(new BlockProcessingModule())
+            .AddModule(new TestBlockProcessingModule())
 
             // Environments
-            .AddSingleton<DisposableStack>()
             .AddSingleton<ITimerFactory, TimerFactory>()
             .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext>((blockProcessingContext) => new BackgroundTaskScheduler(
                 blockProcessingContext.BlockProcessor,
@@ -53,12 +52,10 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<IFileSystem>(new FileSystem())
             .AddSingleton<IDbProvider>(new DbProvider())
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
+            .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
             // Crypto
             .AddSingleton<ICryptoRandom>(new CryptoRandom())
-            .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
-            .Bind<IEcdsa, IEthereumEcdsa>()
-            .AddSingleton<IEciesCipher, EciesCipher>()
             ;
 
 

@@ -14,6 +14,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -34,6 +35,7 @@ public class TaikoRpcModule(
     IGasPriceOracle gasPriceOracle,
     IEthSyncingInfo ethSyncingInfo,
     IFeeHistoryOracle feeHistoryOracle,
+    IProtocolsManager protocolsManager,
     ulong? secondsPerSlot,
     ISyncConfig syncConfig,
     IL1OriginStore l1OriginStore) : EthRpcModule(
@@ -50,6 +52,7 @@ public class TaikoRpcModule(
    gasPriceOracle,
    ethSyncingInfo,
    feeHistoryOracle,
+   protocolsManager,
    secondsPerSlot), ITaikoRpcModule
 {
     private static readonly ResultWrapper<L1Origin?> NotFound = ResultWrapper<L1Origin?>.Fail("not found");

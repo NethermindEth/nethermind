@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -108,6 +109,7 @@ namespace Nethermind.TxPool
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
+            AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
@@ -201,10 +203,20 @@ namespace Nethermind.TxPool
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
-        public bool TryGetBlobAndProof(byte[] blobVersionedHash,
+
+
+        public bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof)
-            => _blobTransactions.TryGetBlobAndProof(blobVersionedHash, out blob, out proof);
+            => _blobTransactions.TryGetBlobAndProofV0(blobVersionedHash, out blob, out proof);
+
+        public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
+            [NotNullWhen(true)] out byte[]? blob,
+            [NotNullWhen(true)] out byte[][]? cellProofs)
+            => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
+
+        public int GetBlobCounts(byte[][] blobVersionedHashes)
+            => _blobTransactions.GetBlobCounts(blobVersionedHashes);
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {
@@ -474,6 +486,8 @@ namespace Nethermind.TxPool
                 TraceTx(tx, handlingOptions, startBroadcast);
             }
 
+            TryConvertProofVersion(tx);
+
             TxFilteringState state = new(tx, _accounts);
             AcceptTxResult accepted;
 
@@ -514,15 +528,23 @@ namespace Nethermind.TxPool
             }
         }
 
-        private void AddPendingDelegations(Transaction tx)
+        private void TryConvertProofVersion(Transaction tx)
         {
-            if (tx.HasAuthorizationList)
+            if (_txPoolConfig.ProofsTranslationEnabled
+                && tx is { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V0 } wrapper }
+                && _headInfo.CurrentProofVersion == ProofVersion.V1)
             {
-                foreach (AuthorizationTuple auth in tx.AuthorizationList)
+                using ArrayPoolList<byte[]> cellProofs = new(Ckzg.CellsPerExtBlob * wrapper.Blobs.Length);
+
+                foreach (byte[] blob in wrapper.Blobs)
                 {
-                    if (auth.Authority is not null)
-                        _pendingDelegations.IncrementDelegationCount(auth.Authority!);
+                    using ArrayPoolSpan<byte> cellProofsOfOneBlob = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof);
+                    KzgPolynomialCommitments.ComputeCellProofs(blob, cellProofsOfOneBlob);
+                    byte[][] cellProofsSeparated = cellProofsOfOneBlob.Chunk(Ckzg.BytesPerProof).ToArray();
+                    cellProofs.AddRange(cellProofsSeparated);
                 }
+
+                tx.NetworkWrapper = wrapper with { Proofs = [.. cellProofs], Version = ProofVersion.V1 };
             }
         }
 
@@ -615,6 +637,18 @@ namespace Nethermind.TxPool
             return AcceptTxResult.Accepted;
         }
 
+        private void AddPendingDelegations(Transaction tx)
+        {
+            if (tx.HasAuthorizationList)
+            {
+                foreach (AuthorizationTuple auth in tx.AuthorizationList)
+                {
+                    if (auth.Authority is not null)
+                        _pendingDelegations.IncrementDelegationCount(auth.Authority!);
+                }
+            }
+        }
+
         private void RemovePendingDelegations(Transaction transaction)
         {
             if (transaction.HasAuthorizationList)
@@ -644,6 +678,8 @@ namespace Nethermind.TxPool
             UInt256? previousTxBottleneck = null;
             int i = 0;
             UInt256 cumulativeCost = 0;
+            IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
+            bool dropBlobs = false;
 
             foreach (Transaction tx in transactions)
             {
@@ -656,6 +692,15 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
+                    dropBlobs |= tx.SupportsBlobs && (tx.GetProofVersion() != headSpec.BlobProofVersion || (ulong)tx.BlobVersionedHashes!.Length > headSpec.MaxBlobsPerTx);
+
+                    if (dropBlobs)
+                    {
+                        _hashCache.DeleteFromLongTerm(tx.Hash!);
+                        updateTx(transactions, tx, changedGasBottleneck: null, lastElement);
+                        continue;
+                    }
+
                     previousTxBottleneck ??= tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
 
@@ -718,14 +763,14 @@ namespace Nethermind.TxPool
                 {
                     shouldBeDumped = true;
                 }
-                else if (balance < tx.Value)
+                else if (balance < tx.ValueRef)
                 {
                     shouldBeDumped = true;
                 }
                 else if (!tx.Supports1559)
                 {
                     shouldBeDumped = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256)tx.GasLimit, out UInt256 cost);
-                    shouldBeDumped |= UInt256.AddOverflow(cost, tx.Value, out cost);
+                    shouldBeDumped |= UInt256.AddOverflow(in cost, in tx.ValueRef, out cost);
                     shouldBeDumped |= balance < cost;
                 }
 

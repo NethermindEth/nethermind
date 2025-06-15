@@ -38,6 +38,7 @@ namespace Nethermind.Api
         public long? ExitOnBlockNumber { get; set; } = null;
         public int BackgroundTaskConcurrency { get; set; } = 1;
         public int BackgroundTaskMaxNumber { get; set; } = 1024;
+        public bool InRunnerTest { get; set; } = false;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

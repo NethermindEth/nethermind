@@ -14,6 +14,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.Network;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -53,6 +54,7 @@ public class BoundedModulePoolTests
             Substitute.For<IGasPriceOracle>(),
             Substitute.For<IEthSyncingInfo>(),
             Substitute.For<IFeeHistoryOracle>(),
+            Substitute.For<IProtocolsManager>(),
             new BlocksConfig().SecondsPerSlot),
              1, 1000);
 

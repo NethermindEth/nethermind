@@ -66,7 +66,7 @@ public class SyncPeerPoolTests
         public Node Node { get; }
         public string ClientId { get; }
         public long HeadNumber { get; set; }
-        public UInt256 TotalDifficulty { get; set; } = 1;
+        public UInt256? TotalDifficulty { get; set; } = 1;
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 

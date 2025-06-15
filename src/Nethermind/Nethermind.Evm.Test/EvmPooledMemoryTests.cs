@@ -148,20 +148,15 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         long blocknr = 12965000;
         long gas = 34218;
         ulong ts = 123456;
-        MemDb stateDb = new();
-        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb,
-            LimboLogs.Instance);
-        IWorldState stateProvider = new WorldState(
-                trieStore,
-                new MemDb(),
-                LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = worldStateManager.GlobalWorldState;
         ISpecProvider specProvider = new TestSpecProvider(London.Instance);
         CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(
             new TestBlockhashProvider(specProvider),
                 specProvider,
                 LimboLogs.Instance);
-        TransactionProcessor transactionProcessor = new TransactionProcessor(
+        ITransactionProcessor transactionProcessor = new TransactionProcessor(
                 specProvider,
                 stateProvider,
                 virtualMachine,
@@ -373,7 +368,7 @@ public class MyTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
-    public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
     {
         throw new NotImplementedException();
     }
