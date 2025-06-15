@@ -186,7 +186,7 @@ namespace Nethermind.TxPool
 
                 if (transactionsToSend is not null)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Broadcasting {transactionsToSend.Count} persistent transactions to all peers.");
+                    if (_logger.IsTrace) _logger.Trace($"Broadcasting {transactionsToSend.Count} persistent transactions to all peers.");
 
                     foreach ((_, ITxPoolPeer peer) in _peers)
                     {
@@ -195,12 +195,12 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    if (_logger.IsDebug) _logger.Debug($"There are currently no transactions able to broadcast.");
+                    if (_logger.IsTrace) _logger.Trace($"There are currently no transactions able to broadcast.");
                 }
 
                 if (hashesToSend is not null)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Announcing {hashesToSend.Count} hashes of persistent transactions to all peers.");
+                    if (_logger.IsTrace) _logger.Trace($"Announcing {hashesToSend.Count} hashes of persistent transactions to all peers.");
 
                     foreach ((_, ITxPoolPeer peer) in _peers)
                     {
@@ -295,7 +295,7 @@ namespace Nethermind.TxPool
             {
                 _txsToSend = Interlocked.Exchange(ref _accumulatedTemporaryTxs, _txsToSend);
 
-                if (_logger.IsDebug) _logger.Debug($"Broadcasting transactions to all peers");
+                if (_logger.IsTrace) _logger.Trace($"Broadcasting transactions to all peers");
 
                 foreach ((_, ITxPoolPeer peer) in _peers)
                 {
@@ -330,7 +330,7 @@ namespace Nethermind.TxPool
         {
             if (!_txGossipPolicy.CanGossipTransactions || !_txGossipPolicy.ShouldGossipTransaction(tx)) return;
 
-            if (_logger.IsDebug) _logger.Debug($"Broadcasting new local transaction {tx.Hash} to all peers");
+            if (_logger.IsTrace) _logger.Trace($"Broadcasting new local transaction {tx.Hash} to all peers");
 
             foreach ((_, ITxPoolPeer peer) in _peers)
             {
