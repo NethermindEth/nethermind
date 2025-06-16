@@ -177,10 +177,11 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return NewPayloadV1Result.Valid(block.Hash);
         }
 
+        block.EncodedSize = _blockDecoder.GetLength(block, RlpBehaviors.None);
+
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
             using NettyRlpStream encodedBlock = _blockDecoder.EncodeToNewNettyStream(block);
-            block.EncodedSize = encodedBlock.Length;
 
             if (!_blockValidator.ValidateSuggestedBlock(block, out string? error, validateHashes: false))
             {
