@@ -73,7 +73,7 @@ public static class Precompiler
                 typeBuilder, nameof(ILExecutionStep), MethodAttributes.Public | MethodAttributes.Static,
                 CallingConventions.Standard,
                 allowUnverifiableCode: true, doVerify: false),
-                codeinfo, metadata, config).CreateMethod(out string ilCode, OptimizationOptions.None);
+                codeinfo, metadata, config).CreateMethod(out string ilCode, OptimizationOptions.All);
 
             var finalizedType = typeBuilder.CreateType();
 
