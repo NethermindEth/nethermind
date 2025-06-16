@@ -28,7 +28,7 @@ public class UserErrors
                 AbiType.BytesM(length)
             );
 
-        var tryEncode = () => Abi.Encode(signature, bytes);
+        var tryEncode = () => AbiCodec.Encode(signature, bytes);
         tryEncode.Should().Throw<AbiException>();
     }
 
@@ -49,7 +49,7 @@ public class UserErrors
                 AbiType.Array(AbiType.UInt32, length)
             );
 
-        var tryEncode = () => Abi.Encode(signature, elements);
+        var tryEncode = () => AbiCodec.Encode(signature, elements);
         tryEncode.Should().Throw<AbiException>();
     }
 
@@ -61,12 +61,12 @@ public class UserErrors
                 AbiType.UInt32
             );
 
-        byte[] encoded = Abi.Encode(signature, 69u);
+        byte[] encoded = AbiCodec.Encode(signature, 69u);
 
         // Change the method id to something else
         encoded[0] ^= 1;
 
-        var tryDecode = () => Abi.Decode(signature, encoded);
+        var tryDecode = () => AbiCodec.Decode(signature, encoded);
         tryDecode.Should().Throw<AbiException>();
     }
 }

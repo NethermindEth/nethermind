@@ -26,7 +26,7 @@ public class Examples
         var expectedMethodId = Bytes.FromHexString("0xfce353f6");
         signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
 
-        byte[] encoded = Abi.Encode(signature, [[(byte)'a', (byte)'b', (byte)'c'], [(byte)'d', (byte)'e', (byte)'f']]);
+        byte[] encoded = AbiCodec.Encode(signature, [[(byte)'a', (byte)'b', (byte)'c'], [(byte)'d', (byte)'e', (byte)'f']]);
 
         var expected = Bytes.FromHexString(
             "0xfce353f6" + // `MethodId`
@@ -34,7 +34,7 @@ public class Examples
             "6465660000000000000000000000000000000000000000000000000000000000"); // "def"
 
         encoded.Should().BeEquivalentTo(expected);
-        var args = Abi.Decode(signature, encoded);
+        var args = AbiCodec.Decode(signature, encoded);
         args.Should().BeEquivalentTo(new byte[][] { [(byte)'a', (byte)'b', (byte)'c'], [(byte)'d', (byte)'e', (byte)'f'] });
     }
 
@@ -49,7 +49,7 @@ public class Examples
         var expectedMethodId = Bytes.FromHexString("0xcdcd77c0");
         signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
 
-        byte[] encoded = Abi.Encode(signature, (69u, true));
+        byte[] encoded = AbiCodec.Encode(signature, (69u, true));
 
         var expected = Bytes.FromHexString(
             "0xcdcd77c0" + // `MethodId`
@@ -57,7 +57,7 @@ public class Examples
             "0000000000000000000000000000000000000000000000000000000000000001"); // `true`
         encoded.Should().BeEquivalentTo(expected);
 
-        (UInt32 a, bool b) = Abi.Decode(signature, encoded);
+        (UInt32 a, bool b) = AbiCodec.Decode(signature, encoded);
         a.Should().Be(69u);
         b.Should().Be(true);
     }
@@ -74,7 +74,7 @@ public class Examples
         var expectedMethodId = Bytes.FromHexString("0xa5643bf2");
         signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
 
-        byte[] encoded = Abi.Encode(signature, ("dave"u8.ToArray(), true, [1, 2, 3]));
+        byte[] encoded = AbiCodec.Encode(signature, ("dave"u8.ToArray(), true, [1, 2, 3]));
 
         var expected = Bytes.FromHexString(
             "0xa5643bf2" + // `MethodId`
@@ -89,7 +89,7 @@ public class Examples
             "0000000000000000000000000000000000000000000000000000000000000003"); // Third element of the third argument, `3`
         encoded.Should().BeEquivalentTo(expected);
 
-        (byte[] a, bool b, UInt256[] c) = Abi.Decode(signature, encoded);
+        (byte[] a, bool b, UInt256[] c) = AbiCodec.Decode(signature, encoded);
         a.Should().BeEquivalentTo("dave"u8.ToArray());
         b.Should().Be(true);
         c.Should().BeEquivalentTo(new UInt256[] { 1, 2, 3 });
@@ -109,7 +109,7 @@ public class Examples
         signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
 
         (UInt256, uint[], byte[], byte[]) arguments = (0x123, [0x456, 0x789], "1234567890"u8.ToArray(), "Hello, world!"u8.ToArray());
-        byte[] encoded = Abi.Encode(signature, arguments);
+        byte[] encoded = AbiCodec.Encode(signature, arguments);
 
         var expected = Bytes.FromHexString(
             "0x8be65246" +
@@ -124,7 +124,7 @@ public class Examples
             "48656c6c6f2c20776f726c642100000000000000000000000000000000000000");
         encoded.Should().BeEquivalentTo(expected);
 
-        var decoded = Abi.Decode(signature, encoded);
+        var decoded = AbiCodec.Decode(signature, encoded);
         decoded.Should().BeEquivalentTo(arguments);
     }
 
@@ -140,7 +140,7 @@ public class Examples
         signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
 
         (UInt256[][], string[]) arguments = ([[1, 2], [3]], ["one", "two", "three"]);
-        byte[] encoded = Abi.Encode(signature, arguments);
+        byte[] encoded = AbiCodec.Encode(signature, arguments);
 
         var expected = Bytes.FromHexString(
             "0x2289b18c" +
@@ -167,7 +167,7 @@ public class Examples
 
         encoded.Should().BeEquivalentTo(expected);
 
-        var decoded = Abi.Decode(signature, encoded);
+        var decoded = AbiCodec.Decode(signature, encoded);
         decoded.Should().BeEquivalentTo(arguments);
     }
 }

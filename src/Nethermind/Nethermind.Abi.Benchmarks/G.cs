@@ -38,9 +38,9 @@ public class G
                 Exp.AbiType.Array(Exp.AbiType.String));
 
         (UInt256[][], string[]) arguments = ([[1, 2], [3]], ["one", "two", "three"]);
-        byte[] encoded = Exp.Abi.Encode(signature, arguments);
+        byte[] encoded = Exp.AbiCodec.Encode(signature, arguments);
 
-        (UInt256[][], string[]) decoded = Exp.Abi.Decode(signature, encoded);
+        (UInt256[][], string[]) decoded = Exp.AbiCodec.Decode(signature, encoded);
 
         return decoded;
     }
