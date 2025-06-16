@@ -14,7 +14,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Db;
-using Nethermind.Db.Rocks;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
@@ -312,8 +311,7 @@ namespace Nethermind.Init.Steps.Migrations
                     if (token.IsCancellationRequested)
                         return;
 
-                    var runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false);
-                    runStats.Combine(DbOnTheRocks.CustomMergeOperators.GetAndResetStats());
+                    SetReceiptsStats runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false);
                     runStats.WaitingBatch.Include(readElapsed);
                     migrated += batch.Length;
 

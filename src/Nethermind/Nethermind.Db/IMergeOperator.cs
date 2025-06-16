@@ -3,19 +3,11 @@
 
 using System;
 
-namespace Nethermind.Db.Rocks;
+namespace Nethermind.Db;
 
-// Generic just to avoid boxing
-public interface IMergeOperator<in TOperands> where TOperands : IOperandsEnumerator
+public interface IMergeOperator
 {
-    byte[] ConcatenateFullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue,
-        TOperands operands, out bool success);
-
-    byte[] ConcatenatePartialMerge(ReadOnlySpan<byte> key, TOperands operands, out bool success);
-}
-
-public interface IOperandsEnumerator
-{
-    int Count { get; }
-    ReadOnlySpan<byte> Get(int index);
+    string Name { get; }
+    byte[] FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, OperandsEnumerator operands, out bool success);
+    byte[] PartialMerge(ReadOnlySpan<byte> key, OperandsEnumerator operands, out bool success);
 }

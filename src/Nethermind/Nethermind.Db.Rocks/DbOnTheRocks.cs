@@ -66,6 +66,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private readonly DbSettings _settings;
 
+    // ReSharper disable once CollectionNeverQueried.Local
+    // Need to keep options from GC in case of merge operator applied, as they are used in callback
+    // TODO: find better way?
+    private readonly ConcurrentBag<OptionsHandle> _doNotGcOptions = [];
+
     private readonly PerTableDbConfig _perTableDbConfig;
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
@@ -555,11 +560,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
         }
 
-        // TODO: add config value proper way
-        if (optionsAsDict.TryGetValue("merge_operator", out var mergeOperator))
+        if (_settings.MergeOperator is {} mergeOperator)
         {
-            options.SetMergeOperator(CustomMergeOperators.All[mergeOperator]);
-            DoNotGcOptions.Add(options);
+            options.SetMergeOperator(new MergeOperatorAdapter(mergeOperator));
+            _doNotGcOptions.Add(options);
         }
 
         #endregion
@@ -598,9 +602,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         #endregion
     }
-
-    // TODO: get rid of
-    private static readonly HashSet<OptionsHandle> DoNotGcOptions = new();
 
     private static WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig)
     {
@@ -1895,147 +1896,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             {
                 Interlocked.Exchange(ref Iterator, null)?.Dispose();
             }
-        }
-    }
-
-    // TODO: move to LogIndexStorage!
-    public static class CustomMergeOperators
-    {
-        private static SetReceiptsStats _stats = new();
-
-        public static SetReceiptsStats GetAndResetStats()
-        {
-            return Interlocked.Exchange(ref _stats, new());
-        }
-
-        public static readonly IReadOnlyDictionary<string, MergeOperator> All = new Dictionary<string, MergeOperator>(StringComparer.OrdinalIgnoreCase)
-        {
-            { "LogIndexStorage.Merge", MergeOperators.Create("LogIndexStorage.Merge", ConcatenatePartialMerge, ConcatenateFullMerge) }
-        };
-
-        private static int BinarySearchInt32LE(ReadOnlySpan<byte> data, int target)
-        {
-            int count = data.Length / sizeof(int);
-            int left = 0, right = count - 1;
-
-            while (left <= right)
-            {
-                int mid = left + (right - left) / 2;
-                int offset = mid * 4;
-
-                int value = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(offset, sizeof(int)));
-
-                if (value == target)
-                    return offset;
-                if (value < target)
-                    left = mid + 1;
-                else
-                    right = mid - 1;
-            }
-
-            return ~(left * sizeof(int));
-        }
-
-        private const byte RevertOperator = LogIndexStorage.RevertOperator;
-
-        private static bool IsRevertBlockOp(ReadOnlySpan<byte> operand, out int blockNumber)
-        {
-            if (operand.Length == LogIndexStorage.BlockNumSize + 1 && operand[0] == RevertOperator)
-            {
-                blockNumber = LogIndexStorage.ReadValLastBlockNum(operand);
-                return true;
-            }
-
-            blockNumber = 0;
-            return false;
-        }
-
-        // TODO: inherit MergeOperator instead, to improve performance and minimize allocations
-        private static byte[] ConcatenateMerge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
-        {
-            var lastBlockNum = -1;
-            var timestamp = Stopwatch.GetTimestamp();
-
-            try
-            {
-                success = true;
-
-                // TODO: avoid array copying in case of a single value?
-                var resultLength = existingValue.Length;
-                for (int i = 0; i < operands.Count; i++)
-                {
-                    ReadOnlySpan<byte> operand = operands.Get(i);
-
-                    if(!IsRevertBlockOp(operand, out _))
-                        resultLength += operand.Length;
-                }
-
-                // TODO: can ArrayPool be used?
-                var result = new byte[resultLength];
-
-                if (existingValue.Length > 0)
-                {
-                    existingValue.CopyTo(result);
-                    lastBlockNum = LogIndexStorage.ReadValLastBlockNum(existingValue);
-                }
-
-                var shift = existingValue.Length;
-                for (int i = 0; i < operands.Count; i++)
-                {
-                    ReadOnlySpan<byte> operand = operands.Get(i);
-
-                    if (IsRevertBlockOp(operand, out int revertBlock))
-                    {
-                        // TODO: detect if revert block is already compressed
-                        var revertIndex = BinarySearchInt32LE(result.AsSpan(..shift), revertBlock);
-                        shift = revertIndex >= 0 ? revertIndex : ~revertIndex;
-                        continue;
-                    }
-
-                    // Validate we are merging non-intersecting segments - to prevent data corruption
-                    if (lastBlockNum != -1 && LogIndexStorage.ReadValBlockNum(operand) <= lastBlockNum)
-                    {
-                        // setting success=false instead of throwing during background merge may simply hide the error
-                        // TODO: check if this can be handled better, for example via paranoid_checks=true
-                        throw new InvalidOperationException($"Merge error: {lastBlockNum} -> {LogIndexStorage.ReadValBlockNum(operand)}");
-                    }
-                    else
-                    {
-                        lastBlockNum = LogIndexStorage.ReadValLastBlockNum(operand);
-                    }
-
-                    operand.CopyTo(result.AsSpan(shift..));
-                    shift += operand.Length;
-                }
-
-                if (result.Length > LogIndexStorage.MaxUncompressedLength)
-                {
-                    LogIndexStorage.EnqueueCompress(key.ToArray());
-                }
-
-                return result.Length == shift ? result : result[..shift];
-            }
-            finally
-            {
-                _stats.InMemoryMerging.Include(Stopwatch.GetElapsedTime(timestamp));
-            }
-        }
-
-        private static byte[] ConcatenateFullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, MergeOperators.OperandsEnumerator operands, out bool success)
-        {
-            //Console.WriteLine($"Merging (full) {operands.Count + (hasExistingValue ? 1 : 0)} operands for {Convert.ToHexString(key)}");
-
-            if (!hasExistingValue)
-                existingValue = ReadOnlySpan<byte>.Empty;
-
-            return ConcatenateMerge(key, existingValue, operands, out success);
-        }
-
-        private static byte[] ConcatenatePartialMerge(ReadOnlySpan<byte> key, MergeOperators.OperandsEnumerator operands, out bool success)
-        {
-            //Console.WriteLine($"Merging (partial) {operands.Count} operands for {Convert.ToHexString(key)}");
-
-            return ConcatenateMerge(key, ReadOnlySpan<byte>.Empty, operands, out success);
         }
     }
 }

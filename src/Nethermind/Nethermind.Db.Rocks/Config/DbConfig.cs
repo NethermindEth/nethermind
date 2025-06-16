@@ -241,9 +241,7 @@ public class DbConfig : IDbConfig
     public string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 
     // TODO: cleanup & optimize settings
-    public string? LogIndexStorageDbRocksDbOptions { get; set; } =
-        "merge_operator=LogIndexStorage.Merge;";
-        //"paranoid_checks=true;";
+    public string? LogIndexStorageDbRocksDbOptions { get; set; } = "";
     public string? LogIndexStorageDbAdditionalRocksDbOptions { get; set; } = "";
     public string? LogIndexStorageDefaultDbRocksDbOptions { get; set; } = "";
     public string? LogIndexStorageDefaultDbAdditionalRocksDbOptions { get; set; } = "";

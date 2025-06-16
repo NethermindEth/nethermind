@@ -260,17 +260,18 @@ namespace Nethermind.Db.Test
         {
             var timestamp = Stopwatch.GetTimestamp();
             var totalStats = new SetReceiptsStats();
-            foreach (var batch in batches)
+            var count = 0;
+            foreach (BlockReceipts[] batch in batches)
             {
-                var stats = await logIndexStorage.SetReceiptsAsync(batch, false);
-                stats.Combine(DbOnTheRocks.CustomMergeOperators.GetAndResetStats());
+                count++;
+                SetReceiptsStats stats = await logIndexStorage.SetReceiptsAsync(batch, false);
                 totalStats.Combine(stats);
             }
 
             //totalStats.Combine(logIndexStorage.Compact());
 
             // Log statistics
-            await TestContext.Out.WriteLineAsync($"{nameof(LogIndexStorage.EnqueueCompress)} in {Stopwatch.GetElapsedTime(timestamp)}:" +
+            await TestContext.Out.WriteLineAsync($"{nameof(LogIndexStorage.SetReceiptsAsync)}[{count}] in {Stopwatch.GetElapsedTime(timestamp)}:" +
                 $"\n\tTxs: +{totalStats.TxAdded:N0}" +
                 $"\n\tLogs: +{totalStats.LogsAdded:N0}" +
                 $"\n\tTopics: +{totalStats.TopicsAdded:N0}" +

@@ -25,6 +25,139 @@ namespace Nethermind.Db
     [SuppressMessage("ReSharper", "PrivateFieldCanBeConvertedToLocalVariable")] // TODO: get rid of unused fields
     public sealed class LogIndexStorage : ILogIndexStorage
     {
+        private class MergeOperator(LogIndexStorage storage): IMergeOperator
+        {
+            private SetReceiptsStats _stats = new();
+
+            public string Name => $"{nameof(LogIndexStorage)}.{nameof(MergeOperator)}";
+
+            public byte[] FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue,
+                OperandsEnumerator operands, out bool success)
+            {
+                if (!hasExistingValue)
+                    existingValue = ReadOnlySpan<byte>.Empty;
+
+                return Merge(key, existingValue, operands, out success);
+            }
+
+            public byte[] PartialMerge(ReadOnlySpan<byte> key, OperandsEnumerator operands, out bool success)
+            {
+                return Merge(key, ReadOnlySpan<byte>.Empty, operands, out success);
+            }
+
+            public SetReceiptsStats GetAndResetStats()
+            {
+                return Interlocked.Exchange(ref _stats, new());
+            }
+
+            private static int BinarySearchInt32LE(ReadOnlySpan<byte> data, int target)
+            {
+                int count = data.Length / sizeof(int);
+                int left = 0, right = count - 1;
+
+                while (left <= right)
+                {
+                    int mid = left + (right - left) / 2;
+                    int offset = mid * 4;
+
+                    int value = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(offset, sizeof(int)));
+
+                    if (value == target)
+                        return offset;
+                    if (value < target)
+                        left = mid + 1;
+                    else
+                        right = mid - 1;
+                }
+
+                return ~(left * sizeof(int));
+            }
+
+            private static bool IsRevertBlockOp(ReadOnlySpan<byte> operand, out int blockNumber)
+            {
+                if (operand.Length == BlockNumSize + 1 && operand[0] == RevertOperator)
+                {
+                    blockNumber = ReadValLastBlockNum(operand);
+                    return true;
+                }
+
+                blockNumber = 0;
+                return false;
+            }
+
+            // TODO: minimize allocations operating with IntPtr directly?
+            private byte[] Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> existingValue,
+                OperandsEnumerator operands, out bool success)
+            {
+                var lastBlockNum = -1;
+                var timestamp = Stopwatch.GetTimestamp();
+
+                try
+                {
+                    success = true;
+
+                    // TODO: avoid array copying in case of a single value?
+                    var resultLength = existingValue.Length;
+                    for (int i = 0; i < operands.Count; i++)
+                    {
+                        ReadOnlySpan<byte> operand = operands.Get(i);
+
+                        if (!IsRevertBlockOp(operand, out _))
+                            resultLength += operand.Length;
+                    }
+
+                    // TODO: can ArrayPool be used?
+                    var result = new byte[resultLength];
+
+                    if (existingValue.Length > 0)
+                    {
+                        existingValue.CopyTo(result);
+                        lastBlockNum = ReadValLastBlockNum(existingValue);
+                    }
+
+                    var shift = existingValue.Length;
+                    for (int i = 0; i < operands.Count; i++)
+                    {
+                        ReadOnlySpan<byte> operand = operands.Get(i);
+
+                        if (IsRevertBlockOp(operand, out int revertBlock))
+                        {
+                            // TODO: detect if revert block is already compressed
+                            var revertIndex = BinarySearchInt32LE(result.AsSpan(..shift), revertBlock);
+                            shift = revertIndex >= 0 ? revertIndex : ~revertIndex;
+                            continue;
+                        }
+
+                        // Validate we are merging non-intersecting segments - to prevent data corruption
+                        if (lastBlockNum != -1 && ReadValBlockNum(operand) <= lastBlockNum)
+                        {
+                            // setting success=false instead of throwing during background merge may simply hide the error
+                            // TODO: check if this can be handled better, for example via paranoid_checks=true
+                            throw ValidationException($"Merge error: {lastBlockNum} -> {ReadValBlockNum(operand)}");
+                        }
+                        else
+                        {
+                            lastBlockNum = ReadValLastBlockNum(operand);
+                        }
+
+                        operand.CopyTo(result.AsSpan(shift..));
+                        shift += operand.Length;
+                    }
+
+                    if (result.Length > MaxUncompressedLength)
+                    {
+                        storage.EnqueueCompress(key.ToArray());
+                    }
+
+                    return result.Length == shift ? result : result[..shift];
+                }
+                finally
+                {
+                    _stats.InMemoryMerging.Include(Stopwatch.GetElapsedTime(timestamp));
+                }
+            }
+        }
+
         // Use value that we won't encounter during iterator Seek or SeekForPrev
         private static readonly byte[] LastBlockNumKey = Enumerable.Repeat(byte.MaxValue, Math.Max(Address.Size, Hash256.Size) + 1).ToArray();
 
@@ -39,11 +172,12 @@ namespace Nethermind.Db
         public const byte RevertOperator = (byte)'-';
 
         private readonly int _compactionDistance;
+        private readonly MergeOperator _mergeOperator;
 
         // TODO: get rid of static fields
         // A lot of duplicates in case of regular Channel, TODO: find a better way to guarantee uniqueness
-        private static readonly ConcurrentDictionary<byte[], bool> CompressQueue = new(Bytes.EqualityComparer);
-        public static void EnqueueCompress(byte[] dbKey) => CompressQueue.TryAdd(dbKey, true);
+        private readonly ConcurrentDictionary<byte[], bool> _compressQueue = new(Bytes.EqualityComparer);
+        private void EnqueueCompress(byte[] dbKey) => _compressQueue.TryAdd(dbKey, true);
 
         // TODO: ensure class is singleton
         public LogIndexStorage(IDbFactory dbFactory, ILogger logger,
@@ -57,7 +191,11 @@ namespace Nethermind.Db
 
             _logger = logger;
 
-            _columnsDb = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex));
+            _columnsDb = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
+            {
+                MergeOperator = _mergeOperator = new(this)
+            });
+
             _addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
             _topicsDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
         }
@@ -93,7 +231,7 @@ namespace Nethermind.Db
 
         ValueTask IAsyncDisposable.DisposeAsync()
         {
-            CompressQueue.Clear();
+            _compressQueue.Clear();
 
             // TODO: dispose ColumnsDB?
             _setReceiptsSemaphore.Dispose();
@@ -484,6 +622,7 @@ namespace Nethermind.Db
                 _setReceiptsSemaphore.Release();
             }
 
+            stats.Combine(_mergeOperator.GetAndResetStats());
             return stats;
         }
 
@@ -631,9 +770,9 @@ namespace Nethermind.Db
                 else if (db == _topicsDb) Interlocked.Increment(ref stats.CompressedTopicKeys);
             }, new() { MaxDegreeOfParallelism = _ioParallelism });
 
-            foreach (var dbKey in CompressQueue.Keys)
+            foreach (var dbKey in _compressQueue.Keys)
             {
-                CompressQueue.TryRemove(dbKey, out _);
+                _compressQueue.TryRemove(dbKey, out _);
                 block.Post(dbKey);
             }
 
