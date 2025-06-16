@@ -565,7 +565,7 @@ namespace Nethermind.Db
         )
         {
             if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
-                throw new InvalidOperationException($"Concurrent invocations of {nameof(SetReceiptsAsync)} is not supported.");
+                throw new InvalidOperationException($"{nameof(LogIndexStorage)} does not support concurrent invocations.");
 
             long timestamp;
             var stats = new SetReceiptsStats();
@@ -591,7 +591,7 @@ namespace Nethermind.Db
 
                     // Compact if needed
                     _lastCompactionAt ??= batch[0].BlockNumber;
-                    if (batch[^1].BlockNumber - _lastCompactionAt >= _compactionDistance)
+                    if (Math.Abs(batch[^1].BlockNumber - _lastCompactionAt.Value) >= _compactionDistance)
                     {
                         Compact(stats);
                         _lastCompactionAt = batch[^1].BlockNumber;
