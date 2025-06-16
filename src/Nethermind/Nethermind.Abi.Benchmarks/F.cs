@@ -45,9 +45,9 @@ public class F
 
         (UInt256, uint[], byte[], byte[]) arguments = (0x123, [0x456, 0x789], "1234567890"u8.ToArray(),
             "Hello, world!"u8.ToArray());
-        byte[] encoded = Exp.Abi.Encode(signature, arguments);
+        byte[] encoded = Exp.AbiCodec.Encode(signature, arguments);
 
-        var decoded = Exp.Abi.Decode(signature, encoded);
+        var decoded = Exp.AbiCodec.Decode(signature, encoded);
 
         return decoded;
     }

@@ -1,39 +1,19 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
-using Nethermind.Core.Extensions;
-
 namespace Nethermind.Experimental.Abi;
 
-public class AbiException : Exception;
+public delegate T AbiReadFunc<out T>(ref BinarySpanReader r);
+public delegate void AbiWriteAction<in T>(ref BinarySpanWriter w, T value);
+public delegate int AbiSizeFunc<in T>(T value); // TODO: Use `UInt256` when dealing with sizes according to the ABI spec
 
-public static class Abi
+public class Abi<T>
 {
-    public static byte[] Encode<T>(AbiSignature<T> signature, T arg)
-    {
-        var valueSize = signature.Abi.Size(arg);
+    public required string Name { get; init; }
+    public bool IsDynamic { get; init; }
+    public required AbiReadFunc<T> Read { get; init; }
+    public required AbiWriteAction<T> Write { get; init; }
+    public required AbiSizeFunc<T> Size { get; init; }
 
-        byte[] buffer = new byte[AbiSignature.MethodIdLength + valueSize];
-        var w = new BinarySpanWriter(buffer);
-
-        w.Write(signature.MethodId());
-        signature.Abi.Write(ref w, arg);
-
-        Debug.Assert(w.Written == buffer.Length, "Abi encoding did not write the expected number of bytes");
-
-        return buffer;
-    }
-
-    public static T Decode<T>(AbiSignature<T> signature, ReadOnlySpan<byte> source)
-    {
-        var r = new BinarySpanReader(source);
-
-        var id = r.ReadBytes(AbiSignature.MethodIdLength);
-        if (!Bytes.AreEqual(id, signature.MethodId())) throw new AbiException();
-
-        T arg = signature.Abi.Read(ref r);
-
-        return arg;
-    }
+    public override string ToString() => Name;
 }
