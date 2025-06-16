@@ -256,7 +256,7 @@ namespace Nethermind.Db.Test
             return receipts.ToArray();
         }
 
-        private async Task SetReceiptsAsync(ILogIndexStorage logIndexStorage, IEnumerable<BlockReceipts[]> batches)
+        private async Task SetReceiptsAsync(ILogIndexStorage logIndexStorage, IEnumerable<BlockReceipts[]> batches, bool isBackwardsSync = false)
         {
             var timestamp = Stopwatch.GetTimestamp();
             var totalStats = new SetReceiptsStats();
@@ -264,7 +264,7 @@ namespace Nethermind.Db.Test
             foreach (BlockReceipts[] batch in batches)
             {
                 count++;
-                SetReceiptsStats stats = await logIndexStorage.SetReceiptsAsync(batch, false);
+                SetReceiptsStats stats = await logIndexStorage.SetReceiptsAsync(batch, isBackwardsSync);
                 totalStats.Combine(stats);
             }
 
