@@ -74,6 +74,7 @@ namespace Nethermind.Evm.Benchmark
         private byte[] bytecode;
         private VMConfig vmConfig;
         private CodeInfo driverCodeInfo;
+        private CodeInfo targetCodeInfo;
         public LocalSetup(string name, byte[] _bytecode)
         {
             Name = name;
@@ -102,7 +103,7 @@ namespace Nethermind.Evm.Benchmark
 
             _virtualMachine = new VirtualMachine<VirtualMachine.NotTracing, TIsOptimizing>(_blockhashProvider, codeInfoRepository, MainnetSpecProvider.Instance, vmConfig, _logger);
 
-            var (address, codeHash) = InsertCode(bytecode);
+            var (address, targetCodeHash) = InsertCode(bytecode);
 
             var driver =
                 Prepare.EvmCode
@@ -113,16 +114,10 @@ namespace Nethermind.Evm.Benchmark
                 .STOP()
                 .Done;
 
-            var driverCodeinfo = new CodeInfo(driver, codeHash);
-            var targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance, out _);
+            var driverCodehash = Keccak.Compute(driver);
 
-            if (vmConfig.IsILEvmEnabled)
-            {
-                IlAnalyzer.Analyse(driverCodeinfo, vmConfig.IlEvmEnabledMode, vmConfig, NullLogger.Instance);
-                IlAnalyzer.Analyse(targetCodeInfo, vmConfig.IlEvmEnabledMode, vmConfig, NullLogger.Instance);
-            }
-
-            driverCodeInfo = driverCodeinfo;
+            driverCodeInfo = new CodeInfo(driver, driverCodehash);
+            targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance, out _);
         }
         private (Address, ValueHash256) InsertCode(byte[] bytecode, Address target = null)
         {
@@ -142,12 +137,26 @@ namespace Nethermind.Evm.Benchmark
                 executingAccount: Address.Zero,
                 codeSource: Address.Zero,
                 caller: Address.Zero,
-                codeInfo: driverCodeInfo,
+                codeInfo: targetCodeInfo,
                 value: 0,
                 transferValue: 0,
                 txExecutionContext: new TxExecutionContext(new BlockExecutionContext(_header, _spec), Address.Zero, 0, null, codeInfoRepository),
                 inputData: default
             );
+
+            if(vmConfig.IsILEvmEnabled)
+            {
+                if(driverCodeInfo.IlInfo.IsNotProcessed)
+                {
+                    IlAnalyzer.Analyse(driverCodeInfo, vmConfig.IlEvmEnabledMode, vmConfig, NullLogger.Instance);
+                }
+
+                if (targetCodeInfo.IlInfo.IsNotProcessed)
+                {
+                    IlAnalyzer.Analyse(targetCodeInfo, vmConfig.IlEvmEnabledMode, vmConfig, NullLogger.Instance);
+                }
+            }
+
 
             _evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot(), _environment, new StackAccessTracker());
         }
@@ -174,6 +183,11 @@ namespace Nethermind.Evm.Benchmark
     [MemoryDiagnoser]
     public class EvmBenchmarks()
     {
+
+        static byte[] emptyBytecode() => Prepare.EvmCode
+                        .STOP()
+                        .Done;
+
         static byte[] fibbBytecode(byte[] argBytes) => Prepare.EvmCode
                         .JUMPDEST()
                         .PUSHx([0, 0])
@@ -304,6 +318,18 @@ namespace Nethermind.Evm.Benchmark
                         yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + benchName, bytecode);
                         break;
                 }
+            }
+
+            string mtbenchName = $"empty bytecode [Stop]";
+            var mtbytecode = emptyBytecode();
+            switch (mode)
+            {
+                case ILMode.NO_ILVM:
+                    yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + mtbenchName, mtbytecode);
+                    break;
+                case ILMode.DYNAMIC_AOT_MODE:
+                    yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + mtbenchName, mtbytecode);
+                    break;
             }
         }
 

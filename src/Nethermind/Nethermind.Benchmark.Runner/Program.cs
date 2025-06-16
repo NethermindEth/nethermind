@@ -171,7 +171,7 @@ namespace Nethermind.Benchmark.Runner
 
                 Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.CODE", bytecode);
                 Environment.SetEnvironmentVariable("NETH.BENCHMARK.BYTECODE.NAME", options.Name);
-                var summary = BenchmarkRunner.Run<CustomEvmBenchmarks>(new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core90)));
+                var summary = BenchmarkRunner.Run<CustomEvmBenchmarks>(new DashboardConfig(Job.VeryLongRun.WithRuntime(CoreRuntime.Core90)));
             }
 
             Thread.Sleep(-1); // Give some time for the benchmark to finish and output to be flushed
@@ -184,7 +184,7 @@ namespace Nethermind.Benchmark.Runner
 
             if (String.IsNullOrEmpty(options.ByteCode) || String.IsNullOrEmpty(options.Name))
             {
-                BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks), new DashboardConfig(Job.LongRun.WithRuntime(CoreRuntime.Core90)));
+                BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.EvmBenchmarks), new DashboardConfig(Job.VeryLongRun.WithRuntime(CoreRuntime.Core90)));
             }
             else
             {
