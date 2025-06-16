@@ -117,7 +117,7 @@ namespace Nethermind.Wallet
 
         public Signature Sign(Hash256 message, Address address)
         {
-            var rs = SpanSecP256k1.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
+            var rs = SecP256k1.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
             return new Signature(rs, v);
         }
     }
