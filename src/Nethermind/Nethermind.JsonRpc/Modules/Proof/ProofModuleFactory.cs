@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateRpcBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
         {
-            return new RpcBlockTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
+            return new BlockProcessor.BlockValidationTransactionsExecutor(new TraceTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState);
         }
 
         public override IProofRpcModule Create()

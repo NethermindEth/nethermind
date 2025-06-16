@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -312,11 +313,7 @@ namespace Nethermind.Blockchain.Test
             }
 
             BlockProcessor.BlockProductionTransactionsExecutor txExecutor =
-                new(
-                    transactionProcessor,
-                    stateProvider,
-                    specProvider,
-                    LimboLogs.Instance);
+                new BlockProcessor.BlockProductionTransactionsExecutor(new BuildUpTransactionProcessorAdapter(transactionProcessor), stateProvider, new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes), LimboLogs.Instance);
 
             SetAccountStates(testCase.MissingAddresses);
 
@@ -336,6 +333,9 @@ namespace Nethermind.Blockchain.Test
                 .SignedAndResolved()
                 .TestObject;
 
+            int payloadLength = TxPool.TransactionExtensions.GetLength(transactionInMempoolForm, false);
+            int mempoolLength = TxPool.TransactionExtensions.GetLength(transactionInMempoolForm, true);
+
             Block block = Build.A.Block
                 .WithExcessBlobGas(0)
                 .WithGasLimit(GasCostOf.Transaction)
@@ -344,18 +344,18 @@ namespace Nethermind.Blockchain.Test
 
             BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
 
-            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+            ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
 
             IWorldState stateProvider = new WorldStateStab();
 
             IReleaseSpec spec = Osaka.Instance;
             ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
 
-            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, specProvider, LimboLogs.Instance);
+            BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, mempoolLength / 1.KiB() - 1);
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, txPicker, LimboLogs.Instance);
 
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, new(), spec);
 
-            int payloadLength = TxPool.TransactionExtensions.GetLength(transactionInMempoolForm, false);
             Assert.That(blockToProduce.TxByteLength, Is.EqualTo(payloadLength));
         }
     }
