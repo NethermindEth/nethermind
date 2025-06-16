@@ -279,22 +279,23 @@ namespace Nethermind.Db
         {
             var timestamp = Stopwatch.GetTimestamp();
 
-            bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, byte[] key)
+            static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, byte[] key)
             {
                 return iterator.Valid() && iterator.Key().AsSpan()[..key.Length].SequenceEqual(key);
             }
 
             using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
 
-            var dbKeyBuffer = ArrayPool<byte>.Shared.Rent(keyPrefix.Length + BlockNumSize);
-            var dbKey = dbKeyBuffer.AsSpan(0, keyPrefix.Length + BlockNumSize);
+            var dbKeyLength = keyPrefix.Length + BlockNumSize;
+            var dbKeyBuffer = ArrayPool<byte>.Shared.Rent(dbKeyLength);
+            Span<byte> dbKey = dbKeyBuffer.AsSpan(..dbKeyLength);
 
-            // Find last index for the given key, starting at or before `from`
+            // Find the last index for the given key, starting at or before `from`
             CreateDbKey(keyPrefix, from, dbKey);
             iterator.SeekForPrev(dbKey);
 
-            // Otherwise, find first index for the given key
-            // TODO: optimize seeking!
+            // Otherwise, find the first index for the given key
+            // TODO: achieve in a single seek?
             if (!IsInKeyBounds(iterator, keyPrefix))
             {
                 iterator.SeekToFirst();
@@ -303,49 +304,16 @@ namespace Nethermind.Db
 
             try
             {
-                // TODO: optimize allocations
                 while (IsInKeyBounds(iterator, keyPrefix))
                 {
-                    ReadOnlySpan<byte> key = iterator.Key().AsSpan();
+                    var value = iterator.Value();
+                    foreach (var block in IterateBlockNumbers(iterator.Value(), from, to))
+                        yield return block;
 
-                    int currentLowestBlockNumber = GetKeyBlockNum(key);
+                    if (ReadValLastBlockNum(value) >= to)
+                        break;
 
                     iterator.Next();
-                    int? nextLowestBlockNumber;
-                    if (IsInKeyBounds(iterator, keyPrefix))
-                    {
-                        ReadOnlySpan<byte> nextKey = iterator.Key().AsSpan();
-                        nextLowestBlockNumber = GetKeyBlockNum(nextKey);
-                    }
-                    else
-                    {
-                        nextLowestBlockNumber = BlockMaxVal;
-                    }
-
-                    if (nextLowestBlockNumber > from &&
-                        (currentLowestBlockNumber <= to || currentLowestBlockNumber == BlockMaxVal))
-                    {
-                        Span<byte> data = db.Get(key);
-
-                        var decompressedBlockNumbers = data.Length == 0 || ReadCompressionMarker(data) <= 0
-                            ? ReadBlockNums(data)
-                            : DecompressDbValue(data);
-
-                        int startIndex = BinarySearch(decompressedBlockNumbers, from);
-                        if (startIndex < 0)
-                        {
-                            startIndex = ~startIndex;
-                        }
-
-                        for (int i = startIndex; i < decompressedBlockNumbers.Length; i++)
-                        {
-                            int block = decompressedBlockNumbers[i];
-                            if (block > to)
-                                yield break;
-
-                            yield return block;
-                        }
-                    }
                 }
             }
             finally
@@ -354,6 +322,31 @@ namespace Nethermind.Db
 
                 // TODO: log in Debug
                 _logger.Info($"GetBlockNumbersFor({Convert.ToHexString(keyPrefix)}, {from}, {to}) in {Stopwatch.GetElapsedTime(timestamp)}");
+            }
+        }
+
+        private static IEnumerable<int> IterateBlockNumbers(byte[]? data, int from, int to)
+        {
+            if (data == null)
+                yield break;
+
+            var blockNums = data.Length == 0 || ReadCompressionMarker(data) <= 0
+                ? ReadBlockNums(data)
+                : DecompressDbValue(data);
+
+            int startIndex = BinarySearch(blockNums, from);
+            if (startIndex < 0)
+            {
+                startIndex = ~startIndex;
+            }
+
+            for (int i = startIndex; i < blockNums.Length; i++)
+            {
+                int block = blockNums[i];
+                if (block > to)
+                    yield break;
+
+                yield return block;
             }
         }
 
@@ -702,10 +695,12 @@ namespace Nethermind.Db
         /// <summary>
         /// Saves a key consisting of the <c>key || block-number</c> byte array to <paramref name="dbKey"/>
         /// </summary>
-        private static void CreateDbKey(ReadOnlySpan<byte> key, int blockNumber, Span<byte> dbKey)
+        private static Span<byte> CreateDbKey(ReadOnlySpan<byte> key, int blockNumber, Span<byte> dbKey)
         {
             key.CopyTo(dbKey);
             SetKeyBlockNum(dbKey, blockNumber);
+
+            return dbKey[..(key.Length + BlockNumSize)];
         }
 
         private static void CreateMergeDbKey(ReadOnlySpan<byte> key, Span<byte> dbKey, bool isBackwardSync) =>

@@ -8,6 +8,6 @@ namespace Nethermind.Db;
 public interface IMergeOperator
 {
     string Name { get; }
-    byte[] FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, OperandsEnumerator operands, out bool success);
-    byte[] PartialMerge(ReadOnlySpan<byte> key, OperandsEnumerator operands, out bool success);
+    byte[] FullMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator, out bool success);
+    byte[] PartialMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator, out bool success);
 }
