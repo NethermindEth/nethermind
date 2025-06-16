@@ -72,7 +72,7 @@ namespace Nethermind.Serialization.Rlp
 
             Block block = new(header, body)
             {
-                EncodedSize = sequenceLength
+                EncodedSize = Rlp.LengthOfSequence(sequenceLength)
             };
 
             return block;
