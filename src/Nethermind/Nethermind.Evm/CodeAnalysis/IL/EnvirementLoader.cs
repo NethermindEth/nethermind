@@ -22,7 +22,8 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 internal static class EnvirementLoader
 {
     public const int REF_MACHINECODE_INDEX = 0;
-    public const int OBJ_SPECPROVIDER_INDEX = REF_MACHINECODE_INDEX + 1;
+    public const int OBJ_SPEC = REF_MACHINECODE_INDEX + 1;
+    public const int OBJ_SPECPROVIDER_INDEX = OBJ_SPEC + 1;
     public const int OBJ_BLOCKHASHPROVIDER_INDEX = OBJ_SPECPROVIDER_INDEX + 1;
     public const int OBJ_CODEINFOPROVIDER_INDEX = OBJ_BLOCKHASHPROVIDER_INDEX + 1;
     public const int REF_EVMSTATE_INDEX = OBJ_CODEINFOPROVIDER_INDEX + 1;
@@ -201,36 +202,16 @@ internal static class EnvirementLoader
             il.LoadObject<ILChunkExecutionState>();
     }
 
-    public static void CacheSpec<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals)
-    {
-        const string spec = nameof(IReleaseSpec);
-
-        LoadSpec(il, locals, false);
-        locals.TryDeclareLocal(spec, typeof(IReleaseSpec));
-        locals.TryStoreLocal(spec);
-    }
-
     public static void LoadSpec<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        const string spec = nameof(IReleaseSpec);
-
-        if (locals.TryLoadLocal(spec, loadAddress))
+        if(loadAddress)
         {
-            return;
+            il.LoadArgumentAddress(OBJ_SPEC);
         }
-
-        il.LoadArgument(OBJ_SPECPROVIDER_INDEX);
-
-        LoadHeader(il, locals, false);
-        il.Call(typeof(SpecProviderExtensions).GetMethod(nameof(SpecProviderExtensions.GetSpec), [typeof(ISpecProvider), typeof(BlockHeader)]));
-
-        if (loadAddress)
+        else
         {
-            using Local local = il.DeclareLocal<IReleaseSpec>(locals.GetLocalName());
-            il.StoreLocal(local);
-            il.LoadLocalAddress(local);
+            il.LoadArgument(OBJ_SPEC);
         }
-
     }
 
     public static void LoadStackHead<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)

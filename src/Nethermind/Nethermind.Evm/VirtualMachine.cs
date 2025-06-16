@@ -757,7 +757,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
                 if (env.CodeInfo.IlInfo.PrecompiledContract(
                         in MemoryMarshal.GetReference(codeAsSpan),
-                        _specProvider,
+                        spec, _specProvider,
                         _blockhashProvider,
                         vmState.Env.TxExecutionContext.CodeInfoRepository,
                         vmState,

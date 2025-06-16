@@ -176,7 +176,6 @@ public static class Precompiler
         Dictionary<int, Label> entryPoints = new();
 
         // set up spec
-        method.CacheSpec(locals);
         method.CacheBlockContext(locals);
         method.CacheTxContext(locals);
 
