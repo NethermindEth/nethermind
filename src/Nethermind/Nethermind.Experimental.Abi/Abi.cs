@@ -25,7 +25,7 @@ public static class Abi
         return buffer;
     }
 
-    public static T Decode<T>(AbiSignature<T> signature, byte[] source)
+    public static T Decode<T>(AbiSignature<T> signature, ReadOnlySpan<byte> source)
     {
         var r = new BinarySpanReader(source);
 
