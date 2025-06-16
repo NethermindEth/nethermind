@@ -8,7 +8,7 @@ namespace Nethermind.Experimental.Abi;
 
 public static partial class AbiType
 {
-    public static readonly IAbi<UInt256> UInt256 = new()
+    public static readonly Abi<UInt256> UInt256 = new()
     {
         Name = "uint256",
         Read = (ref BinarySpanReader r) =>
@@ -24,7 +24,7 @@ public static partial class AbiType
         Size = _ => 32,
     };
 
-    public static readonly IAbi<UInt64> UInt64 = new()
+    public static readonly Abi<UInt64> UInt64 = new()
     {
         Name = "uint64",
         Read = (ref BinarySpanReader r) => (UInt64)UInt256.Read(ref r),
@@ -32,7 +32,7 @@ public static partial class AbiType
         Size = _ => 32,
     };
 
-    public static readonly IAbi<UInt32> UInt32 = new()
+    public static readonly Abi<UInt32> UInt32 = new()
     {
         Name = "uint32",
         Read = (ref BinarySpanReader r) => (UInt32)UInt256.Read(ref r),
@@ -40,7 +40,7 @@ public static partial class AbiType
         Size = _ => 32,
     };
 
-    public static readonly IAbi<UInt16> UInt16 = new()
+    public static readonly Abi<UInt16> UInt16 = new()
     {
         Name = "uint16",
         Read = (ref BinarySpanReader r) => (UInt16)UInt256.Read(ref r),
@@ -48,7 +48,7 @@ public static partial class AbiType
         Size = _ => 32,
     };
 
-    public static readonly IAbi<Byte> UInt8 = new()
+    public static readonly Abi<Byte> UInt8 = new()
     {
         Name = "uint8",
         Read = (ref BinarySpanReader r) => (Byte)UInt256.Read(ref r),
@@ -56,7 +56,7 @@ public static partial class AbiType
         Size = _ => 32,
     };
 
-    public static readonly IAbi<Boolean> Bool = new()
+    public static readonly Abi<Boolean> Bool = new()
     {
         Name = "bool",
         Read = (ref BinarySpanReader r) => UInt256.Read(ref r) != 0,
@@ -64,14 +64,14 @@ public static partial class AbiType
         Size = _ => 32,
     };
 
-    public static IAbi<T[]> Array<T>(IAbi<T> abi) => new()
+    public static Abi<T[]> Array<T>(Abi<T> abi) => new()
     {
         Name = $"{abi.Name}[]",
         IsDynamic = true,
         Read = (ref BinarySpanReader r) =>
         {
             int length = (int)UInt256.Read(ref r);
-            return r.Scoped((length, abi), static ((int, IAbi<T>) ctx, ref BinarySpanReader r) =>
+            return r.Scoped((length, abi), static ((int, Abi<T>) ctx, ref BinarySpanReader r) =>
             {
                 var (length, abi) = ctx;
 
@@ -81,7 +81,7 @@ public static partial class AbiType
                     int read = 0;
                     for (int i = 0; i < length; i++)
                     {
-                        (array[i], read) = r.ReadOffset(abi, static (IAbi<T> abi, ref BinarySpanReader r) => abi.Read(ref r));
+                        (array[i], read) = r.ReadOffset(abi, static (Abi<T> abi, ref BinarySpanReader r) => abi.Read(ref r));
                     }
                     r.Advance(read);
                 }
@@ -99,7 +99,7 @@ public static partial class AbiType
         Write = (ref BinarySpanWriter w, T[] array) =>
         {
             UInt256.Write(ref w, (UInt256)array.Length);
-            w.Scoped((array, abi), static ((T[], IAbi<T>) ctx, ref BinarySpanWriter w) =>
+            w.Scoped((array, abi), static ((T[], Abi<T>) ctx, ref BinarySpanWriter w) =>
             {
                 var (array, abi) = ctx;
 
@@ -109,7 +109,7 @@ public static partial class AbiType
 
                     for (int i = 0; i < array.Length; i++)
                     {
-                        w.WriteOffset(i * 32, (array[i], abi), static ((T, IAbi<T>) ctx, ref BinarySpanWriter w) =>
+                        w.WriteOffset(i * 32, (array[i], abi), static ((T, Abi<T>) ctx, ref BinarySpanWriter w) =>
                         {
                             var (e, abi) = ctx;
                             abi.Write(ref w, e);
@@ -140,7 +140,7 @@ public static partial class AbiType
         }
     };
 
-    public static IAbi<T[]> Array<T>(IAbi<T> abi, int length) => new()
+    public static Abi<T[]> Array<T>(Abi<T> abi, int length) => new()
     {
         Name = $"{abi.Name}[{length}]",
         Read = (ref BinarySpanReader r) =>
@@ -176,7 +176,7 @@ public static partial class AbiType
         }
     };
 
-    public static IAbi<byte[]> Bytes => new()
+    public static Abi<byte[]> Bytes => new()
     {
         Name = "bytes",
         IsDynamic = true,
@@ -202,7 +202,7 @@ public static partial class AbiType
         }
     };
 
-    public static IAbi<byte[]> BytesM(int length) => new()
+    public static Abi<byte[]> BytesM(int length) => new()
     {
         Name = $"bytes{length}",
         Read = (ref BinarySpanReader r) => r.ReadBytesPadded(length).ToArray(),
@@ -219,7 +219,7 @@ public static partial class AbiType
         }
     };
 
-    public static IAbi<String> String => new()
+    public static Abi<String> String => new()
     {
         Name = "string",
         IsDynamic = true,
@@ -251,5 +251,5 @@ public static partial class AbiType
     };
 
     // Synonyms
-    public static readonly IAbi<UInt256> UInt = UInt256;
+    public static readonly Abi<UInt256> UInt = UInt256;
 }
