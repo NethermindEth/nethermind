@@ -21,7 +21,7 @@ public class Dynamics
         var expectedMethodId = Bytes.FromHexString("91e145ef");
         signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
 
-        byte[] encoded = Abi.Encode(signature, "hello");
+        byte[] encoded = AbiCodec.Encode(signature, "hello");
 
         var expected = Bytes.FromHexString(
             "91e145ef" + // `MethodId`
@@ -31,7 +31,7 @@ public class Dynamics
 
         encoded.Should().BeEquivalentTo(expected);
 
-        string decoded = Abi.Decode(signature, encoded);
+        string decoded = AbiCodec.Decode(signature, encoded);
         decoded.Should().Be("hello");
     }
 
@@ -47,7 +47,7 @@ public class Dynamics
         var expectedMethodId = Bytes.FromHexString("0x18159cfb");
         signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
 
-        byte[] encoded = Abi.Encode(signature, ("hello", "world"));
+        byte[] encoded = AbiCodec.Encode(signature, ("hello", "world"));
 
         var expected = Bytes.FromHexString(
             "0x18159cfb" + // `MethodId`
@@ -60,7 +60,7 @@ public class Dynamics
 
         encoded.Should().BeEquivalentTo(expected);
 
-        (string a, string b) = Abi.Decode(signature, encoded);
+        (string a, string b) = AbiCodec.Decode(signature, encoded);
         a.Should().Be("hello");
         b.Should().Be("world");
     }
@@ -78,7 +78,7 @@ public class Dynamics
         var expectedMethodId = Bytes.FromHexString("e18744f7");
         signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
 
-        byte[] encoded = Abi.Encode(signature, ("hello", "my", "friends"));
+        byte[] encoded = AbiCodec.Encode(signature, ("hello", "my", "friends"));
 
         var expected = Bytes.FromHexString(
             "e18744f7" + // `MethodId`
@@ -94,7 +94,7 @@ public class Dynamics
 
         encoded.Should().BeEquivalentTo(expected);
 
-        (string a, string b, string c) = Abi.Decode(signature, encoded);
+        (string a, string b, string c) = AbiCodec.Decode(signature, encoded);
         a.Should().Be("hello");
         b.Should().Be("my");
         c.Should().Be("friends");
@@ -111,7 +111,7 @@ public class Dynamics
         var expectedMethodId = Bytes.FromHexString("da095a04");
         signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
 
-        byte[] encoded = Abi.Encode(signature, [true, false, true]);
+        byte[] encoded = AbiCodec.Encode(signature, [true, false, true]);
 
         var expected = Bytes.FromHexString(
             "da095a04" + // `MethodId`
@@ -123,7 +123,7 @@ public class Dynamics
 
         encoded.Should().BeEquivalentTo(expected);
 
-        bool[] decoded = Abi.Decode(signature, encoded);
+        bool[] decoded = AbiCodec.Decode(signature, encoded);
         decoded.Length.Should().Be(3);
         decoded[0].Should().Be(true);
         decoded[1].Should().Be(false);
@@ -141,7 +141,7 @@ public class Dynamics
         var expectedMethodId = Bytes.FromHexString("e9cc8780");
         signature.MethodId().Should().BeEquivalentTo(expectedMethodId);
 
-        byte[] encoded = Abi.Encode(signature, ["hello", "my", "friends"]);
+        byte[] encoded = AbiCodec.Encode(signature, ["hello", "my", "friends"]);
 
         var expected = Bytes.FromHexString(
             "e9cc8780" + // `MethodId`
@@ -159,7 +159,7 @@ public class Dynamics
 
         encoded.Should().BeEquivalentTo(expected);
 
-        string[] decoded = Abi.Decode(signature, encoded);
+        string[] decoded = AbiCodec.Decode(signature, encoded);
         decoded.Length.Should().Be(3);
         decoded[0].Should().Be("hello");
         decoded[1].Should().Be("my");
