@@ -20,7 +20,7 @@ public class ReceiptTrie<TReceipt> : PatriciaTrie<TReceipt>
     private readonly IRlpStreamDecoder<TReceipt> _decoder;
     /// <inheritdoc/>
     /// <param name="receipts">The transaction receipts to build the trie of.</param>
-    public ReceiptTrie(IReceiptSpec spec, ReadOnlySpan<TReceipt> receipts, IRlpStreamDecoder<TReceipt> trieDecoder, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
+    public ReceiptTrie(IReceiptSpec spec, ReadOnlySpan<TReceipt> receipts, IRlpStreamDecoder<TReceipt> trieDecoder, ICappedArrayPool bufferPool, bool canBuildProof = false)
         : base(null, canBuildProof, bufferPool: bufferPool)
     {
         ArgumentNullException.ThrowIfNull(spec);
@@ -54,7 +54,7 @@ public class ReceiptTrie<TReceipt> : PatriciaTrie<TReceipt>
     public static byte[][] CalculateReceiptProofs(IReleaseSpec spec, ReadOnlySpan<TReceipt> receipts, int index, IRlpStreamDecoder<TReceipt> decoder)
     {
         using TrackingCappedArrayPool cappedArrayPool = new(receipts.Length * 4);
-        return new ReceiptTrie<TReceipt>(spec, receipts, decoder, canBuildProof: true, cappedArrayPool).BuildProof(index);
+        return new ReceiptTrie<TReceipt>(spec, receipts, decoder, cappedArrayPool, canBuildProof: true).BuildProof(index);
     }
 
     public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, ReadOnlySpan<TReceipt> txReceipts, IRlpStreamDecoder<TReceipt> decoder)
