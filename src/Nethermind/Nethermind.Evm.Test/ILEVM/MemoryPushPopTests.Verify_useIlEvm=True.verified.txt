@@ -67,8 +67,8 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 stloc.s 4
@@ -92,8 +92,8 @@ conv.i
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6

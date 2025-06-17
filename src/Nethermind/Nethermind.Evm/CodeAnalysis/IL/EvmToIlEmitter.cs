@@ -1138,7 +1138,7 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadEnv(locals, false);
+        method.LoadEnv(locals, true);
 
         method.LoadFieldAddress(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
         method.Call(Word.SetUInt256ByRef);

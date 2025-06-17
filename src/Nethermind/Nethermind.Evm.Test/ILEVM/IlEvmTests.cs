@@ -1948,7 +1948,9 @@ namespace Nethermind.Evm.Test.ILEVM
 
             Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(0));
 
-            enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes);
+            enhancedChain.ForceRunAnalysis(address, ILMode.DYNAMIC_AOT_MODE);
+
+            enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes, forceAnalysis: false);
 
             var actual = standardChain.StateRoot;
             var expected = enhancedChain.StateRoot;

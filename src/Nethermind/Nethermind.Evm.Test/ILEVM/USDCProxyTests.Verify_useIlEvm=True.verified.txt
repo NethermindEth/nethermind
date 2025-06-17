@@ -71,8 +71,8 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 stloc.s 4
@@ -119,12 +119,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 call Boolean op_LessThan(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
@@ -135,8 +135,8 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -177,8 +177,8 @@ conv.i
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 dup
@@ -255,12 +255,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -271,8 +271,8 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j10
 
 j8:
@@ -812,9 +812,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld Nethermind.Int256.UInt256 Value
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldflda Nethermind.Int256.UInt256 Value
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -924,12 +923,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -1029,15 +1028,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1051,8 +1050,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j27
 
 j25:
@@ -1082,15 +1081,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1104,8 +1103,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -1157,8 +1156,8 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -1262,15 +1261,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1284,8 +1283,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -1525,15 +1524,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1547,8 +1546,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j36
 
 j34:
@@ -1581,15 +1580,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1603,8 +1602,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -1662,8 +1661,8 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -1767,15 +1766,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1789,8 +1788,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -1920,8 +1919,8 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 160
@@ -1981,15 +1980,15 @@ conv.i
 ldc.i4 192
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -2003,8 +2002,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -2050,15 +2049,15 @@ conv.i
 ldc.i4 192
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -2072,8 +2071,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 192
@@ -2091,8 +2090,8 @@ conv.i
 ldc.i4 192
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 192
@@ -2152,15 +2151,15 @@ conv.i
 ldc.i4 224
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 192
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -2174,8 +2173,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -2500,9 +2499,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld Nethermind.Int256.UInt256 Value
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldflda Nethermind.Int256.UInt256 Value
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -2612,12 +2610,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -2701,8 +2699,8 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -2849,8 +2847,8 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
@@ -2887,15 +2885,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -2909,8 +2907,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -2948,8 +2946,8 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -3024,12 +3022,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -3040,8 +3038,8 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j54
 
 j52:
@@ -3080,15 +3078,15 @@ ldc.i4 350
 stloc.s 26
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -3127,9 +3125,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld Nethermind.Int256.UInt256 Value
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldflda Nethermind.Int256.UInt256 Value
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -3239,12 +3236,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -3344,15 +3341,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -3366,8 +3363,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j64
 
 j62:
@@ -3397,15 +3394,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -3419,8 +3416,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -3472,8 +3469,8 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -3577,15 +3574,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -3599,8 +3596,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -3779,9 +3776,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld Nethermind.Int256.UInt256 Value
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldflda Nethermind.Int256.UInt256 Value
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -3891,12 +3887,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -3980,8 +3976,8 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -4128,8 +4124,8 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
@@ -4166,15 +4162,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -4188,8 +4184,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -4227,8 +4223,8 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -4303,12 +4299,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -4319,8 +4315,8 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j79
 
 j77:
@@ -4359,15 +4355,15 @@ ldc.i4 504
 stloc.s 26
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -5385,9 +5381,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld Nethermind.Int256.UInt256 Value
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldflda Nethermind.Int256.UInt256 Value
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
@@ -5427,8 +5422,8 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -5529,22 +5524,22 @@ conv.i
 ldc.i4 320
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 288
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 256
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 8
+ldloca.s 8
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 25
 ldloca.s 8
 ldloca.s 22
@@ -5600,15 +5595,15 @@ conv.i
 ldc.i4 256
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 224
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -5622,8 +5617,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -5701,8 +5696,8 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -5770,15 +5765,15 @@ conv.i
 ldc.i4 192
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -5792,8 +5787,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j101
 
 j99:
@@ -6123,12 +6118,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -7233,8 +7228,8 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -7282,8 +7277,8 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -7320,12 +7315,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7336,8 +7331,8 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -7374,15 +7369,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7396,8 +7391,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -7439,15 +7434,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7461,8 +7456,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j132
 
 j130:
@@ -7495,8 +7490,8 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -7545,8 +7540,8 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -7583,15 +7578,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7605,8 +7600,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -7649,8 +7644,8 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -7687,15 +7682,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7709,8 +7704,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -7741,8 +7736,8 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -7779,15 +7774,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7801,8 +7796,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -7840,8 +7835,8 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -7919,15 +7914,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7941,8 +7936,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j140
 
 j138:
@@ -7987,12 +7982,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -8125,8 +8120,8 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -8279,8 +8274,8 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -8317,15 +8312,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -8339,8 +8334,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -8455,8 +8450,8 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -8493,15 +8488,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -8515,8 +8510,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -8554,8 +8549,8 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -8630,12 +8625,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -8646,8 +8641,8 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j149
 
 j147:
@@ -8684,15 +8679,15 @@ ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -9708,8 +9703,8 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -9757,8 +9752,8 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -9795,12 +9790,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -9811,8 +9806,8 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -9849,15 +9844,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -9871,8 +9866,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -9914,15 +9909,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -9936,8 +9931,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j172
 
 j170:
@@ -9970,8 +9965,8 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -10020,8 +10015,8 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -10058,15 +10053,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -10080,8 +10075,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -10124,8 +10119,8 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -10162,15 +10157,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -10184,8 +10179,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -10216,8 +10211,8 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -10254,15 +10249,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -10276,8 +10271,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -10315,8 +10310,8 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -10394,15 +10389,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -10416,8 +10411,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j180
 
 j178:
@@ -10462,12 +10457,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -10646,11 +10641,11 @@ conv.i
 add
 stloc.s 4
 ldloc.3
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 4
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.3
 call Boolean get_IsZero()
 brtrue j185
@@ -10668,15 +10663,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -10690,8 +10685,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j188
 
 j185:
@@ -10769,8 +10764,8 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldobj Nethermind.Evm.ExecutionEnvironment
@@ -10915,19 +10910,19 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 8
+ldloca.s 8
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 25
 ldloca.s 8
 ldloca.s 22
@@ -11202,19 +11197,19 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 8
+ldloca.s 8
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 7
 ldloca.s 8
 ldloca.s 9
@@ -11399,12 +11394,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -11474,12 +11469,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -11563,11 +11558,11 @@ conv.i
 add
 stloc.s 4
 ldloc.3
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 4
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.3
 call Boolean get_IsZero()
 brtrue j208
@@ -11585,15 +11580,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -11607,8 +11602,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j211
 
 j208:
@@ -11686,8 +11681,8 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldobj Nethermind.Evm.ExecutionEnvironment
@@ -11894,8 +11889,8 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -12048,8 +12043,8 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -12086,15 +12081,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -12108,8 +12103,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -12153,8 +12148,8 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -12238,15 +12233,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -12260,8 +12255,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j219
 
 j217:
@@ -12314,15 +12309,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -12462,11 +12457,11 @@ conv.i
 add
 stloc.s 4
 ldloc.3
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 4
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.3
 call Boolean get_IsZero()
 brtrue j222
@@ -12484,15 +12479,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -12506,8 +12501,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j225
 
 j222:
@@ -12580,8 +12575,8 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -12870,8 +12865,8 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -12919,8 +12914,8 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -12957,12 +12952,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -12973,8 +12968,8 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -13011,15 +13006,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13033,8 +13028,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -13076,15 +13071,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13098,8 +13093,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j239
 
 j237:
@@ -13132,8 +13127,8 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -13182,8 +13177,8 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -13220,15 +13215,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13242,8 +13237,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -13286,8 +13281,8 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -13324,15 +13319,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13346,8 +13341,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -13378,8 +13373,8 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -13416,15 +13411,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13438,8 +13433,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -13477,8 +13472,8 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -13556,15 +13551,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13578,8 +13573,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j247
 
 j245:
@@ -13624,12 +13619,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 ldloca.s 25
 ldloca.s 6
@@ -13698,11 +13693,11 @@ ldloc.s 27
 conv.i
 stloc.s 4
 ldloc.3
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 4
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.3
 call Boolean get_IsZero()
 brtrue j250
@@ -13720,12 +13715,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13736,8 +13731,8 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 br j253
 
 j250:
@@ -13804,8 +13799,8 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 call System.ReadOnlySpan`1[System.Byte] get_ReadOnlySpan()
@@ -13997,15 +13992,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 call Boolean op_GreaterThan(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
@@ -14019,8 +14014,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
