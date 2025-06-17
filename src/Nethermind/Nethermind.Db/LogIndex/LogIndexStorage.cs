@@ -84,11 +84,10 @@ namespace Nethermind.Db
                 var lastBlockNum = -1;
                 var timestamp = Stopwatch.GetTimestamp();
 
-                var isBackwardSync = IsBackwardSync(key);
-
                 try
                 {
                     success = true;
+                    var isBackwardSync = UseBackwardSyncFor(key);
 
                     // TODO: get rid of foreach if they cause allocations
                     IEnumerable<int> indexes = Enumerable.Range(0, enumerator.Count);
@@ -166,11 +165,18 @@ namespace Nethermind.Db
         private readonly IDb _topicsDb;
         private readonly ILogger _logger;
         private readonly int _ioParallelism;
+
         private const int BlockNumSize = sizeof(int);
-        private const int BlockMaxVal = int.MaxValue;
-        private const int BlockMinVal = int.MinValue;
         public const int MaxUncompressedLength = 128 * BlockNumSize;
         private const byte RevertOperator = (byte)'-';
+
+        // Special RocksDB key postfix - any ordered prefix seeking will start on it.
+        private static readonly byte[] BackwardMergeKey = Enumerable.Repeat((byte)0, BackwardMergeKeyLength).ToArray();
+        private const int BackwardMergeKeyLength = BlockNumSize - 1;
+
+        // Special RocksDB key postfix - any ordered prefix seeking will end on it.
+        private static readonly byte[] ForwardMergeKey = Enumerable.Repeat(byte.MaxValue, ForwardMergeKeyLength).ToArray();
+        private const int ForwardMergeKeyLength = BlockNumSize + 1;
 
         private readonly int _compactionDistance;
         private readonly MergeOperator _mergeOperator;
@@ -307,7 +313,7 @@ namespace Nethermind.Db
                 while (IsInKeyBounds(iterator, keyPrefix))
                 {
                     var value = iterator.Value();
-                    foreach (var block in IterateBlockNumbers(iterator.Value(), from, to))
+                    foreach (var block in IterateBlockNumbers(value, from, to))
                         yield return block;
 
                     if (ReadValLastBlockNum(value) >= to)
@@ -365,13 +371,24 @@ namespace Nethermind.Db
             if (IncludeTopicIndex) buffer[^1] = topicIndex;
         }
 
-        private IDb GetDbByKeyLength(int length) => length switch
+        private IDb GetDbByKeyLength(int length, out int prefixLength)
         {
-            Address.Size => _addressDb,
-            Hash256.Size when !IncludeTopicIndex => _topicsDb,
-            Hash256.Size + 1 when IncludeTopicIndex => _topicsDb,
-            var size => throw ValidationException($"Unexpected key of {size} bytes.")
-        };
+            if (IncludeTopicIndex) length -= 1;
+
+            if (length - Hash256.Size is BlockNumSize or ForwardMergeKeyLength or BackwardMergeKeyLength)
+            {
+                prefixLength = Hash256.Size;
+                return _topicsDb;
+            }
+
+            if (length - Address.Size is BlockNumSize or ForwardMergeKeyLength or BackwardMergeKeyLength)
+            {
+                prefixLength = Address.Size;
+                return _addressDb;
+            }
+
+            throw ValidationException($"Unexpected key of {length} bytes.");
+        }
 
         // TODO: optimize allocations
         private Dictionary<byte[], List<int>>? BuildProcessingDictionary(
@@ -470,11 +487,8 @@ namespace Nethermind.Db
             if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
                 throw new InvalidOperationException($"{nameof(LogIndexStorage)} does not support concurrent invocations.");
 
-            var keyArray = ArrayPool<byte>.Shared.Rent(Hash256.Size + BlockNumSize);
+            var keyArray = ArrayPool<byte>.Shared.Rent(Hash256.Size + BackwardMergeKey.Length);
             var valueArray = ArrayPool<byte>.Shared.Rent(BlockNumSize + 1);
-
-            Span<byte> addressKey = keyArray.AsSpan(0, Address.Size + BlockNumSize);
-            Span<byte> topicKey = keyArray.AsSpan(0, Hash256.Size + BlockNumSize);
 
             IWriteBatch addressBatch = _addressDb.StartWriteBatch();
             IWriteBatch topicBatch = _topicsDb.StartWriteBatch();
@@ -488,12 +502,12 @@ namespace Nethermind.Db
                 foreach (TxReceipt receipt in block.Receipts)
                 foreach (LogEntry log in receipt.Logs ?? [])
                 {
-                    CreateMergeDbKey(log.Address.Bytes, addressKey, isBackwardSync: false);
+                    ReadOnlySpan<byte> addressKey = CreateMergeDbKey(log.Address.Bytes, keyArray, isBackwardSync: false);
                     addressBatch.Merge(addressKey, dbValue);
 
                     foreach (Hash256 topic in log.Topics)
                     {
-                        CreateMergeDbKey(topic.Bytes, topicKey, isBackwardSync: false);
+                        ReadOnlySpan<byte> topicKey = CreateMergeDbKey(topic.Bytes, keyArray, isBackwardSync: false);
                         topicBatch.Merge(topicKey, dbValue);
                     }
                 }
@@ -560,7 +574,7 @@ namespace Nethermind.Db
             using var addressIterator = db.GetIterator();
             foreach (var (key, value) in Enumerate(addressIterator))
             {
-                if (GetKeyBlockNum(key) is BlockMinVal or BlockMaxVal && value.Length > maxUncompressedLength)
+                if (IsMergeKey(key) && value.Length > maxUncompressedLength)
                 {
                     EnqueueCompress(key);
                     counter++;
@@ -665,12 +679,11 @@ namespace Nethermind.Db
         // TODO: optimize allocations
         private static void SaveBlockNumbersByKey(IWriteBatch dbBatch, byte[] key, IReadOnlyList<int> blockNums, bool isBackwardSync, SetReceiptsStats stats)
         {
-            var dbKeyArray = ArrayPool<byte>.Shared.Rent(key.Length + BlockNumSize);
-            var dbKey = dbKeyArray.AsSpan(0, key.Length + BlockNumSize);
+            var dbKeyArray = ArrayPool<byte>.Shared.Rent(key.Length + BackwardMergeKey.Length);
 
             try
             {
-                CreateMergeDbKey(key, dbKey, isBackwardSync);
+                ReadOnlySpan<byte> dbKey = CreateMergeDbKey(key, dbKeyArray, isBackwardSync);
 
                 // TODO: handle writing already processed blocks
                 // if (blockNums[^1] <= lastSavedNum)
@@ -695,20 +708,35 @@ namespace Nethermind.Db
         /// <summary>
         /// Saves a key consisting of the <c>key || block-number</c> byte array to <paramref name="dbKey"/>
         /// </summary>
-        private static Span<byte> CreateDbKey(ReadOnlySpan<byte> key, int blockNumber, Span<byte> dbKey)
+        private static void CreateDbKey(ReadOnlySpan<byte> key, int blockNumber, Span<byte> dbKey)
         {
             key.CopyTo(dbKey);
             SetKeyBlockNum(dbKey, blockNumber);
-
-            return dbKey[..(key.Length + BlockNumSize)];
         }
 
-        private static void CreateMergeDbKey(ReadOnlySpan<byte> key, Span<byte> dbKey, bool isBackwardSync) =>
-            CreateDbKey(key, isBackwardSync ? BlockMinVal : BlockMaxVal, dbKey);
+        private static ReadOnlySpan<byte> CreateMergeDbKey(ReadOnlySpan<byte> key, Span<byte> dbKey, bool isBackwardSync)
+        {
+            var postfix = isBackwardSync ? BackwardMergeKey : ForwardMergeKey;
+
+            key.CopyTo(dbKey);
+            postfix.CopyTo(dbKey[key.Length..]);
+
+            return dbKey[..(key.Length + postfix.Length)];
+        }
 
         // RocksDB uses big-endian (lexicographic) ordering
         private static int GetKeyBlockNum(ReadOnlySpan<byte> dbKey) => BinaryPrimitives.ReadInt32BigEndian(dbKey[^BlockNumSize..]);
         private static void SetKeyBlockNum(Span<byte> dbKey, int blockNumber) => BinaryPrimitives.WriteInt32BigEndian(dbKey[^BlockNumSize..], blockNumber);
+
+        private static bool IsMergeKey(ReadOnlySpan<byte> dbKey) => dbKey.Length is
+            Hash256.Size + ForwardMergeKeyLength or
+            Hash256.Size + BackwardMergeKeyLength or
+            Address.Size + ForwardMergeKeyLength or
+            Address.Size + BackwardMergeKeyLength;
+
+        private static bool UseBackwardSyncFor(ReadOnlySpan<byte> dbKey) => dbKey.Length is
+            Hash256.Size + BackwardMergeKeyLength or
+            Address.Size + BackwardMergeKeyLength;
 
         private static int BinarySearch(ReadOnlySpan<int> blocks, int from)
         {
@@ -755,10 +783,8 @@ namespace Nethermind.Db
             dbBatch.PutSpan(LastBlockNumKey, buffer);
         }
 
-        // used for data validation, TODO: remove, replace with tests
+        // used for data validation, TODO: introduce custom exception type
         private static Exception ValidationException(string message) => new InvalidOperationException(message);
-
-        private static bool IsBackwardSync(ReadOnlySpan<byte> dbKey) => GetKeyBlockNum(dbKey) is BlockMinVal;
 
         // TODO: optimize allocations
         // TODO: set max block value to compress at, as revert only works for uncompressed numbers
@@ -768,16 +794,17 @@ namespace Nethermind.Db
 
             var block = new ActionBlock<byte[]>(dbKey =>
             {
-                var db = GetDbByKeyLength(dbKey.Length - BlockNumSize);
+                var db = GetDbByKeyLength(dbKey.Length, out var prefixLength);
 
                 var timestamp = Stopwatch.GetTimestamp();
                 var dbValue = db.Get(dbKey) ?? throw ValidationException("Empty value in the post-merge compression queue.");
                 stats.GettingValue.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 var blockNum = ReadValBlockNum(dbValue);
-                var isBackwardSync = IsBackwardSync(dbKey);
+                var isBackwardSync = UseBackwardSyncFor(dbKey);
 
-                var dbKeyComp = (byte[])dbKey.Clone();
+                var dbKeyComp = new byte[prefixLength + BlockNumSize];
+                dbKey.AsSpan(..prefixLength).CopyTo(dbKeyComp);
                 SetKeyBlockNum(dbKeyComp, blockNum);
 
                 // Put compressed value at a new key and clear uncompressed one
