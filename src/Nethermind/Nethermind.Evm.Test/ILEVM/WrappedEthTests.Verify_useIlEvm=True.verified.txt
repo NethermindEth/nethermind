@@ -107,10 +107,7 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
-stloc.s 80
-ldloca.s 80
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
 call Void set_Int0(Int32)
@@ -185,8 +182,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -311,11 +308,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -2506,7 +2503,7 @@ initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldc.i4.s 31
 call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -2523,14 +2520,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4 -192
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -2969,7 +2966,7 @@ dup
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] OnesComplement[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte])
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -2986,14 +2983,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -3521,8 +3518,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -3546,7 +3543,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -3563,14 +3560,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloca.s 9
 ldloc.s 27
@@ -3751,8 +3748,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -5057,8 +5054,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -5082,7 +5079,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -5099,14 +5096,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloca.s 9
 ldloc.s 27
@@ -5287,8 +5284,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -5312,7 +5309,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -5329,14 +5326,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloca.s 9
 ldloc.s 27
@@ -5517,8 +5514,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -6300,8 +6297,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -6768,7 +6765,7 @@ initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldc.i4 255
 call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -6785,14 +6782,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -6804,7 +6801,7 @@ initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldc.i4 255
 call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -6821,14 +6818,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -7298,8 +7295,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -7323,7 +7320,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -7340,14 +7337,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloca.s 9
 ldloc.s 27
@@ -9126,7 +9123,7 @@ initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldc.i4.s 31
 call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -9143,14 +9140,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4 -192
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -9589,7 +9586,7 @@ dup
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] OnesComplement[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte])
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -9606,14 +9603,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -10141,8 +10138,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -10166,7 +10163,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -10183,14 +10180,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloca.s 9
 ldloc.s 27
@@ -10371,8 +10368,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -11227,8 +11224,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -11252,7 +11249,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -11269,14 +11266,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloca.s 9
 ldloc.s 27
@@ -11457,8 +11454,8 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -11482,7 +11479,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -11499,14 +11496,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloca.s 9
 ldloc.s 27
@@ -12092,7 +12089,6 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -12113,7 +12109,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -12130,14 +12126,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -12157,7 +12153,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -12174,14 +12170,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -12463,7 +12459,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -12622,7 +12617,6 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -12643,7 +12637,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -12657,11 +12651,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -13080,8 +13074,8 @@ ldc.i4.s 32
 conv.i
 add
 call Nethermind.Core.Crypto.ValueHash256 get_Keccak()
-stloc.s 83
-ldloca.s 83
+stloc.s 82
+ldloca.s 82
 newobj Void .ctor(Nethermind.Core.Crypto.ValueHash256 ByRef)
 stelem.ref
 dup
@@ -13089,19 +13083,19 @@ ldc.i4.1
 ldloc.s 27
 conv.i
 call Nethermind.Core.Crypto.ValueHash256 get_Keccak()
-stloc.s 83
-ldloca.s 83
+stloc.s 82
+ldloca.s 82
 newobj Void .ctor(Nethermind.Core.Crypto.ValueHash256 ByRef)
 stelem.ref
 newobj Void .ctor(Nethermind.Core.Address, Byte[], Nethermind.Core.Crypto.Hash256[])
-stloc.s 82
+stloc.s 81
 ldarg.s 4
 call Nethermind.Evm.StackAccessTracker& get_AccessTracker()
 ldobj Nethermind.Evm.StackAccessTracker
-stloc.s 84
-ldloca.s 84
+stloc.s 83
+ldloca.s 83
 callvirt System.Collections.Generic.ICollection`1[Nethermind.Core.LogEntry] get_Logs()
-ldloc.s 82
+ldloc.s 81
 callvirt Void Add(Nethermind.Core.LogEntry)
 ldloc.s 27
 conv.i
@@ -13172,7 +13166,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -13230,7 +13223,7 @@ initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldc.i4.1
 call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -13247,14 +13240,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -13421,7 +13414,7 @@ ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 
 j242:
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -13438,14 +13431,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -14215,7 +14208,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -14273,7 +14265,7 @@ initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldc.i4.1
 call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -14290,14 +14282,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4 224
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -14464,7 +14456,7 @@ ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 
 j271:
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -14481,14 +14473,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4 160
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -14806,7 +14798,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -15365,7 +15356,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -15720,7 +15710,7 @@ initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldc.i4.s 31
 call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -15734,14 +15724,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -15916,7 +15906,6 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -15937,7 +15926,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -15954,14 +15943,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -15981,7 +15970,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -15998,14 +15987,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -16279,7 +16268,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -16296,14 +16285,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -16323,7 +16312,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -16340,14 +16329,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -16694,7 +16683,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -16711,14 +16700,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -16729,7 +16718,6 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -16750,7 +16738,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -16767,14 +16755,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -17140,8 +17128,8 @@ ldloca.s 9
 ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldnull
-stloc.s 82
-ldloca.s 83
+stloc.s 81
+ldloca.s 82
 initobj Nethermind.Core.Crypto.ValueHash256
 ldloc.s 27
 conv.i
@@ -17198,8 +17186,8 @@ ldc.i4.s 96
 conv.i
 add
 call Nethermind.Core.Crypto.ValueHash256 get_Keccak()
-stloc.s 83
-ldloca.s 83
+stloc.s 82
+ldloca.s 82
 newobj Void .ctor(Nethermind.Core.Crypto.ValueHash256 ByRef)
 stelem.ref
 dup
@@ -17210,8 +17198,8 @@ ldc.i4.s 64
 conv.i
 add
 call Nethermind.Core.Crypto.ValueHash256 get_Keccak()
-stloc.s 83
-ldloca.s 83
+stloc.s 82
+ldloca.s 82
 newobj Void .ctor(Nethermind.Core.Crypto.ValueHash256 ByRef)
 stelem.ref
 dup
@@ -17222,21 +17210,21 @@ ldc.i4.s 32
 conv.i
 add
 call Nethermind.Core.Crypto.ValueHash256 get_Keccak()
-stloc.s 83
-ldloca.s 83
+stloc.s 82
+ldloca.s 82
 newobj Void .ctor(Nethermind.Core.Crypto.ValueHash256 ByRef)
 stelem.ref
 newobj Void .ctor(Nethermind.Core.Address, Byte[], Nethermind.Core.Crypto.Hash256[])
-stloc.s 82
+stloc.s 81
 ldarg.s 4
-ldloca.s 84
+ldloca.s 83
 initobj Nethermind.Evm.StackAccessTracker
 call Nethermind.Evm.StackAccessTracker& get_AccessTracker()
 ldobj Nethermind.Evm.StackAccessTracker
-stloc.s 84
-ldloca.s 84
+stloc.s 83
+ldloca.s 83
 callvirt System.Collections.Generic.ICollection`1[Nethermind.Core.LogEntry] get_Logs()
-ldloc.s 82
+ldloc.s 81
 callvirt Void Add(Nethermind.Core.LogEntry)
 ldloc.s 27
 conv.i
@@ -17369,7 +17357,6 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -17390,7 +17377,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -17407,14 +17394,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 25
 ldloc.s 31
@@ -17579,7 +17566,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -17596,14 +17583,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -17623,7 +17610,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -17640,14 +17627,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -17902,7 +17889,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -18130,7 +18116,6 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -18151,7 +18136,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -18165,11 +18150,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -18201,7 +18186,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -18218,14 +18203,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -18395,7 +18380,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -18412,14 +18397,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -18439,7 +18424,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -18456,14 +18441,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -18695,7 +18680,6 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -18716,7 +18700,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -18733,14 +18717,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -18760,7 +18744,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -18777,14 +18761,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -19015,7 +18999,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -19213,7 +19196,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -19230,14 +19213,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -19257,7 +19240,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -19274,14 +19257,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -19534,7 +19517,6 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -19555,7 +19537,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -19572,14 +19554,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -19599,7 +19581,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -19616,14 +19598,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -19878,7 +19860,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -20122,7 +20103,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -20139,14 +20120,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -20166,7 +20147,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -20183,14 +20164,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -20443,7 +20424,6 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -20464,7 +20444,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -20481,14 +20461,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -20508,7 +20488,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -20525,14 +20505,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -20814,7 +20794,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -21072,7 +21051,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -21089,14 +21068,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -21116,7 +21095,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -21133,14 +21112,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -21422,7 +21401,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -21660,7 +21638,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -21677,14 +21655,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -21704,7 +21682,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -21721,14 +21699,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -22010,7 +21988,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -22190,7 +22167,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -22204,11 +22181,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -22240,7 +22217,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -22257,14 +22234,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -22630,8 +22607,8 @@ ldloca.s 9
 ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldnull
-stloc.s 82
-ldloca.s 83
+stloc.s 81
+ldloca.s 82
 initobj Nethermind.Core.Crypto.ValueHash256
 ldloc.s 27
 conv.i
@@ -22688,8 +22665,8 @@ ldc.i4.s 64
 conv.i
 add
 call Nethermind.Core.Crypto.ValueHash256 get_Keccak()
-stloc.s 83
-ldloca.s 83
+stloc.s 82
+ldloca.s 82
 newobj Void .ctor(Nethermind.Core.Crypto.ValueHash256 ByRef)
 stelem.ref
 dup
@@ -22700,8 +22677,8 @@ ldc.i4.s 32
 conv.i
 add
 call Nethermind.Core.Crypto.ValueHash256 get_Keccak()
-stloc.s 83
-ldloca.s 83
+stloc.s 82
+ldloca.s 82
 newobj Void .ctor(Nethermind.Core.Crypto.ValueHash256 ByRef)
 stelem.ref
 dup
@@ -22709,21 +22686,21 @@ ldc.i4.2
 ldloc.s 27
 conv.i
 call Nethermind.Core.Crypto.ValueHash256 get_Keccak()
-stloc.s 83
-ldloca.s 83
+stloc.s 82
+ldloca.s 82
 newobj Void .ctor(Nethermind.Core.Crypto.ValueHash256 ByRef)
 stelem.ref
 newobj Void .ctor(Nethermind.Core.Address, Byte[], Nethermind.Core.Crypto.Hash256[])
-stloc.s 82
+stloc.s 81
 ldarg.s 4
-ldloca.s 84
+ldloca.s 83
 initobj Nethermind.Evm.StackAccessTracker
 call Nethermind.Evm.StackAccessTracker& get_AccessTracker()
 ldobj Nethermind.Evm.StackAccessTracker
-stloc.s 84
-ldloca.s 84
+stloc.s 83
+ldloca.s 83
 callvirt System.Collections.Generic.ICollection`1[Nethermind.Core.LogEntry] get_Logs()
-ldloc.s 82
+ldloc.s 81
 callvirt Void Add(Nethermind.Core.LogEntry)
 ldloc.s 27
 conv.i
@@ -22887,7 +22864,6 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -22908,7 +22884,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -22925,14 +22901,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -22952,7 +22928,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -22969,14 +22945,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -23231,7 +23207,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -23454,7 +23429,6 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -23475,7 +23449,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -23492,14 +23466,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -23519,7 +23493,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -23536,14 +23510,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -23825,7 +23799,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -24014,7 +23987,6 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -24035,7 +24007,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -24049,11 +24021,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -24506,9 +24478,9 @@ ldc.i4 128
 conv.i
 add
 call Nethermind.Int256.UInt256 get_UInt256()
-ldloca.s 85
+ldloca.s 84
 ldarga.s 6
-ldloca.s 86
+ldloca.s 85
 call Nethermind.Evm.EvmExceptionType InstructionCall[NotTracing,NotTracing](Nethermind.Evm.EvmState, Nethermind.State.IWorldState, Int64 ByRef, Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Tracing.ITxTracer, Nethermind.Logging.ILogger, Nethermind.Evm.Instruction, Nethermind.Int256.UInt256, Nethermind.Core.Address, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, System.Nullable`1[Nethermind.Int256.UInt256] ByRef, System.ReadOnlyMemory`1[System.Byte] ByRef, System.Object ByRef)
 stloc.s 17
 ldloc.s 17
@@ -24524,10 +24496,10 @@ ldc.i4.1
 brtrue j1
 
 j395:
-ldloc.s 86
+ldloc.s 85
 ldnull
 beq j394
-ldloc.s 86
+ldloc.s 85
 call System.Object get_BoxedEmpty()
 call Boolean ReferenceEquals(System.Object, System.Object)
 brtrue j394
@@ -24542,7 +24514,7 @@ add
 stloc.s 28
 ldarg.s 13
 dup
-ldloc.s 86
+ldloc.s 85
 castclass Nethermind.Evm.EvmState
 stfld Nethermind.Evm.EvmState CallResult
 ldc.i4.2
@@ -24551,7 +24523,7 @@ ldc.i4.1
 brtrue j4
 
 j394:
-ldloca.s 85
+ldloca.s 84
 call Boolean get_HasValue()
 brfalse j393
 ldloc.s 27
@@ -24559,7 +24531,7 @@ conv.i
 ldc.i4 128
 conv.i
 add
-ldloca.s 85
+ldloca.s 84
 call Nethermind.Int256.UInt256 get_Value()
 call Void set_UInt256(Nethermind.Int256.UInt256)
 
@@ -24776,7 +24748,6 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -24797,7 +24768,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -24811,11 +24782,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -25181,8 +25152,8 @@ ldloca.s 9
 ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldnull
-stloc.s 82
-ldloca.s 83
+stloc.s 81
+ldloca.s 82
 initobj Nethermind.Core.Crypto.ValueHash256
 ldloc.s 27
 conv.i
@@ -25239,8 +25210,8 @@ ldc.i4.s 32
 conv.i
 add
 call Nethermind.Core.Crypto.ValueHash256 get_Keccak()
-stloc.s 83
-ldloca.s 83
+stloc.s 82
+ldloca.s 82
 newobj Void .ctor(Nethermind.Core.Crypto.ValueHash256 ByRef)
 stelem.ref
 dup
@@ -25248,21 +25219,21 @@ ldc.i4.1
 ldloc.s 27
 conv.i
 call Nethermind.Core.Crypto.ValueHash256 get_Keccak()
-stloc.s 83
-ldloca.s 83
+stloc.s 82
+ldloca.s 82
 newobj Void .ctor(Nethermind.Core.Crypto.ValueHash256 ByRef)
 stelem.ref
 newobj Void .ctor(Nethermind.Core.Address, Byte[], Nethermind.Core.Crypto.Hash256[])
-stloc.s 82
+stloc.s 81
 ldarg.s 4
-ldloca.s 84
+ldloca.s 83
 initobj Nethermind.Evm.StackAccessTracker
 call Nethermind.Evm.StackAccessTracker& get_AccessTracker()
 ldobj Nethermind.Evm.StackAccessTracker
-stloc.s 84
-ldloca.s 84
+stloc.s 83
+ldloca.s 83
 callvirt System.Collections.Generic.ICollection`1[Nethermind.Core.LogEntry] get_Logs()
-ldloc.s 82
+ldloc.s 81
 callvirt Void Add(Nethermind.Core.LogEntry)
 ldloc.s 27
 conv.i
@@ -25359,7 +25330,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -25582,7 +25552,7 @@ initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldc.i4 255
 call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -25596,11 +25566,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -25863,7 +25833,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -25950,7 +25919,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -26008,7 +25976,7 @@ initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldc.i4.1
 call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -26025,14 +25993,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -26199,7 +26167,7 @@ ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 
 j426:
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -26216,14 +26184,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -26993,7 +26961,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -27051,7 +27018,7 @@ initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldc.i4.1
 call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -27068,14 +27035,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4 224
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -27242,7 +27209,7 @@ ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 
 j455:
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -27259,14 +27226,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4 160
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -27584,7 +27551,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -28143,7 +28109,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -28498,7 +28463,7 @@ initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldc.i4.s 31
 call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
-ldloca.s 81
+ldloca.s 80
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -28512,14 +28477,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 81
+stloc.s 80
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 81
+ldloc.s 80
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -28673,7 +28638,6 @@ dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -29207,7 +29171,6 @@ ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -29309,10 +29272,10 @@ call UInt64 ReverseEndianness(UInt64)
 call Void set_ULong0(UInt64)
 ldc.i4 3111
 stloc.s 26
-ldloca.s 85
+ldloca.s 84
 initobj System.Nullable`1[Nethermind.Int256.UInt256]
 ldnull
-stloc.s 86
+stloc.s 85
 ldarg.s 4
 ldarg.s 5
 ldloca.s 25
@@ -29354,9 +29317,9 @@ ldc.i4 -160
 conv.i
 add
 call Nethermind.Int256.UInt256 get_UInt256()
-ldloca.s 85
+ldloca.s 84
 ldarga.s 6
-ldloca.s 86
+ldloca.s 85
 call Nethermind.Evm.EvmExceptionType InstructionCall[NotTracing,NotTracing](Nethermind.Evm.EvmState, Nethermind.State.IWorldState, Int64 ByRef, Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Tracing.ITxTracer, Nethermind.Logging.ILogger, Nethermind.Evm.Instruction, Nethermind.Int256.UInt256, Nethermind.Core.Address, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, System.Nullable`1[Nethermind.Int256.UInt256] ByRef, System.ReadOnlyMemory`1[System.Byte] ByRef, System.Object ByRef)
 stloc.s 17
 ldloc.s 17
@@ -29372,10 +29335,10 @@ ldc.i4.1
 brtrue j1
 
 j496:
-ldloc.s 86
+ldloc.s 85
 ldnull
 beq j495
-ldloc.s 86
+ldloc.s 85
 call System.Object get_BoxedEmpty()
 call Boolean ReferenceEquals(System.Object, System.Object)
 brtrue j495
@@ -29390,7 +29353,7 @@ add
 stloc.s 28
 ldarg.s 13
 dup
-ldloc.s 86
+ldloc.s 85
 castclass Nethermind.Evm.EvmState
 stfld Nethermind.Evm.EvmState CallResult
 ldc.i4.2
@@ -29399,7 +29362,7 @@ ldc.i4.1
 brtrue j4
 
 j495:
-ldloca.s 85
+ldloca.s 84
 call Boolean get_HasValue()
 brfalse j494
 ldloc.s 27
@@ -29407,7 +29370,7 @@ conv.i
 ldc.i4 -160
 conv.i
 add
-ldloca.s 85
+ldloca.s 84
 call Nethermind.Int256.UInt256 get_Value()
 call Void set_UInt256(Nethermind.Int256.UInt256)
 
@@ -29440,10 +29403,10 @@ ldc.i4.6
 blt StackUnderflow
 ldc.i4 3112
 stloc.s 26
-ldloca.s 85
+ldloca.s 84
 initobj System.Nullable`1[Nethermind.Int256.UInt256]
 ldnull
-stloc.s 86
+stloc.s 85
 ldarg.s 4
 ldarg.s 5
 ldloca.s 25
@@ -29488,9 +29451,9 @@ ldc.i4 -192
 conv.i
 add
 call Nethermind.Int256.UInt256 get_UInt256()
-ldloca.s 85
+ldloca.s 84
 ldarga.s 6
-ldloca.s 86
+ldloca.s 85
 call Nethermind.Evm.EvmExceptionType InstructionCall[NotTracing,NotTracing](Nethermind.Evm.EvmState, Nethermind.State.IWorldState, Int64 ByRef, Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Tracing.ITxTracer, Nethermind.Logging.ILogger, Nethermind.Evm.Instruction, Nethermind.Int256.UInt256, Nethermind.Core.Address, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, System.Nullable`1[Nethermind.Int256.UInt256] ByRef, System.ReadOnlyMemory`1[System.Byte] ByRef, System.Object ByRef)
 stloc.s 17
 ldloc.s 17
@@ -29506,10 +29469,10 @@ ldc.i4.1
 brtrue j1
 
 j502:
-ldloc.s 86
+ldloc.s 85
 ldnull
 beq j501
-ldloc.s 86
+ldloc.s 85
 call System.Object get_BoxedEmpty()
 call Boolean ReferenceEquals(System.Object, System.Object)
 brtrue j501
@@ -29524,7 +29487,7 @@ add
 stloc.s 28
 ldarg.s 13
 dup
-ldloc.s 86
+ldloc.s 85
 castclass Nethermind.Evm.EvmState
 stfld Nethermind.Evm.EvmState CallResult
 ldc.i4.2
@@ -29533,7 +29496,7 @@ ldc.i4.1
 brtrue j4
 
 j501:
-ldloca.s 85
+ldloca.s 84
 call Boolean get_HasValue()
 brfalse j500
 ldloc.s 27
@@ -29541,7 +29504,7 @@ conv.i
 ldc.i4 -192
 conv.i
 add
-ldloca.s 85
+ldloca.s 84
 call Nethermind.Int256.UInt256 get_Value()
 call Void set_UInt256(Nethermind.Int256.UInt256)
 

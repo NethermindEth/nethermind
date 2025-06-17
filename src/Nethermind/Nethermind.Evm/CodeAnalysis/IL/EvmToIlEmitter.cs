@@ -402,7 +402,7 @@ internal static class OpcodeEmitters
         method.LoadConstant((ulong)0);
         method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadEnv(locals, true);
+        method.LoadEnvRef(locals);
         method.LoadField(
             GetFieldInfo(
                 typeof(ExecutionEnvironment),
@@ -1108,7 +1108,7 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadEnv(locals, false);
+        method.LoadEnvRef(locals);
 
         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Caller)));
         method.Call(Word.SetAddress);
@@ -1118,7 +1118,7 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadEnv(locals, false);
+        method.LoadEnvRef(locals);
 
         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
         method.Call(Word.SetAddress);
@@ -1138,11 +1138,9 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadEnv(locals, true);
-
+        method.LoadEnvRef(locals);
         method.LoadFieldAddress(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
         method.Call(Word.SetUInt256ByRef);
-        return;
     }
 
     internal static Label EmitCallDataCopyInstruction<TDelegateType>(
@@ -1186,7 +1184,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadCalldata(locals, false);
+        method.LoadCallData(locals, false);
         method.LoadLocalAddress(locals.uint256B);
         method.LoadLocal(locals.uint256C);
         method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
@@ -1213,7 +1211,7 @@ internal static class OpcodeEmitters
 
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
 
-        method.LoadCalldata(locals, false);
+        method.LoadCallData(locals, false);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadConstant(Word.Size);
         method.LoadConstant((int)PadDirection.Right);
@@ -1226,7 +1224,7 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadCalldata(locals, true);
+        method.LoadCallData(locals, true);
         method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
         method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
         return;
@@ -1545,7 +1543,7 @@ internal static class OpcodeEmitters
         method.Call(Word.GetArray);
         method.StoreLocal(locals.localArray);
 
-        method.LoadEnv(locals, false);
+        method.LoadEnvRef(locals);
 
         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
         method.LoadLocalAddress(locals.uint256A);
@@ -1565,7 +1563,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.uint256A);
         method.Call(Word.GetUInt256ByRef);
 
-        method.LoadEnv(locals, false);
+        method.LoadEnvRef(locals);
 
         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
         method.LoadLocalAddress(locals.uint256A);
@@ -1598,7 +1596,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.uint256A);
         method.Call(Word.GetUInt256ByRef);
 
-        method.LoadEnv(locals, false);
+        method.LoadEnvRef(locals);
 
         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
         method.LoadLocalAddress(locals.uint256A);
@@ -1813,7 +1811,7 @@ internal static class OpcodeEmitters
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         method.LoadWorldState(locals, false);
-        method.LoadEnv(locals, false);
+        method.LoadEnvRef(locals);
 
         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
         method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
@@ -2266,7 +2264,7 @@ internal static class OpcodeEmitters
 
         if (op is Instruction.DELEGATECALL)
         {
-            method.LoadEnv(locals, false);
+            method.LoadEnvRef(locals);
             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
         }
         else if (op is Instruction.STATICCALL)

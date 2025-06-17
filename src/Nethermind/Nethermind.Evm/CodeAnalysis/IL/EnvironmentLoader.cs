@@ -2,25 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
-using Nethermind.State;
 using Sigil;
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Reflection.Emit;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
-using Nethermind.Logging;
-using System.Threading;
 using Nethermind.Core;
 
 using CallData = System.ReadOnlyMemory<byte>;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
-internal static class EnvirementLoader
+internal static class EnvironmentLoader
 {
+    private static readonly FieldInfo FieldInputData = typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.InputData), BindingFlags.Public | BindingFlags.Instance);
+
     public const int REF_MACHINECODE_INDEX = 0;
     public const int OBJ_SPECPROVIDER_INDEX = REF_MACHINECODE_INDEX + 1;
     public const int OBJ_BLOCKHASHPROVIDER_INDEX = OBJ_SPECPROVIDER_INDEX + 1;
@@ -71,16 +65,7 @@ internal static class EnvirementLoader
             il.LoadArgument(OBJ_BLOCKHASHPROVIDER_INDEX);
     }
 
-    public static void CacheCalldata<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals)
-    {
-        const string calldata = nameof(CallData);
-
-        LoadCalldata(il, locals, false);
-        locals.TryDeclareLocal(calldata, typeof(CallData));
-        locals.TryStoreLocal(calldata);
-    }
-
-    public static void LoadCalldata<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public static void LoadCallData<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         const string calldata = nameof(CallData);
 
@@ -89,13 +74,15 @@ internal static class EnvirementLoader
             return;
         }
 
-        LoadEnv(il, locals, false);
-        il.LoadField(typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.InputData), BindingFlags.Public | BindingFlags.Instance));
-        if (loadAddress)
+        // ref env
+        LoadEnvRef(il, locals);
+
+        // ref InputData
+        il.LoadFieldAddress(FieldInputData);
+
+        if (loadAddress == false)
         {
-            using Local local = il.DeclareLocal<CallData>(locals.GetLocalName());
-            il.StoreLocal(local);
-            il.LoadLocalAddress(local);
+            il.LoadObject<CallData>();
         }
     }
 
@@ -126,30 +113,14 @@ internal static class EnvirementLoader
             il.LoadObject<Word>();
     }
 
-    public static void CacheEnv<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals)
+    private static readonly FieldInfo FieldEvmStateEnv = typeof(EvmState)
+        .GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic)
+        .Single(f => f.FieldType == typeof(ExecutionEnvironment));
+
+    public static void LoadEnvRef<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals)
     {
-        const string env = nameof(ExecutionEnvironment);
-
-        LoadEnv(il, locals, false);
-        locals.TryDeclareLocal(env, typeof(ExecutionEnvironment));
-        locals.TryStoreLocal(env);
-    }
-
-    public static void LoadEnv<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
-    {
-        const string env = nameof(ExecutionEnvironment);
-
-        if (locals.TryLoadLocal(env, loadAddress))
-        {
-            return;
-        }
-
         LoadVmState(il, locals, false);
-        il.Call(typeof(EvmState).GetProperty(nameof(EvmState.Env), BindingFlags.Public | BindingFlags.Instance).GetMethod);
-        if (!loadAddress)
-        {
-            il.LoadObject<ExecutionEnvironment>();
-        }
+        il.LoadFieldAddress(FieldEvmStateEnv);
     }
 
     public static void LoadGasAvailable<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
@@ -258,7 +229,7 @@ internal static class EnvirementLoader
             return;
         }
 
-        LoadEnv(il, locals, true);
+        LoadEnvRef(il, locals);
         il.LoadField(typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.TxExecutionContext), BindingFlags.Public | BindingFlags.Instance));
         if (loadAddress)
         {
