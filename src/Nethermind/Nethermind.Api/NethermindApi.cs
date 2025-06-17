@@ -75,7 +75,7 @@ namespace Nethermind.Api
 
         private Dependencies _dependencies;
 
-        public IBlockchainBridge CreateBlockchainBridge()
+        public virtual IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
 
