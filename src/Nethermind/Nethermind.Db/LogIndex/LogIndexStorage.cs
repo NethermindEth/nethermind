@@ -123,8 +123,8 @@ namespace Nethermind.Db
                             continue;
                         }
 
-                        // Reverse if coming from backward sync
-                        if (isBackwardSync)
+                        // Reverse if needed, coming from backward sync
+                        if (ReadValBlockNum(value) > ReadValLastBlockNum(value))
                         {
                             ReverseInt32(value);
                         }
