@@ -22,7 +22,7 @@
     "NodeName": "Mainnet"
   },
   "Blocks": {
-    "TargetBlockGasLimit": 60000000
+    "TargetBlockGasLimit": 45000000
   },
   "JsonRpc": {
     "Enabled": true,
