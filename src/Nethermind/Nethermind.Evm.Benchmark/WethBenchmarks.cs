@@ -117,11 +117,6 @@ namespace Nethermind.Evm.Benchmark
 
             InsertCode(bytecode, ContractAddress);
 
-            if (vmConfig.IsILEvmEnabled)
-            {
-                var targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, ContractAddress, Prague.Instance, out _);
-                IlAnalyzer.Analyse(targetCodeInfo, vmConfig.IlEvmEnabledMode, vmConfig, Logging.NullLogger.Instance);
-            }
 
             _targetBlock = BuildBlock();
 
@@ -133,18 +128,13 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider.Set(AddressABalanceCell, 1000.Ether().ToBigEndian().WithoutLeadingZeros().ToArray());
             _stateProvider.Set(AddressBBalanceCell, 1000.Ether().ToBigEndian().WithoutLeadingZeros().ToArray());
 
-            Transaction[] txList = [
+            Transaction[] pairTx = [
                 BuildTransferTxFrom(AddressA, AddressB, 1000),
-                BuildTransferTxFrom(AddressB, AddressA, 1000),
-                BuildTransferTxFrom(AddressA, AddressB, 1000),
-                BuildTransferTxFrom(AddressB, AddressA, 1000),
-                BuildTransferTxFrom(AddressA, AddressB, 1000),
-                BuildTransferTxFrom(AddressB, AddressA, 1000),
-                BuildTransferTxFrom(AddressA, AddressB, 1000),
-                BuildTransferTxFrom(AddressB, AddressA, 1000)
+                BuildTransferTxFrom(AddressA, AddressB, 1000)
             ];
 
-
+            Transaction[] txList =
+                Enumerable.Repeat(pairTx, 100).SelectMany(x => x).ToArray();
 
             var senderRecipientAndMiner = SenderRecipientAndMiner.Default;
             return Build.A.Block.WithNumber(Activation.BlockNumber)
@@ -222,16 +212,27 @@ namespace Nethermind.Evm.Benchmark
         [IterationSetup]
         public void IterationSetup()
         {
+            if (vmConfig.IsILEvmEnabled)
+            {
+                var targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, ContractAddress, Prague.Instance, out _);
+                IlAnalyzer.Analyse(targetCodeInfo, vmConfig.IlEvmEnabledMode, vmConfig, Logging.NullLogger.Instance);
+            }
+
             _stateProvider.Restore(snapshot);
         }
 
-        [Benchmark(Baseline = true, OperationsPerInvoke = 8)]
+        [Benchmark(Baseline = true, OperationsPerInvoke = 200)]
         public void ExecuteCode()
         {
             for (int i = 0; i < _targetBlock.Transactions.Length; i++)
             {
                 _transactionProcessor.Warmup(_targetBlock.Transactions[i], new BlockExecutionContext(_targetBlock.Header, _spec), NullTxTracer.Instance);
             }
+        }
+
+        public override string ToString()
+        {
+            return $"{Name} - {typeof(TIsOptimizing).Name} - {vmConfig.IlEvmEnabledMode} - {vmConfig.IsILEvmEnabled}";
         }
     }
 

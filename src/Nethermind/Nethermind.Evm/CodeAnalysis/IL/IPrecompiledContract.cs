@@ -11,6 +11,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 
 public delegate bool ILExecutionStep(
         in byte machineCodeRef,
+        IReleaseSpec spec,
         ISpecProvider specProvider,
         IBlockhashProvider blockhashProvider,
         ICodeInfoRepository codeInfoProvider,

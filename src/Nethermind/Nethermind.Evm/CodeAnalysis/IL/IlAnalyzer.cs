@@ -137,7 +137,7 @@ public static class IlAnalyzer
                 {
                     codeInfo.IlInfo.PrecompiledContract = contractDelegate;
                     Metrics.IncrementIlvmAotCacheTouched();
-                    return;
+                    break;
                 }
                 else
                 {
