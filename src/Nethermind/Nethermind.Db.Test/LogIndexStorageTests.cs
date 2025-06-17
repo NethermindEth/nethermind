@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -23,6 +26,8 @@ namespace Nethermind.Db.Test
     [TestFixture(5, 200)]
     [TestFixture(100, 100, Explicit = true)]
     [TestFixture(100, 200, Explicit = true)]
+    // TODO: test for different block ranges intersection
+    // TODO: run internal state verification for each test
     public class LogIndexStorageTests(int batchCount, int blocksPerBatch)
     {
         private readonly TestData _testData = GenerateTestData(new Random(42), batchCount, blocksPerBatch);
@@ -31,8 +36,7 @@ namespace Nethermind.Db.Test
         private string _dbPath = null!;
         private IDbFactory _dbFactory = null!;
 
-        private LogIndexStorage CreateLogIndexStorage(int ioParallelism = 16, int compactionDistance = 262_144,
-            IDbFactory? dbFactory = null)
+        private LogIndexStorage CreateLogIndexStorage(int compactionDistance = 262_144, byte ioParallelism = 16, IDbFactory? dbFactory = null)
         {
             return new(dbFactory ?? _dbFactory, _logger, ioParallelism, compactionDistance);
         }
@@ -44,9 +48,7 @@ namespace Nethermind.Db.Test
             _dbPath = GetType().Name;
 
             if (Directory.Exists(_dbPath))
-            {
                 Directory.Delete(_dbPath, true);
-            }
 
             Directory.CreateDirectory(_dbPath);
 
@@ -62,13 +64,30 @@ namespace Nethermind.Db.Test
 
         [Combinatorial]
         public async Task Set_Get_Test(
-            [Values(1, 8, 16)] int ioParallelism,
-            [Values(100, 200, int.MaxValue)] int compactionDistance
+            [Values(100, 200, int.MaxValue)] int compactionDistance,
+            [Values(1, 8, 16)] byte ioParallelism,
+            [Values] bool isBackwardsSync
         )
         {
-            await using var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance);
+            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance, ioParallelism);
 
-            await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+            BlockReceipts[][] batches = isBackwardsSync ? Reverse(_testData.Batches) : _testData.Batches;
+            await SetReceiptsAsync(logIndexStorage, batches, isBackwardsSync);
+
+            VerifyReceipts(logIndexStorage, _testData);
+        }
+
+        [Combinatorial]
+        public async Task BackwardsSet_Set_Get_Test(
+            [Values(100, 200, int.MaxValue)] int compactionDistance,
+            [Values(1, 8, 16)] byte ioParallelism
+        )
+        {
+            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance, ioParallelism);
+
+            var half = _testData.Batches.Length / 2;
+            await SetReceiptsAsync(logIndexStorage, Reverse(_testData.Batches.Take(half)), isBackwardsSync: true);
+            await SetReceiptsAsync(logIndexStorage, _testData.Batches.Skip(half), isBackwardsSync: false);
 
             VerifyReceipts(logIndexStorage, _testData);
         }
@@ -78,12 +97,11 @@ namespace Nethermind.Db.Test
         // TODO: test reverting block with unexisting data
         // TODO: test reverting already compressed block
         public async Task Set_RevertLast_Get_Test(
-            [Values(1, 8)] int ioParallelism,
             [Values(1, 5, 20)] int revertCount,
             [Values(100, int.MaxValue)] int compactionDistance
         )
         {
-            await using var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance);
+            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance);
 
             await SetReceiptsAsync(logIndexStorage, _testData.Batches);
 
@@ -99,29 +117,29 @@ namespace Nethermind.Db.Test
 
         [Combinatorial]
         public async Task SetMultiInstance_Get_Test(
-            [Values(1, 8)] int ioParallelism,
-            [Values(100, int.MaxValue)] int compactionDistance
+            [Values(100, int.MaxValue)] int compactionDistance,
+            [Values] bool isBackwardsSync
         )
         {
             var half = _testData.Batches.Length / 2;
 
-            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+            await using (var logIndexStorage = CreateLogIndexStorage(compactionDistance))
                 await SetReceiptsAsync(logIndexStorage, _testData.Batches.Take(half));
 
-            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+            await using (var logIndexStorage = CreateLogIndexStorage(compactionDistance))
                 await SetReceiptsAsync(logIndexStorage, _testData.Batches.Skip(half));
 
-            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+            await using (var logIndexStorage = CreateLogIndexStorage(compactionDistance))
                 VerifyReceipts(logIndexStorage, _testData);
         }
 
         [Combinatorial]
         public async Task RepeatedSet_Get_Test(
-            [Values(1, 8)] int ioParallelism,
-            [Values(100, int.MaxValue)] int compactionDistance
+            [Values(100, int.MaxValue)] int compactionDistance,
+            [Values] bool isBackwardsSync
         )
         {
-            await using var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance);
+            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance);
 
             await SetReceiptsAsync(logIndexStorage, _testData.Batches);
             await SetReceiptsAsync(logIndexStorage, _testData.Batches);
@@ -131,31 +149,31 @@ namespace Nethermind.Db.Test
 
         [Combinatorial]
         public async Task RepeatedSetMultiInstance_Get_Test(
-            [Values(1, 8)] int ioParallelism,
-            [Values(100, int.MaxValue)] int compactionDistance
+            [Values(100, int.MaxValue)] int compactionDistance,
+            [Values] bool isBackwardsSync
         )
         {
-            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+            await using (var logIndexStorage = CreateLogIndexStorage(compactionDistance))
                 await SetReceiptsAsync(logIndexStorage, _testData.Batches);
 
-            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+            await using (var logIndexStorage = CreateLogIndexStorage(compactionDistance))
                 await SetReceiptsAsync(logIndexStorage, _testData.Batches);
 
-            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+            await using (var logIndexStorage = CreateLogIndexStorage(compactionDistance))
                 VerifyReceipts(logIndexStorage, _testData);
         }
-
 
         [Combinatorial]
         public async Task Set_NewInstance_Get_Test(
             [Values(1, 8)] int ioParallelism,
-            [Values(100, int.MaxValue)] int compactionDistance
+            [Values(100, int.MaxValue)] int compactionDistance,
+            [Values] bool isBackwardsSync
         )
         {
-            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+            await using (var logIndexStorage = CreateLogIndexStorage(compactionDistance))
                 await SetReceiptsAsync(logIndexStorage, _testData.Batches);
 
-            await using (var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance))
+            await using (var logIndexStorage = CreateLogIndexStorage(compactionDistance))
                 VerifyReceipts(logIndexStorage, _testData);
         }
 
@@ -163,10 +181,11 @@ namespace Nethermind.Db.Test
         [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
         public async Task Set_ConcurrentGet_Test(
             [Values(1, 8)] int ioParallelism,
-            [Values(100, int.MaxValue)] int compactionDistance
+            [Values(100, int.MaxValue)] int compactionDistance,
+            [Values] bool isBackwardsSync
         )
         {
-            await using var logIndexStorage = CreateLogIndexStorage(ioParallelism, compactionDistance);
+            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance);
 
             using var getCancellation = new CancellationTokenSource();
             var token = getCancellation.Token;
@@ -193,9 +212,11 @@ namespace Nethermind.Db.Test
 
             var blocksCount = batchCount * blocksPerBatch;
             var addresses = Enumerable.Repeat(0, blocksCount / 5)
+            //var addresses = Enumerable.Repeat(0, 2)
                 .Select(_ => new Address(random.NextBytes(Address.Size)))
                 .ToArray();
             var topics = Enumerable.Repeat(0, addresses.Length * 10)
+            //var topics = Enumerable.Repeat(0, 2)
                 .Select(_ => new Hash256(random.NextBytes(Hash256.Size)))
                 .ToArray();
 
@@ -301,7 +322,8 @@ namespace Nethermind.Db.Test
             {
                 Assert.That(
                     logIndexStorage.GetBlockNumbersFor(address, 0, int.MaxValue),
-                    Is.EquivalentTo(expectedNums.Order().TakeWhile(b => b <= maxBlock))
+                    Is.EquivalentTo(expectedNums.Order().TakeWhile(b => b <= maxBlock)),
+                    $"Address: {address}"
                 );
             }
 
@@ -309,7 +331,8 @@ namespace Nethermind.Db.Test
             {
                 Assert.That(
                     logIndexStorage.GetBlockNumbersFor(topic, 0, int.MaxValue),
-                    Is.EquivalentTo(expectedNums.Order().TakeWhile(b => b <= maxBlock))
+                    Is.EquivalentTo(expectedNums.Order().TakeWhile(b => b <= maxBlock)),
+                    $"Topic: {topic}"
                 );
             }
         }
@@ -328,6 +351,18 @@ namespace Nethermind.Db.Test
                 var topic = random.NextValue(topics);
                 logIndexStorage.GetBlockNumbersFor(topic, 0, int.MaxValue);
             }
+        }
+
+        private BlockReceipts[][] Reverse(IEnumerable<BlockReceipts[]> batches)
+        {
+            var length = batches.Count();
+            var result = new BlockReceipts[length][];
+
+            var index = 0;
+            foreach (BlockReceipts[] batch in batches.Reverse())
+                result[index++] = batch.Reverse().ToArray();
+
+            return result;
         }
 
         private class TestData
