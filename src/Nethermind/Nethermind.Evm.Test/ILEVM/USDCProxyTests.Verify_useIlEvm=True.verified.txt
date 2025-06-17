@@ -1,6 +1,6 @@
 ﻿ldarg.1
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Evm.TxExecutionContext TxExecutionContext
 ldfld Nethermind.Evm.BlockExecutionContext BlockExecutionContext
 stloc.s 30
@@ -9,14 +9,14 @@ call Nethermind.Core.BlockHeader get_Header()
 call Nethermind.Core.Specs.IReleaseSpec GetSpec(Nethermind.Core.Specs.ISpecProvider, Nethermind.Core.BlockHeader)
 stloc.s 31
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Evm.TxExecutionContext TxExecutionContext
 ldfld Nethermind.Evm.BlockExecutionContext BlockExecutionContext
 ldloca.s 30
 initobj Nethermind.Evm.BlockExecutionContext
 stloc.s 30
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Evm.TxExecutionContext TxExecutionContext
 stloc.s 32
 ldarg.s 9
@@ -106,7 +106,7 @@ add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
@@ -181,7 +181,7 @@ conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
@@ -808,7 +808,7 @@ conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda Nethermind.Int256.UInt256 Value
 call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
@@ -995,7 +995,7 @@ add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
@@ -1158,7 +1158,7 @@ add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
@@ -1486,7 +1486,7 @@ add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
@@ -1658,7 +1658,7 @@ add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
@@ -1916,7 +1916,7 @@ add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
@@ -2087,7 +2087,7 @@ add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
@@ -2485,7 +2485,7 @@ conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda Nethermind.Int256.UInt256 Value
 call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
@@ -3111,7 +3111,7 @@ conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda Nethermind.Int256.UInt256 Value
 call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
@@ -3298,7 +3298,7 @@ add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
@@ -3461,7 +3461,7 @@ add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
@@ -3757,7 +3757,7 @@ conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda Nethermind.Int256.UInt256 Value
 call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
@@ -4669,7 +4669,7 @@ conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -5102,7 +5102,7 @@ conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -5310,7 +5310,7 @@ conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Core.Address ExecutingAccount
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -5359,7 +5359,7 @@ add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda Nethermind.Int256.UInt256 Value
 call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
@@ -5540,7 +5540,7 @@ ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 7
@@ -6374,7 +6374,7 @@ conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -6870,7 +6870,7 @@ conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -8686,7 +8686,7 @@ stloc.s 25
 ldc.i8 0
 blt OutOfGas
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Core.Address ExecutingAccount
 ldarg.s 4
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
@@ -9007,7 +9007,7 @@ conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -9503,7 +9503,7 @@ conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -10742,7 +10742,7 @@ add
 ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -10851,7 +10851,7 @@ conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
@@ -10913,7 +10913,7 @@ ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 7
@@ -10950,7 +10950,7 @@ add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
@@ -11009,7 +11009,7 @@ conv.i
 add
 call Nethermind.Core.Address get_Address()
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Int256.UInt256 Value
 ldloc.s 27
 conv.i
@@ -11647,7 +11647,7 @@ add
 ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
@@ -12301,7 +12301,7 @@ stloc.s 25
 ldc.i8 0
 blt OutOfGas
 ldarg.s 4
-ldflda Nethermind.Evm.ExecutionEnvironment _env
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Core.Address ExecutingAccount
 ldarg.s 4
 call Nethermind.Evm.EvmPooledMemory& get_Memory()

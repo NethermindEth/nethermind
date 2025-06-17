@@ -113,14 +113,11 @@ internal static class EnvironmentLoader
             il.LoadObject<Word>();
     }
 
-    private static readonly FieldInfo FieldEvmStateEnv = typeof(EvmState)
-        .GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic)
-        .Single(f => f.FieldType == typeof(ExecutionEnvironment));
-
     public static void LoadEnvRef<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals)
     {
         LoadVmState(il, locals, false);
-        il.LoadFieldAddress(FieldEvmStateEnv);
+        il.Call(typeof(EvmState).GetProperty(nameof(EvmState.Env), BindingFlags.Public | BindingFlags.Instance)!
+            .GetMethod);
     }
 
     public static void LoadGasAvailable<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
