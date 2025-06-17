@@ -119,12 +119,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 call Boolean op_LessThan(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
@@ -255,12 +255,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1524,15 +1524,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1589,15 +1589,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1789,15 +1789,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1926,15 +1926,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -2072,12 +2072,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 call Boolean op_LessThan(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
@@ -2164,12 +2164,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -2235,15 +2235,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -2308,12 +2308,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -2445,15 +2445,15 @@ conv.i
 ldc.i4 -160
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 -192
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -2655,12 +2655,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -2776,15 +2776,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -2921,15 +2921,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -3048,12 +3048,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -3228,15 +3228,15 @@ conv.i
 ldc.i4.s 160
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 128
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -3617,15 +3617,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -3803,15 +3803,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -4123,15 +4123,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -4260,12 +4260,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -4647,15 +4647,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -4784,12 +4784,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -5155,15 +5155,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -5385,15 +5385,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -5571,15 +5571,15 @@ conv.i
 ldc.i4 192
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -5891,15 +5891,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -6028,12 +6028,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -6355,15 +6355,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -6891,15 +6891,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7028,12 +7028,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7399,15 +7399,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7667,15 +7667,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7804,12 +7804,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -8151,15 +8151,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -8216,15 +8216,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -8416,15 +8416,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -8553,15 +8553,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -8699,12 +8699,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 call Boolean op_LessThan(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
@@ -8791,12 +8791,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -8862,15 +8862,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -8935,12 +8935,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -9072,15 +9072,15 @@ conv.i
 ldc.i4 -160
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 -192
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -9282,12 +9282,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -9403,15 +9403,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -9548,15 +9548,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -9675,12 +9675,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -9855,15 +9855,15 @@ conv.i
 ldc.i4.s 160
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 128
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -10244,15 +10244,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -10430,15 +10430,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -10750,15 +10750,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -10887,12 +10887,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -11331,15 +11331,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -11561,15 +11561,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -11829,15 +11829,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -11966,12 +11966,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -12249,15 +12249,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -12356,15 +12356,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -12505,15 +12505,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -12818,15 +12818,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -12970,15 +12970,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13326,15 +13326,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13394,15 +13394,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13523,15 +13523,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13593,15 +13593,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13693,15 +13693,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13771,15 +13771,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13834,15 +13834,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13943,15 +13943,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -14162,15 +14162,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -14369,15 +14369,15 @@ conv.i
 ldc.i4 256
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 224
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -14437,15 +14437,15 @@ conv.i
 ldc.i4 224
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 192
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -14566,15 +14566,15 @@ conv.i
 ldc.i4 192
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -14717,12 +14717,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 call Boolean op_LessThan(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
@@ -14870,15 +14870,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -14945,12 +14945,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -15055,15 +15055,15 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -15147,15 +15147,15 @@ ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldloc.s 27
 conv.i
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -15474,15 +15474,15 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -15535,15 +15535,15 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -15585,12 +15585,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 call Boolean op_GreaterThan(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
@@ -15686,15 +15686,15 @@ call Boolean get_IsZero()
 brtrue j298
 ldloc.s 27
 conv.i
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -15766,15 +15766,15 @@ ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldloc.s 27
 conv.i
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -16074,15 +16074,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -16181,15 +16181,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -16416,15 +16416,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -16523,15 +16523,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -16932,15 +16932,15 @@ conv.i
 ldc.i4 224
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 192
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -17084,15 +17084,15 @@ conv.i
 ldc.i4 192
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -17716,15 +17716,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -17823,15 +17823,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -17945,15 +17945,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 call Boolean op_LessThan(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
@@ -18532,15 +18532,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -18630,12 +18630,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -18853,15 +18853,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -18951,12 +18951,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -19350,15 +19350,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -19457,15 +19457,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -19692,15 +19692,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -19799,15 +19799,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -19921,12 +19921,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 call Boolean op_LessThan(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
@@ -20259,15 +20259,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -20366,15 +20366,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -20601,15 +20601,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -20708,15 +20708,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -20872,15 +20872,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -21209,15 +21209,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -21316,15 +21316,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -21480,15 +21480,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -21797,15 +21797,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -21904,15 +21904,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -22053,15 +22053,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -22422,15 +22422,15 @@ conv.i
 ldc.i4 192
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -22574,15 +22574,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -23045,15 +23045,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -23152,15 +23152,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -23274,12 +23274,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 call Boolean op_LessThan(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
@@ -23612,15 +23612,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -23719,15 +23719,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -23883,15 +23883,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -24177,15 +24177,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -24383,15 +24383,15 @@ conv.i
 ldc.i4 224
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 192
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -24511,7 +24511,7 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+call Nethermind.Int256.UInt256 get_UInt256()
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -24973,15 +24973,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -25125,15 +25125,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -25550,12 +25550,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -26104,15 +26104,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -26172,15 +26172,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -26301,15 +26301,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -26371,15 +26371,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -26471,15 +26471,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -26549,15 +26549,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -26612,15 +26612,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -26721,15 +26721,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -26940,15 +26940,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -27147,15 +27147,15 @@ conv.i
 ldc.i4 256
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 224
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -27215,15 +27215,15 @@ conv.i
 ldc.i4 224
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 192
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -27344,15 +27344,15 @@ conv.i
 ldc.i4 192
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4 160
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -27495,12 +27495,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 call Boolean op_LessThan(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
@@ -27648,15 +27648,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -27723,12 +27723,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -27833,15 +27833,15 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -27925,15 +27925,15 @@ ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldloc.s 27
 conv.i
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -28252,15 +28252,15 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -28313,15 +28313,15 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -28363,12 +28363,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 call Boolean op_GreaterThan(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
@@ -28464,15 +28464,15 @@ call Boolean get_IsZero()
 brtrue j482
 ldloc.s 27
 conv.i
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -28544,15 +28544,15 @@ ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldloc.s 27
 conv.i
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -29359,7 +29359,7 @@ conv.i
 ldc.i4.s 128
 conv.i
 add
-call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+call Nethermind.Int256.UInt256 get_UInt256()
 ldloc.s 27
 conv.i
 ldc.i4 -160
@@ -29493,7 +29493,7 @@ conv.i
 ldc.i4 -160
 conv.i
 add
-call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+call Nethermind.Int256.UInt256 get_UInt256()
 ldloc.s 27
 conv.i
 ldc.i4 -192
@@ -29593,15 +29593,15 @@ conv.i
 ldc.i4.s 224
 conv.i
 add
+ldloca.s 6
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 6
 ldloc.s 27
 conv.i
 ldc.i4.s 192
 conv.i
 add
+ldloca.s 7
 call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
-stloc.s 7
 ldloca.s 6
 call Nethermind.Int256.Int256& As[UInt256,Int256](Nethermind.Int256.UInt256 ByRef)
 ldloca.s 7

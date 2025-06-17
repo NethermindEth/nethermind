@@ -145,16 +145,16 @@ internal static class OpcodeEmitter
                 EmitExpInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.LT:
-                EmitComparaisonUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels);
+                EmitComparisonUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels);
                 return;
             case Instruction.GT:
-                EmitComparaisonUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels);
+                EmitComparisonUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels);
                 return;
             case Instruction.SLT:
-                EmitComparaisonInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), false, evmExceptionLabels);
+                EmitComparisonInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), false, evmExceptionLabels);
                 return;
             case Instruction.SGT:
-                EmitComparaisonInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, evmExceptionLabels);
+                EmitComparisonInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, evmExceptionLabels);
                 return;
             case Instruction.EQ:
                 EmitEqInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
@@ -2288,7 +2288,7 @@ internal static class OpcodeEmitters
 
         // load outputOffset
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
-        method.Call(Word.GetUInt256ByRef);
+        method.Call(Word.GetUInt256ByVal);
 
         // load outputLength
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index);
