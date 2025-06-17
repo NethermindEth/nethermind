@@ -347,7 +347,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("chiado", 17_000_000L, 5UL, 3000)]
     [TestCase("gnosis", 17_000_000L, 5UL, 3000)]
-    [TestCase("mainnet", 36_000_000L)]
+    [TestCase("mainnet", 45_000_000L)]
     [TestCase("sepolia", 60_000_000L)]
     [TestCase("holesky", 60_000_000L)]
     [TestCase("^chiado ^gnosis ^mainnet ^sepolia ^holesky")]
