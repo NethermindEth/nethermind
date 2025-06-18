@@ -889,8 +889,7 @@ public class ProofRpcModuleTests
 
     private IWorldState CreateInitialState(byte[]? code)
     {
-        WorldStateManager worldStateManager = _worldStateManager;
-        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        IWorldState stateProvider = _worldStateManager.GlobalWorldState;
         AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
         AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 

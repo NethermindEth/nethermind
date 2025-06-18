@@ -46,6 +46,11 @@ public interface IWorldStateManager
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
     bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Persist and clear cache. Used by some tests.
+    /// </summary>
+    void FlushCache(CancellationToken cancellationToken);
 }
 
 public interface IOverridableWorldScope

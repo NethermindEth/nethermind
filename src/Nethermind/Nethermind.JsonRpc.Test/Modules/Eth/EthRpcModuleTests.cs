@@ -403,14 +403,9 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_get_storage_at_missing_trie_node()
     {
-        using Context ctx = await Context.Create(configurer: builder =>
-        {
-            builder.AddDecorator<IPruningConfig>((_, config) =>
-            {
-                config.Mode = PruningMode.Full;
-                return config;
-            });
-        });
+        using Context ctx = await Context.Create();
+        await Task.Delay(100); // Wait a bit for pruning
+        ctx.Test.WorldStateManager.FlushCache(CancellationToken.None);
         ctx.Test.StateDb.Clear();
         BlockParameter? blockParameter = null;
         BlockHeader? header = ctx.Test.BlockFinder.FindHeader(blockParameter);
