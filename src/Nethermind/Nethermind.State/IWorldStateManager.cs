@@ -55,11 +55,7 @@ public interface IWorldStateManager
 
 public interface IOverridableWorldScope
 {
-    IOverridableWorldState WorldState { get; }
+    IWorldState WorldState { get; }
     IStateReader GlobalStateReader { get; }
-}
-
-public interface IOverridableWorldState : IWorldState
-{
     void ResetOverrides();
 }

@@ -112,7 +112,7 @@ public class TestBlockchain : IDisposable
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
     public ManualTimestamper Timestamper { get; private set; } = null!;
-    public BlocksConfig BlocksConfig { get; protected set; } = new();
+    public IBlocksConfig BlocksConfig => Container.Resolve<IBlocksConfig>();
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
@@ -280,7 +280,8 @@ public class TestBlockchain : IDisposable
             // Some validator configurations
             .AddSingleton<ISealValidator>(Always.Valid)
             .AddSingleton<IUnclesValidator>(Always.Valid)
-            .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD));
+            .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD))
+        ;
 
     protected virtual IEnumerable<IConfig> CreateConfigs()
     {

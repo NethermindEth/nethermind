@@ -21,6 +21,7 @@ namespace Nethermind.Consensus.Processing
     /// <summary>
     /// Not thread safe.
     /// </summary>
+    /// Only used by AuRa now. Will be removed later.
     public class ReadOnlyChainProcessingEnv : IAsyncDisposable
     {
         private readonly BlockchainProcessor _blockProcessingQueue;
