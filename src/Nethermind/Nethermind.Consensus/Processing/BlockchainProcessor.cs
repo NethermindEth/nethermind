@@ -56,8 +56,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         new BoundedChannelOptions(MaxProcessingQueueSize)
         {
             // Optimize for single reader concurrency
-            SingleReader = true,
-            AllowSynchronousContinuations = true
+            SingleReader = true
         });
 
     private bool _recoveryComplete = false;
@@ -154,7 +153,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     else
                     {
                         // Skip recovery queue if nothing in queue
-                        await _blockQueue.Writer.WriteAsync(blockRef);
+                        if (!_blockQueue.Writer.TryWrite(blockRef))
+                        {
+                            await _blockQueue.Writer.WriteAsync(blockRef);
+                        }
                     }
                 }
                 else
