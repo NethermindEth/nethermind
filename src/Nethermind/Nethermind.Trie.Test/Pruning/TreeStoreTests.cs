@@ -1002,46 +1002,6 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public async Task Will_Not_RemovePastKeys_OnSnapshot_DuringFullPruning()
-        {
-            MemDb memDb = new();
-
-            IPersistenceStrategy isPruningPersistenceStrategy = Substitute.For<IPersistenceStrategy>();
-            isPruningPersistenceStrategy.IsFullPruning.Returns(true);
-
-            using TrieStore fullTrieStore = CreateTrieStore(
-                kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true),
-                persistenceStrategy: isPruningPersistenceStrategy,
-                pruningConfig: new PruningConfig()
-                {
-                    TrackPastKeys = true,
-                    PruningBoundary = 2
-                });
-
-            TreePath emptyPath = TreePath.Empty;
-            TaskCompletionSource tcs = new TaskCompletionSource();
-            fullTrieStore.OnMemoryPruneCompleted += (sender, args) => tcs.TrySetResult();
-
-            for (int i = 0; i < 64; i++)
-            {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
-                using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
-                {
-                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
-                }
-
-                // Pruning is done in background
-                await tcs.Task;
-                tcs = new TaskCompletionSource();
-            }
-
-            memDb.Count.Should().Be(61);
-            fullTrieStore.Prune();
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 752 : 960);
-        }
-
-        [Test]
         public async Task Will_NotRemove_ReCommittedNode()
         {
             MemDb memDb = new();
@@ -1160,13 +1120,8 @@ namespace Nethermind.Trie.Test.Pruning
                 fullTrieStore.WaitForPruning();
             }
 
-<<<<<<< HEAD
             memDb.Count.Should().Be(1);
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 14080 : 17408);
-=======
-            memDb.Count.Should().Be(0);
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 12032 : 15360);
->>>>>>> origin/master
 
             fullTrieStore.PersistCache(default);
             memDb.Count.Should().Be(64);

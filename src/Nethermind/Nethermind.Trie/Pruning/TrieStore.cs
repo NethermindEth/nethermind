@@ -457,19 +457,19 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public void Prune()
     {
-        var state = GatherState();
+        var state = CaptureCurrentState();
         if ((_pruningStrategy.ShouldPruneDirtyNode(state) || _pruningStrategy.ShouldPrunePersistedNode(state)) && _pruningTask.IsCompleted)
         {
             _pruningTask = Task.Run(() =>
             {
                 lock (_dirtyNodesLock)
                 {
-                    if (_pruningStrategy.ShouldPruneDirtyNode(GatherState()))
+                    if (_pruningStrategy.ShouldPruneDirtyNode(CaptureCurrentState()))
                     {
                         PersistAndPruneDirtyCache();
                     }
 
-                    if (_pruningStrategy.ShouldPrunePersistedNode(GatherState()))
+                    if (_pruningStrategy.ShouldPrunePersistedNode(CaptureCurrentState()))
                     {
                         PrunePersistedNodes();
                     }
