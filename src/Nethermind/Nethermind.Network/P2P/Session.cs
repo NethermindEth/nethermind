@@ -588,7 +588,7 @@ namespace Nethermind.Network.P2P
 
         private AdaptiveCodeResolver GetOrCreateResolver()
         {
-            string key = string.Join(":", _protocols.Select(static p => string.Join("/", p.Value.ProtocolCode, p.Value.ProtocolVersion)).OrderBy(static x => x).ToArray());
+            string key = string.Join(":", _protocols.Select(static p => p.Value.Name).OrderBy(static x => x));
             if (!_resolvers.TryGetValue(key, out AdaptiveCodeResolver value))
             {
                 value = new AdaptiveCodeResolver(_protocols);
