@@ -85,6 +85,8 @@ namespace Nethermind.Evm.Benchmark
     {
         protected override byte[] GenerateBytecode(byte[] argBytes) => FibBytecode(argBytes);
 
+
+        [Params(1UL, 23UL, 101UL, 1023UL, 2047UL, 4999UL)]
         public override ulong Value { get; set; } = 10UL;
 
         private static byte[] FibBytecode(byte[] argBytes) => Prepare.EvmCode
@@ -131,6 +133,7 @@ namespace Nethermind.Evm.Benchmark
     {
         protected override byte[] GenerateBytecode(byte[] argBytes) => isPrimeBytecode(argBytes);
 
+        [Params(1UL, 23UL, 1023UL, 8000009UL, 16000057UL)]
         public override ulong Value { get; set; } = 10UL;
 
         static byte[] isPrimeBytecode(byte[] argBytes) => Prepare.EvmCode
