@@ -96,7 +96,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
                     throw new EraVerificationException($"Invalid block {error}");
                 }
 
-                Hash256 receiptRoot = ReceiptTrie<TxReceipt>.CalculateRoot(specProvider.GetReceiptSpec(err.Block.Number), err.Receipts, _receiptDecoder);
+                Hash256 receiptRoot = ReceiptTrie.CalculateRoot(specProvider.GetReceiptSpec(err.Block.Number), err.Receipts, _receiptDecoder);
                 if (err.Block.Header.ReceiptsRoot != receiptRoot)
                 {
                     throw new EraVerificationException($"Mismatched receipt root. Block number {blockNumber}.");

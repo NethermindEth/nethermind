@@ -465,7 +465,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private bool ValidateReceiptsRoot(Block block, TxReceipt[] blockReceipts)
         {
-            Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, _receiptDecoder);
+            Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, _receiptDecoder);
             return receiptsRoot == block.ReceiptsRoot;
         }
 

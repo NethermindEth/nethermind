@@ -11,7 +11,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
-public class HealingStateTree : StateTree
+public sealed class HealingStateTree : StateTree
 {
     private IPathRecovery? _recovery;
     private readonly INodeStorage _nodeStorage;

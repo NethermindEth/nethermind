@@ -31,7 +31,7 @@ public class T8nExecutionResult
     {
         IReceiptSpec receiptSpec = specProvider.GetSpec(block.Header);
         Hash256 txRoot = TxTrie.CalculateRoot(txReport.SuccessfulTransactions.ToArray());
-        Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(receiptSpec,
+        Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(receiptSpec,
             txReport.SuccessfulTransactionReceipts.ToArray(), new ReceiptMessageDecoder());
         LogEntry[] logEntries = txReport.SuccessfulTransactionReceipts
             .SelectMany(receipt => receipt.Logs ?? Enumerable.Empty<LogEntry>())

@@ -22,7 +22,7 @@ public class ReceiptsRootCalculator : IReceiptsRootCalculator
             receipts.SetSkipStateAndStatusInRlp(true);
             try
             {
-                return ReceiptTrie<TxReceipt>.CalculateRoot(spec, receipts, _decoder);
+                return ReceiptTrie.CalculateRoot(spec, receipts, _decoder);
             }
             finally
             {
@@ -30,7 +30,7 @@ public class ReceiptsRootCalculator : IReceiptsRootCalculator
             }
         }
 
-        Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(spec, receipts, _decoder);
+        Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(spec, receipts, _decoder);
         if (!spec.ValidateReceipts && receiptsRoot != suggestedRoot)
         {
             var skipStateAndStatusReceiptsRoot = SkipStateAndStatusReceiptsRoot();
