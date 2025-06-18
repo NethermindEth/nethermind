@@ -86,7 +86,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
 
         _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys;
-        if (pruningConfig.TrackPastKeys && nodeStorage.RequirePath)
+        _pastKeyTrackingEnabled = pruningConfig.TrackPastKeys && nodeStorage.RequirePath;
         {
             _pastKeyTrackingEnabled = true;
         }
