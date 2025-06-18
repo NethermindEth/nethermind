@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Db;
 
 public interface IMergeOperator
 {
     string Name { get; }
-    byte[] FullMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator, out bool success);
-    byte[] PartialMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator, out bool success);
+    ArrayPoolList<byte> FullMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator, out bool success);
+    ArrayPoolList<byte> PartialMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator, out bool success);
 }

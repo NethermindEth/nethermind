@@ -22,149 +22,8 @@ namespace Nethermind.Db
 {
     // TODO: get rid of InvalidOperationExceptions - these are for state validation
     [SuppressMessage("ReSharper", "PrivateFieldCanBeConvertedToLocalVariable")] // TODO: get rid of unused fields
-    public sealed class LogIndexStorage : ILogIndexStorage
+    public sealed partial class LogIndexStorage : ILogIndexStorage
     {
-        private class MergeOperator(LogIndexStorage storage): IMergeOperator
-        {
-            private SetReceiptsStats _stats = new();
-
-            public string Name => $"{nameof(LogIndexStorage)}.{nameof(MergeOperator)}";
-
-            public byte[] FullMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator, out bool success) =>
-                Merge(key, enumerator, out success);
-
-            public byte[] PartialMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator, out bool success) =>
-                Merge(key, enumerator, out success);
-
-            public SetReceiptsStats GetAndResetStats()
-            {
-                return Interlocked.Exchange(ref _stats, new());
-            }
-
-            private static int BinarySearchBlock(ReadOnlySpan<byte> data, int target)
-            {
-                if (data.Length == 0)
-                    return 0;
-
-                int count = data.Length / sizeof(int);
-                int left = 0, right = count - 1;
-
-                // Short circuits in many cases
-                if (ReadValLastBlockNum(data) == target)
-                    return right * BlockNumSize;
-
-                while (left <= right)
-                {
-                    int mid = left + (right - left) / 2;
-                    int offset = mid * 4;
-
-                    int value = ReadValBlockNum(data[offset..]);
-
-                    if (value == target)
-                        return offset;
-                    if (value < target)
-                        left = mid + 1;
-                    else
-                        right = mid - 1;
-                }
-
-                return ~(left * BlockNumSize);
-            }
-
-            private static void ReverseInt32(Span<byte> data) => MemoryMarshal.Cast<byte, int>(data).Reverse();
-
-            private static bool IsRevertBlockOp(ReadOnlySpan<byte> operand, out int blockNumber)
-            {
-                if (operand.Length == BlockNumSize + 1 && operand[0] == RevertOperator)
-                {
-                    blockNumber = ReadValLastBlockNum(operand);
-                    return true;
-                }
-
-                blockNumber = 0;
-                return false;
-            }
-
-            // TODO: avoid array copying in case of a single value?
-            private byte[] Merge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator, out bool success)
-            {
-                var lastBlockNum = -1;
-                var timestamp = Stopwatch.GetTimestamp();
-
-                try
-                {
-                    success = true;
-                    var isBackwardSync = UseBackwardSyncFor(key);
-
-                    // TODO: get rid of foreach if they cause allocations
-                    IEnumerable<int> indexes = Enumerable.Range(0, enumerator.Count);
-                    if (isBackwardSync) indexes = indexes.Reverse();
-
-                    // Calculate total length
-                    var resultLength = 0;
-                    foreach (var i in indexes)
-                    {
-                        ReadOnlySpan<byte> value = enumerator.Get(i);
-
-                        if (!IsRevertBlockOp(value, out _))
-                            resultLength += value.Length;
-                    }
-
-                    // Concat all values
-                    var shift = 0;
-                    var result = new byte[resultLength]; // TODO: try to use ArrayPool for result
-                    foreach (var i in indexes)
-                    {
-                        Span<byte> value = enumerator.Get(i);
-
-                        // Do revert if requested
-                        if (IsRevertBlockOp(value, out int revertBlock))
-                        {
-                            if (isBackwardSync)
-                                throw ValidationException("Reversion is not supported for backward sync.");
-
-                            // TODO: detect if revert block is already compressed
-                            var revertIndex = BinarySearchBlock(result.AsSpan(..shift), revertBlock);
-                            shift = revertIndex >= 0 ? revertIndex : ~revertIndex;
-                            lastBlockNum = Math.Min(lastBlockNum, revertBlock - 1);
-                            continue;
-                        }
-
-                        // Reverse if needed, coming from backward sync
-                        if (ReadValBlockNum(value) > ReadValLastBlockNum(value))
-                        {
-                            ReverseInt32(value);
-                        }
-
-                        var firstBlockNum = ReadValBlockNum(value);
-
-                        // Validate we are merging non-intersecting segments - to prevent data corruption
-                        if (!IsNextBlockNewer(next: firstBlockNum, last: lastBlockNum, false))
-                        {
-                            // setting success=false instead of throwing during background merge may simply hide the error
-                            // TODO: check if this can be handled better, for example via paranoid_checks=true
-                            throw ValidationException($"Invalid order during merge: {lastBlockNum} -> {firstBlockNum} (backwards: {isBackwardSync})");
-                        }
-
-                        lastBlockNum = firstBlockNum;
-                        value.CopyTo(result.AsSpan(shift..));
-                        shift += value.Length;
-                    }
-
-                    if (result.Length > MaxUncompressedLength)
-                    {
-                        storage.EnqueueCompress(key.ToArray());
-                    }
-
-                    return result.Length == shift ? result : result[..shift];
-                }
-                finally
-                {
-                    _stats.InMemoryMerging.Include(Stopwatch.GetElapsedTime(timestamp));
-                }
-            }
-        }
-
         // Use value that we won't encounter during iterator Seek or SeekForPrev
         private static readonly byte[] LastBlockNumKey = Enumerable.Repeat(byte.MaxValue, Math.Max(Address.Size, Hash256.Size) + 1).ToArray();
 
@@ -176,7 +35,8 @@ namespace Nethermind.Db
 
         private const int BlockNumSize = sizeof(int);
         public const int MaxUncompressedLength = 128 * BlockNumSize;
-        private const byte RevertOperator = (byte)'-';
+
+        private const byte ReorgOperator = (byte)'-';
 
         // Special RocksDB key postfix - any ordered prefix seeking will start on it.
         private static readonly byte[] BackwardMergeKey = Enumerable.Repeat((byte)0, BackwardMergeKeyLength).ToArray();
@@ -490,7 +350,7 @@ namespace Nethermind.Db
             return SetReceiptsAsync([new(blockNumber, receipts)], isBackwardSync);
         }
 
-        public async Task RevertFrom(BlockReceipts block)
+        public async Task ReorgFrom(BlockReceipts block)
         {
             if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
                 throw new InvalidOperationException($"{nameof(LogIndexStorage)} does not support concurrent invocations.");
@@ -502,7 +362,7 @@ namespace Nethermind.Db
             IWriteBatch topicBatch = _topicsDb.StartWriteBatch();
 
             Span<byte> dbValue = valueArray.AsSpan(0, BlockNumSize + 1);
-            dbValue[0] = RevertOperator;
+            dbValue[0] = ReorgOperator;
             WriteValBlockNum(dbValue[1..], block.BlockNumber);
 
             try
