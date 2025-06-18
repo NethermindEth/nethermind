@@ -14,7 +14,7 @@ namespace Nethermind.State.Proofs;
 /// <summary>
 /// Represents a Patricia trie built of a collection of <see cref="Transaction"/>.
 /// </summary>
-public class TxTrie : PatriciaTrie<Transaction>
+public sealed class TxTrie : PatriciaTrie<Transaction>
 {
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 

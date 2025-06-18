@@ -572,18 +572,17 @@ namespace Nethermind.Network.P2P
 
         public void AddProtocolHandler(IProtocolHandler handler)
         {
-            if (_protocols.ContainsKey(handler.ProtocolCode))
-            {
-                throw new InvalidOperationException($"{this} already has {handler.ProtocolCode} started");
-            }
-
             if (handler.ProtocolCode != Protocol.P2P && !_protocols.ContainsKey(Protocol.P2P))
             {
                 throw new InvalidOperationException(
                     $"{Protocol.P2P} handler has to be started before starting {handler.ProtocolCode} handler on {this}");
             }
 
-            _protocols.TryAdd(handler.ProtocolCode, handler);
+            if (!_protocols.TryAdd(handler.ProtocolCode, handler))
+            {
+                throw new InvalidOperationException($"{this} already has {handler.ProtocolCode} started");
+            }
+
             _resolver = GetOrCreateResolver();
         }
 

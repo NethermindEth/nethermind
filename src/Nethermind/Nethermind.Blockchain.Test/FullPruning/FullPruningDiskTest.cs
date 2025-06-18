@@ -20,6 +20,7 @@ using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -68,7 +69,7 @@ public class FullPruningDiskTest
                 StateReader,
                 ProcessExitSource,
                 DriveInfo,
-                Container.Resolve<IPruningTrieStore>(),
+                Container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore,
                 _chainEstimations,
                 LogManager);
             return chain;
@@ -82,8 +83,7 @@ public class FullPruningDiskTest
             standardDbInitializer.InitStandardDbs(true);
 
             return base.ConfigureContainer(builder, configProvider)
-                .AddSingleton<IDbProvider>(dbProvider)
-                .ConfigureTrieStoreExposedWorldStateManager();
+                .AddSingleton<IDbProvider>(dbProvider);
         }
 
         public override void Dispose()
