@@ -1,36 +1,24 @@
-﻿ldarg.1
-ldarg.s 4
+﻿ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Evm.TxExecutionContext TxExecutionContext
 ldfld Nethermind.Evm.BlockExecutionContext BlockExecutionContext
 stloc.s 30
-ldloca.s 30
-call Nethermind.Core.BlockHeader get_Header()
-call Nethermind.Core.Specs.IReleaseSpec GetSpec(Nethermind.Core.Specs.ISpecProvider, Nethermind.Core.BlockHeader)
+ldarg.s 5
+call Nethermind.Evm.ExecutionEnvironment& get_Env()
+ldfld Nethermind.Evm.TxExecutionContext TxExecutionContext
 stloc.s 31
-ldarg.s 4
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldfld Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldfld Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldloca.s 30
-initobj Nethermind.Evm.BlockExecutionContext
-stloc.s 30
-ldarg.s 4
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldfld Nethermind.Evm.TxExecutionContext TxExecutionContext
-stloc.s 32
-ldarg.s 9
+ldarg.s 10
 ldobj System.Int32
 stloc.s 28
-ldarg.s 10
+ldarg.s 11
 stloc.s 27
-ldarg.s 7
+ldarg.s 8
 ldobj System.Int64
 stloc.s 25
-ldarg.s 8
+ldarg.s 9
 ldobj System.Int32
 stloc.s 26
-ldarg.s 13
+ldarg.s 14
 ldobj Nethermind.Evm.CodeAnalysis.IL.ILChunkExecutionState
 ldfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.2
@@ -71,12 +59,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -85,7 +73,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -105,12 +93,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
-stloc.s 72
-ldloca.s 72
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
 call Void set_Int0(Int32)
@@ -119,12 +104,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 call Boolean op_LessThan(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
@@ -135,8 +120,8 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -150,7 +135,7 @@ call Void set_UInt0(UInt32)
 ldloc.s 27
 conv.i
 call Boolean get_IsZero()
-brtrue j6
+brtrue.s j6
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -177,16 +162,16 @@ conv.i
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -243,24 +228,24 @@ conv.i
 stloc.s 4
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j8
+brtrue.s j8
 ldloc.3
 call Boolean get_IsZero()
-brtrue j8
+brtrue.s j8
 ldloc.s 4
 call Boolean get_IsOne()
-brtrue j9
+brtrue.s j9
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -271,22 +256,22 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j10
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j10
 
 j8:
 ldloc.s 27
 conv.i
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-br j10
+br.s j10
 
 j9:
 ldloc.s 4
 ldloc.3
 ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
-br j10
+br.s j10
 
 j10:
 ldloc.s 27
@@ -311,11 +296,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -379,7 +364,7 @@ ldc.i4.s 32
 conv.i
 add
 call Boolean get_IsZero()
-brtrue j12
+brtrue.s j12
 ldloc.s 27
 conv.i
 ldc.i4.s 64
@@ -475,7 +460,7 @@ call Void set_UInt0(UInt32)
 ldloc.s 27
 conv.i
 call Boolean get_IsZero()
-brtrue j13
+brtrue.s j13
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -553,7 +538,7 @@ call Void set_UInt0(UInt32)
 ldloc.s 27
 conv.i
 call Boolean get_IsZero()
-brtrue j14
+brtrue.s j14
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -631,7 +616,7 @@ call Void set_UInt0(UInt32)
 ldloc.s 27
 conv.i
 call Boolean get_IsZero()
-brtrue j15
+brtrue.s j15
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -709,7 +694,7 @@ call Void set_UInt0(UInt32)
 ldloc.s 27
 conv.i
 call Boolean get_IsZero()
-brtrue j16
+brtrue.s j16
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -787,7 +772,7 @@ ldc.i8 0
 blt OutOfGas
 ldc.i4.s 118
 stloc.s 26
-ldarg.s 13
+ldarg.s 14
 ldc.i4.4
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
@@ -810,11 +795,10 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld Nethermind.Int256.UInt256 Value
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldflda Nethermind.Int256.UInt256 Value
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -853,7 +837,7 @@ ldc.i4.s 32
 conv.i
 add
 call Boolean get_IsZero()
-brtrue j20
+brtrue.s j20
 ldloc.s 27
 conv.i
 ldc.i4.s 64
@@ -881,16 +865,16 @@ ldloc.s 28
 ldc.i4.1
 add
 stloc.s 28
-ldloca.s 39
+ldloca.s 38
 call Boolean get_HasValue()
-brtrue j21
-ldloc.s 31
+brtrue.s j21
+ldarg.1
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
 ldc.i4.1
 newobj Void .ctor(Boolean)
-stloc.s 39
+stloc.s 38
 
 j21:
 ldloc.s 28
@@ -924,26 +908,26 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
-ldarg.s 4
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 13
-ldarg.s 4
+ldarg.s 14
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 7
 call System.ReadOnlyMemory`1[System.Byte] Load(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 stfld System.ReadOnlyMemory`1[System.Byte] ReturnData
-ldarg.s 13
+ldarg.s 14
 ldc.i4.s 32
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
@@ -998,14 +982,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
-ldloca.s 72
-initobj System.ReadOnlyMemory`1[System.Byte]
-stloc.s 72
-ldloca.s 72
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
 call Void set_Int0(Int32)
@@ -1023,21 +1002,21 @@ add
 stloc.s 4
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j25
+brtrue.s j25
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1051,9 +1030,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j27
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j27
 
 j25:
 ldloc.s 27
@@ -1082,15 +1061,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1104,8 +1083,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -1157,8 +1136,8 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -1166,10 +1145,10 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -1193,7 +1172,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -1210,14 +1189,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloca.s 9
 ldloc.s 27
@@ -1262,15 +1241,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1284,8 +1263,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -1439,7 +1418,7 @@ ldc.i8 0
 blt OutOfGas
 ldc.i4 185
 stloc.s 26
-ldarg.s 13
+ldarg.s 14
 ldc.i4.4
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
@@ -1494,14 +1473,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
-ldloca.s 72
-initobj System.ReadOnlyMemory`1[System.Byte]
-stloc.s 72
-ldloca.s 72
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
 call Void set_Int0(Int32)
@@ -1519,21 +1493,21 @@ add
 stloc.s 4
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j34
+brtrue.s j34
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1547,9 +1521,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j36
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j36
 
 j34:
 ldloc.s 27
@@ -1581,15 +1555,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1603,8 +1577,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -1662,8 +1636,8 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -1671,10 +1645,10 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -1698,7 +1672,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -1715,14 +1689,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloca.s 9
 ldloc.s 27
@@ -1767,15 +1741,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -1789,8 +1763,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -1920,8 +1894,8 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 160
@@ -1929,10 +1903,10 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -1981,15 +1955,15 @@ conv.i
 ldc.i4 192
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -2003,8 +1977,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -2050,15 +2024,15 @@ conv.i
 ldc.i4 192
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -2072,8 +2046,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 192
@@ -2091,8 +2065,8 @@ conv.i
 ldc.i4 192
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 192
@@ -2100,10 +2074,10 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -2152,15 +2126,15 @@ conv.i
 ldc.i4 224
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 192
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -2174,8 +2148,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -2475,7 +2449,7 @@ ldc.i8 0
 blt OutOfGas
 ldc.i4 263
 stloc.s 26
-ldarg.s 13
+ldarg.s 14
 ldc.i4.4
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
@@ -2498,11 +2472,10 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld Nethermind.Int256.UInt256 Value
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldflda Nethermind.Int256.UInt256 Value
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -2541,7 +2514,7 @@ ldc.i4.s 32
 conv.i
 add
 call Boolean get_IsZero()
-brtrue j45
+brtrue.s j45
 ldloc.s 27
 conv.i
 ldc.i4.s 64
@@ -2569,16 +2542,16 @@ ldloc.s 28
 ldc.i4.1
 add
 stloc.s 28
-ldloca.s 39
+ldloca.s 38
 call Boolean get_HasValue()
-brtrue j46
-ldloc.s 31
+brtrue.s j46
+ldarg.1
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
 ldc.i4.1
 newobj Void .ctor(Boolean)
-stloc.s 39
+stloc.s 38
 
 j46:
 ldloc.s 28
@@ -2612,26 +2585,26 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
-ldarg.s 4
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 13
-ldarg.s 4
+ldarg.s 14
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 7
 call System.ReadOnlyMemory`1[System.Byte] Load(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 stfld System.ReadOnlyMemory`1[System.Byte] ReturnData
-ldarg.s 13
+ldarg.s 14
 ldc.i4.s 32
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
@@ -2701,9 +2674,9 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -2711,7 +2684,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -2762,7 +2735,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -2779,14 +2752,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -2806,7 +2779,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -2823,14 +2796,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -2849,15 +2822,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -2866,7 +2839,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -2887,15 +2860,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -2909,8 +2882,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -2948,9 +2921,9 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -2958,7 +2931,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -3018,18 +2991,18 @@ conv.i
 stloc.s 4
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j52
+brtrue.s j52
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -3040,9 +3013,9 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j54
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j54
 
 j52:
 ldloc.s 27
@@ -3080,29 +3053,29 @@ ldc.i4 350
 stloc.s 26
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
-ldarg.s 4
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 13
-ldarg.s 4
+ldarg.s 14
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 7
 call System.ReadOnlyMemory`1[System.Byte] Load(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 stfld System.ReadOnlyMemory`1[System.Byte] ReturnData
-ldarg.s 13
+ldarg.s 14
 ldc.i4.s 16
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
@@ -3125,11 +3098,10 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld Nethermind.Int256.UInt256 Value
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldflda Nethermind.Int256.UInt256 Value
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -3168,7 +3140,7 @@ ldc.i4.s 32
 conv.i
 add
 call Boolean get_IsZero()
-brtrue j57
+brtrue.s j57
 ldloc.s 27
 conv.i
 ldc.i4.s 64
@@ -3196,16 +3168,16 @@ ldloc.s 28
 ldc.i4.1
 add
 stloc.s 28
-ldloca.s 39
+ldloca.s 38
 call Boolean get_HasValue()
-brtrue j58
-ldloc.s 31
+brtrue.s j58
+ldarg.1
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
 ldc.i4.1
 newobj Void .ctor(Boolean)
-stloc.s 39
+stloc.s 38
 
 j58:
 ldloc.s 28
@@ -3239,26 +3211,26 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
-ldarg.s 4
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 13
-ldarg.s 4
+ldarg.s 14
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 7
 call System.ReadOnlyMemory`1[System.Byte] Load(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 stfld System.ReadOnlyMemory`1[System.Byte] ReturnData
-ldarg.s 13
+ldarg.s 14
 ldc.i4.s 32
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
@@ -3313,14 +3285,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
-ldloca.s 72
-initobj System.ReadOnlyMemory`1[System.Byte]
-stloc.s 72
-ldloca.s 72
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
 call Void set_Int0(Int32)
@@ -3338,21 +3305,21 @@ add
 stloc.s 4
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j62
+brtrue.s j62
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -3366,9 +3333,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j64
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j64
 
 j62:
 ldloc.s 27
@@ -3397,15 +3364,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -3419,8 +3386,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -3472,8 +3439,8 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -3481,10 +3448,10 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 6
 ldc.i4.s 32
 ldc.i4.0
@@ -3508,7 +3475,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -3525,14 +3492,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloca.s 9
 ldloc.s 27
@@ -3577,15 +3544,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -3599,8 +3566,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -3754,7 +3721,7 @@ ldc.i8 0
 blt OutOfGas
 ldc.i4 417
 stloc.s 26
-ldarg.s 13
+ldarg.s 14
 ldc.i4.4
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
@@ -3777,11 +3744,10 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld Nethermind.Int256.UInt256 Value
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldflda Nethermind.Int256.UInt256 Value
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -3820,7 +3786,7 @@ ldc.i4.s 32
 conv.i
 add
 call Boolean get_IsZero()
-brtrue j70
+brtrue.s j70
 ldloc.s 27
 conv.i
 ldc.i4.s 64
@@ -3848,16 +3814,16 @@ ldloc.s 28
 ldc.i4.1
 add
 stloc.s 28
-ldloca.s 39
+ldloca.s 38
 call Boolean get_HasValue()
-brtrue j71
-ldloc.s 31
+brtrue.s j71
+ldarg.1
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
 ldc.i4.1
 newobj Void .ctor(Boolean)
-stloc.s 39
+stloc.s 38
 
 j71:
 ldloc.s 28
@@ -3891,26 +3857,26 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
-ldarg.s 4
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 13
-ldarg.s 4
+ldarg.s 14
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 7
 call System.ReadOnlyMemory`1[System.Byte] Load(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 stfld System.ReadOnlyMemory`1[System.Byte] ReturnData
-ldarg.s 13
+ldarg.s 14
 ldc.i4.s 32
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
@@ -3980,9 +3946,9 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -3990,7 +3956,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -4041,7 +4007,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -4058,14 +4024,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -4085,7 +4051,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -4102,14 +4068,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -4128,15 +4094,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -4145,7 +4111,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -4166,15 +4132,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -4188,8 +4154,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -4227,9 +4193,9 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -4237,7 +4203,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -4297,18 +4263,18 @@ conv.i
 stloc.s 4
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j77
+brtrue.s j77
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -4319,9 +4285,9 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j79
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j79
 
 j77:
 ldloc.s 27
@@ -4359,29 +4325,29 @@ ldc.i4 504
 stloc.s 26
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
-ldarg.s 4
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 13
-ldarg.s 4
+ldarg.s 14
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 7
 call System.ReadOnlyMemory`1[System.Byte] Load(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 stfld System.ReadOnlyMemory`1[System.Byte] ReturnData
-ldarg.s 13
+ldarg.s 14
 ldc.i4.s 16
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
@@ -4663,7 +4629,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -4677,22 +4643,21 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -4713,7 +4678,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -4727,11 +4692,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -4783,7 +4748,7 @@ ldc.i4.s 224
 conv.i
 add
 call Boolean get_IsZero()
-brtrue j87
+brtrue.s j87
 ldloc.s 27
 conv.i
 stloc.3
@@ -5097,7 +5062,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -5111,22 +5076,21 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -5147,7 +5111,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -5161,11 +5125,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -5217,7 +5181,7 @@ ldc.i4.s 224
 conv.i
 add
 call Boolean get_IsZero()
-brtrue j94
+brtrue.s j94
 ldloc.s 27
 conv.i
 stloc.3
@@ -5333,9 +5297,8 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -5356,7 +5319,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -5370,11 +5333,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -5383,11 +5346,10 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld Nethermind.Int256.UInt256 Value
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldflda Nethermind.Int256.UInt256 Value
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
@@ -5427,9 +5389,9 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -5437,7 +5399,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -5529,22 +5491,22 @@ conv.i
 ldc.i4 320
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 288
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 256
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 8
+ldloca.s 8
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 25
 ldloca.s 8
 ldloca.s 22
@@ -5558,17 +5520,17 @@ ldc.i8 0
 blt OutOfGas
 ldloca.s 8
 call Boolean get_IsZero()
-brtrue j96
-ldarg.s 4
+brtrue.s j96
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 7
 ldloc.s 8
 ldfld UInt64 u0
@@ -5576,7 +5538,7 @@ conv.i4
 ldc.i4.0
 call Nethermind.Evm.ZeroPaddedSpan SliceWithZeroPadding(System.ReadOnlyMemory`1[System.Byte], Nethermind.Int256.UInt256 ByRef, Int32, Nethermind.Evm.PadDirection)
 stloc.s 12
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 12
@@ -5600,15 +5562,15 @@ conv.i
 ldc.i4 256
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 224
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -5622,8 +5584,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -5701,9 +5663,9 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -5711,7 +5673,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -5764,21 +5726,21 @@ add
 stloc.s 4
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j99
+brtrue.s j99
 ldloc.s 27
 conv.i
 ldc.i4 192
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -5792,9 +5754,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j101
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j101
 
 j99:
 ldloc.s 27
@@ -5854,12 +5816,12 @@ call UInt64 ReverseEndianness(UInt64)
 call Void set_ULong0(UInt64)
 ldc.i4 742
 stloc.s 26
-ldarg.s 4
 ldarg.s 5
+ldarg.s 6
 ldloca.s 25
-ldloc.s 31
-ldarg.s 11
+ldarg.1
 ldarg.s 12
+ldarg.s 13
 ldc.i4 241
 ldloc.s 27
 conv.i
@@ -5903,15 +5865,15 @@ ldc.i4.s 96
 conv.i
 add
 call Nethermind.Int256.UInt256 get_UInt256()
-ldloca.s 74
-ldarga.s 6
-ldloca.s 75
+ldloca.s 72
+ldarga.s 7
+ldloca.s 73
 call Nethermind.Evm.EvmExceptionType InstructionCall[NotTracing,NotTracing](Nethermind.Evm.EvmState, Nethermind.State.IWorldState, Int64 ByRef, Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Tracing.ITxTracer, Nethermind.Logging.ILogger, Nethermind.Evm.Instruction, Nethermind.Int256.UInt256, Nethermind.Core.Address, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, System.Nullable`1[Nethermind.Int256.UInt256] ByRef, System.ReadOnlyMemory`1[System.Byte] ByRef, System.Object ByRef)
 stloc.s 17
 ldloc.s 17
 ldc.i4.0
-beq j105
-ldarg.s 13
+beq.s j105
+ldarg.s 14
 dup
 ldloc.s 17
 stfld Nethermind.Evm.EvmExceptionType ExceptionType
@@ -5921,13 +5883,13 @@ ldc.i4.1
 brtrue j1
 
 j105:
-ldloc.s 75
+ldloc.s 73
 ldnull
-beq j104
-ldloc.s 75
+beq.s j104
+ldloc.s 73
 call System.Object get_BoxedEmpty()
 call Boolean ReferenceEquals(System.Object, System.Object)
-brtrue j104
+brtrue.s j104
 ldloc.s 27
 ldc.i4 128
 conv.i
@@ -5937,9 +5899,9 @@ ldloc.s 28
 ldc.i4.4
 add
 stloc.s 28
-ldarg.s 13
+ldarg.s 14
 dup
-ldloc.s 75
+ldloc.s 73
 castclass Nethermind.Evm.EvmState
 stfld Nethermind.Evm.EvmState CallResult
 ldc.i4.2
@@ -5948,15 +5910,15 @@ ldc.i4.1
 brtrue j4
 
 j104:
-ldloca.s 74
+ldloca.s 72
 call Boolean get_HasValue()
-brfalse j103
+brfalse.s j103
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-ldloca.s 74
+ldloca.s 72
 call Nethermind.Int256.UInt256 get_Value()
 call Void set_UInt256(Nethermind.Int256.UInt256)
 
@@ -6052,7 +6014,7 @@ ldc.i4.s 128
 conv.i
 add
 call Boolean get_IsZero()
-brtrue j107
+brtrue.s j107
 ldloc.s 27
 conv.i
 ldc.i4.s 160
@@ -6080,16 +6042,16 @@ ldloc.s 28
 ldc.i4.s 252
 add
 stloc.s 28
-ldloca.s 39
+ldloca.s 38
 call Boolean get_HasValue()
-brtrue j108
-ldloc.s 31
+brtrue.s j108
+ldarg.1
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
 ldc.i4.1
 newobj Void .ctor(Boolean)
-stloc.s 39
+stloc.s 38
 
 j108:
 ldloc.s 28
@@ -6123,26 +6085,26 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
-ldarg.s 4
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 13
-ldarg.s 4
+ldarg.s 14
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 7
 call System.ReadOnlyMemory`1[System.Byte] Load(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 stfld System.ReadOnlyMemory`1[System.Byte] ReturnData
-ldarg.s 13
+ldarg.s 14
 ldc.i4.s 32
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
@@ -6372,7 +6334,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -6386,22 +6348,21 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -6422,7 +6383,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -6436,11 +6397,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -6492,7 +6453,7 @@ ldc.i4.s 224
 conv.i
 add
 call Boolean get_IsZero()
-brtrue j116
+brtrue.s j116
 ldloc.s 27
 conv.i
 stloc.3
@@ -6869,7 +6830,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -6883,22 +6844,21 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -6919,7 +6879,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -6933,11 +6893,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -6989,7 +6949,7 @@ ldc.i4.s 224
 conv.i
 add
 call Boolean get_IsZero()
-brtrue j123
+brtrue.s j123
 ldloc.s 27
 conv.i
 stloc.3
@@ -7050,7 +7010,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -7064,11 +7024,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -7100,7 +7060,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -7117,14 +7077,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -7190,7 +7150,7 @@ call Void set_UInt0(UInt32)
 ldloc.s 27
 conv.i
 call Boolean get_IsZero()
-brtrue j124
+brtrue.s j124
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -7200,16 +7160,16 @@ stloc.3
 br j2
 
 j124:
-ldloca.s 57
+ldloca.s 56
 call Boolean get_HasValue()
-brtrue j125
-ldloc.s 31
+brtrue.s j125
+ldarg.1
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
 ldc.i4.1
 newobj Void .ctor(Boolean)
-stloc.s 57
+stloc.s 56
 
 j125:
 ldloc.s 28
@@ -7233,9 +7193,9 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -7243,7 +7203,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -7282,15 +7242,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -7299,7 +7259,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -7320,12 +7280,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7336,8 +7296,8 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -7374,15 +7334,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7396,8 +7356,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -7433,21 +7393,21 @@ add
 stloc.s 4
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j130
+brtrue.s j130
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7461,9 +7421,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j132
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j132
 
 j130:
 ldloc.s 27
@@ -7495,15 +7455,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -7512,7 +7472,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -7545,15 +7505,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -7562,7 +7522,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -7583,15 +7543,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7605,8 +7565,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -7649,15 +7609,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -7666,7 +7626,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -7687,15 +7647,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7709,8 +7669,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -7741,15 +7701,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -7758,7 +7718,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -7779,15 +7739,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7801,8 +7761,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -7840,9 +7800,9 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -7850,7 +7810,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -7913,21 +7873,21 @@ add
 stloc.s 4
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j138
+brtrue.s j138
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -7941,9 +7901,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j140
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j140
 
 j138:
 ldloc.s 27
@@ -7987,26 +7947,26 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
-ldarg.s 4
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 13
-ldarg.s 4
+ldarg.s 14
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 7
 call System.ReadOnlyMemory`1[System.Byte] Load(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 stfld System.ReadOnlyMemory`1[System.Byte] ReturnData
-ldarg.s 13
+ldarg.s 14
 ldc.i4.s 32
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
@@ -8083,7 +8043,7 @@ add
 stloc.s 28
 
 j143:
-ldarg.s 4
+ldarg.s 5
 call Boolean get_IsStatic()
 brtrue StaticCallViolation
 ldloc.s 28
@@ -8125,9 +8085,9 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -8135,7 +8095,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -8192,7 +8152,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -8209,14 +8169,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -8236,7 +8196,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -8253,14 +8213,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -8279,15 +8239,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -8296,7 +8256,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -8317,15 +8277,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -8339,8 +8299,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -8368,7 +8328,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -8385,14 +8345,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -8412,7 +8372,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -8429,14 +8389,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -8455,15 +8415,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -8472,7 +8432,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -8493,15 +8453,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -8515,8 +8475,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -8554,9 +8514,9 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -8564,7 +8524,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -8624,18 +8584,18 @@ conv.i
 stloc.s 4
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j147
+brtrue.s j147
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -8646,9 +8606,9 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j149
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j149
 
 j147:
 ldloc.s 27
@@ -8684,16 +8644,16 @@ ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
-ldarg.s 4
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 7
@@ -8713,10 +8673,10 @@ dup
 stloc.s 25
 ldc.i8 0
 blt OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Core.Address ExecutingAccount
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 7
@@ -8734,19 +8694,19 @@ ldc.i4.s 192
 conv.i
 add
 call Nethermind.Core.Crypto.ValueHash256 get_Keccak()
-stloc.s 77
-ldloca.s 77
+stloc.s 75
+ldloca.s 75
 newobj Void .ctor(Nethermind.Core.Crypto.ValueHash256 ByRef)
 stelem.ref
 newobj Void .ctor(Nethermind.Core.Address, Byte[], Nethermind.Core.Crypto.Hash256[])
-stloc.s 76
-ldarg.s 4
+stloc.s 74
+ldarg.s 5
 call Nethermind.Evm.StackAccessTracker& get_AccessTracker()
 ldobj Nethermind.Evm.StackAccessTracker
-stloc.s 78
-ldloca.s 78
+stloc.s 76
+ldloca.s 76
 callvirt System.Collections.Generic.ICollection`1[Nethermind.Core.LogEntry] get_Logs()
-ldloc.s 76
+ldloc.s 74
 callvirt Void Add(Nethermind.Core.LogEntry)
 ldloc.s 27
 conv.i
@@ -9007,7 +8967,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -9021,22 +8981,21 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -9057,7 +9016,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -9071,11 +9030,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -9127,7 +9086,7 @@ ldc.i4.s 224
 conv.i
 add
 call Boolean get_IsZero()
-brtrue j157
+brtrue.s j157
 ldloc.s 27
 conv.i
 stloc.3
@@ -9504,7 +9463,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -9518,22 +9477,21 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4.s 224
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address Caller
 call Void set_Address(Nethermind.Core.Address)
 ldloc.s 27
@@ -9554,7 +9512,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -9568,11 +9526,11 @@ conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -9650,7 +9608,7 @@ ldc.i4.s 224
 conv.i
 add
 call Boolean get_IsZero()
-brtrue j164
+brtrue.s j164
 ldloc.s 27
 conv.i
 stloc.3
@@ -9675,16 +9633,16 @@ ldloc.s 28
 ldc.i4.m1
 add
 stloc.s 28
-ldloca.s 57
+ldloca.s 56
 call Boolean get_HasValue()
-brtrue j165
-ldloc.s 31
+brtrue.s j165
+ldarg.1
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
 ldc.i4.1
 newobj Void .ctor(Boolean)
-stloc.s 57
+stloc.s 56
 
 j165:
 ldloc.s 28
@@ -9708,9 +9666,9 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -9718,7 +9676,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -9757,15 +9715,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -9774,7 +9732,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -9795,12 +9753,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -9811,8 +9769,8 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -9849,15 +9807,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -9871,8 +9829,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -9908,21 +9866,21 @@ add
 stloc.s 4
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j170
+brtrue.s j170
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -9936,9 +9894,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j172
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j172
 
 j170:
 ldloc.s 27
@@ -9970,15 +9928,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -9987,7 +9945,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -10020,15 +9978,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -10037,7 +9995,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -10058,15 +10016,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -10080,8 +10038,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -10124,15 +10082,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -10141,7 +10099,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -10162,15 +10120,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -10184,8 +10142,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -10216,15 +10174,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -10233,7 +10191,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -10254,15 +10212,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -10276,8 +10234,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -10315,9 +10273,9 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -10325,7 +10283,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -10388,21 +10346,21 @@ add
 stloc.s 4
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j178
+brtrue.s j178
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -10416,9 +10374,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j180
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j180
 
 j178:
 ldloc.s 27
@@ -10462,26 +10420,26 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
-ldarg.s 4
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 13
-ldarg.s 4
+ldarg.s 14
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 7
 call System.ReadOnlyMemory`1[System.Byte] Load(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 stfld System.ReadOnlyMemory`1[System.Byte] ReturnData
-ldarg.s 13
+ldarg.s 14
 ldc.i4.s 32
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
@@ -10646,37 +10604,37 @@ conv.i
 add
 stloc.s 4
 ldloc.3
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 4
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.3
 call Boolean get_IsZero()
-brtrue j185
+brtrue.s j185
 ldloc.s 4
 call Boolean get_IsZero()
 brtrue j188
 ldloc.3
 call Boolean get_IsOne()
-brtrue j188
+brtrue.s j188
 ldloc.s 4
 call Boolean get_IsOne()
-brtrue j186
+brtrue.s j186
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -10690,9 +10648,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j188
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j188
 
 j185:
 ldloc.s 27
@@ -10701,7 +10659,7 @@ ldc.i4.s 64
 conv.i
 add
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-br j188
+br.s j188
 
 j186:
 ldloc.s 27
@@ -10757,7 +10715,7 @@ add
 ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldloc.s 25
-ldloc.s 31
+ldarg.1
 call Int64 GetSLoadCost(Nethermind.Core.Specs.IReleaseSpec)
 sub
 dup
@@ -10769,24 +10727,23 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
 stloc.s 24
 ldloca.s 25
-ldarg.s 4
+ldarg.s 5
 ldloca.s 24
 ldc.i4.0
-ldloc.s 31
-ldarg.s 11
+ldarg.1
+ldarg.s 12
 call Boolean ChargeStorageAccessGas(Int64 ByRef, Nethermind.Evm.EvmState, Nethermind.Core.StorageCell ByRef, StorageAccessType, Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Tracing.ITxTracer)
 brfalse OutOfGas
-ldarg.s 5
+ldarg.s 6
 ldloca.s 24
 callvirt System.ReadOnlySpan`1[System.Byte] Get(Nethermind.Core.StorageCell ByRef)
 stloc.s 11
@@ -10850,16 +10807,16 @@ ldc.i4.1
 brtrue j2
 
 j190:
-ldloca.s 61
+ldloca.s 60
 call Boolean get_HasValue()
-brtrue j191
-ldloc.s 31
+brtrue.s j191
+ldarg.1
 ldc.i4 244
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
 ldc.i4.1
 newobj Void .ctor(Boolean)
-stloc.s 61
+stloc.s 60
 
 j191:
 ldloc.s 28
@@ -10881,14 +10838,9 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
-ldloca.s 72
-initobj System.ReadOnlyMemory`1[System.Byte]
-stloc.s 72
-ldloca.s 72
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
 call Void set_Int0(Int32)
@@ -10915,19 +10867,19 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 8
+ldloca.s 8
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 25
 ldloca.s 8
 ldloca.s 22
@@ -10941,17 +10893,17 @@ ldc.i8 0
 blt OutOfGas
 ldloca.s 8
 call Boolean get_IsZero()
-brtrue j193
-ldarg.s 4
+brtrue.s j193
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
+ldobj System.ReadOnlyMemory`1[System.Byte]
 ldloca.s 7
 ldloc.s 8
 ldfld UInt64 u0
@@ -10959,7 +10911,7 @@ conv.i4
 ldc.i4.0
 call Nethermind.Evm.ZeroPaddedSpan SliceWithZeroPadding(System.ReadOnlyMemory`1[System.Byte], Nethermind.Int256.UInt256 ByRef, Int32, Nethermind.Evm.PadDirection)
 stloc.s 12
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 12
@@ -10985,14 +10937,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
-ldfld System.ReadOnlyMemory`1[System.Byte] InputData
-ldloca.s 72
-initobj System.ReadOnlyMemory`1[System.Byte]
-stloc.s 72
-ldloca.s 72
+ldflda System.ReadOnlyMemory`1[System.Byte] InputData
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
 call Void set_Int0(Int32)
@@ -11026,16 +10973,16 @@ call UInt64 ReverseEndianness(UInt64)
 call Void set_ULong0(UInt64)
 ldc.i4 1680
 stloc.s 26
-ldloca.s 74
+ldloca.s 72
 initobj System.Nullable`1[Nethermind.Int256.UInt256]
 ldnull
-stloc.s 75
-ldarg.s 4
+stloc.s 73
 ldarg.s 5
+ldarg.s 6
 ldloca.s 25
-ldloc.s 31
-ldarg.s 11
+ldarg.1
 ldarg.s 12
+ldarg.s 13
 ldc.i4 244
 ldloc.s 27
 conv.i
@@ -11049,9 +10996,8 @@ ldc.i4 128
 conv.i
 add
 call Nethermind.Core.Address get_Address()
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Int256.UInt256 Value
 ldloc.s 27
 conv.i
@@ -11074,15 +11020,15 @@ call Nethermind.Int256.UInt256 get_UInt256()
 ldloc.s 27
 conv.i
 call Nethermind.Int256.UInt256 get_UInt256()
-ldloca.s 74
-ldarga.s 6
-ldloca.s 75
+ldloca.s 72
+ldarga.s 7
+ldloca.s 73
 call Nethermind.Evm.EvmExceptionType InstructionCall[NotTracing,NotTracing](Nethermind.Evm.EvmState, Nethermind.State.IWorldState, Int64 ByRef, Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Tracing.ITxTracer, Nethermind.Logging.ILogger, Nethermind.Evm.Instruction, Nethermind.Int256.UInt256, Nethermind.Core.Address, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, Nethermind.Int256.UInt256, System.Nullable`1[Nethermind.Int256.UInt256] ByRef, System.ReadOnlyMemory`1[System.Byte] ByRef, System.Object ByRef)
 stloc.s 17
 ldloc.s 17
 ldc.i4.0
-beq j196
-ldarg.s 13
+beq.s j196
+ldarg.s 14
 dup
 ldloc.s 17
 stfld Nethermind.Evm.EvmExceptionType ExceptionType
@@ -11092,13 +11038,13 @@ ldc.i4.1
 brtrue j1
 
 j196:
-ldloc.s 75
+ldloc.s 73
 ldnull
-beq j195
-ldloc.s 75
+beq.s j195
+ldloc.s 73
 call System.Object get_BoxedEmpty()
 call Boolean ReferenceEquals(System.Object, System.Object)
-brtrue j195
+brtrue.s j195
 ldloc.s 27
 ldc.i4.s 32
 conv.i
@@ -11108,9 +11054,9 @@ ldloc.s 28
 ldc.i4.1
 add
 stloc.s 28
-ldarg.s 13
+ldarg.s 14
 dup
-ldloc.s 75
+ldloc.s 73
 castclass Nethermind.Evm.EvmState
 stfld Nethermind.Evm.EvmState CallResult
 ldc.i4.2
@@ -11119,12 +11065,12 @@ ldc.i4.1
 brtrue j4
 
 j195:
-ldloca.s 74
+ldloca.s 72
 call Boolean get_HasValue()
-brfalse j194
+brfalse.s j194
 ldloc.s 27
 conv.i
-ldloca.s 74
+ldloca.s 72
 call Nethermind.Int256.UInt256 get_Value()
 call Void set_UInt256(Nethermind.Int256.UInt256)
 
@@ -11140,20 +11086,20 @@ add
 stloc.s 28
 
 j197:
-ldloca.s 62
+ldloca.s 61
 call Boolean get_HasValue()
-brtrue j198
-ldloc.s 31
+brtrue.s j198
+ldarg.1
 ldc.i4.s 61
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
-ldloc.s 31
+ldarg.1
 ldc.i4.s 62
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
 ldc.i4.1
 newobj Void .ctor(Boolean)
-stloc.s 62
+stloc.s 61
 
 j198:
 ldloc.s 28
@@ -11175,7 +11121,7 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarga.s 6
+ldarga.s 7
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
 call Void set_Int0(Int32)
@@ -11202,25 +11148,25 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 8
+ldloca.s 8
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 7
 ldloca.s 8
 ldloca.s 9
 call Boolean AddOverflow(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
-ldarga.s 6
+ldarga.s 7
 call Int32 get_Length()
 call Boolean op_GreaterThan(Nethermind.Int256.UInt256 ByRef, Int32)
 or
@@ -11238,21 +11184,21 @@ ldc.i8 0
 blt OutOfGas
 ldloca.s 8
 call Boolean get_IsZero()
-brtrue j200
-ldarg.s 4
+brtrue.s j200
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 6
+ldarg.s 7
 ldloca.s 7
 ldloca.s 8
 call Int32 op_Explicit(Nethermind.Int256.UInt256 ByRef)
 ldc.i4.0
 call Nethermind.Evm.ZeroPaddedSpan SliceWithZeroPadding(System.ReadOnlyMemory`1[System.Byte], Nethermind.Int256.UInt256 ByRef, Int32, Nethermind.Evm.PadDirection)
 stloc.s 12
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 12
@@ -11326,7 +11272,7 @@ ldc.i4.s 32
 conv.i
 add
 call Boolean get_IsZero()
-brtrue j201
+brtrue.s j201
 ldloc.s 27
 conv.i
 ldc.i4.s 64
@@ -11354,16 +11300,16 @@ ldloc.s 28
 ldc.i4.1
 add
 stloc.s 28
-ldloca.s 63
+ldloca.s 62
 call Boolean get_HasValue()
-brtrue j202
-ldloc.s 31
+brtrue.s j202
+ldarg.1
 ldc.i4.s 61
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
 ldc.i4.1
 newobj Void .ctor(Boolean)
-stloc.s 63
+stloc.s 62
 
 j202:
 ldloc.s 28
@@ -11382,7 +11328,7 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarga.s 6
+ldarga.s 7
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
 call Void set_Int0(Int32)
@@ -11399,46 +11345,46 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
-ldarg.s 4
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 13
-ldarg.s 4
+ldarg.s 14
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 7
 call System.ReadOnlyMemory`1[System.Byte] Load(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 stfld System.ReadOnlyMemory`1[System.Byte] ReturnData
-ldarg.s 13
+ldarg.s 14
 ldc.i4.s 16
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
 brtrue j4
 
 j204:
-ldloca.s 64
+ldloca.s 63
 call Boolean get_HasValue()
-brtrue j205
-ldloc.s 31
+brtrue.s j205
+ldarg.1
 ldc.i4.s 61
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
-ldloc.s 31
+ldarg.1
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
 ldc.i4.1
 newobj Void .ctor(Boolean)
-stloc.s 64
+stloc.s 63
 
 j205:
 ldloc.s 28
@@ -11457,7 +11403,7 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarga.s 6
+ldarga.s 7
 call Int32 get_Length()
 call Int32 ReverseEndianness(Int32)
 call Void set_Int0(Int32)
@@ -11474,26 +11420,26 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
-ldarg.s 4
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 13
-ldarg.s 4
+ldarg.s 14
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 7
 call System.ReadOnlyMemory`1[System.Byte] Load(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 stfld System.ReadOnlyMemory`1[System.Byte] ReturnData
-ldarg.s 13
+ldarg.s 14
 ldc.i4.s 32
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
@@ -11563,37 +11509,37 @@ conv.i
 add
 stloc.s 4
 ldloc.3
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 4
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.3
 call Boolean get_IsZero()
-brtrue j208
+brtrue.s j208
 ldloc.s 4
 call Boolean get_IsZero()
 brtrue j211
 ldloc.3
 call Boolean get_IsOne()
-brtrue j211
+brtrue.s j211
 ldloc.s 4
 call Boolean get_IsOne()
-brtrue j209
+brtrue.s j209
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -11607,9 +11553,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j211
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j211
 
 j208:
 ldloc.s 27
@@ -11618,7 +11564,7 @@ ldc.i4.s 64
 conv.i
 add
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-br j211
+br.s j211
 
 j209:
 ldloc.s 27
@@ -11674,7 +11620,7 @@ add
 ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldloc.s 25
-ldloc.s 31
+ldarg.1
 call Int64 GetSLoadCost(Nethermind.Core.Specs.IReleaseSpec)
 sub
 dup
@@ -11686,24 +11632,23 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldobj Nethermind.Evm.ExecutionEnvironment
 ldfld Nethermind.Core.Address ExecutingAccount
 ldloca.s 6
 newobj Void .ctor(Nethermind.Core.Address, Nethermind.Int256.UInt256 ByRef)
 stloc.s 24
 ldloca.s 25
-ldarg.s 4
+ldarg.s 5
 ldloca.s 24
 ldc.i4.0
-ldloc.s 31
-ldarg.s 11
+ldarg.1
+ldarg.s 12
 call Boolean ChargeStorageAccessGas(Int64 ByRef, Nethermind.Evm.EvmState, Nethermind.Core.StorageCell ByRef, StorageAccessType, Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Tracing.ITxTracer)
 brfalse OutOfGas
-ldarg.s 5
+ldarg.s 6
 ldloca.s 24
 callvirt System.ReadOnlySpan`1[System.Byte] Get(Nethermind.Core.StorageCell ByRef)
 stloc.s 11
@@ -11839,7 +11784,7 @@ add
 stloc.s 28
 
 j214:
-ldarg.s 4
+ldarg.s 5
 call Boolean get_IsStatic()
 brtrue StaticCallViolation
 ldloc.s 28
@@ -11894,9 +11839,9 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -11904,7 +11849,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -11961,7 +11906,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -11978,14 +11923,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -12005,7 +11950,7 @@ conv.i
 add
 ldc.i4.s 20
 cpblk
-ldloca.s 73
+ldloca.s 71
 initobj System.Runtime.Intrinsics.Vector256`1[System.Byte]
 ldloc.s 27
 conv.i
@@ -12022,14 +11967,14 @@ add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] ReadUnaligned[Vector256`1](Byte ByRef)
 call System.Runtime.Intrinsics.Vector256`1[System.Byte] BitwiseAnd[Byte](System.Runtime.Intrinsics.Vector256`1[System.Byte], System.Runtime.Intrinsics.Vector256`1[System.Byte])
-stloc.s 73
+stloc.s 71
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 call Byte& As[Word,Byte](Nethermind.Evm.CodeAnalysis.IL.Word ByRef)
-ldloc.s 73
+ldloc.s 71
 call Void WriteUnaligned[Vector256`1](Byte ByRef, System.Runtime.Intrinsics.Vector256`1[System.Byte])
 ldloc.s 27
 conv.i
@@ -12048,15 +11993,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -12065,7 +12010,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -12086,15 +12031,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -12108,8 +12053,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -12153,9 +12098,9 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -12163,7 +12108,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -12232,21 +12177,21 @@ add
 stloc.s 4
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j217
+brtrue.s j217
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -12260,9 +12205,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j219
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j219
 
 j217:
 ldloc.s 27
@@ -12306,24 +12251,24 @@ ldloca.s 9
 ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldnull
-stloc.s 76
-ldloca.s 77
+stloc.s 74
+ldloca.s 75
 initobj Nethermind.Core.Crypto.ValueHash256
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
-ldarg.s 4
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 7
@@ -12343,10 +12288,10 @@ dup
 stloc.s 25
 ldc.i8 0
 blt OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.ExecutionEnvironment& get_Env()
 ldfld Nethermind.Core.Address ExecutingAccount
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 7
@@ -12361,21 +12306,21 @@ ldc.i4.0
 ldloc.s 27
 conv.i
 call Nethermind.Core.Crypto.ValueHash256 get_Keccak()
-stloc.s 77
-ldloca.s 77
+stloc.s 75
+ldloca.s 75
 newobj Void .ctor(Nethermind.Core.Crypto.ValueHash256 ByRef)
 stelem.ref
 newobj Void .ctor(Nethermind.Core.Address, Byte[], Nethermind.Core.Crypto.Hash256[])
-stloc.s 76
-ldarg.s 4
-ldloca.s 78
+stloc.s 74
+ldarg.s 5
+ldloca.s 76
 initobj Nethermind.Evm.StackAccessTracker
 call Nethermind.Evm.StackAccessTracker& get_AccessTracker()
 ldobj Nethermind.Evm.StackAccessTracker
-stloc.s 78
-ldloca.s 78
+stloc.s 76
+ldloca.s 76
 callvirt System.Collections.Generic.ICollection`1[Nethermind.Core.LogEntry] get_Logs()
-ldloc.s 76
+ldloc.s 74
 callvirt Void Add(Nethermind.Core.LogEntry)
 ldloc.s 27
 conv.i
@@ -12405,7 +12350,7 @@ add
 stloc.s 28
 
 j221:
-ldarg.s 4
+ldarg.s 5
 call Boolean get_IsStatic()
 brtrue StaticCallViolation
 ldloc.s 28
@@ -12462,37 +12407,37 @@ conv.i
 add
 stloc.s 4
 ldloc.3
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 4
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.3
 call Boolean get_IsZero()
-brtrue j222
+brtrue.s j222
 ldloc.s 4
 call Boolean get_IsZero()
 brtrue j225
 ldloc.3
 call Boolean get_IsOne()
-brtrue j225
+brtrue.s j225
 ldloc.s 4
 call Boolean get_IsOne()
-brtrue j223
+brtrue.s j223
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -12506,9 +12451,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j225
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j225
 
 j222:
 ldloc.s 27
@@ -12517,7 +12462,7 @@ ldc.i4.s 32
 conv.i
 add
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-br j225
+br.s j225
 
 j223:
 ldloc.s 27
@@ -12580,8 +12525,8 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -12589,25 +12534,25 @@ conv.i
 add
 call System.ReadOnlySpan`1[System.Byte] get_ReadOnlySpan()
 stloc.s 11
-ldarg.s 4
 ldarg.s 5
+ldarg.s 6
 ldloca.s 25
 ldloca.s 6
 ldloca.s 11
-ldloc.s 31
-ldarg.s 11
+ldarg.1
+ldarg.s 12
 call Nethermind.Evm.EvmExceptionType InstructionSStore[NotTracing,NotTracing,NotTracing](Nethermind.Evm.EvmState, Nethermind.State.IWorldState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, System.ReadOnlySpan`1[System.Byte] ByRef, Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Tracing.ITxTracer)
 dup
 stloc.s 17
 ldc.i4.0
-beq j227
-ldarg.s 13
+beq.s j227
+ldarg.s 14
 dup
 ldloc.s 17
 stfld Nethermind.Evm.EvmExceptionType ExceptionType
 ldc.i4.8
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
-ldarg.s 7
+ldarg.s 8
 ldloc.s 25
 stind.i8
 ldc.i4.1
@@ -12812,7 +12757,7 @@ ldc.i4.s 224
 conv.i
 add
 call Boolean get_IsZero()
-brtrue j231
+brtrue.s j231
 ldloc.s 27
 conv.i
 stloc.3
@@ -12837,16 +12782,16 @@ ldloc.s 28
 ldc.i4.m1
 add
 stloc.s 28
-ldloca.s 57
+ldloca.s 56
 call Boolean get_HasValue()
-brtrue j232
-ldloc.s 31
+brtrue.s j232
+ldarg.1
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
 ldc.i4.1
 newobj Void .ctor(Boolean)
-stloc.s 57
+stloc.s 56
 
 j232:
 ldloc.s 28
@@ -12870,9 +12815,9 @@ call Byte ReverseEndianness(Byte)
 call Void set_Byte0(Byte)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -12880,7 +12825,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -12919,15 +12864,15 @@ conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -12936,7 +12881,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -12957,12 +12902,12 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -12973,8 +12918,8 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
@@ -13011,15 +12956,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13033,8 +12978,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -13070,21 +13015,21 @@ add
 stloc.s 4
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j237
+brtrue.s j237
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13098,9 +13043,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j239
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j239
 
 j237:
 ldloc.s 27
@@ -13132,15 +13077,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -13149,7 +13094,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -13182,15 +13127,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -13199,7 +13144,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -13220,15 +13165,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13242,8 +13187,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
@@ -13286,15 +13231,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -13303,7 +13248,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -13324,15 +13269,15 @@ conv.i
 ldc.i4 128
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13346,8 +13291,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
@@ -13378,15 +13323,15 @@ conv.i
 ldc.i4 160
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4 128
 conv.i
 add
 stloc.s 4
-ldarg.s 4
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldc.i4.s 32
@@ -13395,7 +13340,7 @@ stloc.s 8
 ldloca.s 8
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloc.s 4
@@ -13416,15 +13361,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13438,8 +13383,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -13477,9 +13422,9 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
-ldarg.s 4
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldsfld Nethermind.Int256.UInt256 BigInt32
@@ -13487,7 +13432,7 @@ stloc.s 7
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 4
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 call System.Span`1[System.Byte] LoadSpan(Nethermind.Int256.UInt256 ByRef)
@@ -13550,21 +13495,21 @@ add
 stloc.s 4
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j245
+brtrue.s j245
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13578,9 +13523,9 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j247
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j247
 
 j245:
 ldloc.s 27
@@ -13624,33 +13569,33 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
-ldarg.s 4
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
+ldarg.s 5
 ldloca.s 25
 ldloca.s 6
 ldloca.s 7
 call Boolean UpdateMemoryCost(Nethermind.Evm.EvmState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 brfalse OutOfGas
-ldarg.s 13
-ldarg.s 4
+ldarg.s 14
+ldarg.s 5
 call Nethermind.Evm.EvmPooledMemory& get_Memory()
 ldloca.s 6
 ldloca.s 7
 call System.ReadOnlyMemory`1[System.Byte] Load(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
 stfld System.ReadOnlyMemory`1[System.Byte] ReturnData
-ldarg.s 13
+ldarg.s 14
 ldc.i4.s 32
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.1
 brtrue j4
 
 j249:
-ldarg.s 4
+ldarg.s 5
 call Boolean get_IsStatic()
 brtrue StaticCallViolation
 ldloc.s 28
@@ -13698,34 +13643,34 @@ ldloc.s 27
 conv.i
 stloc.s 4
 ldloc.3
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 4
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.3
 call Boolean get_IsZero()
-brtrue j250
+brtrue.s j250
 ldloc.s 4
 call Boolean get_IsZero()
-brtrue j253
+brtrue.s j253
 ldloc.3
 call Boolean get_IsOne()
-brtrue j253
+brtrue.s j253
 ldloc.s 4
 call Boolean get_IsOne()
-brtrue j251
+brtrue.s j251
 ldloc.s 27
 conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 ldloca.s 9
@@ -13736,15 +13681,15 @@ ldloc.s 27
 conv.i
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
-br j253
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
+br.s j253
 
 j250:
 ldloc.s 27
 conv.i
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-br j253
+br.s j253
 
 j251:
 ldloc.s 27
@@ -13804,31 +13749,31 @@ conv.i
 ldc.i4.s 32
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 call System.ReadOnlySpan`1[System.Byte] get_ReadOnlySpan()
 stloc.s 11
-ldarg.s 4
 ldarg.s 5
+ldarg.s 6
 ldloca.s 25
 ldloca.s 6
 ldloca.s 11
-ldloc.s 31
-ldarg.s 11
+ldarg.1
+ldarg.s 12
 call Nethermind.Evm.EvmExceptionType InstructionSStore[NotTracing,NotTracing,NotTracing](Nethermind.Evm.EvmState, Nethermind.State.IWorldState, Int64 ByRef, Nethermind.Int256.UInt256 ByRef, System.ReadOnlySpan`1[System.Byte] ByRef, Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Tracing.ITxTracer)
 dup
 stloc.s 17
 ldc.i4.0
-beq j255
-ldarg.s 13
+beq.s j255
+ldarg.s 14
 dup
 ldloc.s 17
 stfld Nethermind.Evm.EvmExceptionType ExceptionType
 ldc.i4.8
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
-ldarg.s 7
+ldarg.s 8
 ldloc.s 25
 stind.i8
 ldc.i4.1
@@ -13903,7 +13848,7 @@ add
 ldobj Nethermind.Evm.CodeAnalysis.IL.Word
 stobj Nethermind.Evm.CodeAnalysis.IL.Word
 ldloc.s 25
-ldloc.s 31
+ldarg.1
 call Int64 GetExtCodeCost(Nethermind.Core.Specs.IReleaseSpec)
 sub
 dup
@@ -13918,12 +13863,12 @@ add
 call Nethermind.Core.Address get_Address()
 stloc.1
 ldloca.s 25
-ldarg.s 4
+ldarg.s 5
 ldloc.1
 ldc.i4.0
-ldarg.s 5
-ldloc.s 31
-ldarg.s 11
+ldarg.s 6
+ldarg.1
+ldarg.s 12
 ldc.i4.1
 call Boolean ChargeAccountAccessGas(Int64 ByRef, Nethermind.Evm.EvmState, Nethermind.Core.Address, Boolean, Nethermind.State.IWorldState, Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Tracing.ITxTracer, Boolean)
 brfalse OutOfGas
@@ -13934,10 +13879,10 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldarg.3
-ldarg.s 5
+ldarg.s 4
+ldarg.s 6
 ldloc.1
-ldloc.s 31
+ldarg.1
 ldc.i4.0
 call Nethermind.Evm.CodeAnalysis.CodeInfo GetCachedCodeInfo(Nethermind.Evm.ICodeInfoRepository, Nethermind.State.IWorldState, Nethermind.Core.Address, Nethermind.Core.Specs.IReleaseSpec, Boolean)
 call System.ReadOnlyMemory`1[System.Byte] get_MachineCode()
@@ -13997,15 +13942,15 @@ conv.i
 ldc.i4.s 96
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 6
+ldloca.s 6
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloc.s 27
 conv.i
 ldc.i4.s 64
 conv.i
 add
-call Nethermind.Int256.UInt256 get_UInt256()
-stloc.s 7
+ldloca.s 7
+call Void PopUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 6
 ldloca.s 7
 call Boolean op_GreaterThan(Nethermind.Int256.UInt256 ByRef, Nethermind.Int256.UInt256 ByRef)
@@ -14019,8 +13964,8 @@ conv.i
 add
 dup
 initobj Nethermind.Evm.CodeAnalysis.IL.Word
-ldloc.s 9
-call Void set_UInt256(Nethermind.Int256.UInt256)
+ldloca.s 9
+call Void PushUInt256(Nethermind.Int256.UInt256 ByRef)
 ldloca.s 9
 ldloc.s 27
 conv.i
@@ -14103,7 +14048,7 @@ ldc.i4.m1
 add
 stloc.s 28
 ldc.i4.1
-brtrue j2
+brtrue.s j2
 ldloc.s 27
 ldc.i4.s 224
 conv.i
@@ -14113,25 +14058,25 @@ ldloc.s 28
 ldc.i4.m1
 add
 stloc.s 28
-ldarg.s 13
+ldarg.s 14
 ldc.i4.4
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 
 j4:
-ldarg.s 9
+ldarg.s 10
 ldloc.s 28
 stind.i4
-ldarg.s 7
+ldarg.s 8
 ldloc.s 25
 stind.i8
-ldarg.s 8
+ldarg.s 9
 ldloc.s 26
 ldc.i4.1
 add
 stind.i4
 
 j1:
-ldarg.s 13
+ldarg.s 14
 ldfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.2
 ceq
@@ -14140,12 +14085,12 @@ ret
 j3:
 ldloc.s 26
 stloc.0
-ldarg.s 13
+ldarg.s 14
 ldc.i4.1
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldloc.0
 ldc.i4 2186
-bge j1
+bge.s j1
 ldloc.0
 ldc.i4.0
 beq j5
@@ -14764,13 +14709,13 @@ j384:
 ldloc.0
 ldc.i4 1406
 beq j163
-br InvalidJumpDestination
+br.s InvalidJumpDestination
 
 j385:
-br InvalidJumpDestination
+br.s InvalidJumpDestination
 
 StackOverflow:
-ldarg.s 13
+ldarg.s 14
 dup
 ldc.i4.2
 stfld Nethermind.Evm.EvmExceptionType ExceptionType
@@ -14779,7 +14724,7 @@ stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 br j1
 
 OutOfGas:
-ldarg.s 13
+ldarg.s 14
 dup
 ldc.i4.4
 stfld Nethermind.Evm.EvmExceptionType ExceptionType
@@ -14788,7 +14733,7 @@ stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 br j1
 
 StackUnderflow:
-ldarg.s 13
+ldarg.s 14
 dup
 ldc.i4.3
 stfld Nethermind.Evm.EvmExceptionType ExceptionType
@@ -14797,7 +14742,7 @@ stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 br j1
 
 BadInstruction:
-ldarg.s 13
+ldarg.s 14
 dup
 ldc.i4.1
 stfld Nethermind.Evm.EvmExceptionType ExceptionType
@@ -14806,7 +14751,7 @@ stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 br j1
 
 StaticCallViolation:
-ldarg.s 13
+ldarg.s 14
 dup
 ldc.i4.s 10
 stfld Nethermind.Evm.EvmExceptionType ExceptionType
@@ -14815,7 +14760,7 @@ stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 br j1
 
 AccessViolation:
-ldarg.s 13
+ldarg.s 14
 dup
 ldc.i4.s 9
 stfld Nethermind.Evm.EvmExceptionType ExceptionType
@@ -14824,7 +14769,7 @@ stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 br j1
 
 InvalidJumpDestination:
-ldarg.s 13
+ldarg.s 14
 dup
 ldc.i4.8
 stfld Nethermind.Evm.EvmExceptionType ExceptionType

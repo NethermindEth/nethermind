@@ -128,7 +128,7 @@ public class WrappedEthTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
         (Block block2, Transaction txBtoA) = PrepareTx(Activation, 100000, parsed, bToACode, 0, bToA);
 
         // Execute, A->B, B->A
-        const int operationCount = 16;
+        const int operationCount = 32;
         for (int i = 0; i < operationCount; i++)
         {
             ExecuteNoPrepare(block1, txAtoB, NullTxTracer.Instance, Activation, 100000, null, true);
