@@ -591,8 +591,10 @@ namespace Nethermind.Network.P2P
             string key = string.Join(":", _protocols.Select(static p => p.Value.Name).OrderBy(static x => x));
             if (!_resolvers.TryGetValue(key, out AdaptiveCodeResolver value))
             {
-                value = new AdaptiveCodeResolver(_protocols);
-                _resolvers[key] = value;
+                value = _resolvers.AddOrUpdate(
+                    key,
+                    addValueFactory: (k) => new AdaptiveCodeResolver(_protocols),
+                    updateValueFactory: (k,v) => v);
             }
 
             return value;
