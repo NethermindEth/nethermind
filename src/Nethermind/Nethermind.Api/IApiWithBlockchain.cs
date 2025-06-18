@@ -1,11 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#nullable enable
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.FullPruning;
-using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -85,6 +82,7 @@ namespace Nethermind.Api
         [SkipServiceCollection]
         IEthSyncingInfo? EthSyncingInfo { get; }
 
+        // IHistoryPruner? HistoryPruner { get; set; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }

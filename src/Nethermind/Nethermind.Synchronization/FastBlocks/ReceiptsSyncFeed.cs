@@ -44,6 +44,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISyncPointers _syncPointers;
         private readonly ISyncPeerPool _syncPeerPool;
+        private readonly ReceiptDownloadStrategy _receiptDownloadStrategy;
 
         private SyncStatusList _syncStatusList;
 
@@ -72,6 +73,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncConfig = syncConfig;
             _syncReport = syncReport;
             _blockTree = blockTree;
+            _receiptDownloadStrategy = new(_receiptStorage, _syncReport);
 
             if (!_syncConfig.FastSync)
             {
@@ -139,13 +141,8 @@ namespace Nethermind.Synchronization.FastBlocks
                     (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, _approximateAllocationStrategy, AllocationContexts.Receipts, token))
                     ?? GethSyncLimits.MaxReceiptFetch;
 
-                BlockInfo?[] infos = null;
-                while (!_syncStatusList.TryGetInfosForBatch(requestSize, (info) =>
-                       {
-                           bool hasReceipt = _receiptStorage.HasBlock(info.BlockNumber, info.BlockHash);
-                           if (hasReceipt) _syncReport.FastBlocksReceipts.IncrementSkipped();
-                           return hasReceipt;
-                       }, out infos))
+                BlockInfo?[] infos;
+                while (!_syncStatusList.TryGetInfosForBatch(requestSize, _receiptDownloadStrategy, out infos))
                 {
                     token.ThrowIfCancellationRequested();
                     _syncPointers.LowestInsertedReceiptBlockNumber = _syncStatusList.LowestInsertWithoutGaps;
@@ -154,11 +151,11 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (infos[0] is not null)
                 {
-                    batch = new ReceiptsSyncBatch(infos);
-                    batch.Prioritized = true;
+                    batch = new ReceiptsSyncBatch(infos)
+                    {
+                        Prioritized = true
+                    };
                 }
-
-                // Array.Reverse(infos);
             }
 
             _syncPointers.LowestInsertedReceiptBlockNumber = _syncStatusList.LowestInsertWithoutGaps;
@@ -312,6 +309,16 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             _syncReport.FastBlocksReceipts.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
             _syncReport.FastBlocksReceipts.CurrentQueued = _syncStatusList.QueueSize;
+        }
+
+        private class ReceiptDownloadStrategy(IReceiptStorage receiptStorage, ISyncReport syncReport) : IBlockDownloadStrategy
+        {
+            public bool ShouldDownloadBlock(BlockInfo info)
+            {
+                bool hasReceipt = receiptStorage.HasBlock(info.BlockNumber, info.BlockHash);
+                if (hasReceipt) syncReport.FastBlocksReceipts.IncrementSkipped();
+                return !hasReceipt;
+            }
         }
     }
 }
