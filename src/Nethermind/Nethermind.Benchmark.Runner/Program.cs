@@ -126,8 +126,18 @@ namespace Nethermind.Benchmark.Runner
         {
             var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
 
-            RunIsolatedProcess(exePath, $"-m ilevm -c 0");
-            RunIsolatedProcess(exePath , $"-m ilevm -c 2");
+
+            var summary = BenchmarkRunner.Run([
+                            typeof(Nethermind.Evm.Benchmark.FibBenchmark),
+                            typeof(Nethermind.Evm.Benchmark.PrimeBenchmark),
+                            typeof(Nethermind.Evm.Benchmark.WethBenchmark)
+                        ], new DashboardConfig(Job.ShortRun
+                                .WithPlatform(Platform.X64)
+                                .WithJit(Jit.RyuJit)
+                                .WithRuntime(CoreRuntime.Core90)
+                                .WithMaxAbsoluteError(TimeInterval.FromNanoseconds(1))
+                                .WithMinInvokeCount(20)
+                                ));
         }
 
         private static void RunWethBenchmarksInIsolation()
