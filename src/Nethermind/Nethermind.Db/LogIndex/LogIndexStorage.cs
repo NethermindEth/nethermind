@@ -41,17 +41,24 @@ namespace Nethermind.Db
                 return Interlocked.Exchange(ref _stats, new());
             }
 
-            private static int BinarySearchInt32LE(ReadOnlySpan<byte> data, int target)
+            private static int BinarySearchBlock(ReadOnlySpan<byte> data, int target)
             {
+                if (data.Length == 0)
+                    return 0;
+
                 int count = data.Length / sizeof(int);
                 int left = 0, right = count - 1;
+
+                // Short circuits in many cases
+                if (ReadValLastBlockNum(data) == target)
+                    return right * BlockNumSize;
 
                 while (left <= right)
                 {
                     int mid = left + (right - left) / 2;
                     int offset = mid * 4;
 
-                    int value = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(offset, sizeof(int)));
+                    int value = ReadValBlockNum(data[offset..]);
 
                     if (value == target)
                         return offset;
@@ -61,7 +68,7 @@ namespace Nethermind.Db
                         right = mid - 1;
                 }
 
-                return ~(left * sizeof(int));
+                return ~(left * BlockNumSize);
             }
 
             private static void ReverseInt32(Span<byte> data) => MemoryMarshal.Cast<byte, int>(data).Reverse();
@@ -117,8 +124,9 @@ namespace Nethermind.Db
                                 throw ValidationException("Reversion is not supported for backward sync.");
 
                             // TODO: detect if revert block is already compressed
-                            var revertIndex = BinarySearchInt32LE(result.AsSpan(..shift), revertBlock);
+                            var revertIndex = BinarySearchBlock(result.AsSpan(..shift), revertBlock);
                             shift = revertIndex >= 0 ? revertIndex : ~revertIndex;
+                            lastBlockNum = Math.Min(lastBlockNum, revertBlock - 1);
                             continue;
                         }
 
@@ -316,7 +324,7 @@ namespace Nethermind.Db
                     foreach (var block in IterateBlockNumbers(value, from, to))
                         yield return block;
 
-                    if (ReadValLastBlockNum(value) >= to)
+                    if (value.Length > 0 && ReadValLastBlockNum(value) >= to)
                         break;
 
                     iterator.Next();
@@ -513,10 +521,10 @@ namespace Nethermind.Db
                 }
 
                 var blockNum = block.BlockNumber;
-                if (GetLastKnownBlockNumber() < blockNum)
+                if (GetLastKnownBlockNumber() >= blockNum)
                 {
-                    WriteLastKnownBlockNumber(addressBatch, _addressLastKnownBlock = blockNum);
-                    WriteLastKnownBlockNumber(topicBatch, _topicLastKnownBlock = blockNum);
+                    WriteLastKnownBlockNumber(addressBatch, _addressLastKnownBlock = blockNum - 1);
+                    WriteLastKnownBlockNumber(topicBatch, _topicLastKnownBlock = blockNum - 1);
                 }
 
                 addressBatch.Dispose();

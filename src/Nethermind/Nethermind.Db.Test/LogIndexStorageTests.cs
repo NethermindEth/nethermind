@@ -93,10 +93,25 @@ namespace Nethermind.Db.Test
         }
 
         [Combinatorial]
-        // TODO: test reverting in the middle
-        // TODO: test reverting block with unexisting data
-        // TODO: test reverting already compressed block
         public async Task Set_RevertLast_Get_Test(
+            [Values(1, 5, 20)] int revertCount,
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance);
+
+            await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            BlockReceipts[] revertBlocks = _testData.Batches.SelectMany(b => b).TakeLast(revertCount).ToArray();
+            foreach (BlockReceipts revertBlock in revertBlocks)
+                await logIndexStorage.RevertFrom(revertBlock);
+
+            var lastBlock = _testData.Batches[^1][^1].BlockNumber;
+            VerifyReceipts(logIndexStorage, _testData, maxBlock: lastBlock - revertCount);
+        }
+
+        [Combinatorial]
+        public async Task Set_RevertAndSetLast_Get_Test(
             [Values(1, 5, 20)] int revertCount,
             [Values(100, int.MaxValue)] int compactionDistance
         )
@@ -109,7 +124,63 @@ namespace Nethermind.Db.Test
             foreach (BlockReceipts revertBlock in revertBlocks)
             {
                 await logIndexStorage.RevertFrom(revertBlock);
+                await logIndexStorage.SetReceiptsAsync([revertBlock], false);
             }
+
+            VerifyReceipts(logIndexStorage, _testData);
+        }
+
+        [Combinatorial]
+        public async Task Set_RevertLast_SetLast_Get_Test(
+            [Values(1, 5, 20)] int revertCount,
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance);
+
+            await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            BlockReceipts[] revertBlocks = _testData.Batches.SelectMany(b => b).TakeLast(revertCount).ToArray();
+
+            foreach (BlockReceipts revertBlock in revertBlocks)
+                await logIndexStorage.RevertFrom(revertBlock);
+
+            await logIndexStorage.SetReceiptsAsync(revertBlocks, false);
+
+            VerifyReceipts(logIndexStorage, _testData);
+        }
+
+        [Combinatorial]
+        public async Task Set_RevertLastUnexisting_Get_Test(
+            [Values(1, 5)] int revertCount,
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance);
+
+            await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            BlockReceipts[] revertBlocks = GenerateBlocks(new Random(43), _testData.Batches[^1][^1].BlockNumber, revertCount);
+            foreach (BlockReceipts revertBlock in revertBlocks)
+                await logIndexStorage.RevertFrom(revertBlock);
+
+            VerifyReceipts(logIndexStorage, _testData);
+        }
+
+        [Combinatorial]
+        public async Task Set_Compact_RevertLast_Get_Test(
+            [Values(1, 5)] int revertCount,
+            [Values(100, int.MaxValue)] int compactionDistance
+        )
+        {
+            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance);
+
+            await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+            logIndexStorage.Compact();
+
+            BlockReceipts[] revertBlocks = _testData.Batches.SelectMany(b => b).TakeLast(revertCount).ToArray();
+            foreach (BlockReceipts revertBlock in revertBlocks)
+                await logIndexStorage.RevertFrom(revertBlock);
 
             var lastBlock = _testData.Batches[^1][^1].BlockNumber;
             VerifyReceipts(logIndexStorage, _testData, maxBlock: lastBlock - revertCount);
@@ -206,23 +277,21 @@ namespace Nethermind.Db.Test
             VerifyReceipts(logIndexStorage, _testData);
         }
 
-        private static TestData GenerateTestData(Random random, int batchCount, int blocksPerBatch)
+        private static TestData GenerateTestData(Random random, int batchCount, int blocksPerBatch, int startNum = 0)
         {
             var testData = new TestData(batchCount, blocksPerBatch);
 
             var blocksCount = batchCount * blocksPerBatch;
-            var addresses = Enumerable.Repeat(0, blocksCount / 5)
-            //var addresses = Enumerable.Repeat(0, 2)
+            var addresses = Enumerable.Repeat(0, Math.Max(10, blocksCount / 5))
                 .Select(_ => new Address(random.NextBytes(Address.Size)))
                 .ToArray();
             var topics = Enumerable.Repeat(0, addresses.Length * 10)
-            //var topics = Enumerable.Repeat(0, 2)
                 .Select(_ => new Hash256(random.NextBytes(Hash256.Size)))
                 .ToArray();
 
             // Generate batches
-            var blockNum = 0;
-            foreach (var batch in testData.Batches)
+            var blockNum = startNum;
+            foreach (BlockReceipts[] batch in testData.Batches)
             {
                 for (var i = 0; i < batch.Length; i++)
                 {
@@ -276,6 +345,12 @@ namespace Nethermind.Db.Test
 
             return receipts.ToArray();
         }
+
+        private static BlockReceipts[] GenerateBlocks(Random random, int from, int count) => GenerateTestData(
+            random,
+            batchCount: 1, blocksPerBatch: count,
+            startNum: from
+        ).Batches[0];
 
         private async Task SetReceiptsAsync(ILogIndexStorage logIndexStorage, IEnumerable<BlockReceipts[]> batches, bool isBackwardsSync = false)
         {
@@ -353,7 +428,7 @@ namespace Nethermind.Db.Test
             }
         }
 
-        private BlockReceipts[][] Reverse(IEnumerable<BlockReceipts[]> batches)
+        private static BlockReceipts[][] Reverse(IEnumerable<BlockReceipts[]> batches)
         {
             var length = batches.Count();
             var result = new BlockReceipts[length][];
