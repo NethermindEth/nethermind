@@ -288,9 +288,6 @@ public static class Precompiler
         Dictionary<int, Label> entryPoints = new();
 
         // set up spec
-        envLoader.CacheBlockContext(method, locals);
-        envLoader.CacheTxContext(method, locals);
-
         ReleaseSpecEmit.DeclareOpcodeValidityCheckVariables(method, contractMetadata, locals);
 
         Label jumpTable = method.DefineLabel(locals.GetLabelName()); // jump table

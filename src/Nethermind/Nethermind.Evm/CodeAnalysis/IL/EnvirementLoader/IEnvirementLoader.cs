@@ -12,7 +12,6 @@ namespace Nethermind.Evm.CodeAnalysis.IL
 {
     public interface IEnvirementLoader
     {
-        void CacheCalldata<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals);
         void LoadBlockContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress);
         void LoadBlockhashProvider<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress);
         void LoadCalldata<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress);

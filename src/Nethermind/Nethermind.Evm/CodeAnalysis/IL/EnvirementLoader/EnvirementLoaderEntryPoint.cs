@@ -2,18 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
-using Nethermind.State;
 using Sigil;
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Reflection.Emit;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
-using Nethermind.Logging;
-using System.Threading;
 using Nethermind.Core;
 
 using CallData = System.ReadOnlyMemory<byte>;
@@ -22,6 +14,8 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class EnvirementLoaderEntryPoint : IEnvirementLoader
 {
     public static readonly EnvirementLoaderEntryPoint Instance = new();
+
+    private static readonly FieldInfo FieldInputData = typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.InputData), BindingFlags.Public | BindingFlags.Instance);
 
     public const int REF_MACHINECODE_INDEX = 0;
     public const int OBJ_SPEC = REF_MACHINECODE_INDEX + 1;
@@ -39,30 +33,13 @@ internal class EnvirementLoaderEntryPoint : IEnvirementLoader
     public const int OBJ_LOGGER_INDEX = OBJ_TXTRACER_INDEX + 1;
     public const int REF_CURRENT_STATE = OBJ_LOGGER_INDEX + 1;
 
-    public void CacheBlockContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
-    {
-        const string blockContext = nameof(BlockExecutionContext);
-
-        LoadBlockContext(il, locals, false);
-        locals.TryDeclareLocal(blockContext, typeof(BlockExecutionContext));
-        locals.TryStoreLocal(blockContext);
-    }
     public void LoadBlockContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        const string blockContext = nameof(BlockExecutionContext);
-
-        if (locals.TryLoadLocal(blockContext, loadAddress))
+        LoadTxContext(il, locals, true);
+        il.LoadFieldAddress(typeof(TxExecutionContext).GetField(nameof(TxExecutionContext.BlockExecutionContext)));
+        if (!loadAddress)
         {
-            return;
-        }
-
-        LoadTxContext(il, locals, false);
-        il.LoadField(typeof(TxExecutionContext).GetField(nameof(TxExecutionContext.BlockExecutionContext)));
-        if (loadAddress)
-        {
-            using Local local = il.DeclareLocal<BlockExecutionContext>(locals.GetLocalName());
-            il.StoreLocal(local);
-            il.LoadLocalAddress(local);
+            il.LoadObject<BlockExecutionContext>();
         }
     }
 
@@ -74,31 +51,14 @@ internal class EnvirementLoaderEntryPoint : IEnvirementLoader
             il.LoadArgument(OBJ_BLOCKHASHPROVIDER_INDEX);
     }
 
-    public void CacheCalldata<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
-    {
-        const string calldata = nameof(CallData);
-
-        LoadCalldata(il, locals, false);
-        locals.TryDeclareLocal(calldata, typeof(CallData));
-        locals.TryStoreLocal(calldata);
-    }
-
     public void LoadCalldata<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        const string calldata = nameof(CallData);
+        LoadEnv(il, locals, true);
+        il.LoadFieldAddress(FieldInputData);
 
-        if (locals.TryLoadLocal(calldata, loadAddress))
+        if (!loadAddress)
         {
-            return;
-        }
-
-        LoadEnv(il, locals, false);
-        il.LoadField(typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.InputData), BindingFlags.Public | BindingFlags.Instance));
-        if (loadAddress)
-        {
-            using Local local = il.DeclareLocal<CallData>(locals.GetLocalName());
-            il.StoreLocal(local);
-            il.LoadLocalAddress(local);
+            il.LoadObject<CallData>();
         }
     }
 
@@ -129,27 +89,12 @@ internal class EnvirementLoaderEntryPoint : IEnvirementLoader
             il.LoadObject<Word>();
     }
 
-    public void CacheEnv<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
-    {
-        const string env = nameof(ExecutionEnvironment);
-
-        LoadEnv(il, locals, false);
-        locals.TryDeclareLocal(env, typeof(ExecutionEnvironment));
-        locals.TryStoreLocal(env);
-    }
-
     public void LoadEnv<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        const string env = nameof(ExecutionEnvironment);
-
-        if (locals.TryLoadLocal(env, loadAddress))
-        {
-            return;
-        }
-
         LoadVmState(il, locals, false);
-        il.Call(typeof(EvmState).GetProperty(nameof(EvmState.Env), BindingFlags.Public | BindingFlags.Instance).GetMethod);
-        if (!loadAddress)
+        il.Call(typeof(EvmState).GetProperty(nameof(EvmState.Env), BindingFlags.Public | BindingFlags.Instance)!
+            .GetMethod);
+        if(!loadAddress)
         {
             il.LoadObject<ExecutionEnvironment>();
         }
@@ -206,7 +151,7 @@ internal class EnvirementLoaderEntryPoint : IEnvirementLoader
 
     public void LoadSpec<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        if(loadAddress)
+        if (loadAddress)
         {
             il.LoadArgumentAddress(OBJ_SPEC);
         }
@@ -223,31 +168,13 @@ internal class EnvirementLoaderEntryPoint : IEnvirementLoader
             il.LoadObject<int>();
     }
 
-    public void CacheTxContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
-    {
-        const string txContext = nameof(TxExecutionContext);
-
-        LoadTxContext(il, locals, false);
-        locals.TryDeclareLocal(txContext, typeof(TxExecutionContext));
-        locals.TryStoreLocal(txContext);
-    }
-
     public void LoadTxContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        const string txContext = nameof(TxExecutionContext);
-
-        if (locals.TryLoadLocal(txContext, loadAddress))
-        {
-            return;
-        }
-
         LoadEnv(il, locals, true);
-        il.LoadField(typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.TxExecutionContext), BindingFlags.Public | BindingFlags.Instance));
-        if (loadAddress)
+        il.LoadFieldAddress(typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.TxExecutionContext), BindingFlags.Public | BindingFlags.Instance));
+        if (!loadAddress)
         {
-            using Local local = il.DeclareLocal<TxExecutionContext>(locals.GetLocalName());
-            il.StoreLocal(local);
-            il.LoadLocalAddress(local);
+            il.LoadObject<TxExecutionContext>();
         }
     }
 
@@ -296,6 +223,7 @@ internal class EnvirementLoaderEntryPoint : IEnvirementLoader
         LoadBlockContext(il, locals, true);
         il.Call(typeof(BlockExecutionContext).GetProperty(nameof(BlockExecutionContext.Header), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
     }
+
 
     public void LoadSpecProvider<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
