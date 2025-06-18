@@ -659,7 +659,10 @@ namespace Nethermind.Network.P2P
                     offset += _alphabetically[j].SpaceSize;
                 }
 
-                throw new InvalidOperationException($"Registered protocols do not support {protocol}.{messageCode}");
+                throw new InvalidOperationException(
+                    $"Registered protocols do not support {protocol} with message code {messageCode}. " +
+                    $"Registered: {string.Join(";", _alphabetically)}."
+                );
             }
         }
 
