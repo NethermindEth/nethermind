@@ -324,8 +324,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
-        TaskCompletionSource<ValidationResult?> blockProcessedTaskCompletionSource = new();
-        Task<ValidationResult?> blockProcessed = blockProcessedTaskCompletionSource.Task;
+        TaskCompletionSource<ValidationResult?> blockProcessed = new();
 
         void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
         {
@@ -336,7 +335,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
                 if (e.ProcessingResult == ProcessingResult.Exception)
                 {
                     BlockchainException? exception = new(e.Exception?.Message ?? "Block processing threw exception.", e.Exception);
-                    blockProcessedTaskCompletionSource.SetException(exception);
+                    blockProcessed.SetException(exception);
                     return;
                 }
 
@@ -355,14 +354,15 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
                     _ => null
                 };
 
-                blockProcessedTaskCompletionSource.TrySetResult(validationResult);
+                blockProcessed.TrySetResult(validationResult);
             }
         }
 
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
         try
         {
-            Task timeoutTask = Task.Delay(_timeout);
+            CancellationTokenSource cts = new();
+            Task timeoutTask = Task.Delay(_timeout, cts.Token);
 
             AddBlockResult addResult = await _blockTree
                 .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
@@ -395,8 +395,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                _processingQueue.Enqueue(block, processingOptions);
-                result = await blockProcessed.TimeoutOn(timeoutTask);
+                await _processingQueue.Enqueue(block, processingOptions);
+                result = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
         }
         catch (TimeoutException)
