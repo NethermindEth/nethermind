@@ -129,7 +129,7 @@ namespace Nethermind.Evm.Benchmark
 
             Transaction[] pairTx = [
                 BuildTransferTxFrom(AddressA, AddressB, 1000),
-                BuildTransferTxFrom(AddressA, AddressB, 1000)
+                BuildTransferTxFrom(AddressB, AddressA, 1000)
             ];
 
             Transaction[] txList =
