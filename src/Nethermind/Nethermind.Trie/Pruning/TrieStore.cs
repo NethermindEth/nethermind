@@ -38,6 +38,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private readonly Task[] _dirtyNodesTasks = [];
     private readonly ConcurrentDictionary<HashAndTinyPath, Hash256?>[] _persistedHashes = [];
     private readonly Action<TreePath, Hash256?, TrieNode> _persistedNodeRecorder;
+    private readonly Action<TreePath, Hash256?, TrieNode> _persistedNodeRecorderNoop;
     private readonly Task[] _disposeTasks = new Task[RuntimeInformation.PhysicalCoreCount];
 
     // This seems to attempt prevent multiple block processing at the same time and along with pruning at the same time.
@@ -63,19 +64,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _persistenceStrategy = persistenceStrategy;
         _publicStore = new TrieKeyValueStore(this);
         _persistedNodeRecorder = PersistedNodeRecorder;
+        _persistedNodeRecorderNoop = PersistedNodeRecorderNoop;
         _maxDepth = pruningConfig.PruningBoundary;
         _prunePersistedNodePortion = pruningConfig.PrunePersistedNodePortion;
         _prunePersistedNodeMinimumTarget = pruningConfig.PrunePersistedNodeMinimumTarget;
 
         _shardBit = pruningConfig.DirtyNodeShardBit;
         _shardedDirtyNodeCount = 1 << _shardBit;
-
-        // 30 because of the 1 << 31 become negative
-        if (_shardBit is <= 0 or > 30)
-        {
-            throw new InvalidOperationException($"Shard bit count must be between 0 and 30.");
-        }
-
         _dirtyNodes = new TrieStoreDirtyNodesCache[_shardedDirtyNodeCount];
         _dirtyNodesTasks = new Task[_shardedDirtyNodeCount];
         _persistedHashes = new ConcurrentDictionary<HashAndTinyPath, Hash256?>[_shardedDirtyNodeCount];
@@ -538,7 +533,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
         }
 
-        Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder = shouldTrackPastKey ? _persistedNodeRecorder : null;
+        Action<TreePath, Hash256?, TrieNode> persistedNodeRecorder = shouldTrackPastKey ? _persistedNodeRecorder : _persistedNodeRecorderNoop;
 
         for (int index = 0; index < candidateSets.Count; index++)
         {
@@ -630,6 +625,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                     tn.Keccak);
             }
         }
+    }
+
+    private void PersistedNodeRecorderNoop(TreePath treePath, Hash256 address, TrieNode tn)
+    {
     }
 
     private int _lastPrunedShardIdx = 0;
@@ -834,7 +833,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     /// <param name="writeFlags"></param>
     private void ParallelPersistBlockCommitSet(
         BlockCommitSet commitSet,
-        Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder = null,
+        Action<TreePath, Hash256?, TrieNode> persistedNodeRecorder,
         WriteFlags writeFlags = WriteFlags.None
     )
     {
@@ -847,7 +846,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             if (path.Length < parallelBoundaryPathLength)
             {
-                persistedNodeRecorder?.Invoke(path, address2, tn);
+                persistedNodeRecorder.Invoke(path, address2, tn);
                 PersistNode(address2, path, tn, topLevelWriteBatch, writeFlags);
             }
             else
@@ -911,7 +910,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     }
 
     private async Task PersistNodeStartingFrom(TrieNode tn, Hash256 address2, TreePath path,
-        Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder,
+        Action<TreePath, Hash256?, TrieNode> persistedNodeRecorder,
         WriteFlags writeFlags, Channel<INodeStorage.IWriteBatch> disposeQueue)
     {
         long persistedNodeCount = 0;
@@ -919,7 +918,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         async ValueTask DoPersist(TrieNode node, Hash256? address3, TreePath path2)
         {
-            persistedNodeRecorder?.Invoke(path2, address3, node);
+            persistedNodeRecorder.Invoke(path2, address3, node);
             PersistNode(address3, path2, node, writeBatch, writeFlags);
 
             persistedNodeCount++;
@@ -1019,7 +1018,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             BlockCommitSet blockCommitSet = candidateSets[index];
             if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
-            ParallelPersistBlockCommitSet(blockCommitSet);
+            ParallelPersistBlockCommitSet(blockCommitSet, _persistedNodeRecorderNoop);
         }
         writeBatch.Dispose();
         _nodeStorage.Flush(onlyWal: false);
@@ -1059,7 +1058,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                     }
 
                     commitSetCount++;
-                    ParallelPersistBlockCommitSet(commitSet);
+                    ParallelPersistBlockCommitSet(commitSet, _persistedNodeRecorderNoop);
                 }
             }
 
