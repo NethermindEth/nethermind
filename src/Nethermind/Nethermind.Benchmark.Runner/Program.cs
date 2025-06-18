@@ -31,6 +31,7 @@ using BenchmarkDotNet.Columns;
 using Nethermind.Precompiles.Benchmark;
 using System.Threading.Tasks;
 using System.Threading;
+using Perfolizer.Horology;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -135,7 +136,7 @@ namespace Nethermind.Benchmark.Runner
                                 .WithPlatform(Platform.X64)
                                 .WithJit(Jit.RyuJit)
                                 .WithRuntime(CoreRuntime.Core90)
-                                .WithMaxAbsoluteError(TimeInterval.FromNanoseconds(1))
+                                .WithMaxAbsoluteError(TimeInterval.FromMicroseconds(1))
                                 .WithMinInvokeCount(20)
                                 ));
         }

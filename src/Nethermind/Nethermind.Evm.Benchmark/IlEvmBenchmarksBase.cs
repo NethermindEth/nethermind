@@ -46,6 +46,7 @@ using Nethermind.State.Tracing;
 using Nethermind.Core.Eip2930;
 using Nethermind.Trie;
 using Nethermind.Evm.Test.ILEVM;
+using System.Diagnostics.CodeAnalysis;
 
 #nullable enable
 
@@ -206,10 +207,10 @@ namespace Nethermind.Evm.Benchmark
             InsertCode(bytecode, ContractAddress);
             BuildBlock();
 
-            IlAnalyzer.StartPrecompilerBackgroundThread(vmConfigOptimizing, NullLogger.Instance);
+            IlAnalyzer.StartPrecompilerBackgroundThread(vmConfigOptimizing ?? new VMConfig(), NullLogger.Instance);
 
             SeedAccounts();
-            snapshot = _stateProvider.TakeSnapshot();
+            snapshot = _stateProvider!.TakeSnapshot();
         }
 
         [IterationSetup]
@@ -220,8 +221,8 @@ namespace Nethermind.Evm.Benchmark
                 IterationStep();
             }
 
-            IlAnalyzer.StopPrecompilerBackgroundThread(vmConfigOptimizing);
-            _stateProvider.Restore(snapshot);
+            IlAnalyzer.StopPrecompilerBackgroundThread(vmConfigOptimizing!);
+            //_stateProvider!.Restore(snapshot);
         }
 
         [BenchmarkCategory("STD"), Benchmark(Baseline = true, OperationsPerInvoke = 8)]
@@ -238,7 +239,7 @@ namespace Nethermind.Evm.Benchmark
                 RunTxs();
             }
 
-            _stateProvider.Commit(_spec);
+            _stateProvider!.Commit(_spec);
         }
 
         [BenchmarkCategory("AOT"), Benchmark(OperationsPerInvoke = 8)]
@@ -277,23 +278,23 @@ namespace Nethermind.Evm.Benchmark
 
         protected Address ContractAddress => new Address(Keccak.Compute(bytecode));
 
-        private ICodeInfoRepository codeInfoRepository;
+        private ICodeInfoRepository? codeInfoRepository;
         protected IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
         private ITxTracer _txTracer = NullTxTracer.Instance;
         private ExecutionEnvironment _environment;
-        private VirtualMachine<VirtualMachine.NotTracing, IsPrecompiling> _virtualMachineOptimizing;
-        private VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing> _virtualMachineNotOptimizing;
+        private VirtualMachine<VirtualMachine.NotTracing, IsPrecompiling>? _virtualMachineOptimizing ;
+        private VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>? _virtualMachineNotOptimizing;
         private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
-        private EvmState _evmState;
+        private EvmState? _evmState;
         //  protected MockWorldState _stateProviderVMOptimizing;
         //  protected MockWorldState _stateProviderVMNotOptimizing;
         private ILogger _logger;
-        private byte[] targetCode;
-        protected VMConfig vmConfigOptimizing;
-        protected VMConfig vmConfigNotOptimizing;
-        private CodeInfo driverCodeInfo;
-        private CodeInfo targetCodeInfo;
+        private byte[]? targetCode;
+        protected VMConfig? vmConfigOptimizing;
+        protected VMConfig? vmConfigNotOptimizing;
+        private CodeInfo? driverCodeInfo;
+        private CodeInfo? targetCodeInfo;
 
         protected virtual StorageCell AddressABalanceCell => new(ContractAddress, AddressAStorage);
         protected UInt256 AddressABalanceCellValue => new(1000UL);
@@ -309,10 +310,10 @@ namespace Nethermind.Evm.Benchmark
         protected StorageCell AddressBBalanceCell => new(ContractAddress, AddressBStorage);
         protected virtual UInt256 AddressBBalanceCellValue => new(0UL);
 
-        private EthereumEcdsa _ethereumEcdsa;
+        private EthereumEcdsa? _ethereumEcdsa;
         // private VMConfig vmConfig;
 
-        private Block _targetBlock;
+        private Block? _targetBlock;
         public virtual Transaction[] TransactionSet { get; set; } = [];
 
         protected ForkActivation Activation => (BlockNumber, Timestamp);
@@ -322,7 +323,7 @@ namespace Nethermind.Evm.Benchmark
 
         protected Snapshot snapshot;
 
-        protected IWorldState _stateProvider;
+        protected IWorldState? _stateProvider;
 
         protected virtual UInt256 GetStorageValue => 1000;
         protected virtual UInt256 GetStorageOriginalValue => 0;
@@ -334,7 +335,7 @@ namespace Nethermind.Evm.Benchmark
 
         public void Reset()
         {
-            _evmState.Dispose();
+            _evmState!.Dispose();
         }
 
         public void SetMode(string mode)
@@ -381,7 +382,7 @@ namespace Nethermind.Evm.Benchmark
 
         protected VMConfig vmConfig
         {
-            get => Mode == "AOT" ? vmConfigOptimizing : vmConfigNotOptimizing;
+            get => Mode == "AOT" ? vmConfigOptimizing! : vmConfigNotOptimizing!;
             set
             {
                 if (Mode == "AOT")
@@ -393,24 +394,24 @@ namespace Nethermind.Evm.Benchmark
 
 
 
-        private void WaitForAnalysis()
-        {
-            // To ensure that the analysis is complete on both contracts, before running the benchmark.
-            if (Mode == "AOT")
-            {
-                while (targetCodeInfo.IlInfo.AnalysisPhase != AnalysisPhase.Completed ||
-                       driverCodeInfo.IlInfo.AnalysisPhase != AnalysisPhase.Completed)
-                {
-                    System.Threading.Thread.Sleep(100);
-                    if (targetCodeInfo.IlInfo.AnalysisPhase == AnalysisPhase.Failed ||
-                        driverCodeInfo.IlInfo.AnalysisPhase == AnalysisPhase.Failed)
-                    {
-                        throw new InvalidOperationException("IL analysis failed.");
-                    }
-                }
-            }
+      //  private void WaitForAnalysis()
+      //  {
+      //      // To ensure that the analysis is complete on both contracts, before running the benchmark.
+      //      if (Mode == "AOT")
+      //      {
+      //          while (targetCodeInfo!.IlInfo.AnalysisPhase != AnalysisPhase.Completed ||
+      //                 driverCodeInfo!.IlInfo.AnalysisPhase != AnalysisPhase.Completed)
+      //          {
+      //              System.Threading.Thread.Sleep(100);
+      //              if (targetCodeInfo!.IlInfo.AnalysisPhase == AnalysisPhase.Failed ||
+      //                  driverCodeInfo!.IlInfo.AnalysisPhase == AnalysisPhase.Failed)
+      //              {
+      //                  throw new InvalidOperationException("IL analysis failed.");
+      //              }
+      //          }
+      //      }
 
-        }
+      //  }
 
         public void SetCode(byte[] _targetCode, byte[]? _driverCode = null)
         {
@@ -427,10 +428,9 @@ namespace Nethermind.Evm.Benchmark
                 .Done;
             var hashcode = Keccak.Compute(driver);
             driverCodeInfo = new CodeInfo(driver, hashcode);
-            targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance, out _);
-            IlAnalyzer.Analyse(driverCodeInfo, vmConfigOptimizing.IlEvmEnabledMode, vmConfigOptimizing, NullLogger.Instance);
-            IlAnalyzer.Analyse(targetCodeInfo, vmConfigOptimizing.IlEvmEnabledMode, vmConfigOptimizing, NullLogger.Instance);
-            WaitForAnalysis();
+            targetCodeInfo = codeInfoRepository!.GetCachedCodeInfo(_stateProvider!, address, Prague.Instance, out _);
+            IlAnalyzer.Analyse(driverCodeInfo, vmConfigOptimizing!.IlEvmEnabledMode, vmConfigOptimizing!, NullLogger.Instance);
+            IlAnalyzer.Analyse(targetCodeInfo, vmConfigOptimizing!.IlEvmEnabledMode, vmConfigOptimizing!, NullLogger.Instance);
 
         }
 
@@ -454,30 +454,30 @@ namespace Nethermind.Evm.Benchmark
                 executingAccount: Address.Zero,
                 codeSource: Address.Zero,
                 caller: Address.Zero,
-                codeInfo: driverCodeInfo,
+                codeInfo: driverCodeInfo!,
                 value: 0,
                 transferValue: 0,
-                txExecutionContext: new TxExecutionContext(new BlockExecutionContext(_header, _spec), Address.Zero, 0, null, codeInfoRepository),
+                txExecutionContext: new TxExecutionContext(new BlockExecutionContext(_header, _spec), Address.Zero, 0, [] , codeInfoRepository!),
                 inputData: default
             );
 
-            _evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot(), _environment, new StackAccessTracker());
+            _evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, _stateProvider!.TakeSnapshot(), _environment, new StackAccessTracker());
         }
 
-        protected (Address, ValueHash256) InsertCode(byte[] bytecode, Address target = null)
+        protected (Address, ValueHash256) InsertCode(byte[] bytecode, Address? target = null)
         {
             var hashcode = Keccak.Compute(bytecode);
             var address = target ?? new Address(hashcode);
 
             var spec = Prague.Instance;
-            _stateProvider.CreateAccount(address, 1_000_000_000);
-            _stateProvider.InsertCode(address, bytecode, spec);
+            _stateProvider!.CreateAccount(address, 1_000_000_000);
+            _stateProvider!.InsertCode(address, bytecode, spec);
 
-            var codeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance, out _);
-            var codeInfo2 = codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance, out _);
+            var codeInfo = codeInfoRepository!.GetCachedCodeInfo(_stateProvider!, address, Prague.Instance, out _);
+            var codeInfo2 = codeInfoRepository!.GetCachedCodeInfo(_stateProvider!, address, Prague.Instance, out _);
 
             targetCodeInfo = codeInfo;
-            IlAnalyzer.Analyse(codeInfo, vmConfig.IlEvmEnabledMode, vmConfig, Logging.NullLogger.Instance);
+            IlAnalyzer.Analyse(codeInfo, vmConfig!.IlEvmEnabledMode, vmConfig!, Logging.NullLogger.Instance);
 
             return (address, hashcode);
 
@@ -487,7 +487,7 @@ namespace Nethermind.Evm.Benchmark
         public void RunTxs()
         {
 
-            var targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, ContractAddress, Prague.Instance, out _);
+            var targetCodeInfo = codeInfoRepository!.GetCachedCodeInfo(_stateProvider!, ContractAddress, Prague.Instance, out _);
 
             for (int i = 0; i < TransactionSet.Length; i++)
             {
@@ -496,21 +496,21 @@ namespace Nethermind.Evm.Benchmark
                 (
                     executingAccount: ContractAddress,
                     codeSource: ContractAddress,
-                    caller: tx.SenderAddress,
+                    caller: tx.SenderAddress!,
                     codeInfo: targetCodeInfo,
                     value: tx.Value,
                     transferValue: tx.Value,
-                    txExecutionContext: new TxExecutionContext(new BlockExecutionContext(_targetBlock.Header, _spec), tx.SenderAddress, 0, null, codeInfoRepository),
+                    txExecutionContext: new TxExecutionContext(new BlockExecutionContext(_targetBlock!.Header, _spec), tx.SenderAddress!, 0, [], codeInfoRepository!),
                     inputData: tx.Data ?? default
                 );
 
 
-                _evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot(), _environment, new StackAccessTracker());
+                _evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, _stateProvider!.TakeSnapshot(), _environment, new StackAccessTracker());
 
                 if (Mode == AOT)
-                    _virtualMachineOptimizing.Run<VirtualMachine.NotTracing>(_evmState, _stateProvider, _txTracer);
+                    _virtualMachineOptimizing!.Run<VirtualMachine.NotTracing>(_evmState, _stateProvider!, _txTracer);
                 else
-                    _virtualMachineNotOptimizing.Run<VirtualMachine.NotTracing>(_evmState, _stateProvider, _txTracer);
+                    _virtualMachineNotOptimizing!.Run<VirtualMachine.NotTracing>(_evmState, _stateProvider!, _txTracer);
             }
 
         }
@@ -519,18 +519,18 @@ namespace Nethermind.Evm.Benchmark
         {
             if (Mode == AOT)
             {
-                _virtualMachineOptimizing.Run<VirtualMachine.NotTracing>(_evmState, _stateProvider, _txTracer);
+                _virtualMachineOptimizing!.Run<VirtualMachine.NotTracing>(_evmState!, _stateProvider!, _txTracer);
             }
             else
-                _virtualMachineNotOptimizing.Run<VirtualMachine.NotTracing>(_evmState, _stateProvider, _txTracer);
+                _virtualMachineNotOptimizing!.Run<VirtualMachine.NotTracing>(_evmState!, _stateProvider!, _txTracer);
 
         }
 
 
         protected void BuildBlock()
         {
-            _stateProvider.Set(AddressABalanceCell, AddressABalanceCellValue.ToBigEndian().WithoutLeadingZeros().ToArray());
-            _stateProvider.Set(AddressBBalanceCell, AddressBBalanceCellValue.ToBigEndian().WithoutLeadingZeros().ToArray());
+            _stateProvider!.Set(AddressABalanceCell, AddressABalanceCellValue.ToBigEndian().WithoutLeadingZeros().ToArray());
+            _stateProvider!.Set(AddressBBalanceCell, AddressBBalanceCellValue.ToBigEndian().WithoutLeadingZeros().ToArray());
 
             //   Transaction[] pairTx = [
             //       BuildTransferTxFrom(AddressA, AddressB, 1000),
@@ -556,23 +556,23 @@ namespace Nethermind.Evm.Benchmark
 
         protected virtual void SeedAccounts()
         {
-            if (!_stateProvider.AccountExists(AddressA))
-                _stateProvider.CreateAccount(AddressA, 10000.Ether());
+            if (!_stateProvider!.AccountExists(AddressA))
+                _stateProvider!.CreateAccount(AddressA, 10000.Ether());
             else
-                _stateProvider.AddToBalance(AddressA, 10000.Ether(), _specProvider.GenesisSpec);
+                _stateProvider!.AddToBalance(AddressA, 10000.Ether(), _specProvider.GenesisSpec);
 
-            if (!_stateProvider.AccountExists(AddressB))
-                _stateProvider.CreateAccount(AddressB, 10000.Ether());
+            if (!_stateProvider!.AccountExists(AddressB))
+                _stateProvider!.CreateAccount(AddressB, 10000.Ether());
             else
-                _stateProvider.AddToBalance(AddressB, 10000.Ether(), _specProvider.GenesisSpec);
+                _stateProvider!.AddToBalance(AddressB, 10000.Ether(), _specProvider.GenesisSpec);
 
 
-            if (!_stateProvider.AccountExists(ContractAddress))
-                _stateProvider.CreateAccount(ContractAddress, 10000.Ether());
+            if (!_stateProvider!.AccountExists(ContractAddress))
+                _stateProvider!.CreateAccount(ContractAddress, 10000.Ether());
             else
-                _stateProvider.AddToBalance(ContractAddress, 10000.Ether(), _specProvider.GenesisSpec);
+                _stateProvider!.AddToBalance(ContractAddress, 10000.Ether(), _specProvider.GenesisSpec);
 
-            _stateProvider.Commit(_specProvider.GenesisSpec);
+            _stateProvider!.Commit(_specProvider.GenesisSpec);
         }
 
         protected Transaction BuildTransaction(byte[] data, UInt256 value, Address sender, PrivateKey senderKey, Address to)
@@ -586,11 +586,11 @@ namespace Nethermind.Evm.Benchmark
             Transaction transaction = Build.A.Transaction
                 .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
-                .WithNonce(_stateProvider.GetNonce(sender))
+                .WithNonce(_stateProvider!.GetNonce(sender))
                 .WithData(data)
                 .WithValue(0)
                 .To(to)
-                .SignedAndResolved(_ethereumEcdsa, senderKey)
+                .SignedAndResolved(_ethereumEcdsa!, senderKey)
                 .TestObject;
 
             return transaction;
