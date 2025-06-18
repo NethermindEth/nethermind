@@ -110,7 +110,7 @@ namespace Nethermind.JsonRpc.Benchmark
             TransactionProcessor transactionProcessor
                  = new(MainnetSpecProvider.Instance, stateProvider, _virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
-            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider);
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider);
             BlockProcessor blockProcessor = new(
                 specProvider,
                 Always.Valid,
@@ -130,7 +130,6 @@ namespace Nethermind.JsonRpc.Benchmark
                 blockProcessor,
                 new RecoverSignatures(
                     ecdsa,
-                    NullTxPool.Instance,
                     specProvider,
                     LimboLogs.Instance),
                 stateReader,

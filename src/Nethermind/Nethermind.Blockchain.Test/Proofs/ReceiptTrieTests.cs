@@ -25,7 +25,7 @@ public class ReceiptTrieTests
     public void Can_calculate_root_no_eip_658()
     {
         TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
-        Hash256 rootHash = ReceiptTrie<TxReceipt>.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((1, null)),
+        Hash256 rootHash = ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((1, null)),
             [receipt], _decoder);
         Assert.That(rootHash.ToString(),
             Is.EqualTo("0xe51a2d9f986d68628990c9d65e45c36128ec7bb697bd426b0bb4d18a3f3321be"));
@@ -35,7 +35,7 @@ public class ReceiptTrieTests
     public void Can_calculate_root()
     {
         TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
-        Hash256 rootHash = ReceiptTrie<TxReceipt>.CalculateRoot(
+        Hash256 rootHash = ReceiptTrie.CalculateRoot(
             MainnetSpecProvider.Instance.GetSpec((MainnetSpecProvider.MuirGlacierBlockNumber, null)),
             [receipt], _decoder);
         Assert.That(rootHash.ToString(),
@@ -47,8 +47,9 @@ public class ReceiptTrieTests
     {
         TxReceipt receipt1 = Build.A.Receipt.WithAllFieldsFilled.TestObject;
         TxReceipt receipt2 = Build.A.Receipt.WithAllFieldsFilled.TestObject;
-        ReceiptTrie<TxReceipt> trie = new(MainnetSpecProvider.Instance.GetSpec((ForkActivation)1),
-            [receipt1, receipt2], _decoder, true);
+        using var pool = new TrackingCappedArrayPool();
+        ReceiptTrie trie = new(MainnetSpecProvider.Instance.GetSpec((ForkActivation)1),
+            [receipt1, receipt2], _decoder, pool, true);
         byte[][] proof = trie.BuildProof(0);
         Assert.That(proof.Length, Is.EqualTo(2));
 
@@ -60,7 +61,7 @@ public class ReceiptTrieTests
     {
         TrieNode node = new(NodeType.Unknown, proof.Last());
         node.ResolveNode(Substitute.For<ITrieNodeResolver>(), TreePath.Empty);
-        TxReceipt receipt = _decoder.Decode(node.Value.AsRlpStream());
+        TxReceipt receipt = _decoder.Decode(node.Value.ToArray().AsRlpStream());
         Assert.That(receipt.Bloom, Is.Not.Null);
 
         for (int i = proof.Length; i > 0; i--)

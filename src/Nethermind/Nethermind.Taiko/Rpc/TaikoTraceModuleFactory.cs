@@ -28,8 +28,8 @@ class TaikoTraceModuleFactory(
         => new TaikoOverridableTxProcessingEnv(worldStateManager, _blockTree, _specProvider, _logManager);
 
     protected override IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
-        => new TaikoBlockValidationTransactionExecutor(scope.TransactionProcessor, scope.WorldState);
+        => new TaikoBlockValidationTransactionExecutor(new ExecuteTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState);
 
     protected override IBlockProcessor.IBlockTransactionsExecutor CreateRpcBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
-        => new TaikoRpcBlockTransactionExecutor(scope.TransactionProcessor, scope.WorldState);
+        => new TaikoBlockValidationTransactionExecutor(new TraceTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState);
 }

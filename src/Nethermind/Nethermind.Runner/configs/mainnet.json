@@ -10,8 +10,8 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 22555000,
-    "PivotHash": "0x5441205847440d6755d472935333f3cb7931609661f103c4a53d43c0c42b1b59",
+    "PivotNumber": 22705000,
+    "PivotHash": "0x2ddfac80ab155a798f8030386d3a7f41646ec6dbab6702f1a82b58a13214ef5b",
     "PivotTotalDifficulty": "58750003716598352816469",
     "FastSyncCatchUpHeightDelta": "10000000000"
   },
@@ -22,7 +22,7 @@
     "NodeName": "Mainnet"
   },
   "Blocks": {
-    "TargetBlockGasLimit": 60000000
+    "TargetBlockGasLimit": 45000000
   },
   "JsonRpc": {
     "Enabled": true,

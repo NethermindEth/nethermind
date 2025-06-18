@@ -161,5 +161,8 @@ public class ChainParameters
     /// Enables blob gas fee collection for Gnosis chain
     /// </summary>
     public ulong? Eip4844FeeCollectorTransitionTimestamp { get; set; }
+
+    public ulong? Eip7939TransitionTimestamp { get; set; }
+
     #endregion
 }

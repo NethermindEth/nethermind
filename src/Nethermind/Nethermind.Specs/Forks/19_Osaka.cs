@@ -15,9 +15,10 @@ public class Osaka : Prague
         Name = "Osaka";
         IsEip7594Enabled = true;
         IsEip7823Enabled = true;
+        IsEip7825Enabled = true;
         IsEip7883Enabled = true;
-        // IsEip7825Enabled = true;
         IsEip7918Enabled = true;
+        IsEip7939Enabled = true;
         Released = false;
     }
 

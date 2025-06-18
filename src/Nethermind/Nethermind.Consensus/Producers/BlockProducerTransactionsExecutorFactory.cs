@@ -23,6 +23,10 @@ namespace Nethermind.Consensus.Producers
         }
 
         public IBlockProcessor.IBlockTransactionsExecutor Create(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv) =>
-            new BlockProcessor.BlockProductionTransactionsExecutor(readOnlyTxProcessingEnv, _specProvider, _logManager, _maxTxLengthKilobytes);
+            new BlockProcessor.BlockProductionTransactionsExecutor(
+                new BuildUpTransactionProcessorAdapter(readOnlyTxProcessingEnv.TransactionProcessor),
+                readOnlyTxProcessingEnv.WorldState,
+                new BlockProcessor.BlockProductionTransactionPicker(_specProvider, _maxTxLengthKilobytes),
+                _logManager);
     }
 }
