@@ -43,8 +43,6 @@ namespace Nethermind.Trie
         public IScopedTrieStore TrieStore { get; }
         public ICappedArrayPool? _bufferPool;
 
-        private readonly bool _parallelBranches;
-
         private readonly bool _allowCommits;
 
         private int _isWriteInProgress;
@@ -75,36 +73,34 @@ namespace Nethermind.Trie
         }
 
         public PatriciaTree()
-            : this(NullTrieStore.Instance, EmptyTreeHash, false, true, NullLogManager.Instance)
+            : this(NullTrieStore.Instance, EmptyTreeHash, true, NullLogManager.Instance)
         {
         }
 
         public PatriciaTree(IKeyValueStoreWithBatching keyValueStore)
-            : this(keyValueStore, EmptyTreeHash, false, true, NullLogManager.Instance)
+            : this(keyValueStore, EmptyTreeHash, true, NullLogManager.Instance)
         {
         }
 
         public PatriciaTree(ITrieStore trieStore, ILogManager logManager, ICappedArrayPool? bufferPool = null)
-            : this(trieStore.GetTrieStore(null), EmptyTreeHash, false, true, logManager, bufferPool: bufferPool)
+            : this(trieStore.GetTrieStore(null), EmptyTreeHash, true, logManager, bufferPool: bufferPool)
         {
         }
 
         public PatriciaTree(IScopedTrieStore trieStore, ILogManager logManager, ICappedArrayPool? bufferPool = null)
-            : this(trieStore, EmptyTreeHash, false, true, logManager, bufferPool: bufferPool)
+            : this(trieStore, EmptyTreeHash, true, logManager, bufferPool: bufferPool)
         {
         }
 
         public PatriciaTree(
             IKeyValueStoreWithBatching keyValueStore,
             Hash256 rootHash,
-            bool parallelBranches,
             bool allowCommits,
             ILogManager logManager,
             ICappedArrayPool? bufferPool = null)
             : this(
                 new RawScopedTrieStore(new NodeStorage(keyValueStore), null),
                 rootHash,
-                parallelBranches,
                 allowCommits,
                 logManager,
                 bufferPool: bufferPool)
@@ -114,14 +110,12 @@ namespace Nethermind.Trie
         public PatriciaTree(
             IScopedTrieStore? trieStore,
             Hash256 rootHash,
-            bool parallelBranches,
             bool allowCommits,
             ILogManager? logManager,
             ICappedArrayPool? bufferPool = null)
         {
             _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
             TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
-            _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;
             RootHash = rootHash;
 
