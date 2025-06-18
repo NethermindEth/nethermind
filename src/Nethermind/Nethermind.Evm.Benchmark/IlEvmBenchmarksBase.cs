@@ -192,6 +192,7 @@ namespace Nethermind.Evm.Benchmark
         public void GlobalSetup()
         {
 
+            Initialize();
             if (TransactionSet.Length == 0)
             {
                 byte[] bytes = new byte[32];
@@ -218,6 +219,8 @@ namespace Nethermind.Evm.Benchmark
             {
                 IterationStep();
             }
+
+            IlAnalyzer.StopPrecompilerBackgroundThread(vmConfigOptimizing);
             _stateProvider.Restore(snapshot);
         }
 
@@ -324,6 +327,11 @@ namespace Nethermind.Evm.Benchmark
         protected virtual UInt256 GetStorageValue => 1000;
         protected virtual UInt256 GetStorageOriginalValue => 0;
 
+        public IlEvmBenchmarkBase()
+        {
+            Initialize();
+        }
+
         public void Reset()
         {
             _evmState.Dispose();
@@ -334,7 +342,7 @@ namespace Nethermind.Evm.Benchmark
             Mode = mode;
         }
 
-        public IlEvmBenchmarkBase()
+        public void Initialize()
         {
 
             vmConfigOptimizing = new VMConfig();
@@ -367,7 +375,9 @@ namespace Nethermind.Evm.Benchmark
             _virtualMachineNotOptimizing = new VirtualMachine<VirtualMachine.NotTracing, NotOptimizing>(_blockhashProvider, codeInfoRepository, MainnetSpecProvider.Instance, vmConfigNotOptimizing, _logger);
 
 
+
         }
+
 
         protected VMConfig vmConfig
         {
