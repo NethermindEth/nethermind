@@ -228,7 +228,15 @@ namespace Nethermind.Network.P2P
 
                 if (_logger.IsTrace) _logger.Trace($"P2P to deliver {message.Protocol}.{message.PacketType} on {this}");
 
-                message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
+                try
+                {
+                    message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
+                }
+                catch (InvalidOperationException exception)
+                {
+                    throw new InvalidOperationException($"Failed to resolve adaptive id. Protocols: {string.Join("; ", _protocols.Values.Select(p => p.Name))}.", exception);
+                }
+
                 int size = _packetSender.Enqueue(message);
 
                 MsgDelivered?.Invoke(this, new PeerEventArgs(_node, message.Protocol, message.PacketType, size));
@@ -659,7 +667,7 @@ namespace Nethermind.Network.P2P
                     offset += _alphabetically[j].SpaceSize;
                 }
 
-                throw new InvalidOperationException($"Registered protocols do not support {protocol}.{messageCode}");
+                throw new InvalidOperationException($"Registered protocols do not support {protocol}.{messageCode}. Protocols: {string.Join(", ", _alphabetically)}.");
             }
         }
 
