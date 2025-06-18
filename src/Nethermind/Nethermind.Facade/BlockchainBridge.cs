@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -104,6 +105,9 @@ namespace Nethermind.Facade
             [NotNullWhen(true)] out Block? block,
             [NotNullWhen(true)] out TxReceipt[]? receipts)
         {
+            transaction = null;
+            receipt = null;
+
             Hash256 blockHash;
             try
             {
@@ -136,30 +140,28 @@ namespace Nethermind.Facade
                         throw new NullReferenceException("_receiptFinder.Get", e);
                     }
 
-                    try
+                    Transaction[] blockTransactions = block.Transactions;
+                    bool found = false;
+                    int index;
+                    for (index = 0; index < blockTransactions.Length; index++)
                     {
-                        receipt = receipts.ForTransaction(txHash);
-                    }
-                    catch (NullReferenceException e)
-                    {
-                        throw new NullReferenceException("receipts.ForTransaction", e);
+                        if (blockTransactions[index].Hash == txHash)
+                        {
+                            transaction = blockTransactions[index];
+                            found = true;
+                            break;
+                        }
                     }
 
-                    try
+                    if (found && receipts?.Length > index && receipts[index].TxHash == txHash)
                     {
-                        transaction = block.Transactions[receipt.Index];
-                    }
-                    catch (NullReferenceException e)
-                    {
-                        throw new NullReferenceException("block.Transactions[receipt.Index]", e);
+                        receipt = receipts[index];
                     }
 
                     return true;
                 }
             }
 
-            transaction = null;
-            receipt = null;
             receipts = null;
             block = null;
             return false;
