@@ -140,11 +140,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (!_recoveryComplete)
         {
             Interlocked.Increment(ref _queueCount);
+            _lastProcessedBlock = DateTime.UtcNow;
             try
             {
                 if (blockRef.Resolve(_blockTree))
                 {
-                    _lastProcessedBlock = DateTime.UtcNow;
                     if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
                     if (_queueCount > 1)
                     {
@@ -231,6 +231,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private async Task RunRecoveryLoop()
     {
         if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Reader.Count} blocks waiting in the queue.");
+        _lastProcessedBlock = DateTime.UtcNow;
         await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(CancellationToken))
         {
             try
