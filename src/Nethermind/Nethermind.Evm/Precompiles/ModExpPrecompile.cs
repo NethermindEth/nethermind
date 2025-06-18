@@ -155,9 +155,9 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 
         Gmp.mpz_powm(powmResult, baseInt, expInt, modulusInt);
 
-        byte[] result = new byte[modulusLength];
         var powmResultLen = (int)(Gmp.mpz_sizeinbase(powmResult, 2) + 7) / 8;
         var offset = modulusLength - powmResultLen;
+        byte[] result = new byte[modulusLength];
 
         fixed (byte* ptr = result)
             Gmp.mpz_export((nint)(ptr + offset), out _, 1, 1, 1, 0, powmResult);
