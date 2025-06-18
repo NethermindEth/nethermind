@@ -87,9 +87,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         _deleteOldNodes = _pruningStrategy.DeleteObsoleteKeys;
         _pastKeyTrackingEnabled = pruningConfig.TrackPastKeys && nodeStorage.RequirePath;
-        {
-            _pastKeyTrackingEnabled = true;
-        }
     }
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);

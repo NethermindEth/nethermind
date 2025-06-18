@@ -1121,7 +1121,7 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             memDb.Count.Should().Be(1);
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 14080 : 17408);
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 12032 : 15360);
 
             fullTrieStore.PersistCache(default);
             memDb.Count.Should().Be(64);
