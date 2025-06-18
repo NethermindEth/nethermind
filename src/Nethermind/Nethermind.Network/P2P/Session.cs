@@ -594,7 +594,7 @@ namespace Nethermind.Network.P2P
                 value = _resolvers.AddOrUpdate(
                     key,
                     addValueFactory: (k) => new AdaptiveCodeResolver(_protocols),
-                    updateValueFactory: (k,v) => v);
+                    updateValueFactory: (k, v) => v);
             }
 
             return value;
