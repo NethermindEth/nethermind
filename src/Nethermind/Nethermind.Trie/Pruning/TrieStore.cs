@@ -449,7 +449,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    private TrieStoreState GatherState()
+    private TrieStoreState CaptureCurrentState()
     {
         return new TrieStoreState(PersistedMemoryUsedByDirtyCache, DirtyMemoryUsedByDirtyCache,
             LatestCommittedBlockNumber, LastPersistedBlockNumber);
