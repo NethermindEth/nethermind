@@ -91,7 +91,6 @@ namespace Nethermind.Evm.Benchmark
                 ? ILMode.DYNAMIC_AOT_MODE : ILMode.NO_ILVM;
 
             vmConfig.IlEvmAnalysisThreshold = 1;
-            vmConfig.IsIlEvmAggressiveModeEnabled = true;
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(Logging.NullLogger.Instance));
             IKeyValueStore codeDb = new MemDb();
             _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(Logging.NullLogger.Instance));

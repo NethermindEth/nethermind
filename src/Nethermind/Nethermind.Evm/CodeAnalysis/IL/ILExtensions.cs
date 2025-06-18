@@ -50,14 +50,14 @@ public static class ReleaseSpecEmit
         }
     }
 
-    public static void EmitAmortizedStaticEnvCheck<T>(this Emit<T> method, SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
+    public static void EmitAmortizedStaticEnvCheck<T>(this Emit<T> method, IEnvirementLoader envirementLoader, SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
     {
-        method.LoadVmState(locals, false);
+        envirementLoader.LoadVmState(method, locals, false);
         method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
         method.BranchIfTrue(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StaticCallViolation));
     }
 
-    public static void EmitAmortizedOpcodeCheck<T>(this Emit<T> method, SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
+    public static void EmitAmortizedOpcodeCheck<T>(this Emit<T> method, IEnvirementLoader envirementLoader,  SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
     {
         // can be made better to save more memory using vectorized (think BitVectors)
         Label alreadyCheckedLabel = method.DefineLabel(locals.GetLabelName());
@@ -75,7 +75,7 @@ public static class ReleaseSpecEmit
         {
             if (opcode.RequiresAvailabilityCheck())
             {
-                method.LoadSpec(locals, false);
+                envirementLoader.LoadSpec(method, locals, false);
                 method.LoadConstant((byte)opcode);
                 method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
                 method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
@@ -543,14 +543,39 @@ public static class UnsafeEmit
 
 }
 
+static class EmitIlChunkStateExtensions
+{
+    public static void EmitIsStoping<T>(this Emit<T> method, IEnvirementLoader loader, Locals<T> locals, Label goto_label)
+    {
+        loader.LoadResult(method, locals, true);
+        method.Call(GetPropertyInfo<ILChunkExecutionState>(nameof(ILChunkExecutionState.ShouldAbort), false, out _));
+        method.BranchIfTrue(goto_label);
+    }
+
+    public static void EmitIsHalting<T>(this Emit<T> method, IEnvirementLoader loader, Locals<T> locals, Label goto_label)
+    {
+        loader.LoadResult(method, locals, true);
+        method.Call(GetPropertyInfo<ILChunkExecutionState>(nameof(ILChunkExecutionState.ShouldHalt), false, out _));
+        method.BranchIfTrue(goto_label);
+    }
+
+    public static void EmitIsJumping<T>(this Emit<T> method, IEnvirementLoader loader, Locals<T> locals, Label goto_label)
+    {
+        loader.LoadResult(method, locals, true);
+        method.Call(GetPropertyInfo<ILChunkExecutionState>(nameof(ILChunkExecutionState.ShouldJump), false, out _));
+        method.BranchIfTrue(goto_label);
+    }
+
+}
+
 /// <summary>
 /// Extensions for <see cref="ILGenerator"/>.
 /// </summary>
 static class EmitExtensions
 {
-    public static void UpdateStackHeadAndPushRerSegmentMode<T>(Emit<T> method, Local stackHeadRef, Local stackHeadIdx, int pc, SubSegmentMetadata stackMetadata)
+    public static void UpdateStackHeadAndPushRerSegmentMode<T>(Emit<T> method, Local stackHeadRef, Local stackHeadIdx, SubSegmentMetadata stackMetadata)
     {
-        if (stackMetadata.LeftOutStack != 0 && pc == stackMetadata.End)
+        if (stackMetadata.LeftOutStack != 0)
         {
             method.StackSetHead(stackHeadRef, stackMetadata.LeftOutStack);
             method.LoadLocal(stackHeadIdx);
@@ -571,52 +596,6 @@ static class EmitExtensions
         method.StackSetHead(stackHeadRef, delta);
     }
 
-    public static void EmitCallToErrorTrace<T>(Emit<T> method, Local gasAvailable, KeyValuePair<EvmExceptionType, Label> kvp, Locals<T> locals)
-    {
-        Label skipTracing = method.DefineLabel(locals.GetLabelName());
-        method.LoadTxTracer(locals, false);
-        method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
-        method.BranchIfFalse(skipTracing);
-
-        method.LoadTxTracer(locals, false);
-        method.LoadLocal(gasAvailable);
-        method.LoadConstant((int)kvp.Key);
-        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.EndInstructionTraceError), BindingFlags.Static | BindingFlags.Public));
-
-        method.MarkLabel(skipTracing);
-    }
-    public static void EmitCallToEndInstructionTrace<T>(Emit<T> method, Local gasAvailable, Locals<T> locals)
-    {
-        Label skipTracing = method.DefineLabel(locals.GetLabelName());
-        method.LoadTxTracer(locals, false);
-        method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
-        method.BranchIfFalse(skipTracing);
-
-        method.LoadTxTracer(locals, false);
-        method.LoadLocal(gasAvailable);
-        method.LoadMemory(locals, true);
-        method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
-        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.EndInstructionTrace), BindingFlags.Static | BindingFlags.Public));
-
-        method.MarkLabel(skipTracing);
-    }
-    public static void EmitCallToStartInstructionTrace<T>(Emit<T> method, Local gasAvailable, Local head, int pc, Instruction op, Locals<T> locals)
-    {
-        Label skipTracing = method.DefineLabel(locals.GetLabelName());
-        method.LoadTxTracer(locals, false);
-        method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
-        method.BranchIfFalse(skipTracing);
-
-        method.LoadTxTracer(locals, false);
-        method.LoadConstant((int)op);
-        method.LoadVmState(locals, false);
-        method.LoadLocal(gasAvailable);
-        method.LoadConstant(pc);
-        method.LoadLocal(head);
-        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.StartInstructionTrace), BindingFlags.Static | BindingFlags.Public));
-
-        method.MarkLabel(skipTracing);
-    }
     public static MethodInfo ConvertionImplicit<TFrom, TTo>() => ConvertionImplicit(typeof(TFrom), typeof(TTo));
     public static MethodInfo ConvertionImplicit(Type tfrom, Type tto) => tfrom.GetMethod("op_Implicit", new[] { tto });
     public static MethodInfo ConvertionExplicit<TFrom, TTo>() => ConvertionExplicit(typeof(TFrom), typeof(TTo));

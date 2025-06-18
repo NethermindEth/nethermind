@@ -19,8 +19,10 @@ using Nethermind.Core;
 using CallData = System.ReadOnlyMemory<byte>;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
-internal static class EnvirementLoader
+internal class EnvirementLoaderEntryPoint : IEnvirementLoader
 {
+    public static readonly EnvirementLoaderEntryPoint Instance = new();
+
     public const int REF_MACHINECODE_INDEX = 0;
     public const int OBJ_SPEC = REF_MACHINECODE_INDEX + 1;
     public const int OBJ_SPECPROVIDER_INDEX = OBJ_SPEC + 1;
@@ -37,7 +39,7 @@ internal static class EnvirementLoader
     public const int OBJ_LOGGER_INDEX = OBJ_TXTRACER_INDEX + 1;
     public const int REF_CURRENT_STATE = OBJ_LOGGER_INDEX + 1;
 
-    public static void CacheBlockContext<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals)
+    public void CacheBlockContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
     {
         const string blockContext = nameof(BlockExecutionContext);
 
@@ -45,7 +47,7 @@ internal static class EnvirementLoader
         locals.TryDeclareLocal(blockContext, typeof(BlockExecutionContext));
         locals.TryStoreLocal(blockContext);
     }
-    public static void LoadBlockContext<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadBlockContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         const string blockContext = nameof(BlockExecutionContext);
 
@@ -64,7 +66,7 @@ internal static class EnvirementLoader
         }
     }
 
-    public static void LoadBlockhashProvider<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadBlockhashProvider<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         if (loadAddress)
             il.LoadArgumentAddress(OBJ_BLOCKHASHPROVIDER_INDEX);
@@ -72,7 +74,7 @@ internal static class EnvirementLoader
             il.LoadArgument(OBJ_BLOCKHASHPROVIDER_INDEX);
     }
 
-    public static void CacheCalldata<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals)
+    public void CacheCalldata<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
     {
         const string calldata = nameof(CallData);
 
@@ -81,7 +83,7 @@ internal static class EnvirementLoader
         locals.TryStoreLocal(calldata);
     }
 
-    public static void LoadCalldata<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadCalldata<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         const string calldata = nameof(CallData);
 
@@ -100,7 +102,7 @@ internal static class EnvirementLoader
         }
     }
 
-    public static void LoadChainId<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadChainId<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(OBJ_SPECPROVIDER_INDEX);
         il.CallVirtual(typeof(ISpecProvider).GetProperty(nameof(ISpecProvider.ChainId), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
@@ -112,7 +114,7 @@ internal static class EnvirementLoader
         }
     }
 
-    public static void LoadCodeInfoRepository<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadCodeInfoRepository<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         if (loadAddress)
             il.LoadArgumentAddress(OBJ_CODEINFOPROVIDER_INDEX);
@@ -120,14 +122,14 @@ internal static class EnvirementLoader
             il.LoadArgument(OBJ_CODEINFOPROVIDER_INDEX);
     }
 
-    public static void LoadCurrStackHead<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadCurrStackHead<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_STACKHEADREF_INDEX);
         if (!loadAddress)
             il.LoadObject<Word>();
     }
 
-    public static void CacheEnv<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals)
+    public void CacheEnv<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
     {
         const string env = nameof(ExecutionEnvironment);
 
@@ -136,7 +138,7 @@ internal static class EnvirementLoader
         locals.TryStoreLocal(env);
     }
 
-    public static void LoadEnv<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadEnv<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         const string env = nameof(ExecutionEnvironment);
 
@@ -153,14 +155,14 @@ internal static class EnvirementLoader
         }
     }
 
-    public static void LoadGasAvailable<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadGasAvailable<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_GASAVAILABLE_INDEX);
         if (!loadAddress)
             il.LoadObject<long>();
     }
 
-    public static void LoadLogger<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadLogger<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         if (loadAddress)
             il.LoadArgumentAddress(OBJ_LOGGER_INDEX);
@@ -168,7 +170,7 @@ internal static class EnvirementLoader
             il.LoadArgument(OBJ_LOGGER_INDEX);
     }
 
-    public static void LoadMachineCode<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadMachineCode<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         if (loadAddress)
         {
@@ -180,7 +182,7 @@ internal static class EnvirementLoader
         }
     }
 
-    public static void LoadMemory<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadMemory<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         LoadVmState(il, locals, false);
         il.Call(typeof(EvmState).GetProperty(nameof(EvmState.Memory), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
@@ -188,21 +190,21 @@ internal static class EnvirementLoader
             il.LoadObject<EvmPooledMemory>();
     }
 
-    public static void LoadProgramCounter<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadProgramCounter<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_PROGRAMCOUNTER_INDEX);
         if (!loadAddress)
             il.LoadObject<int>();
     }
 
-    public static void LoadResult<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadResult<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_CURRENT_STATE);
         if (!loadAddress)
             il.LoadObject<ILChunkExecutionState>();
     }
 
-    public static void LoadSpec<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadSpec<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         if(loadAddress)
         {
@@ -214,14 +216,14 @@ internal static class EnvirementLoader
         }
     }
 
-    public static void LoadStackHead<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadStackHead<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_STACKHEAD_INDEX);
         if (!loadAddress)
             il.LoadObject<int>();
     }
 
-    public static void CacheTxContext<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals)
+    public void CacheTxContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
     {
         const string txContext = nameof(TxExecutionContext);
 
@@ -230,7 +232,7 @@ internal static class EnvirementLoader
         locals.TryStoreLocal(txContext);
     }
 
-    public static void LoadTxContext<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadTxContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         const string txContext = nameof(TxExecutionContext);
 
@@ -249,7 +251,7 @@ internal static class EnvirementLoader
         }
     }
 
-    public static void LoadTxTracer<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadTxTracer<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         if (loadAddress)
             il.LoadArgumentAddress(OBJ_TXTRACER_INDEX);
@@ -257,7 +259,7 @@ internal static class EnvirementLoader
             il.LoadArgument(OBJ_TXTRACER_INDEX);
     }
 
-    public static void LoadVmState<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadVmState<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         if (loadAddress)
         {
@@ -269,7 +271,7 @@ internal static class EnvirementLoader
         }
     }
 
-    public static void LoadWorldState<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadWorldState<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         if (loadAddress)
             il.LoadArgumentAddress(OBJ_WORLDSTATE_INDEX);
@@ -277,7 +279,7 @@ internal static class EnvirementLoader
             il.LoadArgument(OBJ_WORLDSTATE_INDEX);
     }
 
-    public static void LoadReturnDataBuffer<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadReturnDataBuffer<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         if (loadAddress)
         {
@@ -289,9 +291,21 @@ internal static class EnvirementLoader
         }
     }
 
-    public static void LoadHeader<TDelegate>(this Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadHeader<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         LoadBlockContext(il, locals, true);
         il.Call(typeof(BlockExecutionContext).GetProperty(nameof(BlockExecutionContext.Header), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
+    }
+
+    public void LoadSpecProvider<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    {
+        if (loadAddress)
+        {
+            il.LoadArgumentAddress(OBJ_SPECPROVIDER_INDEX);
+        }
+        else
+        {
+            il.LoadArgument(OBJ_SPECPROVIDER_INDEX);
+        }
     }
 }
