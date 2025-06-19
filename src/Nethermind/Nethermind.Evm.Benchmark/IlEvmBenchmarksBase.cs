@@ -77,7 +77,7 @@ namespace Nethermind.Evm.Benchmark
 
         private static readonly byte[] TransferSelector = Bytes.FromHexString("0xa9059cbb");
 
-        private  Transaction BuildTransferTxFrom(Address sender, PrivateKey senderKey, Address receiver, Address contract, UInt256 value)
+        private Transaction BuildTransferTxFrom(Address sender, PrivateKey senderKey, Address receiver, Address contract, UInt256 value)
         {
             byte[] data = TransferSelector
                 .Concat(receiver.Bytes.PadLeft(32))
@@ -206,6 +206,7 @@ namespace Nethermind.Evm.Benchmark
             SetMode<TIsOptimizing>();
             InsertCode(bytecode, ContractAddress);
             BuildBlock();
+            IterationStepTxs();
             SeedAccounts();
         }
 
@@ -226,7 +227,7 @@ namespace Nethermind.Evm.Benchmark
         {
             if (Mode == AOT) IlAnalyzer.StopPrecompilerBackgroundThread(vmConfigOptimizing!);
             _evmState?.Dispose();
-       }
+        }
     }
 
 
@@ -330,6 +331,9 @@ namespace Nethermind.Evm.Benchmark
 
         protected virtual UInt256 GetStorageValue => 1000;
         protected virtual UInt256 GetStorageOriginalValue => 0;
+
+        private ExecutionEnvironment[]? _prebuiltEnvs;
+        private readonly StackAccessTracker _tracker = new();
 
         public IlEvmBenchmarkBase()
         {
@@ -468,34 +472,59 @@ namespace Nethermind.Evm.Benchmark
         }
 
 
-        public void RunTxs()
+
+        public void IterationStepTxs()
         {
+            var txs = _targetBlock!.Transactions;
+            var txCount = txs.Length;
+            _prebuiltEnvs = new ExecutionEnvironment[txCount];
+            var codeInfo = targetCodeInfo ??= codeInfoRepository!.GetCachedCodeInfo(_stateProvider!, ContractAddress, Prague.Instance, out _);
+            var blockCtx = new BlockExecutionContext(_targetBlock!.Header, _spec);
 
-            var targetCodeInfo = codeInfoRepository!.GetCachedCodeInfo(_stateProvider!, ContractAddress, Prague.Instance, out _);
-
-            for (int i = 0; i < TransactionSet.Length; i++)
+            for (int i = 0; i < txCount; i++)
             {
-                var tx = TransactionSet[i];
-                var env = new ExecutionEnvironment
-                (
+                ref readonly var tx = ref txs[i];
+
+                var ctx = new TxExecutionContext(
+                    blockCtx,
+                    tx.SenderAddress!,
+                    0,
+                    Array.Empty<byte[]>(),
+                    codeInfoRepository!
+                );
+
+                _prebuiltEnvs[i] = new ExecutionEnvironment(
                     executingAccount: ContractAddress,
                     codeSource: ContractAddress,
                     caller: tx.SenderAddress!,
-                    codeInfo: targetCodeInfo,
+                    codeInfo: codeInfo,
                     value: tx.Value,
                     transferValue: tx.Value,
-                    txExecutionContext: new TxExecutionContext(new BlockExecutionContext(_targetBlock!.Header, _spec), tx.SenderAddress!, 0, [], codeInfoRepository!),
+                    txExecutionContext: in ctx,
                     inputData: tx.Data ?? default
                 );
-
-
-                using (var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, _stateProvider!.TakeSnapshot(), env, new StackAccessTracker()))
-                {
-                        Run(evmState);
-                }
-
             }
+        }
 
+
+        public void RunTxs()
+        {
+            var txCount = _prebuiltEnvs!.Length;
+
+            for (int i = 0; i < txCount; i++)
+            {
+                ref readonly var env = ref _prebuiltEnvs[i];
+
+                using var state = EvmState.RentTopLevel(
+                    long.MaxValue,
+                    ExecutionType.TRANSACTION,
+                    _stateProvider!.TakeSnapshot(),
+                    env,
+                    _tracker
+                );
+
+                Run(state);
+            }
         }
 
         public void Run(EvmState? evmState = null)
@@ -518,7 +547,7 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider!.Set(AddressBBalanceCell, AddressBBalanceCellValue.ToBigEndian().WithoutLeadingZeros().ToArray());
 
             Transaction[] txList =
-                Enumerable.Repeat(TransactionSet, 100).SelectMany(x => x).ToArray();
+                Enumerable.Repeat(TransactionSet, 1000).SelectMany(x => x).ToArray();
 
             var senderRecipientAndMiner = SenderRecipientAndMiner.Default;
             _targetBlock = Build.A.Block.WithNumber(Activation.BlockNumber)
