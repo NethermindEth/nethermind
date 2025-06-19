@@ -97,6 +97,7 @@ namespace Nethermind.Merge.AuRa
 
                 .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
                 .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
+                .AddDecorator<ISealValidator, MergeSealValidator>()
                 ;
         }
     }
