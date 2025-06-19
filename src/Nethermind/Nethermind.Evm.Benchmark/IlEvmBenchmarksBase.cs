@@ -222,8 +222,13 @@ namespace Nethermind.Evm.Benchmark
         public void ExecuteCodeAot() => RunTxs();
 
         [IterationCleanup]
-        public void Cleanup() => IlAnalyzer.StopPrecompilerBackgroundThread(vmConfigOptimizing!);
+        public void Cleanup()
+        {
+            if (Mode == AOT) IlAnalyzer.StopPrecompilerBackgroundThread(vmConfigOptimizing!);
+            _evmState?.Dispose();
+       }
     }
+
 
 
     public abstract class IlEvmBenchmarkCode : IlEvmBenchmarkBase
@@ -267,8 +272,8 @@ namespace Nethermind.Evm.Benchmark
 
     public class IlEvmBenchmarkBase
     {
-        const string AOT = "AOT";
-        const string STD = "STD";
+        public const string AOT = "AOT";
+        public const string STD = "STD";
         public string Mode { get; set; } = "AOT";
 
 
@@ -484,25 +489,25 @@ namespace Nethermind.Evm.Benchmark
                 );
 
 
-                var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, _stateProvider!.TakeSnapshot(), env, new StackAccessTracker());
-
-                if (Mode == AOT)
-                    _virtualMachineOptimizing!.Run<VirtualMachine.NotTracing>(evmState, _stateProvider!, _txTracer);
-                else
-                    _virtualMachineNotOptimizing!.Run<VirtualMachine.NotTracing>(evmState, _stateProvider!, _txTracer);
+                using (var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, _evmState!.Snapshot, env, new StackAccessTracker()))
+                {
+                        Run(evmState);
+                }
 
             }
 
         }
 
-        public void Run()
+        public void Run(EvmState? evmState = null)
         {
+            var _state = evmState ?? _evmState;
+
             if (Mode == AOT)
             {
-                _virtualMachineOptimizing!.Run<VirtualMachine.NotTracing>(_evmState!, _stateProvider!, _txTracer);
+                _virtualMachineOptimizing!.Run<VirtualMachine.NotTracing>(_state!, _stateProvider!, _txTracer);
             }
             else
-                _virtualMachineNotOptimizing!.Run<VirtualMachine.NotTracing>(_evmState!, _stateProvider!, _txTracer);
+                _virtualMachineNotOptimizing!.Run<VirtualMachine.NotTracing>(_state!, _stateProvider!, _txTracer);
 
         }
 
