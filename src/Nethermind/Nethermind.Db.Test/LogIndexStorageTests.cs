@@ -28,6 +28,7 @@ namespace Nethermind.Db.Test
     [TestFixture(100, 200, Explicit = true)]
     // TODO: test for different block ranges intersection
     // TODO: run internal state verification for each test
+    // TODO: test for periodic/frequent reorgs
     public class LogIndexStorageTests(int batchCount, int blocksPerBatch)
     {
         private readonly TestData _testData = GenerateTestData(new Random(42), batchCount, blocksPerBatch);
@@ -322,14 +323,13 @@ namespace Nethermind.Db.Test
             (int min, int max) logsPerBlock = (0, 200);
             (int min, int max) logsPerTx = (0, 10);
 
-            var logs = Enumerable
+            LogEntry[] logs = Enumerable
                 .Repeat(0, random.Next(logsPerBlock.min, logsPerBlock.max + 1))
                 .Select(_ => Build.A.LogEntry
                     .WithAddress(random.NextValue(addresses))
-                    .WithTopics(Enumerable
-                        .Repeat(0, random.Next(4))
-                        .Select(_ => random.NextValue(topics))
-                        .ToArray()
+                    .WithTopics(topics.Length == 0
+                            ? []
+                            : Enumerable.Repeat(0, random.Next(4)).Select(_ => random.NextValue(topics)).ToArray()
                     ).TestObject
                 ).ToArray();
 

@@ -14,8 +14,15 @@ internal class MergeOperatorAdapter(IMergeOperator inner) : MergeOperator
     public string Name => inner.Name;
 
     // TODO: fix and return array ptr instead of copying to unmanaged memory?
-    private static unsafe IntPtr GetResultPtr(ArrayPoolList<byte> data, out IntPtr resultLength)
+    private static unsafe IntPtr GetResult(ArrayPoolList<byte>? data, out IntPtr resultLength, out IntPtr success)
     {
+        if (data is null)
+        {
+            success = Convert.ToInt32(false);
+            resultLength = IntPtr.Zero;
+            return IntPtr.Zero;
+        }
+
         using (data)
         {
             IntPtr resultPtr = Marshal.AllocHGlobal(data.Count);
@@ -23,6 +30,7 @@ internal class MergeOperatorAdapter(IMergeOperator inner) : MergeOperator
             data.AsSpan().CopyTo(result);
 
             resultLength = data.Count;
+            success = Convert.ToInt32(true);
             return resultPtr;
         }
     }
@@ -39,11 +47,8 @@ internal class MergeOperatorAdapter(IMergeOperator inner) : MergeOperator
         var key = new Span<byte>((void*)keyPtr, (int)keyLength);
         var enumerator = new RocksDbMergeEnumerator(new((void*)operandsList, numOperands), new((void*)operandsListLength, numOperands));
 
-        ArrayPoolList<byte> result = inner.PartialMerge(key, enumerator, out var success);
-        var resultPtr = GetResultPtr(result, out resultLength);
-        successPtr = Convert.ToInt32(success);
-
-        return resultPtr;
+        ArrayPoolList<byte>? result = inner.PartialMerge(key, enumerator);
+        return GetResult(result, out resultLength, out successPtr);
     }
 
     unsafe IntPtr MergeOperator.FullMerge(
@@ -62,11 +67,8 @@ internal class MergeOperatorAdapter(IMergeOperator inner) : MergeOperator
         Span<byte> existingValue = hasExistingValue ? new((void*)existingValuePtr, (int)existingValueLength) : Span<byte>.Empty;
         var enumerator = new RocksDbMergeEnumerator(existingValue, hasExistingValue, new((void*)operandsList, numOperands), new((void*)operandsListLength, numOperands));
 
-        ArrayPoolList<byte> result = inner.FullMerge(key, enumerator, out var success);
-        var resultPtr = GetResultPtr(result, out resultLength);
-        successPtr = Convert.ToInt32(success);
-
-        return resultPtr;
+        ArrayPoolList<byte>? result = inner.FullMerge(key, enumerator);
+        return GetResult(result, out resultLength, out successPtr);
     }
 
     void MergeOperator.DeleteValue(IntPtr value, UIntPtr valueLength) => Marshal.FreeHGlobal(value);

@@ -36,8 +36,6 @@ namespace Nethermind.Db
         private const int BlockNumSize = sizeof(int);
         public const int MaxUncompressedLength = 128 * BlockNumSize;
 
-        private const byte ReorgOperator = (byte)'-';
-
         // Special RocksDB key postfix - any ordered prefix seeking will start on it.
         private static readonly byte[] BackwardMergeKey = Enumerable.Repeat((byte)0, BackwardMergeKeyLength).ToArray();
         private const int BackwardMergeKeyLength = BlockNumSize - 1;
@@ -361,9 +359,7 @@ namespace Nethermind.Db
             IWriteBatch addressBatch = _addressDb.StartWriteBatch();
             IWriteBatch topicBatch = _topicsDb.StartWriteBatch();
 
-            Span<byte> dbValue = valueArray.AsSpan(0, BlockNumSize + 1);
-            dbValue[0] = ReorgOperator;
-            WriteValBlockNum(dbValue[1..], block.BlockNumber);
+            Span<byte> dbValue = MergeOps.Reorg(block.BlockNumber, valueArray);
 
             try
             {
@@ -668,12 +664,12 @@ namespace Nethermind.Db
                 var dbValue = db.Get(dbKey) ?? throw ValidationException("Empty value in the post-merge compression queue.");
                 stats.GettingValue.Include(Stopwatch.GetElapsedTime(timestamp));
 
-                var blockNum = ReadValBlockNum(dbValue);
-                var isBackwardSync = UseBackwardSyncFor(dbKey);
+                var firstBlock = ReadValBlockNum(dbValue);
+                var truncateBlock = UseBackwardSyncFor(dbKey) ? ReadValLastBlockNum(dbValue) : firstBlock;
 
                 var dbKeyComp = new byte[prefixLength + BlockNumSize];
                 dbKey.AsSpan(..prefixLength).CopyTo(dbKeyComp);
-                SetKeyBlockNum(dbKeyComp, blockNum);
+                SetKeyBlockNum(dbKeyComp, firstBlock);
 
                 // Put compressed value at a new key and clear uncompressed one
                 // TODO: reading and clearing the value is not atomic, find a fix
@@ -683,7 +679,7 @@ namespace Nethermind.Db
 
                 timestamp = Stopwatch.GetTimestamp();
                 db.PutSpan(dbKeyComp, dbValue);
-                db.PutSpan(dbKey, []);
+                db.Merge(dbKey, MergeOps.Truncate(truncateBlock));
                 stats.PuttingValues.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 if (db == _addressDb) Interlocked.Increment(ref stats.CompressedAddressKeys);
