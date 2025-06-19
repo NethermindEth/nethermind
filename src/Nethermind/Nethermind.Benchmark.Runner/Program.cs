@@ -129,15 +129,13 @@ namespace Nethermind.Benchmark.Runner
 
 
             var summary = BenchmarkRunner.Run([
-                            typeof(Nethermind.Evm.Benchmark.FibBenchmark),
-                            typeof(Nethermind.Evm.Benchmark.PrimeBenchmark),
-                            typeof(Nethermind.Evm.Benchmark.WethBenchmark)
-                        ], new DashboardConfig(Job.ShortRun
+                            typeof(Nethermind.Evm.Benchmark.Fib),
+                            typeof(Nethermind.Evm.Benchmark.Prime),
+                            typeof(Nethermind.Evm.Benchmark.Weth)
+                        ], new DashboardConfig(Job.VeryLongRun
                                 .WithPlatform(Platform.X64)
                                 .WithJit(Jit.RyuJit)
                                 .WithRuntime(CoreRuntime.Core90)
-                                .WithMaxAbsoluteError(TimeInterval.FromMicroseconds(1))
-                                .WithMinInvokeCount(20)
                                 ));
         }
 

@@ -58,14 +58,6 @@ public class MockWorldState : IWorldState
 
     Hash256 IReadOnlyStateProvider.StateRoot => throw new NotImplementedException();
 
-    //     public new Hash256 StateRoot
-    //     {
-    //         get => _stateProvider.StateRoot;
-    //         set
-    //         {
-    //             _stateProvider.StateRoot = value;
-    //         }
-    //     }
 
     public MockWorldState(UInt256 GetValue, UInt256 GetOriginalValue, WorldState inner)
     {
@@ -80,7 +72,7 @@ public class MockWorldState : IWorldState
     {
 
         var index = storageCell.Index;
-        Console.WriteLine($"Get original called for storage cell with index l0 {index.u0}, l1 {index.u1}, l2 {index.u2}, l3 {index.u3}");
+        ////Console.WriteLine($"Get original called for storage cell with index l0 {index.u0}, l1 {index.u1}, l2 {index.u2}, l3 {index.u3}");
         // print value bytes
         return _bytesOriginal;
 
@@ -88,7 +80,7 @@ public class MockWorldState : IWorldState
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
         var index = storageCell.Index;
-        Console.WriteLine($"Get called for storage cell with index l0 {index.u0}, l1 {index.u1}, l2 {index.u2}, l3 {index.u3}");
+        //Console.WriteLine($"Get called for storage cell with index l0 {index.u0}, l1 {index.u1}, l2 {index.u2}, l3 {index.u3}");
         return _bytes.AsSpan();
 
     }
@@ -97,9 +89,9 @@ public class MockWorldState : IWorldState
 
         var index = storageCell.Index;
         //print value
-        Console.WriteLine($"");
-        Console.WriteLine($"!!!!!!set called for storage cell to set: {BitConverter.ToString(newValue)}  at index l0 {index.u0}, l1 {index.u1}, l2 {index.u2}, l3 {index.u3}");
-        Console.WriteLine($"!!!!!bytes: {BitConverter.ToString(newValue)}, UInt256: {new UInt256(newValue)}");
+        //Console.WriteLine($"");
+        //Console.WriteLine($"!!!!!!set called for storage cell to set: {BitConverter.ToString(newValue)}  at index l0 {index.u0}, l1 {index.u1}, l2 {index.u2}, l3 {index.u3}");
+        //Console.WriteLine($"!!!!!bytes: {BitConverter.ToString(newValue)}, UInt256: {new UInt256(newValue)}");
         //_persistentStorageProvider.Set(storageCell, newValue);
     }
 

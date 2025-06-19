@@ -53,7 +53,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Evm.Benchmark
 {
 
-    public class WethBenchmark : IlEvmBenchmark
+    public class Weth: IlEvmBenchmark
     {
 
         public override byte[] bytecode => Bytes.FromHexString(
@@ -61,6 +61,10 @@ namespace Nethermind.Evm.Benchmark
         public override UInt256 AddressAStorage => new(9055108917293287279, 16116806354556711235, 16080230447512486757, 16153194885772539840);
         public override UInt256 AddressBStorage => new(6336954612432966780, 13641044163492443802,
             12866168085374088197, 1518696171257252784);
+
+        // hack to see if times improve
+        [Params(1UL, 1UL, 1UL, 1UL )]
+        public override ulong Value { get; set; } = 10UL;
 
         public override Transaction[] TransactionSet => [
             BuildTransferTxFrom(AddressA,AddressAKey, AddressA, 1000),
@@ -82,7 +86,7 @@ namespace Nethermind.Evm.Benchmark
 
     }
 
-    public class FibBenchmark : IlEvmBenchmark
+    public class Fib: IlEvmBenchmark
     {
         protected override byte[] GenerateBytecode(byte[] argBytes) => FibBytecode(argBytes);
 
@@ -130,7 +134,7 @@ namespace Nethermind.Evm.Benchmark
 
     }
 
-    public class PrimeBenchmark : IlEvmBenchmark
+    public class Prime: IlEvmBenchmark
     {
         protected override byte[] GenerateBytecode(byte[] argBytes) => isPrimeBytecode(argBytes);
 
@@ -138,6 +142,50 @@ namespace Nethermind.Evm.Benchmark
         public override ulong Value { get; set; } = 10UL;
 
         static byte[] isPrimeBytecode(byte[] argBytes) => Prepare.EvmCode
+                        .JUMPDEST()
+                        .PUSHx([0])
+                        .POP()
+                        .PUSHx(argBytes)
+                        .COMMENT("Store variable(n) in Memory")
+                        .MSTORE(0)
+                        .COMMENT("Store Indexer(i) in Memory")
+                        .PushData(2)
+                        .MSTORE(32)
+                        .COMMENT("We mark this place as a GOTO section")
+                        .JUMPDEST()
+                        .COMMENT("We check if i * i < n")
+                        .MLOAD(32)
+                        .DUPx(1)
+                        .MUL()
+                        .MLOAD(0)
+                        .LT()
+                        .PushData(4 + 47 + argBytes.Length)
+                        .JUMPI()
+                        .COMMENT("We check if n % i == 0")
+                        .MLOAD(32)
+                        .MLOAD(0)
+                        .MOD()
+                        .ISZERO()
+                        .DUPx(1)
+                        .COMMENT("if 0 we jump to the end")
+                        .PushData(4 + 51 + argBytes.Length)
+                        .JUMPI()
+                        .POP()
+                        .COMMENT("increment Indexer(i)")
+                        .MLOAD(32)
+                        .ADD(1)
+                        .MSTORE(32)
+                        .COMMENT("Loop back to top of conditional loop")
+                        .PushData(4 + 9 + argBytes.Length)
+                        .JUMP()
+                        .COMMENT("return 0")
+                        .JUMPDEST()
+                        .PushData(0)
+                        .STOP()
+                        .JUMPDEST()
+                        .Done;
+
+        static byte[] isPrimeBytecode2(byte[] argBytes) => Prepare.EvmCode
                         .JUMPDEST()
                         .PUSHx([0])
                         .POP()
@@ -279,12 +327,12 @@ namespace Nethermind.Evm.Benchmark
         protected Address ContractAddress => new Address(Keccak.Compute(bytecode));
 
         private ICodeInfoRepository? codeInfoRepository;
-        protected IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
+        protected IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.PragueActivation);
         private ITxTracer _txTracer = NullTxTracer.Instance;
         private ExecutionEnvironment _environment;
         private VirtualMachine<VirtualMachine.NotTracing, IsPrecompiling>? _virtualMachineOptimizing ;
         private VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>? _virtualMachineNotOptimizing;
-        private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
+        private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.ParisBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
         private EvmState? _evmState;
         //  protected MockWorldState _stateProviderVMOptimizing;
@@ -317,8 +365,8 @@ namespace Nethermind.Evm.Benchmark
         public virtual Transaction[] TransactionSet { get; set; } = [];
 
         protected ForkActivation Activation => (BlockNumber, Timestamp);
-        protected long BlockNumber { get; } = MainnetSpecProvider.ByzantiumBlockNumber;
-        protected ulong Timestamp => 0UL;
+        protected long BlockNumber { get; } = MainnetSpecProvider.ParisBlockNumber;
+        protected ulong Timestamp => MainnetSpecProvider.PragueBlockTimestamp;
         protected long gasLimit => 10_000_000L;
 
         protected Snapshot snapshot;
@@ -358,8 +406,8 @@ namespace Nethermind.Evm.Benchmark
             TrieStore trieStore2 = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
             IKeyValueStore codeDb = new MemDb();
             IKeyValueStore codeDb2 = new MemDb();
-            //_stateProvider= new MockWorldState(GetStorageValue,GetStorageOriginalValue,new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance)));
-            _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
+            _stateProvider= new MockWorldState(GetStorageValue,GetStorageOriginalValue,new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance)));
+           // _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
 
