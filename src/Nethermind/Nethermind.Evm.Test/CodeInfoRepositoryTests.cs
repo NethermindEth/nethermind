@@ -64,8 +64,7 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(NotDelegationCodeCases))]
     public void TryGetDelegation_CodeIsNotDelegation_ReturnsFalse(byte[] code)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
@@ -93,8 +92,7 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void TryGetDelegation_CodeTryGetDelegation_ReturnsTrue(byte[] code)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
@@ -106,8 +104,7 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void TryGetDelegation_CodeTryGetDelegation_CorrectDelegationAddressIsSet(byte[] code)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
@@ -122,8 +119,7 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void GetExecutableCodeHash_CodeTryGetDelegation_ReturnsHashOfDelegated(byte[] code)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
@@ -140,8 +136,7 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(NotDelegationCodeCases))]
     public void GetExecutableCodeHash_CodeIsNotDelegation_ReturnsCodeHashOfAddress(byte[] code)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
@@ -154,8 +149,7 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(DelegationCodeCases))]
     public void GetCachedCodeInfo_CodeTryGetDelegation_ReturnsCodeOfDelegation(byte[] code)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
@@ -172,8 +166,7 @@ public class CodeInfoRepositoryTests
     [TestCaseSource(nameof(NotDelegationCodeCases))]
     public void GetCachedCodeInfo_CodeIsNotDelegation_ReturnsCodeOfAddress(byte[] code)
     {
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());

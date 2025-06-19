@@ -82,7 +82,7 @@ namespace Nethermind.Consensus.Processing
                         includedTx.Add(currentTx);
                         if (blockToProduce is not null)
                         {
-                            blockToProduce.TxByteLength += currentTx.GetLength();
+                            blockToProduce.TxByteLength += currentTx.GetLength(false);
                         }
                     }
                 }

@@ -124,7 +124,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true);
 
-    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false, bool commitRoots = true);
+    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);
 
     void CommitTree(long blockNumber);
     ArrayPoolList<AddressAsKey>? GetAccountChanges();

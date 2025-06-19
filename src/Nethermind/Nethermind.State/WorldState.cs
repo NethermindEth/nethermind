@@ -227,6 +227,7 @@ namespace Nethermind.State
             _transientStorageProvider.Commit(commitRoots);
             _stateProvider.Commit(releaseSpec, commitRoots, isGenesis);
         }
+
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
             _persistentStorageProvider.Commit(tracer, commitRoots);
