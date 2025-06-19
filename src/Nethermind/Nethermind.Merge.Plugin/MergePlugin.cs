@@ -377,8 +377,8 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 }
 
 /// <summary>
-/// Code for Ethereum. As in Mainnet. Block processing code should be here as other chain have a tendency to not use the
-/// same. DO NOT USE IN PLUGIN.
+/// Code for Ethereum. As in Mainnet. Block processing code should be here as other chain have a tendency to replace
+/// them completely.
 /// </summary>
 public class MergePluginModule : Module
 {
@@ -398,7 +398,7 @@ public class MergePluginModule : Module
 
 /// <summary>
 /// Common post merge code, also uses by some plugins. These are components generally needed for sync and engine api.
-/// Note: Used by Optimism, Taiko, AuraMerge.
+/// Note: Used by <see cref="OptimismModule"/>, <see cref="TaikoModule"/>, <see cref="AuRaMergeModule"/>
 /// </summary>
 public class BaseMergePluginModule : Module
 {
