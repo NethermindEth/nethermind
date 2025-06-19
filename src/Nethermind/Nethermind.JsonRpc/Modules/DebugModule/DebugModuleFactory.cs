@@ -31,10 +31,8 @@ public class DebugModuleFactory(IOverridableEnvFactory envFactory, ILifetimeScop
         IOverridableEnv env = envFactory.Create();
 
         ILifetimeScope tracerLifecyccle = rootLifetimeScope.BeginLifetimeScope((builder) =>
-        {
             ConfigureTracerContainer(builder)
-                .AddModule(env);
-        });
+                .AddModule(env));
 
         // Pass only `IGethStyleTracer` into the debug rpc lifetime.
         // This is to prevent leaking processor or world state accidentally.
