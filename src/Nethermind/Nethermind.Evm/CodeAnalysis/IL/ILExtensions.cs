@@ -102,15 +102,17 @@ public static class StackEmit
         il.Add();
     }
 
-    public static void StackSetHead<T>(this Emit<T> il, Local stackHeadRef, int offset)
+    public static void StackSetHead<T>(this Emit<T> il, EnvirementLoader envLoader, Locals<T> locals, int offset)
     {
         if (offset == 0) return;
 
-        il.LoadLocal(stackHeadRef);
+        envLoader.LoadArguments(il, locals, true);
+        il.Duplicate();
+        il.LoadField(EnvirementLoader.REF_STACKHEADREF_INDEX);
         il.LoadConstant(offset * Word.Size);
         il.Convert<nint>();
         il.Call(UnsafeEmit.GetAddBytesOffsetRef<Word>());
-        il.StoreLocal(stackHeadRef);
+        il.StoreField(EnvirementLoader.REF_STACKHEADREF_INDEX);
     }
 
     public static void LoadItemFromSpan<T, U>(this Emit<T> il, Local idx, bool isReadOnly, Local? local = null)
@@ -573,27 +575,18 @@ static class EmitIlChunkStateExtensions
 /// </summary>
 static class EmitExtensions
 {
-    public static void UpdateStackHeadAndPushRerSegmentMode<T>(Emit<T> method, Local stackHeadRef, Local stackHeadIdx, SubSegmentMetadata stackMetadata)
+    public static void UpdateStackHeadAndPushRerSegmentMode<T>(Emit<T> method, EnvirementLoader envLoader, Locals<T> locals, SubSegmentMetadata stackMetadata)
     {
         if (stackMetadata.LeftOutStack != 0)
         {
-            method.StackSetHead(stackHeadRef, stackMetadata.LeftOutStack);
-            method.LoadLocal(stackHeadIdx);
+            method.StackSetHead(envLoader, locals, stackMetadata.LeftOutStack);
+            envLoader.LoadStackHead(method, locals, true);
+            method.Duplicate();
+            method.LoadIndirect<int>();
             method.LoadConstant(stackMetadata.LeftOutStack);
             method.Add();
-            method.StoreLocal(stackHeadIdx);
+            method.StoreIndirect<int>();
         }
-    }
-
-    public static void UpdateStackHeadIdxAndPushRefOpcodeMode<T>(Emit<T> method, Local stackHeadRef, Local stackHeadIdx, OpcodeMetadata opMetadata)
-    {
-        var delta = opMetadata.StackBehaviorPush - opMetadata.StackBehaviorPop;
-        method.LoadLocal(stackHeadIdx);
-        method.LoadConstant(delta);
-        method.Add();
-        method.StoreLocal(stackHeadIdx);
-
-        method.StackSetHead(stackHeadRef, delta);
     }
 
     public static MethodInfo ConvertionImplicit<TFrom, TTo>() => ConvertionImplicit(typeof(TFrom), typeof(TTo));

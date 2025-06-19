@@ -19,6 +19,7 @@ using Nethermind.Evm.CodeAnalysis.IL.Delegates;
 using Nethermind.Core.Crypto;
 using Org.BouncyCastle.Ocsp;
 using Sigil.NonGeneric;
+using System.Reflection.PortableExecutable;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
@@ -189,9 +190,6 @@ public static class Precompiler
         method.LoadConstant((int)ContractState.Running);
         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
 
-        envLoader.LoadStackHead(method, locals, false);
-        method.StoreLocal(locals.stackHeadIdx);
-
         envLoader.LoadCurrStackHead(method, locals, true);
         method.StoreLocal(locals.stackHeadRef);
 
@@ -199,20 +197,16 @@ public static class Precompiler
         envLoader.LoadGasAvailable(method, locals, false);
         method.StoreLocal(locals.gasAvailable);
 
-        // set pc to local
-        envLoader.LoadProgramCounter(method, locals, false);
-        method.StoreLocal(locals.programCounter);
-
         if (currentSubsegment.RequiredStack != 0)
         {
-            method.LoadLocal(locals.stackHeadIdx);
+            envLoader.LoadStackHead(method, locals, false);
             method.LoadConstant(currentSubsegment.RequiredStack);
             method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StackUnderflow));
         }
         // we check if locals.stackHeadRef overflow can occur
         if (currentSubsegment.MaxStack != 0)
         {
-            method.LoadLocal(locals.stackHeadIdx);
+            envLoader.LoadStackHead(method, locals, false);
             method.LoadConstant(currentSubsegment.MaxStack);
             method.Add();
             method.LoadConstant(EvmStack.MaxStackSize);
@@ -225,7 +219,6 @@ public static class Precompiler
         for (pc = currentSubsegment.Start; pc <= currentSubsegment.End;)
         {
             (Instruction Instruction, OpcodeMetadata Metadata) opcodeInfo = ((Instruction)machineCodeAsSpan[pc], OpcodeMetadata.GetMetadata((Instruction)machineCodeAsSpan[pc]));
-
             if (contractMetadata.StaticGasSubSegmentes.TryGetValue(pc, out var gasCost) && gasCost > 0)
             {
                 method.EmitStaticGasCheck(locals.gasAvailable, gasCost, evmExceptionLabels);
@@ -236,12 +229,7 @@ public static class Precompiler
 
         method.MarkLabel(ret);
 
-        UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, currentSubsegment);
-
-        // we get locals.stackHeadRef size
-        envLoader.LoadStackHead(method, locals, true);
-        method.LoadLocal(locals.stackHeadIdx);
-        method.StoreIndirect<int>();
+        UpdateStackHeadAndPushRerSegmentMode(method, envLoader, locals, currentSubsegment);
 
         // set gas available
         envLoader.LoadGasAvailable(method, locals, true);
@@ -254,8 +242,6 @@ public static class Precompiler
         method.StoreIndirect<int>();
 
         method.MarkLabel(exit);
-
-        method.LoadLocal(locals.stackHeadRef);
         method.Return();
 
         foreach (KeyValuePair<EvmExceptionType, Label> kvp in evmExceptionLabels)
@@ -341,15 +327,11 @@ public static class Precompiler
             }
             // and we emit failure for failing jumpless segment at start
             envLoader.LoadArguments(method, locals, true);
-            method.Duplicate();
-
             envLoader.LoadTxTracer(method, locals, false);
             envLoader.LoadLogger(method, locals, false);
-
             envLoader.LoadResult(method, locals, true);
 
             method.Call(internalMethod);
-            method.StoreField(EnvirementLoader.REF_STACKHEADREF_INDEX);
 
             method.EmitIsStoping(envLoader, locals, ret);
 
