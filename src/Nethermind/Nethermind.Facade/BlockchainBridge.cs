@@ -434,9 +434,7 @@ namespace Nethermind.Facade
             IStateReader StateReader,
             ITransactionProcessor TransactionProcessor,
             IWorldState WorldState
-        )
-        {
-        }
+        );
     }
 
     public interface IBlockchainBridgeFactory
@@ -458,8 +456,12 @@ namespace Nethermind.Facade
                 .Add<BlockchainBridge.BlockProcessingComponents>());
 
             // Split it out to isolate the world state and processing components
+            IOverridableEnv<BlockchainBridge.BlockProcessingComponents> blockProcessingEnv = overridableScopeLifetime
+                .Resolve<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>();
+
             ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
-                .AddScoped<BlockchainBridge>().AddScoped(overridableScopeLifetime.Resolve<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>()));
+                .AddScoped<BlockchainBridge>()
+                .AddScoped(blockProcessingEnv));
 
             blockchainBridgeLifetime.Disposer.AddInstanceForAsyncDisposal(overridableScopeLifetime);
             rootLifetimeScope.Disposer.AddInstanceForDisposal(blockchainBridgeLifetime);

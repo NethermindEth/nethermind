@@ -15,21 +15,18 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 
 public class TraceModuleFactory(IOverridableEnvFactory overridableEnvFactory, ILifetimeScope rootLifetimeScope) : ModuleFactoryBase<ITraceRpcModule>
 {
-    protected virtual ContainerBuilder ConfigureCommonBlockProcessing<T>(ContainerBuilder builder) where T : ITransactionProcessorAdapter
-    {
-        return builder
+    protected virtual ContainerBuilder ConfigureCommonBlockProcessing<T>(ContainerBuilder builder) where T : ITransactionProcessorAdapter =>
+        builder
 
-                // More or less standard except for configurable `ITransactionProcessorAdapter`.
-                // Note: Not overriding `IReceiptStorage` to null.
-                .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
-                .AddScoped<ITransactionProcessorAdapter, T>() // T can be trace or execute
-                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-                .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
-                .AddScoped<IBlockValidator>(Always.Valid) // Why?
+            // More or less standard except for configurable `ITransactionProcessorAdapter`.
+            // Note: Not overriding `IReceiptStorage` to null.
+            .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
+            .AddScoped<ITransactionProcessorAdapter, T>() // T can be trace or execute
+            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+            .AddScoped<IBlockValidator>(Always.Valid) // Why?
 
-                .AddDecorator<IRewardCalculator, MergeRpcRewardCalculator>() // TODO: Check, what if this is pre merge?
-            ;
-    }
+            .AddDecorator<IRewardCalculator, MergeRpcRewardCalculator>(); // TODO: Check, what if this is pre merge?
 
     public override ITraceRpcModule Create()
     {
@@ -44,24 +41,19 @@ public class TraceModuleFactory(IOverridableEnvFactory overridableEnvFactory, IL
             ConfigureCommonBlockProcessing<ExecuteTransactionProcessorAdapter>(builder)
                 .AddModule(env));
 
-        ILifetimeScope tracerLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-        {
-            builder
-                .AddModule(env)
-                .AddScoped<ITracer, IWorldState>((worldState) => new Tracer(
-                    worldState,
-                    rpcProcessingScope.Resolve<IBlockchainProcessor>(),
-                    validationProcessingScope.Resolve<IBlockchainProcessor>(),
-                    traceOptions: ProcessingOptions.TraceTransactions))
-                ;
-        });
+        ILifetimeScope tracerLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
+            .AddModule(env)
+            .AddScoped<ITracer, IWorldState>((worldState) => new Tracer(
+                worldState,
+                rpcProcessingScope.Resolve<IBlockchainProcessor>(),
+                validationProcessingScope.Resolve<IBlockchainProcessor>(),
+                traceOptions: ProcessingOptions.TraceTransactions)));
 
-        // Note: Only `ITracerEnv` is exposed. This is because the tracer must be run in a well defined block processing scope
-        // otherwise, it risk memory leak.
-        ILifetimeScope rpcLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-        {
-            builder.AddScoped<IOverridableEnv<ITracer>>(tracerLifetimeScope.Resolve<IOverridableEnv<ITracer>>());
-        });
+        // Split out only the env to prevent accidental leak
+        IOverridableEnv<ITracer> tracerEnv = tracerLifetimeScope.Resolve<IOverridableEnv<ITracer>>();
+
+        ILifetimeScope rpcLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
+            .AddScoped(tracerEnv));
 
         tracerLifetimeScope.Disposer.AddInstanceForAsyncDisposal(rpcProcessingScope);
         tracerLifetimeScope.Disposer.AddInstanceForAsyncDisposal(validationProcessingScope);
