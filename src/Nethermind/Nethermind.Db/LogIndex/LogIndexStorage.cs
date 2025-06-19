@@ -21,6 +21,7 @@ using Nethermind.Logging;
 namespace Nethermind.Db
 {
     // TODO: get rid of InvalidOperationExceptions - these are for state validation
+    // TODO: verify all MemoryMarshal usages - needs to be CPU-cross-compatible
     [SuppressMessage("ReSharper", "PrivateFieldCanBeConvertedToLocalVariable")] // TODO: get rid of unused fields
     public sealed partial class LogIndexStorage : ILogIndexStorage
     {
@@ -665,18 +666,17 @@ namespace Nethermind.Db
                 stats.GettingValue.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 var firstBlock = ReadValBlockNum(dbValue);
-                var truncateBlock = UseBackwardSyncFor(dbKey) ? ReadValLastBlockNum(dbValue) : firstBlock;
+                var truncateBlock = UseBackwardSyncFor(dbKey) ? firstBlock : ReadValLastBlockNum(dbValue);
 
                 var dbKeyComp = new byte[prefixLength + BlockNumSize];
                 dbKey.AsSpan(..prefixLength).CopyTo(dbKeyComp);
                 SetKeyBlockNum(dbKeyComp, firstBlock);
 
-                // Put compressed value at a new key and clear uncompressed one
-                // TODO: reading and clearing the value is not atomic, find a fix
                 timestamp = Stopwatch.GetTimestamp();
                 dbValue = CompressDbValue(dbValue);
                 stats.CompressingValue.Include(Stopwatch.GetElapsedTime(timestamp));
 
+                // Put compressed value at a new key and clear the uncompressed one
                 timestamp = Stopwatch.GetTimestamp();
                 db.PutSpan(dbKeyComp, dbValue);
                 db.Merge(dbKey, MergeOps.Truncate(truncateBlock));

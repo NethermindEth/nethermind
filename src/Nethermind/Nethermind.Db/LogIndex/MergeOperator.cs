@@ -28,29 +28,16 @@ public partial class LogIndexStorage
             return Interlocked.Exchange(ref _stats, new());
         }
 
-        private static void ReverseInt32(Span<byte> data) => MemoryMarshal.Cast<byte, int>(data).Reverse();
+        // It's safe to use MemoryMarshal regardless of endianness here
+        private static void ReverseBlocks(Span<byte> data) => MemoryMarshal.Cast<byte, int>(data).Reverse();
 
-        private static ArrayPoolList<byte> MergeOperand(ArrayPoolList<byte> result, Span<byte> value, ref int lastBlockNum)
+        private static ArrayPoolList<byte> MergeOperand(ArrayPoolList<byte> result, Span<byte> value, bool isBackwardSync)
         {
             if (MergeOps.IsReorg(value, out int reorgBlock))
                 return ReorgFrom(result, reorgBlock);
 
             if (MergeOps.IsTruncate(value, out int truncateBlock))
-                return TruncateTo(result, truncateBlock);
-
-            // Reverse if needed (if data is coming from backward sync)
-            if (ReadValBlockNum(value) > ReadValLastBlockNum(value))
-                ReverseInt32(value);
-
-            var firstNewBlock = ReadValBlockNum(value);
-
-            // Validate we are merging non-intersecting segments - to prevent data corruption
-            if (!IsNextBlockNewer(next: result.Count > 1 ? result[^1] : -1, last: lastBlockNum, false))
-            {
-                // setting success=false instead of throwing during background merge may simply hide the error
-                // TODO: check if this can be handled better, for example via paranoid_checks=true
-                throw ValidationException($"Invalid order during merge: {lastBlockNum} -> {firstNewBlock}.");
-            }
+                return TruncateTo(result, truncateBlock, isBackwardSync);
 
             result.AddRange(value);
             return result;
@@ -67,7 +54,7 @@ public partial class LogIndexStorage
             return data;
         }
 
-        private static ArrayPoolList<byte> TruncateTo(ArrayPoolList<byte> data, int block)
+        private static ArrayPoolList<byte> TruncateTo(ArrayPoolList<byte> data, int block, bool isBackwardSync)
         {
             ReadOnlySpan<byte> dataSpan = data.AsSpan();
             var index = BinarySearchForBlock(dataSpan, block);
@@ -112,36 +99,45 @@ public partial class LogIndexStorage
         // TODO: avoid array copying in case of a single value?
         private ArrayPoolList<byte>? Merge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator, bool isPartial)
         {
-            var lastBlockNum = -1;
             var timestamp = Stopwatch.GetTimestamp();
 
             try
             {
                 var isBackwardSync = UseBackwardSyncFor(key);
 
-                // Calculate total length
+                // Calculate total length and do some validations
                 var resultLength = 0;
+                var prevBlock = -1;
                 for (var i = 0; i < enumerator.Count; i++)
                 {
-                    ReadOnlySpan<byte> value = enumerator.Get(i);
+                    ReadOnlySpan<byte> operand = enumerator.Get(i);
 
-                    if (!MergeOps.IsOp(value))
-                        resultLength += value.Length;
-                    else if (isPartial)
-                        return null; // Partially merging custom ops is not supported
+                    if (MergeOps.IsOp(operand))
+                    {
+                        if (isPartial) return null; // Partially merging custom ops is not supported
+                        continue;
+                    }
+
+                    var nextBlock = ReadValBlockNum(operand);
+                    if (!IsNextBlockNewer(nextBlock, prevBlock, isBackwardSync))
+                    {
+                        throw ValidationException($"Invalid order during merge: {prevBlock} -> {nextBlock}.");
+                    }
+
+                    resultLength += operand.Length;
+                    prevBlock = ReadValLastBlockNum(operand);
                 }
 
                 // Merge all operands
                 var result = new ArrayPoolList<byte>(resultLength);
-                if (!isBackwardSync)
+                for (var i = 0; i < enumerator.Count; i++)
+                    result = MergeOperand(result, enumerator.Get(i), isBackwardSync);
+
+                // Revert if backward sync
+                if (isBackwardSync)
                 {
-                    for (var i = 0; i < enumerator.Count; i++)
-                        result = MergeOperand(result, enumerator.Get(i), ref lastBlockNum);
-                }
-                else
-                {
-                    for (var i = enumerator.Count - 1; i >= 0; i--)
-                        result = MergeOperand(result, enumerator.Get(i), ref lastBlockNum);
+                    var revertIndex = enumerator.HasExistingValue ? enumerator.Get(0).Length : 0;
+                    ReverseBlocks(result.AsSpan()[revertIndex..]);
                 }
 
                 if (result.Count > MaxUncompressedLength)
