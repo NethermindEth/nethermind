@@ -34,6 +34,7 @@ using Nethermind.Evm.Tracing.Debugger;
 
 namespace Nethermind.Evm;
 using Int256;
+using Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle;
 using Nethermind.Evm.Config;
 using Sigil;
 using System.Diagnostics;
@@ -755,21 +756,25 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 var codeAsSpan = env.CodeInfo.MachineCode.Span;
                 ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
 
+                ILChunkExecutionArguments chunkArguments = new(
+                    ref MemoryMarshal.GetReference(codeAsSpan),
+                    spec, _specProvider,
+                    _blockhashProvider,
+                    vmState.Env.TxExecutionContext.CodeInfoRepository,
+                    vmState,
+                    _state,
+                    _returnDataBuffer,
+                    ref gasAvailable,
+                    ref programCounter,
+                    ref stack.Head,
+                    ref Add(ref As<byte, Word>(ref MemoryMarshal.GetReference(stack.Bytes)), stack.Head)
+                );
+
                 if (env.CodeInfo.IlInfo.PrecompiledContract(
-                        in MemoryMarshal.GetReference(codeAsSpan),
-                        spec, _specProvider,
-                        _blockhashProvider,
-                        vmState.Env.TxExecutionContext.CodeInfoRepository,
-                        vmState,
-                        _state,
-                        _returnDataBuffer,
-                        ref gasAvailable,
-                        ref programCounter,
-                        ref stack.Head,
-                        ref Add(ref As<byte, Word>(ref MemoryMarshal.GetReference(stack.Bytes)), stack.Head),
-                        _txTracer,
-                        _logger,
-                        ref chunkExecutionState)
+                    ref chunkArguments,
+                    _txTracer,
+                    _logger,
+                    ref chunkExecutionState)
                    )
                 {
                     UpdateCurrentState(vmState, ++programCounter, gasAvailable, stack.Head - 1);
