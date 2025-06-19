@@ -649,6 +649,7 @@ namespace Nethermind.Db
         }
 
         // used for data validation, TODO: introduce custom exception type
+        // TODO: include key value when available
         private static Exception ValidationException(string message) => new InvalidOperationException(message);
 
         // TODO: optimize allocations

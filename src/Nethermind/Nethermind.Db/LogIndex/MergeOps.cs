@@ -21,6 +21,11 @@ public partial class LogIndexStorage
         /// </summary>
         private const byte TruncateOp = (byte)'|';
 
+        public static bool IsReorg(ReadOnlySpan<byte> operand)
+        {
+            return operand.Length == BlockNumSize + 1 && operand[0] == ReorgOp;
+        }
+
         public static bool IsReorg(ReadOnlySpan<byte> operand, out int fromBlock)
         {
             if (operand.Length == BlockNumSize + 1 && operand[0] == ReorgOp)
@@ -31,6 +36,11 @@ public partial class LogIndexStorage
 
             fromBlock = 0;
             return false;
+        }
+
+        public static bool IsTruncate(ReadOnlySpan<byte> operand)
+        {
+            return operand.Length == BlockNumSize + 1 && operand[0] == TruncateOp;
         }
 
         public static bool IsTruncate(ReadOnlySpan<byte> operand, out int fromBlock)
