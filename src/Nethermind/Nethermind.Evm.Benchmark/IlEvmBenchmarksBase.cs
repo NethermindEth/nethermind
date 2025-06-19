@@ -489,7 +489,7 @@ namespace Nethermind.Evm.Benchmark
                 );
 
 
-                using (var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, _evmState!.Snapshot, env, new StackAccessTracker()))
+                using (var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, _stateProvider!.TakeSnapshot(), env, new StackAccessTracker()))
                 {
                         Run(evmState);
                 }
