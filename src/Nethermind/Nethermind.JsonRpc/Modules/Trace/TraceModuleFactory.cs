@@ -1,20 +1,19 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Evm;
+using Nethermind.Evm.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
-public class TraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : ModuleFactoryBase<ITraceRpcModule>
+public class TraceModuleFactory(IOverridableEnvFactory overridableEnvFactory, ILifetimeScope rootLifetimeScope) : ModuleFactoryBase<ITraceRpcModule>
 {
     protected virtual ContainerBuilder ConfigureCommonBlockProcessing<T>(ContainerBuilder builder) where T : ITransactionProcessorAdapter
     {
@@ -34,36 +33,26 @@ public class TraceModuleFactory(IWorldStateManager worldStateManager, Func<ICode
 
     public override ITraceRpcModule Create()
     {
-        IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
-        IOverridableCodeInfoRepository codeInfoRepository = new OverridableCodeInfoRepository(codeInfoRepositoryFunc());
+        IOverridableEnv env = overridableEnvFactory.Create();
 
         // Note: The processing block has no concern with override's and scoping. As far as its concern, a standard
         // world state and code info repository is used.
         ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             ConfigureCommonBlockProcessing<TraceTransactionProcessorAdapter>(builder)
-                .AddScoped<ICodeInfoRepository>(codeInfoRepository)
-                .AddScoped<IWorldState>(overridableScope.WorldState));
+                .AddModule(env));
         ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             ConfigureCommonBlockProcessing<ExecuteTransactionProcessorAdapter>(builder)
-                .AddScoped<ICodeInfoRepository>(codeInfoRepository)
-                .AddScoped<IWorldState>(overridableScope.WorldState));
+                .AddModule(env));
 
         ILifetimeScope tracerLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
             builder
-                .AddScoped<IOverridableWorldScope>(overridableScope)
-                .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository)
-
-                .AddScoped<IWorldState>(overridableScope.WorldState)
-                .AddScoped<ICodeInfoRepository>(codeInfoRepository)
-
-                .AddScoped<IOverridableTxProcessorSource, OverridableTxProcessingEnv>()
-                .AddScoped<ITracerEnv, IOverridableTxProcessorSource>((scope) => new TracerEnv(new Tracer(
-                        overridableScope.WorldState,
-                        rpcProcessingScope.Resolve<IBlockchainProcessor>(),
-                        validationProcessingScope.Resolve<IBlockchainProcessor>(),
-                        traceOptions: ProcessingOptions.TraceTransactions),
-                    scope))
+                .AddModule(env)
+                .AddScoped<ITracer, IWorldState>((worldState) => new Tracer(
+                    worldState,
+                    rpcProcessingScope.Resolve<IBlockchainProcessor>(),
+                    validationProcessingScope.Resolve<IBlockchainProcessor>(),
+                    traceOptions: ProcessingOptions.TraceTransactions))
                 ;
         });
 
@@ -71,7 +60,7 @@ public class TraceModuleFactory(IWorldStateManager worldStateManager, Func<ICode
         // otherwise, it risk memory leak.
         ILifetimeScope rpcLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
-            builder.AddScoped<ITracerEnv>(tracerLifetimeScope.Resolve<ITracerEnv>());
+            builder.AddScoped<IOverridableEnv<ITracer>>(tracerLifetimeScope.Resolve<IOverridableEnv<ITracer>>());
         });
 
         tracerLifetimeScope.Disposer.AddInstanceForAsyncDisposal(rpcProcessingScope);

@@ -1,18 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
-using Nethermind.Evm;
+using Nethermind.Evm.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
-public class DebugModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : IRpcModuleFactory<IDebugRpcModule>
+public class DebugModuleFactory(IOverridableEnvFactory envFactory, ILifetimeScope rootLifetimeScope) : IRpcModuleFactory<IDebugRpcModule>
 {
     protected virtual ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder)
     {
@@ -30,18 +28,12 @@ public class DebugModuleFactory(IWorldStateManager worldStateManager, Func<ICode
 
     public IDebugRpcModule Create()
     {
-        IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
-        IOverridableCodeInfoRepository codeInfoRepository = new OverridableCodeInfoRepository(codeInfoRepositoryFunc());
+        IOverridableEnv env = envFactory.Create();
 
         ILifetimeScope tracerLifecyccle = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
             ConfigureTracerContainer(builder)
-                .AddSingleton<IWorldState>(overridableScope.WorldState)
-                .AddSingleton<ICodeInfoRepository>(codeInfoRepository)
-
-                .AddScoped<IOverridableTxProcessorSource, OverridableTxProcessingEnv>() // GethStyleTracer still need this
-                .AddScoped<IOverridableWorldScope>(overridableScope)
-                .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository);
+                .AddModule(env);
         });
 
         // Pass only `IGethStyleTracer` into the debug rpc lifetime.
