@@ -59,6 +59,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<IC
             overridableScope.WorldState.Reset();
             codeInfoRepository.ResetOverrides();
             overridableScope.ResetOverrides();
+            overridableScope.WorldState.StateRoot = Keccak.EmptyTreeHash;
         }
 
         protected override void Load(ContainerBuilder builder) =>
