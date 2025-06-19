@@ -62,8 +62,6 @@ namespace Nethermind.Evm.Benchmark
         public override UInt256 AddressBStorage => new(6336954612432966780, 13641044163492443802,
             12866168085374088197, 1518696171257252784);
 
-        // hack to see if times improve
-        [Params(1UL, 1UL, 1UL, 1UL )]
         public override ulong Value { get; set; } = 10UL;
 
         public override Transaction[] TransactionSet => [
