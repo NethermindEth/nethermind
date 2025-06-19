@@ -547,7 +547,7 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider!.Set(AddressBBalanceCell, AddressBBalanceCellValue.ToBigEndian().WithoutLeadingZeros().ToArray());
 
             Transaction[] txList =
-                Enumerable.Repeat(TransactionSet, 1000).SelectMany(x => x).ToArray();
+                Enumerable.Repeat(TransactionSet, 100).SelectMany(x => x).ToArray();
 
             var senderRecipientAndMiner = SenderRecipientAndMiner.Default;
             _targetBlock = Build.A.Block.WithNumber(Activation.BlockNumber)
