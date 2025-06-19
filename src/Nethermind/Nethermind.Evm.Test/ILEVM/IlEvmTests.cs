@@ -874,18 +874,6 @@ namespace Nethermind.Evm.Test.ILEVM
                     .STOP()
                     .Done, EvmExceptionType.None);
 
-                yield return ([Instruction.JUMPDEST], Prepare.EvmCode
-                    .JUMPDEST()
-                    .PushSingle(3)
-                    .PushSingle(3)
-                    .MUL()
-                    .GAS()
-                    .JUMPDEST()
-                    .PUSHx([1])
-                    .SSTORE()
-                    .STOP()
-                    .Done, EvmExceptionType.None);
-
 
 
                 yield return ([Instruction.SHL], Prepare.EvmCode

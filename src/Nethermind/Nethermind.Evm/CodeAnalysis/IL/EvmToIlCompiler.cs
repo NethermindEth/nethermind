@@ -16,6 +16,7 @@ using static Nethermind.Evm.CodeAnalysis.IL.EmitIlChunkStateExtensions;
 using Label = Sigil.Label;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Evm.CodeAnalysis.IL.Delegates;
+using Nethermind.Evm.CodeAnalysis.IL.EnvirementLoader;
 using Nethermind.Core.Crypto;
 using Org.BouncyCastle.Ocsp;
 using Sigil.NonGeneric;
@@ -178,7 +179,7 @@ public static class Precompiler
 
         SubSegmentMetadata currentSubsegment = contractMetadata.SubSegments[pc];
         using var locals = new Locals<ILEmittedInternalMethod>(method);
-        var envLoader = EnvirementLoader.Instance;
+        var envLoader = EnvirementLoaderInternalMethod.Instance;
 
         Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
 
@@ -280,7 +281,7 @@ public static class Precompiler
         var machineCodeAsSpan = codeInfo.MachineCode.Span;
 
         using var locals = new Locals<ILEmittedEntryPoint>(method);
-        var envLoader = EnvirementLoader.Instance;
+        var envLoader = EnvirementLoaderEntryPoint.Instance;
 
         Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
         Dictionary<int, Label> jumpDestinations = new();
@@ -292,6 +293,20 @@ public static class Precompiler
         Label jumpTable = method.DefineLabel(locals.GetLabelName()); // jump table
         Label isContinuation = method.DefineLabel(locals.GetLabelName()); // jump table
         Label ret = method.DefineLabel(locals.GetLabelName());
+
+        envLoader.LoadStackHead(method, locals, false);
+        method.StoreLocal(locals.stackHeadIdx);
+
+        envLoader.LoadCurrStackHead(method, locals, true);
+        method.StoreLocal(locals.stackHeadRef);
+
+        // set gas to local
+        envLoader.LoadGasAvailable(method, locals, false);
+        method.StoreLocal(locals.gasAvailable);
+
+        // set pc to local
+        envLoader.LoadProgramCounter(method, locals, false);
+        method.StoreLocal(locals.programCounter);
 
         envLoader.LoadResult(method, locals, false);
         method.LoadField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ContractState)));
@@ -340,8 +355,25 @@ public static class Precompiler
                 method.EmitAmortizedOpcodeCheck(envLoader, currentSubsegment, locals, evmExceptionLabels);
             }
             // and we emit failure for failing jumpless segment at start
-            envLoader.LoadArguments(method, locals, true);
-            method.Duplicate();
+
+            envLoader.LoadMachineCode(method, locals, true);
+            envLoader.LoadSpec(method, locals, false);
+            envLoader.LoadSpecProvider(method, locals, false);
+            envLoader.LoadBlockhashProvider(method, locals, false);
+            envLoader.LoadCodeInfoRepository(method, locals, false);
+            envLoader.LoadWorldState(method, locals, false);
+
+            envLoader.LoadVmState(method, locals, false);
+            envLoader.LoadEnv(method, locals, true);
+            envLoader.LoadTxContext(method, locals, true);
+            envLoader.LoadBlockContext(method, locals, true);
+
+            envLoader.LoadReturnDataBuffer(method, locals, false);
+
+            envLoader.LoadGasAvailable(method, locals, true);
+            envLoader.LoadProgramCounter(method, locals, true);
+            envLoader.LoadStackHead(method, locals, true);
+            method.LoadLocal(locals.stackHeadRef);
 
             envLoader.LoadTxTracer(method, locals, false);
             envLoader.LoadLogger(method, locals, false);
@@ -349,7 +381,7 @@ public static class Precompiler
             envLoader.LoadResult(method, locals, true);
 
             method.Call(internalMethod);
-            method.StoreField(EnvirementLoader.REF_STACKHEADREF_INDEX);
+            method.StoreLocal(locals.stackHeadRef);
 
             method.EmitIsStoping(envLoader, locals, ret);
 
@@ -363,7 +395,7 @@ public static class Precompiler
                 method.EmitIsJumping(envLoader, locals, jumpTable);
             }
         }
-        
+
         envLoader.LoadResult(method, locals, true);
         method.LoadConstant((int)ContractState.Finished);
         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
@@ -379,7 +411,7 @@ public static class Precompiler
         // isContinuation
         method.MarkLabel(isContinuation);
 
-        envLoader.LoadProgramCounter(method, locals, false);
+        method.LoadLocal(locals.programCounter);
         method.StoreLocal(locals.jmpDestination);
         envLoader.LoadResult(method, locals, true);
         method.LoadConstant((int)ContractState.Running);
