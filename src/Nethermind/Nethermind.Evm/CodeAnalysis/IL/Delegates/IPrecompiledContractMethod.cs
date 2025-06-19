@@ -10,7 +10,7 @@ using System;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
-public delegate void ILEmittedInternalMethod(
+public delegate ref Word ILEmittedInternalMethod(
     ref ILChunkExecutionArguments iLChunkExecutionArguments,
     ITxTracer tracer,
     ILogger logger,

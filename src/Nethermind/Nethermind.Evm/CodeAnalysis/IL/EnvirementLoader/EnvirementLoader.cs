@@ -33,7 +33,7 @@ public class EnvirementLoader : IEnvirementLoader
     public static readonly FieldInfo REF_STACKHEADREF_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.StackHeadRef), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo REF_TX_CONTEXT_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.TxExecutionContext), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo REF_BLK_CONTEXT_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.BlockExecutionContext), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo REF_ENV_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Environment), BindingFlags.Public | BindingFlags.Instance);
+
 
 
     public const int REF_BUNDLED_ARGS_INDEX = 0;
@@ -54,13 +54,10 @@ public class EnvirementLoader : IEnvirementLoader
     public void LoadBlockhashProvider<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        if (loadAddress)
+        il.LoadFieldAddress(OBJ_BLOCKHASHPROVIDER_INDEX);
+        if (!loadAddress)
         {
-            il.LoadFieldAddress(OBJ_BLOCKHASHPROVIDER_INDEX);
-        }
-        else
-        {
-            il.LoadField(OBJ_BLOCKHASHPROVIDER_INDEX);
+            il.LoadIndirect<IBlockhashProvider>();
         }
     }
 
@@ -90,13 +87,10 @@ public class EnvirementLoader : IEnvirementLoader
     public void LoadCodeInfoRepository<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        if (loadAddress)
+        il.LoadFieldAddress(OBJ_CODEINFOPROVIDER_INDEX);
+        if (!loadAddress)
         {
-            il.LoadFieldAddress(OBJ_CODEINFOPROVIDER_INDEX);
-        }
-        else
-        {
-            il.LoadField(OBJ_CODEINFOPROVIDER_INDEX);
+            il.LoadIndirect<ICodeInfoRepository>();
         }
     }
 
@@ -106,14 +100,14 @@ public class EnvirementLoader : IEnvirementLoader
         il.LoadField(REF_STACKHEADREF_INDEX);
         if (!loadAddress)
         {
-            throw new NotImplementedException("LoadCurrStackHead without address is not implemented");
+            il.LoadObject<int>();
         }
     }
 
     public void LoadEnv<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_ENV_INDEX);
+        il.LoadField(typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Environment), BindingFlags.Public | BindingFlags.Instance));
         if (!loadAddress)
         {
             il.LoadObject<ExecutionEnvironment>();
@@ -227,26 +221,20 @@ public class EnvirementLoader : IEnvirementLoader
     public void LoadWorldState<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        if (loadAddress)
+        il.LoadFieldAddress(OBJ_WORLDSTATE_INDEX);
+        if (!loadAddress)
         {
-            il.LoadFieldAddress(OBJ_WORLDSTATE_INDEX);
-        }
-        else
-        {
-            il.LoadField(OBJ_WORLDSTATE_INDEX);
+            il.LoadIndirect<IWorldState>();
         }
     }
 
     public void LoadReturnDataBuffer<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        if (loadAddress)
+        il.LoadFieldAddress(OBJ_RETURNDATABUFFER_INDEX);
+        if (!loadAddress)
         {
-            il.LoadFieldAddress(OBJ_RETURNDATABUFFER_INDEX);
-        }
-        else
-        {
-            il.LoadField(OBJ_RETURNDATABUFFER_INDEX);
+            il.LoadObject<ReadOnlyMemory<byte>>();
         }
     }
 
@@ -260,13 +248,10 @@ public class EnvirementLoader : IEnvirementLoader
     public void LoadSpecProvider<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        if (loadAddress)
+        il.LoadFieldAddress(OBJ_SPECPROVIDER_INDEX);
+        if (!loadAddress)
         {
-            il.LoadFieldAddress(OBJ_SPECPROVIDER_INDEX);
-        }
-        else
-        {
-            il.LoadField(OBJ_SPECPROVIDER_INDEX);
+            il.LoadIndirect<ISpecProvider>();
         }
     }
 
