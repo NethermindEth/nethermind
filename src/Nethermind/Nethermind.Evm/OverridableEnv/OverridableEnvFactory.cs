@@ -11,7 +11,7 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.OverridableEnv;
 
-public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ISpecProvider specProvider):  IOverridableEnvFactory
+public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ISpecProvider specProvider) : IOverridableEnvFactory
 {
     public IOverridableEnv Create()
     {
@@ -46,7 +46,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<IC
             return scope;
         }
 
-        private class Scope(OverridableEnv env): IDisposable
+        private class Scope(OverridableEnv env) : IDisposable
         {
             public void Dispose()
             {

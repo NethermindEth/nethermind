@@ -15,7 +15,7 @@ namespace Nethermind.Evm.OverridableEnv;
 /// that reflect the override. Any components within that lifetime should run between the build and dispose of the returned
 /// disposable or there may be memory leak.
 /// </summary>
-public interface IOverridableEnv: IModule
+public interface IOverridableEnv : IModule
 {
     IDisposable Build(Hash256 stateRoot);
     IDisposable BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride);

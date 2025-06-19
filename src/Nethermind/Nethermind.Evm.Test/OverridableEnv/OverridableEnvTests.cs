@@ -87,7 +87,7 @@ public class OverridableEnvTests
         ITransactionProcessor TransactionProcessor
     );
 
-    private class TestTransactionProcessor(IWorldState worldState): ITransactionProcessor
+    private class TestTransactionProcessor(IWorldState worldState) : ITransactionProcessor
     {
         public IWorldState WorldState => worldState;
 
