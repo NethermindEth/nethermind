@@ -65,8 +65,8 @@ namespace Nethermind.Evm.Benchmark
         public override ulong Value { get; set; } = 10UL;
 
         public override Transaction[] TransactionSet => [
-            BuildTransferTxFrom(AddressA,AddressAKey, AddressA, 1000),
-        BuildTransferTxFrom(AddressB, AddressBKey, AddressB, 1000)
+            BuildTransferTxFrom(AddressA,AddressAKey, AddressB, 1000),
+            BuildTransferTxFrom(AddressB, AddressBKey, AddressA, 1000)
         ];
 
         private static readonly byte[] TransferSelector = Bytes.FromHexString("0xa9059cbb");
