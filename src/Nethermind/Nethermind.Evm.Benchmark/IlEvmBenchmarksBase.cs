@@ -314,7 +314,6 @@ namespace Nethermind.Evm.Benchmark
     {
         const string AOT = "AOT";
         const string STD = "STD";
-        // [Params("STD", "AOT")]
         public string Mode { get; set; } = "AOT";
 
 
@@ -333,8 +332,6 @@ namespace Nethermind.Evm.Benchmark
         private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.ParisBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
         private EvmState? _evmState;
-        //  protected MockWorldState _stateProviderVMOptimizing;
-        //  protected MockWorldState _stateProviderVMNotOptimizing;
         private ILogger _logger;
         private byte[]? targetCode;
         protected VMConfig? vmConfigOptimizing;
@@ -405,7 +402,7 @@ namespace Nethermind.Evm.Benchmark
             IKeyValueStore codeDb = new MemDb();
             IKeyValueStore codeDb2 = new MemDb();
             _stateProvider= new MockWorldState(GetStorageValue,GetStorageOriginalValue,new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance)));
-           // _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
+            //_stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
 
@@ -438,26 +435,6 @@ namespace Nethermind.Evm.Benchmark
             }
         }
 
-
-
-      //  private void WaitForAnalysis()
-      //  {
-      //      // To ensure that the analysis is complete on both contracts, before running the benchmark.
-      //      if (Mode == "AOT")
-      //      {
-      //          while (targetCodeInfo!.IlInfo.AnalysisPhase != AnalysisPhase.Completed ||
-      //                 driverCodeInfo!.IlInfo.AnalysisPhase != AnalysisPhase.Completed)
-      //          {
-      //              System.Threading.Thread.Sleep(100);
-      //              if (targetCodeInfo!.IlInfo.AnalysisPhase == AnalysisPhase.Failed ||
-      //                  driverCodeInfo!.IlInfo.AnalysisPhase == AnalysisPhase.Failed)
-      //              {
-      //                  throw new InvalidOperationException("IL analysis failed.");
-      //              }
-      //          }
-      //      }
-
-      //  }
 
         public void SetCode(byte[] _targetCode, byte[]? _driverCode = null)
         {
@@ -577,11 +554,6 @@ namespace Nethermind.Evm.Benchmark
         {
             _stateProvider!.Set(AddressABalanceCell, AddressABalanceCellValue.ToBigEndian().WithoutLeadingZeros().ToArray());
             _stateProvider!.Set(AddressBBalanceCell, AddressBBalanceCellValue.ToBigEndian().WithoutLeadingZeros().ToArray());
-
-            //   Transaction[] pairTx = [
-            //       BuildTransferTxFrom(AddressA, AddressB, 1000),
-            //       BuildTransferTxFrom(AddressA, AddressB, 1000)
-            //   ];
 
             Transaction[] txList =
                 Enumerable.Repeat(TransactionSet, 100).SelectMany(x => x).ToArray();
