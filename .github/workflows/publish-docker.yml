@@ -66,3 +66,6 @@ jobs:
         CI=$CI
         COMMIT_HASH=$GITHUB_SHA
       additional_tags: ${{ needs.setup.outputs.EXTRA_TAGS }}
+    secrets:
+      dockerhub_username: ${{ secrets.DOCKER_USERNAME }}
+      dockerhub_password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
