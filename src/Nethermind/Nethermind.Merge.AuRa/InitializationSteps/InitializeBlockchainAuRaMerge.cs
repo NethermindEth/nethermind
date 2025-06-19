@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
@@ -12,7 +11,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Init.Steps;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.State;
 
@@ -22,12 +20,10 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
     {
         private readonly AuRaNethermindApi _api;
         private readonly AuRaChainSpecEngineParameters _parameters;
-        private readonly IPoSSwitcher _poSSwitcher;
 
-        public InitializeBlockchainAuRaMerge(AuRaNethermindApi api, IPoSSwitcher poSSwitcher) : base(api)
+        public InitializeBlockchainAuRaMerge(AuRaNethermindApi api) : base(api)
         {
             _api = api;
-            _poSSwitcher = poSSwitcher;
             _parameters = _api.ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
         }

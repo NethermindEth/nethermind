@@ -84,12 +84,12 @@ namespace Nethermind.Consensus.AuRa
             yield return typeof(LoadGenesisBlockAuRa);
         }
 
-        public IModule Module => new AuraModule(chainSpec);
+        public IModule Module => new AuRaModule(chainSpec);
 
         public Type ApiType => typeof(AuRaNethermindApi);
     }
 
-    public class AuraModule(ChainSpec chainSpec) : Module
+    public class AuRaModule(ChainSpec chainSpec) : Module
     {
         protected override void Load(ContainerBuilder builder)
         {
