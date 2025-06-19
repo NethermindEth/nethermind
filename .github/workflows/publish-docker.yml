@@ -28,6 +28,11 @@ on:
         type: choice
         options: [release, debug]
 
+permissions:
+  id-token: write
+  attestations: write
+  contents: read
+
 jobs:
   setup:
     runs-on: ubuntu-latest
