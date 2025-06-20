@@ -86,7 +86,7 @@ public class BlockValidator(
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        int encodedSize = _blockDecoder.GetLength(block, RlpBehaviors.None);
+        int encodedSize = block.EncodedSize ?? _blockDecoder.GetLength(block, RlpBehaviors.None);
         if (spec.IsEip7934Enabled && encodedSize > spec.Eip7934MaxRlpBlockSize)
         {
             errorMessage = BlockErrorMessages.ExceededBlockSizeLimit(spec.Eip7934MaxRlpBlockSize);

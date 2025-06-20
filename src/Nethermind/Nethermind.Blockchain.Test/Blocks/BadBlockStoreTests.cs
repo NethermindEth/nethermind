@@ -31,7 +31,11 @@ public class BadBlockStoreTests
             badBlockStore.Insert(block);
         }
 
-        badBlockStore.GetAll().Should().BeEquivalentTo(toAdd);
+        badBlockStore.GetAll().Select(block =>
+        {
+            block.EncodedSize = null;
+            return block;
+        }).Should().BeEquivalentTo(toAdd);
     }
 
     [Test]

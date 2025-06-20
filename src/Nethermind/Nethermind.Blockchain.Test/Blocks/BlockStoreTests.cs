@@ -27,6 +27,7 @@ public class BlockStoreTests
         store.Insert(block);
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
+        retrieved!.EncodedSize = null;
         retrieved.Should().BeEquivalentTo(block);
 
         store.Delete(block.Number, block.Hash!);
@@ -58,6 +59,7 @@ public class BlockStoreTests
         db[block.Hash!.Bytes] = (new BlockDecoder()).Encode(block).Bytes;
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
+        retrieved!.EncodedSize = null;
         retrieved.Should().BeEquivalentTo(block);
     }
 
@@ -84,11 +86,13 @@ public class BlockStoreTests
         store.Insert(block);
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
+        retrieved!.EncodedSize = null;
         retrieved.Should().BeEquivalentTo(block);
 
         db.Clear();
 
         retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
+        retrieved!.EncodedSize = null;
         retrieved.Should().BeEquivalentTo(block);
     }
 
