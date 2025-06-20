@@ -360,7 +360,6 @@ namespace Nethermind.Evm.Benchmark
             vmConfigOptimizing.IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE;
 
             vmConfigOptimizing.IlEvmAnalysisThreshold = 1;
-            vmConfigOptimizing.IsIlEvmAggressiveModeEnabled = true;
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
             IKeyValueStore codeDb = new MemDb();
 
