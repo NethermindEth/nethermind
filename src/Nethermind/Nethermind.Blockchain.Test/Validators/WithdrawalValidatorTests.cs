@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State.Proofs;
@@ -16,12 +17,14 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class WithdrawalValidatorTests
 {
+    private static readonly BlockDecoder BlockDecoder = new();
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Not_null_withdrawals_are_invalid_pre_shanghai()
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, London.Instance));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(new Withdrawal[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth }).TestObject);
+        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, BlockDecoder, LimboLogs.Instance);
+        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals([TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth]).TestObject);
         Assert.That(isValid, Is.False);
     }
 
@@ -29,7 +32,7 @@ public class WithdrawalValidatorTests
     public void Null_withdrawals_are_invalid_post_shanghai()
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, BlockDecoder, LimboLogs.Instance);
         bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.TestObject);
         Assert.That(isValid, Is.False);
     }
@@ -38,7 +41,7 @@ public class WithdrawalValidatorTests
     public void Withdrawals_with_incorrect_withdrawals_root_are_invalid()
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, BlockDecoder, LimboLogs.Instance);
         Withdrawal[] withdrawals = [TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth];
         bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(TestItem.KeccakD).TestObject);
         Assert.That(isValid, Is.False);
@@ -48,7 +51,7 @@ public class WithdrawalValidatorTests
     public void Empty_withdrawals_are_valid_post_shanghai()
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, BlockDecoder, LimboLogs.Instance);
         Withdrawal[] withdrawals = [];
         Hash256 withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
         bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject);
@@ -59,7 +62,7 @@ public class WithdrawalValidatorTests
     public void Correct_withdrawals_block_post_shanghai()
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, BlockDecoder, LimboLogs.Instance);
         Withdrawal[] withdrawals = [TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth];
         Hash256 withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
         bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject);
