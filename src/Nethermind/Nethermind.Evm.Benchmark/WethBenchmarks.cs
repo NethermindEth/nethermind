@@ -91,7 +91,6 @@ namespace Nethermind.Evm.Benchmark
                 ? ILMode.DYNAMIC_AOT_MODE : ILMode.NO_ILVM;
 
             vmConfig.IlEvmAnalysisThreshold = 1;
-            vmConfig.IsIlEvmAggressiveModeEnabled = true;
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(Logging.NullLogger.Instance));
             IKeyValueStore codeDb = new MemDb();
             _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(Logging.NullLogger.Instance));
@@ -130,7 +129,7 @@ namespace Nethermind.Evm.Benchmark
 
             Transaction[] pairTx = [
                 BuildTransferTxFrom(AddressA, AddressB, 1000),
-                BuildTransferTxFrom(AddressA, AddressB, 1000)
+                BuildTransferTxFrom(AddressB, AddressA, 1000)
             ];
 
             Transaction[] txList =

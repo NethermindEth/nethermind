@@ -17,7 +17,6 @@ public class VMConfig : IVMConfig
     public bool IsILEvmEnabled { get; set; } = false;
     public ILMode IlEvmEnabledMode { get; set; } = ILMode.NO_ILVM;
     public int IlEvmAnalysisThreshold { get; set; } = 32;
-    public bool IsIlEvmAggressiveModeEnabled { get; set; } = false;
     public int IlEvmAnalysisQueueMaxSize { get; set; } = 8;
     public bool IlEvmPersistPrecompiledContractsOnDisk { get; set; } = false;
     public string IlEvmPrecompiledContractsPath { get; set; } = "PrecompiledContracts";

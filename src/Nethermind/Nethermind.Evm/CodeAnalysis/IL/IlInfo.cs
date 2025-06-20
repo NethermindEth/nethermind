@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis.IL.Delegates;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Logging;
@@ -43,5 +44,5 @@ internal class IlInfo
     public AnalysisPhase AnalysisPhase = AnalysisPhase.NotStarted;
 
     // assumes small number of ILed
-    public ILExecutionStep? PrecompiledContract { get; set; }
+    public ILEmittedEntryPoint? PrecompiledContract { get; set; }
 }
