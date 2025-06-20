@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
@@ -17,7 +18,7 @@ public class OptimismBlockValidator(
     IUnclesValidator unclesValidator,
     ISpecProvider specProvider,
     IOptimismSpecHelper specHelper,
-    ILogManager logManager) : BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager)
+    ILogManager logManager) : BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, new BlockDecoder(), logManager)
 {
     private const string NonEmptyWithdrawalsList =
         $"{nameof(Block.Withdrawals)} is not an empty list";

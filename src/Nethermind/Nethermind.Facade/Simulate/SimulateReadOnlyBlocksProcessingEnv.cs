@@ -19,6 +19,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.BlockProcessor;
 
@@ -107,6 +108,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
             headerValidator,
             Always.Valid,
             SpecProvider,
+            new BlockDecoder(),
             _logManager);
 
         return new SimulateBlockValidatorProxy(blockValidator);

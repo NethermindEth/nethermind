@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NSubstitute;
@@ -22,7 +23,7 @@ public class ShardBlobBlockValidatorTests
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, spec));
         HeaderValidator headerValidator = new(Substitute.For<IBlockTree>(), Always.Valid, specProvider, TestLogManager.Instance);
-        BlockValidator blockValidator = new(Always.Valid, headerValidator, Always.Valid, specProvider, TestLogManager.Instance);
+        BlockValidator blockValidator = new(Always.Valid, headerValidator, Always.Valid, specProvider, new BlockDecoder(), TestLogManager.Instance);
         return blockValidator.ValidateSuggestedBlock(Build.A.Block
             .WithBlobGasUsed(blobGasUsed)
             .WithExcessBlobGas(excessBlobGas)
@@ -36,7 +37,7 @@ public class ShardBlobBlockValidatorTests
     public bool Blobs_per_block_count_is_valid(IReleaseSpec spec, ulong blobGasUsed)
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, spec));
-        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, TestLogManager.Instance);
+        BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, new BlockDecoder(), TestLogManager.Instance);
         return blockValidator.ValidateSuggestedBlock(
             Build.A.Block
                 .WithWithdrawalsRoot(TestItem.KeccakA)

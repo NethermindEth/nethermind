@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -19,12 +20,14 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class BlockValidatorTests
 {
+    private static readonly BlockDecoder BlockDecoder = new();
     private static readonly BlockValidator BlockValidator =
         new BlockValidator(
             Substitute.For<ITxValidator>(),
             Substitute.For<IHeaderValidator>(),
             Substitute.For<IUnclesValidator>(),
             Substitute.For<ISpecProvider>(),
+            BlockDecoder,
             LimboLogs.Instance);
 
 
@@ -36,7 +39,7 @@ public class BlockValidatorTests
         releaseSpec.MaximumUncleCount = 0;
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, releaseSpec));
 
-        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, BlockDecoder, LimboLogs.Instance);
         bool noiseRemoved = blockValidator.ValidateSuggestedBlock(Build.A.Block.TestObject);
         Assert.That(noiseRemoved, Is.True);
 
@@ -106,7 +109,7 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, BlockDecoder, LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.TestObject;
 
@@ -121,15 +124,14 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, BlockDecoder, LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.TestObject;
-        string? error;
 
         sut.ValidateProcessedBlock(
             suggestedBlock,
             [],
-            processedBlock, out error);
+            processedBlock, out string? error);
 
         Assert.That(error, Is.Null);
     }
@@ -139,7 +141,7 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, BlockDecoder, LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.WithStateRoot(Keccak.Zero).TestObject;
 
@@ -154,15 +156,14 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, BlockDecoder, LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.WithStateRoot(Keccak.Zero).TestObject;
-        string? error;
 
         sut.ValidateProcessedBlock(
             suggestedBlock,
             [],
-            processedBlock, out error);
+            processedBlock, out string? error);
 
         Assert.That(error, Does.StartWith("InvalidStateRoot"));
     }
@@ -191,17 +192,20 @@ public class BlockValidatorTests
         .TestObject,
         new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
         "InsufficientMaxFeePerBlobGas");
+
+        // yield return new TestCaseData(
+        // Build.A.Block.WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize + 1).TestObject,
+        // new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)),
+        // "ExceededBlockSizeLimit");
     }
 
     [TestCaseSource(nameof(BadSuggestedBlocks))]
     public void ValidateSuggestedBlock_SuggestedBlockIsInvalid_CorrectErrorIsSet(Block suggestedBlock, ISpecProvider specProvider, string expectedError)
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        string? error;
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, BlockDecoder, LimboLogs.Instance);
 
-        sut.ValidateSuggestedBlock(
-            suggestedBlock, out error);
+        sut.ValidateSuggestedBlock(suggestedBlock, out string? error);
 
         Assert.That(error, Does.StartWith(expectedError));
     }

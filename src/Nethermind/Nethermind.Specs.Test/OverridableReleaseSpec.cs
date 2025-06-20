@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -119,6 +119,9 @@ namespace Nethermind.Specs.Test
 
         public bool IsEip7883Enabled => spec.IsEip7883Enabled;
 
+        public bool IsEip7934Enabled => spec.IsEip7934Enabled;
+        public int Eip7934MaxRlpBlockSize => spec.Eip7934MaxRlpBlockSize;
+
         public bool IsEip3607Enabled { get; set; } = spec.IsEip3607Enabled;
 
         public bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
@@ -153,7 +156,6 @@ namespace Nethermind.Specs.Test
 
         public ulong TargetBlobCount => spec.TargetBlobCount;
         public ulong MaxBlobCount => spec.MaxBlobCount;
-        public ulong MaxBlobsPerTx => spec.MaxBlobsPerTx;
         public UInt256 BlobBaseFeeUpdateFraction => spec.BlobBaseFeeUpdateFraction;
         public bool IsEip1153Enabled => spec.IsEip1153Enabled;
         public bool IsEip3651Enabled => spec.IsEip3651Enabled;
@@ -187,6 +189,5 @@ namespace Nethermind.Specs.Test
 
         Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
         Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
-        public bool IsEip7939Enabled => spec.IsEip7939Enabled;
     }
 }
