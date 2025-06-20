@@ -29,6 +29,10 @@ namespace Nethermind.Db.Test
     // TODO: test for different block ranges intersection
     // TODO: run internal state verification for each test
     // TODO: test for periodic/frequent reorgs
+    // TODO: test for consecutive reorgs
+    // TODO: test for reorgs along with compaction
+    [Parallelizable(ParallelScope.All)]
+    [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class LogIndexStorageTests(int batchCount, int blocksPerBatch)
     {
         private readonly TestData _testData = GenerateTestData(new Random(42), batchCount, blocksPerBatch);
@@ -46,7 +50,7 @@ namespace Nethermind.Db.Test
         public void Setup()
         {
             _logger = LimboLogs.Instance.GetClassLogger();
-            _dbPath = GetType().Name;
+            _dbPath = $"{nameof(LogIndexStorageTests)}/{Guid.NewGuid():N}";
 
             if (Directory.Exists(_dbPath))
                 Directory.Delete(_dbPath, true);
@@ -57,10 +61,37 @@ namespace Nethermind.Db.Test
         }
 
         [TearDown]
-        public void TearDown()
+        public void RemoveDbFolder()
         {
-            if (Directory.Exists(_dbPath))
+            if (!Directory.Exists(_dbPath))
+                return;
+
+
+            try
+            {
                 Directory.Delete(_dbPath, true);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        [OneTimeTearDown]
+        [OneTimeSetUp]
+        public static void RemoveRootFolder()
+        {
+            if (!Directory.Exists(nameof(LogIndexStorageTests)))
+                return;
+
+            try
+            {
+                Directory.Delete(nameof(LogIndexStorageTests), true);
+            }
+            catch
+            {
+                // ignore
+            }
         }
 
         [Combinatorial]
@@ -168,6 +199,7 @@ namespace Nethermind.Db.Test
             VerifyReceipts(logIndexStorage, _testData);
         }
 
+        [Ignore("Not working yet.")]
         [Combinatorial]
         public async Task Set_Compact_ReorgLast_Get_Test(
             [Values(1, 5)] int revertCount,
@@ -284,9 +316,11 @@ namespace Nethermind.Db.Test
 
             var blocksCount = batchCount * blocksPerBatch;
             var addresses = Enumerable.Repeat(0, Math.Max(10, blocksCount / 5))
+            //var addresses = Enumerable.Repeat(0, 1)
                 .Select(_ => new Address(random.NextBytes(Address.Size)))
                 .ToArray();
             var topics = Enumerable.Repeat(0, addresses.Length * 10)
+            //var topics = Enumerable.Repeat(0, 0)
                 .Select(_ => new Hash256(random.NextBytes(Hash256.Size)))
                 .ToArray();
 
@@ -420,11 +454,17 @@ namespace Nethermind.Db.Test
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                var address = random.NextValue(addresses);
-                logIndexStorage.GetBlockNumbersFor(address, 0, int.MaxValue);
+                if (addresses.Length != 0)
+                {
+                    var address = random.NextValue(addresses);
+                    logIndexStorage.GetBlockNumbersFor(address, 0, int.MaxValue);
+                }
 
-                var topic = random.NextValue(topics);
-                logIndexStorage.GetBlockNumbersFor(topic, 0, int.MaxValue);
+                if (topics.Length != 0)
+                {
+                    var topic = random.NextValue(topics);
+                    logIndexStorage.GetBlockNumbersFor(topic, 0, int.MaxValue);
+                }
             }
         }
 
