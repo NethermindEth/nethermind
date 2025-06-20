@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
-using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -19,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Merge.AuRa.InitializationSteps;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.AuRa
@@ -93,7 +92,7 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
                 .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
                 .AddDecorator<ISealValidator, MergeSealValidator>()
-                .AddDecorator<ISealer, AuRaSealer>()
+                .AddDecorator<ISealer, MergeSealer>()
                 ;
         }
     }
