@@ -69,11 +69,6 @@ namespace Nethermind.Merge.AuRa
                 _poSSwitcher);
         }
 
-        public override IEnumerable<StepInfo> GetSteps()
-        {
-            yield return typeof(InitializeBlockchainAuRaMerge);
-        }
-
         public override IModule Module => new AuRaMergeModule();
     }
 

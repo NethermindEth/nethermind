@@ -17,7 +17,6 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -33,12 +32,14 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     private readonly AuRaNethermindApi _api;
     private INethermindApi NethermindApi => _api;
 
-    protected readonly AuRaGasLimitOverrideFactory _gasLimitOverrideFactory;
+    private readonly IAuRaBlockProcessorFactory _auRaBlockProcessorFactory;
 
-    public InitializeBlockchainAuRa(AuRaNethermindApi api, AuRaGasLimitOverrideFactory gasLimitOverrideFactory) : base(api)
+    public InitializeBlockchainAuRa(
+        AuRaNethermindApi api,
+        IAuRaBlockProcessorFactory auRaBlockProcessorFactory) : base(api)
     {
         _api = api;
-        _gasLimitOverrideFactory = gasLimitOverrideFactory;
+        _auRaBlockProcessorFactory = auRaBlockProcessorFactory;
     }
 
     protected override async Task InitBlockchain()
@@ -60,44 +61,20 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
-        if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-        if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
-        if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-        if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-        if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
-        if (_api.ReceiptStorage is null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
-        if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-        if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
-        if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
-
         ITxFilter auRaTxFilter = _api.TxAuRaFilterBuilders.CreateAuRaTxFilter(
             new ServiceTxFilter(_api.SpecProvider));
 
-        return NewAuraBlockProcessor(auRaTxFilter, preWarmer, transactionProcessor, worldState);
-    }
-
-    protected virtual AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter, BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
-    {
-        var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-        IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = chainSpecAuRa.RewriteBytecode;
-        ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
-
-        return new AuRaBlockProcessor(
-            _api.SpecProvider!,
+        return _auRaBlockProcessorFactory.Create(
             _api.BlockValidator!,
             _api.RewardCalculatorSource!.Get(transactionProcessor),
             new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
             worldState,
             _api.ReceiptStorage!,
             new BeaconBlockRootHandler(transactionProcessor!, worldState),
-            _api.LogManager,
-            _api.BlockTree!,
-            NullWithdrawalProcessor.Instance,
+            transactionProcessor,
             new ExecutionRequestsProcessor(transactionProcessor),
             CreateAuRaValidator(worldState, transactionProcessor),
-            txFilter,
-            _gasLimitOverrideFactory.GetGasLimitCalculator(),
-            contractRewriter,
+            auRaTxFilter,
             preWarmer: preWarmer);
     }
 
