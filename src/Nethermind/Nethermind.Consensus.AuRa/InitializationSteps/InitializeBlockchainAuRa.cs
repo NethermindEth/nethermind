@@ -3,25 +3,20 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Data;
-using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
-using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -35,17 +30,16 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps;
 public class InitializeBlockchainAuRa : InitializeBlockchain
 {
     private readonly AuRaNethermindApi _api;
-    private readonly AuRaChainSpecEngineParameters _parameters;
     private INethermindApi NethermindApi => _api;
 
-    private readonly IAuraConfig _auraConfig;
+    private readonly IAuRaBlockProcessorFactory _auRaBlockProcessorFactory;
 
-    public InitializeBlockchainAuRa(AuRaNethermindApi api) : base(api)
+    public InitializeBlockchainAuRa(
+        AuRaNethermindApi api,
+        IAuRaBlockProcessorFactory auRaBlockProcessorFactory) : base(api)
     {
         _api = api;
-        _parameters = _api.ChainSpec.EngineChainSpecParametersProvider
-            .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-        _auraConfig = NethermindApi.Config<IAuraConfig>();
+        _auRaBlockProcessorFactory = auRaBlockProcessorFactory;
     }
 
     protected override async Task InitBlockchain()
@@ -67,44 +61,16 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
-        if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-        if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
-        if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-        if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-        if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
-        if (_api.ReceiptStorage is null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
-        if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-        if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
-        if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
-
-        ITxFilter auRaTxFilter = _api.TxAuRaFilterBuilders.CreateAuRaTxFilter(
-            new ServiceTxFilter(_api.SpecProvider));
-
-        return NewAuraBlockProcessor(auRaTxFilter, preWarmer, transactionProcessor, worldState);
-    }
-
-    protected virtual AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter, BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
-    {
-        var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-        IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = chainSpecAuRa.RewriteBytecode;
-        ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
-
-        return new AuRaBlockProcessor(
-            _api.SpecProvider!,
+        return _auRaBlockProcessorFactory.Create(
             _api.BlockValidator!,
             _api.RewardCalculatorSource!.Get(transactionProcessor),
             new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
             worldState,
             _api.ReceiptStorage!,
             new BeaconBlockRootHandler(transactionProcessor!, worldState),
-            _api.LogManager,
-            _api.BlockTree!,
-            NullWithdrawalProcessor.Instance,
+            transactionProcessor,
             new ExecutionRequestsProcessor(transactionProcessor),
             CreateAuRaValidator(worldState, transactionProcessor),
-            txFilter,
-            GetGasLimitCalculator(),
-            contractRewriter,
             preWarmer: preWarmer);
     }
 
@@ -145,33 +111,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         }
 
         return validator;
-    }
-
-    protected AuRaContractGasLimitOverride? GetGasLimitCalculator()
-    {
-        if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
-        var blockGasLimitContractTransitions = _parameters.BlockGasLimitContractTransitions;
-
-        if (blockGasLimitContractTransitions?.Any() == true)
-        {
-            AuRaContractGasLimitOverride gasLimitCalculator = new(
-                blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
-                    new BlockGasLimitContract(
-                        _api.AbiEncoder,
-                        blockGasLimitContractTransition.Value,
-                        blockGasLimitContractTransition.Key,
-                        _api.ReadOnlyTxProcessingEnvFactory.Create()))
-                    .ToArray<IBlockGasLimitContract>(),
-                _api.GasLimitCalculatorCache,
-                _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
-                new TargetAdjustedGasLimitCalculator(_api.SpecProvider, NethermindApi.Config<IBlocksConfig>()),
-                _api.LogManager);
-
-            return gasLimitCalculator;
-        }
-
-        // do not return target gas limit calculator here - this is used for validation to check if the override should have been used
-        return null;
     }
 
     private IComparer<Transaction> CreateTxPoolTxComparer(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)

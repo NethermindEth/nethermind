@@ -112,6 +112,7 @@ namespace Nethermind.Consensus.AuRa
                     ((AuRaBlockProcessor)mainProcessingContext.BlockProcessor).AuRaValidator.GetReportingValidator())
                 .AddSource(new FallbackToFieldFromApi<AuRaNethermindApi>())
 
+                // Block processing components
                 .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
                 .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()
                 .AddSingleton<IAuRaStepCalculator, AuRaChainSpecEngineParameters, ITimestamper, ILogManager>((param, timestamper, logManager)
@@ -119,12 +120,15 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<AuRaSealValidator>()
                 .Bind<ISealValidator, AuRaSealValidator>()
                 .AddSingleton<ISealer, AuRaSealer>()
+                .AddSingleton<AuRaGasLimitOverrideFactory>()
 
-                .AddSingleton<IHealthHintService, AuraHealthHintService>()
-
+                // Rpcs
+                .AddScoped<AuRaRpcBlockProcessorFactory>()
                 .AddSingleton<IRpcModuleFactory<ITraceRpcModule>, AuRaTraceModuleFactory>()
                 .AddSingleton<IAuRaBlockProcessorFactory, AuRaBlockProcessorFactory>()
                 .AddSingleton<IRpcModuleFactory<IDebugRpcModule>, AuRaDebugModuleFactory>()
+
+                .AddSingleton<IHealthHintService, AuraHealthHintService>()
 
                 ;
 
