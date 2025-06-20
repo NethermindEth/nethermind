@@ -23,6 +23,9 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
@@ -79,15 +82,14 @@ namespace Nethermind.Consensus.AuRa
         {
             yield return typeof(InitializeBlockchainAuRa);
             yield return typeof(LoadGenesisBlockAuRa);
-            yield return typeof(RegisterAuRaRpcModules);
         }
 
-        public IModule Module => new AuraModule(chainSpec);
+        public IModule Module => new AuRaModule(chainSpec);
 
         public Type ApiType => typeof(AuRaNethermindApi);
     }
 
-    public class AuraModule(ChainSpec chainSpec) : Module
+    public class AuRaModule(ChainSpec chainSpec) : Module
     {
         protected override void Load(ContainerBuilder builder)
         {
@@ -119,6 +121,11 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<ISealer, AuRaSealer>()
 
                 .AddSingleton<IHealthHintService, AuraHealthHintService>()
+
+                .AddSingleton<IRpcModuleFactory<ITraceRpcModule>, AuRaTraceModuleFactory>()
+                .AddSingleton<IAuRaBlockProcessorFactory, AuRaBlockProcessorFactory>()
+                .AddSingleton<IRpcModuleFactory<IDebugRpcModule>, AuRaDebugModuleFactory>()
+
                 ;
 
             if (specParam.BlockGasLimitContractTransitions?.Any() == true)

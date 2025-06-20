@@ -39,7 +39,7 @@ public sealed class TrackingCappedArrayPool : ICappedArrayPool, IDisposable
         byte[] array = _arrayPool?.Rent(size) ?? ArrayPool<byte>.Shared.Rent(size);
         CappedArray<byte> rented = new CappedArray<byte>(array, size);
         array.AsSpan().Clear();
-        _rentedBuffers.Add(array);
+        lock (_rentedBuffers) _rentedBuffers.Add(array);
         return rented;
     }
 

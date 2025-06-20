@@ -19,12 +19,12 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -130,8 +130,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                     // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
                     // as normally, test blockchain don't use INethermindApi at all. Note: This test does not
                     // seems to use aura block processor which means a lot of aura things is not available here.
-                    .AddModule(new AuraModule(ChainSpec))
-                    .AddModule(new AuraMergeModule())
+                    .AddModule(new AuRaModule(ChainSpec))
+                    .AddModule(new AuRaMergeModule())
                     .AddSingleton<NethermindApi.Dependencies>()
                     .AddSingleton<IReportingValidator>(NullReportingValidator.Instance)
                     .AddSingleton<ISealer>(NullSealEngine.Instance) // Test not originally made with aura sealer
@@ -177,7 +177,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, state),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), state),
                 state,
                 ReceiptStorage,
                 new BeaconBlockRootHandler(TxProcessor, state),

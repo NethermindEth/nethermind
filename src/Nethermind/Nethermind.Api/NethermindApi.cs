@@ -77,41 +77,7 @@ namespace Nethermind.Api
 
         public IBlockchainBridge CreateBlockchainBridge()
         {
-            ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
-
-            // TODO: reuse the same trie cache here
-            OverridableTxProcessingEnv txProcessingEnv = new(
-                WorldStateManager!.CreateOverridableWorldScope(),
-                readOnlyTree,
-                SpecProvider!,
-                LogManager);
-
-            SimulateReadOnlyBlocksProcessingEnvFactory simulateReadOnlyBlocksProcessingEnvFactory =
-                new SimulateReadOnlyBlocksProcessingEnvFactory(
-                    WorldStateManager!,
-                    readOnlyTree,
-                    DbProvider!,
-                    SpecProvider!,
-                    SimulateTransactionProcessorFactory,
-                    LogManager);
-
-            IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
-            IBlocksConfig blocksConfig = ConfigProvider.GetConfig<IBlocksConfig>();
-
-            return new BlockchainBridge(
-                txProcessingEnv,
-                simulateReadOnlyBlocksProcessingEnvFactory,
-                TxPool,
-                ReceiptFinder,
-                FilterStore,
-                FilterManager,
-                EthereumEcdsa,
-                Timestamper,
-                LogFinder,
-                SpecProvider!,
-                blocksConfig,
-                miningConfig.Enabled
-            );
+            return Context.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
         }
 
         public IAbiEncoder AbiEncoder => Context.Resolve<IAbiEncoder>();
@@ -155,7 +121,7 @@ namespace Nethermind.Api
         public IProtocolsManager? ProtocolsManager { get; set; }
         public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
-        public IReceiptFinder? ReceiptFinder { get; set; }
+        public IReceiptFinder ReceiptFinder => Context.Resolve<IReceiptFinder>();
         public IReceiptMonitor? ReceiptMonitor { get; set; }
         public IRewardCalculatorSource RewardCalculatorSource => Context.Resolve<IRewardCalculatorSource>();
         public IRlpxHost RlpxPeer => Context.Resolve<IRlpxHost>();
@@ -195,7 +161,6 @@ namespace Nethermind.Api
 
         public IEthSyncingInfo? EthSyncingInfo => Context.Resolve<IEthSyncingInfo>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
-        public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public CensorshipDetector CensorshipDetector { get; set; } = null!;
         public IWallet? Wallet { get; set; }
@@ -217,7 +182,8 @@ namespace Nethermind.Api
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public IProcessExitSource ProcessExit => _dependencies.ProcessExitSource;
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
-        public ISimulateTransactionProcessorFactory SimulateTransactionProcessorFactory { get; set; } = Nethermind.Facade.Simulate.SimulateTransactionProcessorFactory.Instance;
+        public ISimulateTransactionProcessorFactory SimulateTransactionProcessorFactory =>
+            Context.Resolve<ISimulateTransactionProcessorFactory>();
         public ILifetimeScope Context => _dependencies.Context;
     }
 }

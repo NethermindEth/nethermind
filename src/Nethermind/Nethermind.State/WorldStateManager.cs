@@ -102,4 +102,9 @@ public class WorldStateManager : IWorldStateManager
     {
         return _blockingVerifyTrie?.VerifyTrie(stateAtBlock, cancellationToken) ?? true;
     }
+
+    public void FlushCache(CancellationToken cancellationToken)
+    {
+        _trieStore.PersistCache(cancellationToken);
+    }
 }

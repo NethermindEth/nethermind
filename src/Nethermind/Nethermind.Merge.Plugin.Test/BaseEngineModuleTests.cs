@@ -32,6 +32,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
@@ -368,7 +369,7 @@ public abstract partial class BaseEngineModuleTests
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), worldState),
                 worldState,
                 ReceiptStorage,
                 new BeaconBlockRootHandler(TxProcessor, worldState),

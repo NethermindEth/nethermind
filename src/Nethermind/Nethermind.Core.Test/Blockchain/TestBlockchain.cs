@@ -112,7 +112,7 @@ public class TestBlockchain : IDisposable
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
     public ManualTimestamper Timestamper { get; private set; } = null!;
-    public BlocksConfig BlocksConfig { get; protected set; } = new();
+    public IBlocksConfig BlocksConfig => Container.Resolve<IBlocksConfig>();
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
@@ -280,7 +280,8 @@ public class TestBlockchain : IDisposable
             // Some validator configurations
             .AddSingleton<ISealValidator>(Always.Valid)
             .AddSingleton<IUnclesValidator>(Always.Valid)
-            .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD));
+            .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD))
+        ;
 
     protected virtual IEnumerable<IConfig> CreateConfigs()
     {
@@ -367,7 +368,7 @@ public class TestBlockchain : IDisposable
             SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, state),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), state),
             state,
             ReceiptStorage,
             new BeaconBlockRootHandler(TxProcessor, state),
@@ -479,31 +480,5 @@ public static class ContainerBuilderExtensions
             configurer(conf);
             return conf;
         });
-    }
-
-    /// <summary>
-    /// Some test require exposed `TrieStore` and `IPruningTrieStore` which is not normally exposed at all
-    /// hidden in `PruningTrieStateFactory`. So this create mini state configuration for that.
-    /// It does not cover the full standard world state configuration though, so not for general use.
-    /// </summary>
-    public static ContainerBuilder ConfigureTrieStoreExposedWorldStateManager(this ContainerBuilder builder)
-    {
-        return builder
-            // Need to manually create the WorldStateManager to expose the triestore which is normally hidden by PruningTrieStateFactory
-            // This means it does not use pruning triestore by default though which is potential edge case.
-            .AddSingleton<TrieStore>(ctx =>
-                new TrieStore(new NodeStorage(ctx.Resolve<IDbProvider>().StateDb), No.Pruning, Persist.EveryBlock, ctx.Resolve<IPruningConfig>(), LimboLogs.Instance))
-            .Bind<IPruningTrieStore, TrieStore>()
-            .AddSingleton<IWorldStateManager>(ctx =>
-            {
-                IDbProvider dbProvider = ctx.Resolve<IDbProvider>();
-                TrieStore trieStore = ctx.Resolve<TrieStore>();
-                PreBlockCaches preBlockCaches = new PreBlockCaches();
-                WorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance,
-                    preBlockCaches: preBlockCaches);
-                return new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
-            })
-            .AddSingleton<TrieStoreBoundaryWatcher>() // Normally not exposed also
-            .ResolveOnServiceActivation<TrieStoreBoundaryWatcher, IWorldStateManager>();
     }
 }

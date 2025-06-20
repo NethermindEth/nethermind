@@ -428,6 +428,7 @@ public class SessionTests
     private IProtocolHandler BuildHandler(string code, int spaceSize)
     {
         IProtocolHandler handler = Substitute.For<IProtocolHandler>();
+        handler.Name.Returns(code);
         handler.ProtocolCode.Returns(code);
         handler.MessageIdSpaceSize.Returns(spaceSize);
         return handler;

@@ -66,7 +66,6 @@ namespace Nethermind.Runner.Test.Ethereum
 
             var api = new NethermindApi(apiDependencies);
             MockOutNethermindApi(api);
-            api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
             return api;
         }
 
@@ -114,7 +113,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.BlockTree = Substitute.For<IBlockTree>();
             api.DbProvider = TestMemDbProvider.Init();
             api.ReceiptStorage = Substitute.For<IReceiptStorage>();
-            api.ReceiptFinder = Substitute.For<IReceiptFinder>();
             api.TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
             api.BloomStorage = Substitute.For<IBloomStorage>();
             api.BlockProducer = Substitute.For<IBlockProducer>();
@@ -137,8 +135,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
             api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();
             api.BadBlocksStore = Substitute.For<IBadBlockStore>();
-
-            api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
         }
     }
 }

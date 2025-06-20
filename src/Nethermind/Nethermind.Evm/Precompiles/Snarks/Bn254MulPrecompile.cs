@@ -24,11 +24,19 @@ public class Bn254MulPrecompile : IPrecompile<Bn254MulPrecompile>
     public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254MulPrecompile++;
+        return inputData.Length == 96 ? RunInternal(inputData.Span) : RunInternal(inputData);
+    }
+
+    private static (byte[], bool) RunInternal(ReadOnlyMemory<byte> inputData)
+    {
         Span<byte> inputDataSpan = stackalloc byte[96];
         inputData.PrepareEthInput(inputDataSpan);
+        return RunInternal(inputDataSpan);
+    }
 
-        Span<byte> output = stackalloc byte[64];
-        return Pairings.Bn254Mul(inputDataSpan, output) ? (output.ToArray(), true) : IPrecompile.Failure;
-
+    private static (byte[], bool) RunInternal(ReadOnlySpan<byte> inputDataSpan)
+    {
+        byte[] output = GC.AllocateUninitializedArray<byte>(64);
+        return Pairings.Bn254Mul(inputDataSpan, output) ? (output, true) : IPrecompile.Failure;
     }
 }
