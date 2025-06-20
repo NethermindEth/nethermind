@@ -68,6 +68,10 @@ namespace Nethermind.Evm.Benchmark
         private readonly Transaction[] _transactions;
         public Weth()
         {
+
+            SeedCell(AddressABalanceCell, 1000);
+            SeedCell(AddressBBalanceCell, 1000);
+
             _transactions = new[]
             {
                 BuildTransferTxFrom(AddressA, AddressAKey, AddressB, ContractAddress, 1000),
@@ -227,6 +231,8 @@ namespace Nethermind.Evm.Benchmark
         {
             if (Mode == AOT) IlAnalyzer.StopPrecompilerBackgroundThread(vmConfigOptimizing!);
             _evmState?.Dispose();
+            _stateProvider!.Commit(_specProvider!.GenesisSpec);
+            snapshot = _stateProvider!.TakeSnapshot();
         }
     }
 
@@ -246,6 +252,7 @@ namespace Nethermind.Evm.Benchmark
             new UInt256(Value).ToBigEndian(bytes);
             var argBytes = bytes.WithoutLeadingZeros().ToArray();
             SetCode(GenerateBytecode(argBytes));
+
 
         }
 
@@ -279,7 +286,7 @@ namespace Nethermind.Evm.Benchmark
 
 
 
-        private ISpecProvider _specProvider = MainnetSpecProvider.Instance;
+        protected ISpecProvider _specProvider = MainnetSpecProvider.Instance;
         public virtual byte[] bytecode => [];
 
         protected Address ContractAddress => new Address(Keccak.Compute(bytecode));
@@ -325,7 +332,7 @@ namespace Nethermind.Evm.Benchmark
         protected ulong Timestamp => MainnetSpecProvider.PragueBlockTimestamp;
         protected long gasLimit => 10_000_000L;
 
-        protected Snapshot snapshot;
+        protected Snapshot? snapshot;
 
         protected IWorldState? _stateProvider;
 
@@ -504,6 +511,18 @@ namespace Nethermind.Evm.Benchmark
                     inputData: tx.Data ?? default
                 );
             }
+            if (snapshot is null)
+            {
+                snapshot = _stateProvider!.TakeSnapshot();
+            }
+            else
+            {
+
+                // need to have changes before restoring the snapshot
+                _stateProvider!.Restore(snapshot.Value);
+            }
+
+
         }
 
 
@@ -518,13 +537,14 @@ namespace Nethermind.Evm.Benchmark
                 using var state = EvmState.RentTopLevel(
                     long.MaxValue,
                     ExecutionType.TRANSACTION,
-                    _stateProvider!.TakeSnapshot(),
+                    snapshot!.Value,
                     env,
                     _tracker
                 );
 
                 Run(state);
             }
+
         }
 
         public void Run(EvmState? evmState = null)
@@ -540,11 +560,13 @@ namespace Nethermind.Evm.Benchmark
 
         }
 
+        protected void SeedCell(StorageCell cell, UInt256 value)
+        {
+            _stateProvider!.Set(cell, value.ToBigEndian().WithoutLeadingZeros().ToArray());
+        }
 
         protected void BuildBlock()
         {
-            _stateProvider!.Set(AddressABalanceCell, AddressABalanceCellValue.ToBigEndian().WithoutLeadingZeros().ToArray());
-            _stateProvider!.Set(AddressBBalanceCell, AddressBBalanceCellValue.ToBigEndian().WithoutLeadingZeros().ToArray());
 
             Transaction[] txList =
                 Enumerable.Repeat(TransactionSet, 100).SelectMany(x => x).ToArray();
