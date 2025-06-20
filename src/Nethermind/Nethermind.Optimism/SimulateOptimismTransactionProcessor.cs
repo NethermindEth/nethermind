@@ -51,8 +51,8 @@ public sealed class SimulateOptimismTransactionProcessorFactory(
     public ITransactionProcessor CreateTransactionProcessor(
         ISpecProvider specProvider,
         IWorldState worldState,
-        SimulateVirtualMachine virtualMachine,
-        OverridableCodeInfoRepository codeInfoRepository,
+        IVirtualMachine virtualMachine,
+        ICodeInfoRepository codeInfoRepository,
         ILogManager? logManager,
         bool validate)
     {

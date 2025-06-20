@@ -462,10 +462,14 @@ namespace Nethermind.TxPool
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
+            bool startBroadcast = _txPoolConfig.PersistentBroadcastEnabled
+                                  && (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
+                                  TxHandlingOptions.PersistentBroadcast;
+
             if (!AcceptTxWhenNotSynced &&
                 _headInfo.IsSyncing &&
                 // If local tx allow it to be accepted even when syncing
-                (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0)
+                !startBroadcast)
             {
                 return AcceptTxResult.Syncing;
             }
@@ -477,9 +481,6 @@ namespace Nethermind.TxPool
             tx.PoolIndex = Interlocked.Increment(ref _txIndex);
 
             NewDiscovered?.Invoke(this, new TxEventArgs(tx));
-
-            bool startBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
-                                  TxHandlingOptions.PersistentBroadcast;
 
             if (_logger.IsTrace)
             {
@@ -692,7 +693,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    dropBlobs |= tx.SupportsBlobs && (tx.GetProofVersion() != headSpec.BlobProofVersion || (ulong)tx.BlobVersionedHashes!.Length > headSpec.MaxBlobCount);
+                    dropBlobs |= tx.SupportsBlobs && (tx.GetProofVersion() != headSpec.BlobProofVersion || (ulong)tx.BlobVersionedHashes!.Length > headSpec.MaxBlobsPerTx);
 
                     if (dropBlobs)
                     {
