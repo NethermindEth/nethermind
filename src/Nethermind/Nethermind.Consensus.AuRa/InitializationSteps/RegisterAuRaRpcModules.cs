@@ -45,14 +45,11 @@ public class AuRaRpcBlockProcessorFactory(
     IBlockValidator blockValidator,
     IRewardCalculator rewardCalculator,
     IReceiptStorage receiptStorage,
-    ISpecProvider specProvider,
     IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor,
     IAuRaBlockProcessorFactory factory)
 {
     public IBlockProcessor CreateBlockProcessor()
     {
-        ITxFilter auRaTxFilter = new ServiceTxFilter(specProvider);
-
         return factory.Create(
             blockValidator!,
             rewardCalculator,
@@ -62,8 +59,7 @@ public class AuRaRpcBlockProcessorFactory(
             beaconBlockRootHandler,
             transactionProcessor,
             executionRequestsProcessor,
-            auRaValidator: null,
-            auRaTxFilter
+            auRaValidator: null
         );
     }
 }
@@ -89,7 +85,6 @@ public interface IAuRaBlockProcessorFactory
         ITransactionProcessor transactionProcessor,
         IExecutionRequestsProcessor executionRequestsProcessor,
         IAuRaValidator? auRaValidator,
-        ITxFilter? txFilter = null,
         IBlockCachePreWarmer? preWarmer = null);
 }
 
@@ -98,6 +93,7 @@ public class AuRaBlockProcessorFactory(
     IBlockTree blockTree,
     ISpecProvider specProvider,
     AuRaGasLimitOverrideFactory gasLimitOverrideFactory,
+    TxAuRaFilterBuilders txAuRaFilterBuilders,
     ILogManager logManager
 ) : IAuRaBlockProcessorFactory
 {
@@ -111,11 +107,12 @@ public class AuRaBlockProcessorFactory(
         ITransactionProcessor transactionProcessor,
         IExecutionRequestsProcessor executionRequestsProcessor,
         IAuRaValidator? auRaValidator,
-        ITxFilter? txFilter = null,
         IBlockCachePreWarmer? preWarmer = null)
     {
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
+
+        ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter(specProvider));
 
         return new AuRaBlockProcessor(
             specProvider,

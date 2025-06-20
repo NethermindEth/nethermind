@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
@@ -31,6 +32,7 @@ public class AuRaMergeBlockProcessorFactory(
     IAbiEncoder abiEncoder,
     IBlockTree blockTree,
     AuRaGasLimitOverrideFactory gasLimitOverrideFactory,
+    TxAuRaFilterBuilders txAuRaFilterBuilders,
     ILogManager logManager
 ) : IAuRaBlockProcessorFactory
 {
@@ -44,7 +46,6 @@ public class AuRaMergeBlockProcessorFactory(
         ITransactionProcessor transactionProcessor,
         IExecutionRequestsProcessor executionRequestsProcessor,
         IAuRaValidator? auRaValidator,
-        ITxFilter? txFilter = null,
         IBlockCachePreWarmer? preWarmer = null)
     {
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
@@ -52,6 +53,8 @@ public class AuRaMergeBlockProcessorFactory(
 
         WithdrawalContractFactory withdrawalContractFactory = new WithdrawalContractFactory(parameters, abiEncoder);
         IWithdrawalProcessor withdrawalProcessor = new AuraWithdrawalProcessor(withdrawalContractFactory.Create(transactionProcessor), logManager);
+
+        ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter(specProvider));
 
         return new AuRaMergeBlockProcessor(
             specProvider,

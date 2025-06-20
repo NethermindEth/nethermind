@@ -61,9 +61,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
     protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
-        ITxFilter auRaTxFilter = _api.TxAuRaFilterBuilders.CreateAuRaTxFilter(
-            new ServiceTxFilter(_api.SpecProvider));
-
         return _auRaBlockProcessorFactory.Create(
             _api.BlockValidator!,
             _api.RewardCalculatorSource!.Get(transactionProcessor),
@@ -74,7 +71,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             transactionProcessor,
             new ExecutionRequestsProcessor(transactionProcessor),
             CreateAuRaValidator(worldState, transactionProcessor),
-            auRaTxFilter,
             preWarmer: preWarmer);
     }
 
