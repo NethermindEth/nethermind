@@ -180,7 +180,8 @@ namespace Nethermind.Db
                 while (IsInKeyBounds(iterator, keyPrefix))
                 {
                     var value = iterator.Value();
-                    foreach (var block in IterateBlockNumbers(value, from, to))
+
+                    foreach (var block in EnumerateBlockNumbers(value, from, to))
                         yield return block;
 
                     if (value.Length > 0 && ReadValLastBlockNum(value) >= to)
@@ -198,7 +199,7 @@ namespace Nethermind.Db
             }
         }
 
-        private static IEnumerable<int> IterateBlockNumbers(byte[]? data, int from, int to)
+        private static IEnumerable<int> EnumerateBlockNumbers(byte[]? data, int from, int to)
         {
             if (data == null)
                 yield break;
@@ -206,6 +207,8 @@ namespace Nethermind.Db
             var blockNums = data.Length == 0 || ReadCompressionMarker(data) <= 0
                 ? ReadBlockNums(data)
                 : DecompressDbValue(data);
+
+            ReverseBlocksIfNeeded(blockNums);
 
             int startIndex = BinarySearch(blockNums, from);
             if (startIndex < 0)
@@ -360,7 +363,7 @@ namespace Nethermind.Db
             IWriteBatch addressBatch = _addressDb.StartWriteBatch();
             IWriteBatch topicBatch = _topicsDb.StartWriteBatch();
 
-            Span<byte> dbValue = MergeOps.Reorg(block.BlockNumber, valueArray);
+            Span<byte> dbValue = MergeOps.Create(MergeOp.ReorgOp, block.BlockNumber, valueArray);
 
             try
             {
@@ -667,20 +670,21 @@ namespace Nethermind.Db
                 stats.GettingValue.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 var firstBlock = ReadValBlockNum(dbValue);
-                var truncateBlock = UseBackwardSyncFor(dbKey) ? firstBlock : ReadValLastBlockNum(dbValue);
+                var truncateBlock = ReadValLastBlockNum(dbValue);
 
                 var dbKeyComp = new byte[prefixLength + BlockNumSize];
                 dbKey.AsSpan(..prefixLength).CopyTo(dbKeyComp);
                 SetKeyBlockNum(dbKeyComp, firstBlock);
 
                 timestamp = Stopwatch.GetTimestamp();
+                ReverseBlocksIfNeeded(dbValue);
                 dbValue = CompressDbValue(dbValue);
                 stats.CompressingValue.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 // Put compressed value at a new key and clear the uncompressed one
                 timestamp = Stopwatch.GetTimestamp();
                 db.PutSpan(dbKeyComp, dbValue);
-                db.Merge(dbKey, MergeOps.Truncate(truncateBlock));
+                db.Merge(dbKey, MergeOps.Create(MergeOp.TruncateOp, truncateBlock));
                 stats.PuttingValues.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 if (db == _addressDb) Interlocked.Increment(ref stats.CompressedAddressKeys);
@@ -760,6 +764,18 @@ namespace Nethermind.Db
             var buffer = new int[len];
             var result = Decompress(data[BlockNumSize..], buffer);
             return result.ToArray();
+        }
+
+        private static void ReverseBlocksIfNeeded(Span<byte> data)
+        {
+            if (data.Length != 0 && ReadValBlockNum(data) > ReadValLastBlockNum(data))
+                MemoryMarshal.Cast<byte, int>(data).Reverse();
+        }
+
+        private static void ReverseBlocksIfNeeded(Span<int> blocks)
+        {
+            if (blocks.Length != 0 && blocks[0] > blocks[^1])
+                blocks.Reverse();
         }
     }
 }

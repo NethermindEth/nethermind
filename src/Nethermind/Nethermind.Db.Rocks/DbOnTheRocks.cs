@@ -18,7 +18,6 @@ using System.Threading.Tasks;
 using ConcurrentCollections;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;

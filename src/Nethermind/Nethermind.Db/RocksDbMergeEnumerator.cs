@@ -17,6 +17,7 @@ public readonly ref struct RocksDbMergeEnumerator(ReadOnlySpan<IntPtr> operandsL
     public Span<byte> ExistingValue { get; }
     public bool HasExistingValue { get; }
     public int OperandsCount => _operandsList.Length;
+    public int TotalCount => OperandsCount + (HasExistingValue ? 1 : 0);
 
     public RocksDbMergeEnumerator(
         Span<byte> existingValue, bool hasExistingValue,
@@ -27,8 +28,24 @@ public readonly ref struct RocksDbMergeEnumerator(ReadOnlySpan<IntPtr> operandsL
         HasExistingValue = hasExistingValue;
     }
 
-    public Span<byte> GetExistingValue() => HasExistingValue ? ExistingValue : default;
-    public unsafe Span<byte> GetOperand(int index) => new((void*)_operandsList[index], (int)_operandsListLength[index]);
+    public Span<byte> GetExistingValue()
+    {
+        return HasExistingValue ? ExistingValue : default;
+    }
 
+    public unsafe Span<byte> GetOperand(int index)
+    {
+        return new((void*)_operandsList[index], (int)_operandsListLength[index]);
+    }
 
+    public Span<byte> Get(int index)
+    {
+        if (index == 0 && HasExistingValue)
+            return ExistingValue;
+
+        if (HasExistingValue)
+            index -= 1;
+
+        return GetOperand(index);
+    }
 }
