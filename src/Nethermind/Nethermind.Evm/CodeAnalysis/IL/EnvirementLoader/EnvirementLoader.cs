@@ -11,6 +11,8 @@ using Nethermind.Core;
 using CallData = System.ReadOnlyMemory<byte>;
 using Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle;
 using Nethermind.State;
+using Nethermind.Evm.Tracing;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 public class EnvirementLoader : IEnvirementLoader
@@ -35,11 +37,11 @@ public class EnvirementLoader : IEnvirementLoader
     public static readonly FieldInfo REF_BLK_CONTEXT_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.BlockExecutionContext), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo REF_ENV_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Environment), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo REF_MEMORY_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Memory), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo OBJ_TXTRACER_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.TxTracer), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo OBJ_LOGGER_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Logger), BindingFlags.Public | BindingFlags.Instance);
 
     public const int REF_BUNDLED_ARGS_INDEX = 0;
-    public const int OBJ_TXTRACER_INDEX = REF_BUNDLED_ARGS_INDEX + 1;
-    public const int OBJ_LOGGER_INDEX = OBJ_TXTRACER_INDEX + 1;
-    public const int REF_CURRENT_STATE_INDEX = OBJ_LOGGER_INDEX + 1;
+    public const int REF_CURRENT_STATE_INDEX = REF_BUNDLED_ARGS_INDEX + 1;
 
     public void LoadBlockContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
@@ -132,10 +134,16 @@ public class EnvirementLoader : IEnvirementLoader
 
     public void LoadLogger<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
+
+        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
         if (loadAddress)
-            il.LoadArgumentAddress(OBJ_LOGGER_INDEX);
+        {
+            il.LoadFieldAddress(OBJ_LOGGER_INDEX);
+        }
         else
-            il.LoadArgument(OBJ_LOGGER_INDEX);
+        {
+            il.LoadField(OBJ_LOGGER_INDEX);
+        }
     }
 
     public void LoadMachineCode<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
@@ -213,10 +221,15 @@ public class EnvirementLoader : IEnvirementLoader
 
     public void LoadTxTracer<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
+        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
         if (loadAddress)
-            il.LoadArgumentAddress(OBJ_TXTRACER_INDEX);
+        {
+            il.LoadFieldAddress(OBJ_TXTRACER_INDEX);
+        }
         else
-            il.LoadArgument(OBJ_TXTRACER_INDEX);
+        {
+            il.LoadField(OBJ_TXTRACER_INDEX);
+        }
     }
 
     public void LoadVmState<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)

@@ -758,22 +758,22 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
                 ILChunkExecutionArguments chunkArguments = new(
                     ref MemoryMarshal.GetReference(codeAsSpan),
+                    ref gasAvailable,
+                    ref programCounter,
+                    ref stack.Head,
+                    ref Add(ref As<byte, Word>(ref MemoryMarshal.GetReference(stack.Bytes)), stack.Head),
                     spec, _specProvider,
                     _blockhashProvider,
                     vmState.Env.TxExecutionContext.CodeInfoRepository,
                     vmState,
                     _state,
                     _returnDataBuffer,
-                    ref gasAvailable,
-                    ref programCounter,
-                    ref stack.Head,
-                    ref Add(ref As<byte, Word>(ref MemoryMarshal.GetReference(stack.Bytes)), stack.Head)
+                    _txTracer,
+                    _logger
                 );
 
                 if (env.CodeInfo.IlInfo.PrecompiledContract(
                     ref chunkArguments,
-                    _txTracer,
-                    _logger,
                     ref chunkExecutionState)
                    )
                 {
@@ -856,6 +856,8 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 #endif
 
             Instruction instruction = (Instruction)code[programCounter];
+
+            Console.WriteLine("Std :: Executing opcode {0} at PC {1} with gas {3} and stack head index {2}", instruction, programCounter, stack.Head, gasAvailable);
 
             if (isCancelable && _txTracer.IsCancelled)
             {

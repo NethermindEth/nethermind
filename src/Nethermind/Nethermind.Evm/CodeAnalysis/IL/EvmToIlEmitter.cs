@@ -1287,19 +1287,15 @@ internal static class OpcodeEmitters
     {
         int count = (int)op - (int)Instruction.SWAP1 + 1;
 
-        method.LoadLocalAddress(locals.uint256R);
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), count + 1);
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.LoadObject(typeof(Word));
-        method.StoreObject(typeof(Word));
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), count + 1);
         method.LoadObject(typeof(Word));
         method.StoreObject(typeof(Word));
 
-        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), count + 1);
-        method.LoadLocalAddress(locals.uint256R);
-        method.LoadObject(typeof(Word));
         method.StoreObject(typeof(Word));
     }
 

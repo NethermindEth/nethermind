@@ -12,11 +12,11 @@ namespace Nethermind.Evm.CodeAnalysis.IL
 {
     public class AotContractsRepository
     {
-        private static ConcurrentDictionary<ValueHash256, ILEmittedEntryPoint?> _processed = new();
+        private static ConcurrentDictionary<ValueHash256, ILEmittedMethod?> _processed = new();
 
         public static int WhiteListCount;
 
-        public static void AddIledCode(ValueHash256 codeHash, ILEmittedEntryPoint? ilCode)
+        public static void AddIledCode(ValueHash256 codeHash, ILEmittedMethod? ilCode)
         {
             if (ilCode is null)
             {
@@ -25,7 +25,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             _processed[codeHash] = ilCode;
         }
 
-        public static bool TryGetIledCode(ValueHash256 codeHash, out ILEmittedEntryPoint ilCode)
+        public static bool TryGetIledCode(ValueHash256 codeHash, out ILEmittedMethod ilCode)
         {
             if (_processed.TryGetValue(codeHash, out ilCode))
             {
@@ -47,7 +47,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL
 
         public static bool IsWhitelisted(ValueHash256 codeHash)
         {
-            return Volatile.Read(ref WhiteListCount) > 0 && _processed.TryGetValue(codeHash, out ILEmittedEntryPoint? ilCode) && ilCode is null;
+            return Volatile.Read(ref WhiteListCount) > 0 && _processed.TryGetValue(codeHash, out ILEmittedMethod? ilCode) && ilCode is null;
         }
 
         public static void ClearCache() => _processed.Clear();

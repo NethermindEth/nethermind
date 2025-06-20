@@ -8,11 +8,9 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System;
 
-namespace Nethermind.Evm.CodeAnalysis.IL;
+namespace Nethermind.Evm.CodeAnalysis.IL.Delegates;
 
-public delegate void ILEmittedInternalInternalMethod(
-    ref ILChunkExecutionArguments iLChunkExecutionArguments,
-    ITxTracer tracer,
-    ILogger logger,
+public delegate bool ILEmittedMethod(
+    ref ILChunkExecutionArguments envArg, 
     ref ILChunkExecutionState result);
 

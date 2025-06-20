@@ -30,16 +30,16 @@ public static class Precompiler
     /// </summary>
     public static void MemoizeILForSteps()
     {
-        _stepsIL = new ConditionalWeakTable<ILEmittedEntryPoint, string>();
+        _stepsIL = new ConditionalWeakTable<ILEmittedMethod, string>();
     }
 
-    public static bool TryGetEmittedIL(ILEmittedEntryPoint step, out string? il)
+    public static bool TryGetEmittedIL(ILEmittedMethod step, out string? il)
     {
         il = null;
         return _stepsIL != null && _stepsIL.TryGetValue(step, out il);
     }
 
-    private static ConditionalWeakTable<ILEmittedEntryPoint, string>? _stepsIL;
+    private static ConditionalWeakTable<ILEmittedMethod, string>? _stepsIL;
 
     internal static Lazy<PersistedAssemblyBuilder> _currentPersistentAsmBuilder = new Lazy<PersistedAssemblyBuilder>(() => new PersistedAssemblyBuilder(new AssemblyName(GenerateAssemblyName()), typeof(object).Assembly));
     internal static ModuleBuilder? _currentPersistentModBuilder = null;
@@ -53,7 +53,7 @@ public static class Precompiler
         return $"{Precompiler._currentPersistentAsmBuilder.Value.GetName()}{DllFileSuffix}";
     }
 
-    private static ILEmittedEntryPoint? CompileContractInternal(
+    private static ILEmittedMethod? CompileContractInternal(
         ModuleBuilder moduleBuilder,
         string identifier,
         CodeInfo codeinfo,
@@ -76,8 +76,8 @@ public static class Precompiler
             var attributeBuilder = new CustomAttributeBuilder(attributeCtor, Array.Empty<object>());
             typeBuilder.SetCustomAttribute(attributeBuilder);
 
-            EmitEntryPoint(Emit<ILEmittedEntryPoint>.BuildMethod(
-                typeBuilder, nameof(ILEmittedEntryPoint), MethodAttributes.Public | MethodAttributes.Static,
+            EmitEntryPoint(Emit<ILEmittedMethod>.BuildMethod(
+                typeBuilder, nameof(ILEmittedMethod), MethodAttributes.Public | MethodAttributes.Static,
                 CallingConventions.Standard,
                 allowUnverifiableCode: true, doVerify: false), typeBuilder,
                 codeinfo, metadata, config).CreateMethod(out string ilCode, OptimizationOptions.All);
@@ -89,8 +89,8 @@ public static class Precompiler
                 return null;
             }
 
-            var method = finalizedType.GetMethod(nameof(ILEmittedEntryPoint), BindingFlags.Static | BindingFlags.Public);
-            var @delegate = (ILEmittedEntryPoint)Delegate.CreateDelegate(typeof(ILEmittedEntryPoint), method!);
+            var method = finalizedType.GetMethod(nameof(ILEmittedMethod), BindingFlags.Static | BindingFlags.Public);
+            var @delegate = (ILEmittedMethod)Delegate.CreateDelegate(typeof(ILEmittedMethod), method!);
 
             if (_stepsIL != null)
             {
@@ -118,7 +118,7 @@ public static class Precompiler
         ContractCompilerMetadata metadata,
         IVMConfig config,
         ILogger logger,
-        out ILEmittedEntryPoint? iledCode)
+        out ILEmittedMethod? iledCode)
     {
 
         // Runtime contract
@@ -173,12 +173,12 @@ public static class Precompiler
         _currentBundleSize = 0;
     }
 
-    public static Emit<ILEmittedInternalInternalMethod> EmitInternalMethod(Emit<ILEmittedInternalInternalMethod> method, int pc, CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
+    public static Emit<ILEmittedMethod> EmitInternalMethod(Emit<ILEmittedMethod> method, int pc, CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
     {
         var machineCodeAsSpan = codeInfo.MachineCode.Span;
 
         SubSegmentMetadata currentSubsegment = contractMetadata.SubSegments[pc];
-        using var locals = new Locals<ILEmittedInternalInternalMethod>(method);
+        using var locals = new Locals<ILEmittedMethod>(method);
         var envLoader = EnvirementLoader.Instance;
 
         Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
@@ -219,6 +219,8 @@ public static class Precompiler
         for (pc = currentSubsegment.Start; pc <= currentSubsegment.End;)
         {
             (Instruction Instruction, OpcodeMetadata Metadata) opcodeInfo = ((Instruction)machineCodeAsSpan[pc], OpcodeMetadata.GetMetadata((Instruction)machineCodeAsSpan[pc]));
+
+
             if (contractMetadata.StaticGasSubSegmentes.TryGetValue(pc, out var gasCost) && gasCost > 0)
             {
                 method.EmitStaticGasCheck(locals.gasAvailable, gasCost, evmExceptionLabels);
@@ -242,6 +244,9 @@ public static class Precompiler
         method.StoreIndirect<int>();
 
         method.MarkLabel(exit);
+
+        envLoader.LoadResult(method, locals, true);
+        method.Call(typeof(ILChunkExecutionState).GetProperty(nameof(ILChunkExecutionState.ShouldAbort)).GetMethod);
         method.Return();
 
         foreach (KeyValuePair<EvmExceptionType, Label> kvp in evmExceptionLabels)
@@ -261,11 +266,11 @@ public static class Precompiler
         return method;
     }
 
-    public static Emit<ILEmittedEntryPoint> EmitEntryPoint(Emit<ILEmittedEntryPoint> method, TypeBuilder typeBuilder,  CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
+    public static Emit<ILEmittedMethod> EmitEntryPoint(Emit<ILEmittedMethod> method, TypeBuilder typeBuilder,  CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
     {
         var machineCodeAsSpan = codeInfo.MachineCode.Span;
 
-        using var locals = new Locals<ILEmittedEntryPoint>(method);
+        using var locals = new Locals<ILEmittedMethod>(method);
         var envLoader = EnvirementLoader.Instance;
 
         Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
@@ -289,7 +294,7 @@ public static class Precompiler
         foreach (var (programCounter, currentSubsegment) in contractMetadata.SubSegments)
         {
             string methodName = $"Segment[{currentSubsegment.Start}::{currentSubsegment.End}]";
-            var internalMethod = Sigil.Emit<ILEmittedInternalInternalMethod>.BuildMethod(
+            var internalMethod = Sigil.Emit<ILEmittedMethod>.BuildMethod(
                 typeBuilder,
                 methodName,
                 MethodAttributes.Private | MethodAttributes.Static,
@@ -327,15 +332,12 @@ public static class Precompiler
             }
             // and we emit failure for failing jumpless segment at start
             envLoader.LoadArguments(method, locals, true);
-            envLoader.LoadTxTracer(method, locals, false);
-            envLoader.LoadLogger(method, locals, false);
             envLoader.LoadResult(method, locals, true);
 
             method.Call(internalMethod);
+            method.BranchIfTrue(ret);
 
-            method.EmitIsStoping(envLoader, locals, ret);
-
-            if(currentSubsegment.IsEphemeralCall)
+            if (currentSubsegment.IsEphemeralCall)
             {
                 method.EmitIsHalting(envLoader, locals, ret);
             }

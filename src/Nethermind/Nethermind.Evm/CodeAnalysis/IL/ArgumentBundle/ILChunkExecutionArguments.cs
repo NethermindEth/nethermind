@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.State;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -13,6 +16,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle
 {
     public ref struct ILChunkExecutionArguments
     {
+        // dont move MachineCode from the top, it is used in the ILChunkExecutionState struct
         public ref byte MachineCode;
         public ref long GasAvailable;
         public ref int ProgramCounter;
@@ -32,8 +36,10 @@ namespace Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle
         public ICodeInfoRepository CodeInfoRepository;
         public IWorldState WorldState;
 
+        public ITxTracer TxTracer;
+        public ILogger Logger;
 
-        public ILChunkExecutionArguments(ref byte machineCode, IReleaseSpec spec, ISpecProvider specProvider, IBlockhashProvider blockhashProvider, ICodeInfoRepository codeInfoRepository, EvmState evmState, IWorldState worldState, ReadOnlyMemory<byte> returnDataBuffer, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef)
+        public ILChunkExecutionArguments(ref byte machineCode, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef, IReleaseSpec spec, ISpecProvider specProvider, IBlockhashProvider blockhashProvider, ICodeInfoRepository codeInfoRepository, EvmState evmState, IWorldState worldState, ReadOnlyMemory<byte> returnDataBuffer, ITxTracer txTracer, ILogger logger)
         {
             MachineCode = ref machineCode;
             Spec = spec;
@@ -47,6 +53,9 @@ namespace Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle
             ProgramCounter = ref programCounter;
             StackHead = ref stackHead;
             StackHeadRef = ref stackHeadRef;
+
+            TxTracer = txTracer;
+            Logger = logger;
 
             Environment = ref evmState.Env;
             TxExecutionContext = ref Environment.TxExecutionContext;

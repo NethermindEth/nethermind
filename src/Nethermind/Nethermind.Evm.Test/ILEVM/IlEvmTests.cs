@@ -1978,13 +1978,13 @@ namespace Nethermind.Evm.Test.ILEVM
             MethodInfo method = assembly
                 .GetTypes()
                 .First(type => type.CustomAttributes.Any(attr => attr.AttributeType == typeof(NethermindPrecompileAttribute)))
-                .GetMethod(nameof(ILEmittedEntryPoint));
+                .GetMethod(nameof(ILEmittedMethod));
             Assert.That(method, Is.Not.Null);
 
             AotContractsRepository.ClearCache();
             var hashcode = Keccak.Compute(testcase.bytecode);
 
-            AotContractsRepository.AddIledCode(hashcode, method.CreateDelegate<ILEmittedEntryPoint>());
+            AotContractsRepository.AddIledCode(hashcode, method.CreateDelegate<ILEmittedMethod>());
             Assert.That(AotContractsRepository.TryGetIledCode(hashcode, out var iledCode), Is.True, "AOT code is not found in the repository");
 
             enhancedChain.Execute<ITxTracer>(testcase.bytecode, NullTxTracer.Instance, forceAnalysis: false);

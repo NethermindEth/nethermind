@@ -10,6 +10,10 @@ using Nethermind.Int256;
 using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.CodeAnalysis.IL.Delegates;
+using System.Reflection;
+using Nethermind.Core.Crypto;
+using System.Linq;
 
 namespace Nethermind.Evm.Test.ILEVM;
 
@@ -192,5 +196,104 @@ public class SyntheticBenchmarkTests
 
         Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.GreaterThan(0));
         Assert.That(actual, Is.EqualTo(expected));
+    }
+
+
+    [Test, TestCaseSource(nameof(p_args))]
+    public void fibbRountripTest(UInt256 number)
+    {
+        byte[] bytes = new byte[32];
+        number.ToBigEndian(bytes);
+        var argBytes = bytes.WithoutLeadingZeros().ToArray();
+        var bytecode = fibbBytecode(argBytes);
+
+        string path = Path.Combine(Directory.GetCurrentDirectory(), "GeneratedContractsTests");
+        if (!Directory.Exists(path))
+        {
+            Directory.CreateDirectory(path);
+        }
+
+        IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
+        {
+            IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
+            IlEvmAnalysisThreshold = 1,
+            IlEvmAnalysisQueueMaxSize = 1,
+            IlEvmContractsPerDllCount = 1,
+            IlEvmPersistPrecompiledContractsOnDisk = true,
+            IlEvmPrecompiledContractsPath = path,
+        }, Prague.Instance);
+
+        string fileName = Precompiler.GetTargetFileName();
+
+        var address = enhancedChain.InsertCode(bytecode);
+
+        enhancedChain.ForceRunAnalysis(address, ILMode.DYNAMIC_AOT_MODE);
+
+        var assemblyPath = Path.Combine(path, fileName);
+
+        Assembly assembly = Assembly.LoadFile(assemblyPath);
+        MethodInfo method = assembly
+            .GetTypes()
+            .First(type => type.CustomAttributes.Any(attr => attr.AttributeType == typeof(NethermindPrecompileAttribute)))
+            .GetMethod(nameof(ILEmittedMethod));
+        Assert.That(method, Is.Not.Null);
+
+        AotContractsRepository.ClearCache();
+        var hashcode = Keccak.Compute(bytecode);
+
+        AotContractsRepository.AddIledCode(hashcode, method.CreateDelegate<ILEmittedMethod>());
+        Assert.That(AotContractsRepository.TryGetIledCode(hashcode, out var iledCode), Is.True, "AOT code is not found in the repository");
+
+        enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, forceAnalysis: false);
+        Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.GreaterThan(0));
+    }
+
+    [Test, TestCaseSource(nameof(p_args))]
+    public void primRountripTest(UInt256 number)
+    {
+        byte[] bytes = new byte[32];
+        number.ToBigEndian(bytes);
+        var argBytes = bytes.WithoutLeadingZeros().ToArray();
+        var bytecode = isPrimeBytecode(argBytes);
+
+        string path = Path.Combine(Directory.GetCurrentDirectory(), "GeneratedContractsTests");
+        if (!Directory.Exists(path))
+        {
+            Directory.CreateDirectory(path);
+        }
+
+        IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
+        {
+            IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
+            IlEvmAnalysisThreshold = 1,
+            IlEvmAnalysisQueueMaxSize = 1,
+            IlEvmContractsPerDllCount = 1,
+            IlEvmPersistPrecompiledContractsOnDisk = true,
+            IlEvmPrecompiledContractsPath = path,
+        }, Prague.Instance);
+
+        string fileName = Precompiler.GetTargetFileName();
+
+        var address = enhancedChain.InsertCode(bytecode);
+
+        enhancedChain.ForceRunAnalysis(address, ILMode.DYNAMIC_AOT_MODE);
+
+        var assemblyPath = Path.Combine(path, fileName);
+
+        Assembly assembly = Assembly.LoadFile(assemblyPath);
+        MethodInfo method = assembly
+            .GetTypes()
+            .First(type => type.CustomAttributes.Any(attr => attr.AttributeType == typeof(NethermindPrecompileAttribute)))
+            .GetMethod(nameof(ILEmittedMethod));
+        Assert.That(method, Is.Not.Null);
+
+        AotContractsRepository.ClearCache();
+        var hashcode = Keccak.Compute(bytecode);
+
+        AotContractsRepository.AddIledCode(hashcode, method.CreateDelegate<ILEmittedMethod>());
+        Assert.That(AotContractsRepository.TryGetIledCode(hashcode, out var iledCode), Is.True, "AOT code is not found in the repository");
+
+        enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, forceAnalysis: false);
+        Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.GreaterThan(0));
     }
 }
