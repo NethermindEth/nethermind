@@ -364,8 +364,6 @@ public abstract partial class BaseEngineModuleTests
 
         protected override IBlockProcessor CreateBlockProcessor(IWorldState worldState)
         {
-            // WithdrawalProcessor = new WithdrawalProcessor(worldState, LogManager);
-
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
