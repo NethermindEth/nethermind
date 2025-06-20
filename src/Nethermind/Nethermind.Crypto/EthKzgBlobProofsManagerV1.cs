@@ -11,7 +11,7 @@ internal class EthKzgBlobProofsManagerV1 : IBlobProofsManager
 {
     public static EthKzgBlobProofsManagerV1 Instance { get; } = new();
 
-    readonly EthKZG.EthKZG kzg = new();
+    readonly EthKZG.EthKZG kzg = new(2);
 
     public ShardBlobNetworkWrapper AllocateWrapper(params ReadOnlySpan<byte[]> blobs)
     {
