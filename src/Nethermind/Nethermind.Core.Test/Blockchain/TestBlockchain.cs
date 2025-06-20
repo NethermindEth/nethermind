@@ -20,7 +20,6 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Crypto;
@@ -37,13 +36,12 @@ using Nethermind.Facade.Find;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Blockchain;
@@ -149,6 +147,7 @@ public class TestBlockchain : IDisposable
         IPoSSwitcher PoSSwitcher,
         IHeaderValidator HeaderValidator,
         IBlockValidator BlockValidator,
+        BlockDecoder BlockDecoder,
         IChainLevelInfoRepository ChainLevelInfoRepository,
         IMainProcessingContext MainProcessingContext,
         IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory,
