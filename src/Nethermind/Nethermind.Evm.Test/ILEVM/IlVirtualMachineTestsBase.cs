@@ -55,7 +55,6 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
                 IlEvmContractsPerDllCount = 1,
-                IsIlEvmAggressiveModeEnabled = true,
                 IlEvmPersistPrecompiledContractsOnDisk = false,
             };
         } else

@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis.IL.Delegates;
 using Nethermind.Evm.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -133,7 +134,7 @@ public static class IlAnalyzer
         switch (mode)
         {
             case ILMode.DYNAMIC_AOT_MODE:
-                if (AotContractsRepository.TryGetIledCode(codeInfo.Codehash.Value, out ILExecutionStep? contractDelegate))
+                if (AotContractsRepository.TryGetIledCode(codeInfo.Codehash.Value, out ILEmittedEntryPoint? contractDelegate))
                 {
                     codeInfo.IlInfo.PrecompiledContract = contractDelegate;
                     Metrics.IncrementIlvmAotCacheTouched();
@@ -162,7 +163,7 @@ public static class IlAnalyzer
     internal static bool TryCompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig vmConfig)
     {
         Metrics.IncrementIlvmCurrentlyCompiling();
-        if (Precompiler.TryCompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig, SimpleConsoleLogManager.Instance.GetLogger("IlvmLogger"), out ILExecutionStep? contractDelegate))
+        if (Precompiler.TryCompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig, SimpleConsoleLogManager.Instance.GetLogger("IlvmLogger"), out ILEmittedEntryPoint? contractDelegate))
         {
             AotContractsRepository.AddIledCode(codeInfo.Codehash.Value, contractDelegate);
             codeInfo.IlInfo.PrecompiledContract = contractDelegate;
@@ -180,38 +181,14 @@ public static class IlAnalyzer
         Dictionary<int, short> stackOffsets = [];
         Dictionary<int, long> gasOffsets = [];
         Dictionary<int, SubSegmentMetadata> subSegmentData = [];
-        Dictionary<int, int> entryPoints = [];
 
-        int startSegment = 0;
-        foreach (var (pc, opcode, metadata) in EnumerateOpcodes(codeAsSpan))
-        {
-            if (opcode is Instruction.JUMPDEST)
-            {
-                continue;
-            }
-
-            if (opcode.IsCall() || opcode.IsCreate())
-            {
-                int endSegment = pc + metadata.AdditionalBytes + 1;
-                entryPoints.Add(startSegment, endSegment);
-                AnalyzeSegment(codeAsSpan, startSegment..endSegment, stackOffsets, gasOffsets, subSegmentData);
-                startSegment = endSegment;
-                continue;
-            }
-        }
-
-        if (startSegment < codeAsSpan.Length)
-        {
-            entryPoints.Add(startSegment, codeAsSpan.Length);
-            AnalyzeSegment(codeAsSpan, startSegment..codeAsSpan.Length, stackOffsets, gasOffsets, subSegmentData);
-        }
+        AnalyzeSegment(codeAsSpan, 0..codeAsSpan.Length, stackOffsets, gasOffsets, subSegmentData);
 
         compilerMetadata = new ContractCompilerMetadata
         {
             StackOffsets = stackOffsets,
             StaticGasSubSegmentes = gasOffsets,
             SubSegments = subSegmentData,
-            SegmentsBoundaries = entryPoints
         };
 
         Metrics.DecrementIlvmCurrentlyAnalysing();
@@ -224,6 +201,7 @@ public static class IlAnalyzer
         int subsegmentStart = segmentRange.Start.Value;
         int costStart = subsegmentStart;
 
+        subSegment.IsEntryPoint = true; // the first segment is always an entry point
         subSegment.Start = subsegmentStart;
         short currentStackSize = 0;
 
@@ -295,42 +273,68 @@ public static class IlAnalyzer
                     }
 
                     subSegment.LeftOutStack = currentStackSize;
-                    if (op.IsTerminating() || op.IsJump() || op.IsCall() || op.IsCreate() || op is Instruction.GAS)
+                    if(op is Instruction.GAS)
                     {
-                        if (op is not Instruction.GAS)
-                        {
-                            subSegment.Start = subsegmentStart;
-                            subSegment.RequiredStack = -subSegment.RequiredStack;
-                            subSegment.IsFailing = hasInvalidOpcode;
-                            subSegment.IsReachable = hasJumpdest;
-                            subSegment.Instructions = instructionsIncluded;
-                            subSegment.RequiresOpcodeCheck = requiresAvailabilityCheck;
-                            subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;
+                        gasOffsets[costStart] = coststack;
+                        costStart = pc + 1;             // start with the next again
+                        coststack = 0;
+                    }
+                    else if(op.IsJump() || op.IsTerminating())
+                    {
+                        subSegment.Start = subsegmentStart;
+                        subSegment.RequiredStack = -subSegment.RequiredStack;
+                        subSegment.IsFailing = hasInvalidOpcode;
+                        subSegment.IsReachable = hasJumpdest;
+                        subSegment.Instructions = instructionsIncluded;
+                        subSegment.RequiresOpcodeCheck = requiresAvailabilityCheck;
+                        subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;
 
-                            gasOffsets[costStart] = coststack;
-                            subSegmentData[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
+                        gasOffsets[costStart] = coststack;
+                        subSegmentData[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
 
-                            subsegmentStart = pc + 1;
-                            subSegment = new();
+                        subsegmentStart = pc + 1;
+                        subSegment = new();
 
-                            instructionsIncluded = [];
-                            currentStackSize = 0;
-                            hasJumpdest = op is Instruction.JUMPI;
-                            hasInvalidOpcode = false;
-                            costStart = pc + 1;             // start with the next again
-                            coststack = 0;
-                            requiresAvailabilityCheck = false;
-                            requiresStaticEnvCheck = false;
+                        instructionsIncluded = [];
+                        currentStackSize = 0;
+                        hasJumpdest = op is Instruction.JUMPI;
+                        hasInvalidOpcode = false;
+                        costStart = pc + 1;             // start with the next again
+                        coststack = 0;
+                        requiresAvailabilityCheck = false;
+                        requiresStaticEnvCheck = false;
 
-                            notStart = true;
-                            continue;
-                        }
-                        else
-                        {
-                            gasOffsets[costStart] = coststack;
-                            costStart = pc + 1;             // start with the next again
-                            coststack = 0;
-                        }
+                        notStart = true;
+                        continue;
+                    } else if(op.IsCreate() || op.IsCall())
+                    {
+                        // create will be trated like a JUMPI but with a special gas handling like GAS
+
+                        subSegment.Start = subsegmentStart;
+                        subSegment.RequiredStack = -subSegment.RequiredStack;
+                        subSegment.IsFailing = hasInvalidOpcode;
+                        subSegment.IsReachable = hasJumpdest;
+                        subSegment.Instructions = instructionsIncluded;
+                        subSegment.RequiresOpcodeCheck = requiresAvailabilityCheck;
+                        subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;
+
+                        gasOffsets[costStart] = coststack;
+                        subSegmentData[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
+
+                        subsegmentStart = pc + 1;
+                        subSegment = new();
+
+                        subSegment.IsEntryPoint = true; // create is not an entry point
+                        instructionsIncluded = [];
+                        currentStackSize = 0;
+                        hasJumpdest = true;
+                        hasInvalidOpcode = false;
+                        costStart = pc + 1;             // start with the next again
+                        coststack = 0;
+                        requiresAvailabilityCheck = false;
+                        requiresStaticEnvCheck = false;
+
+                        notStart = true;
                     }
                     break;
             }

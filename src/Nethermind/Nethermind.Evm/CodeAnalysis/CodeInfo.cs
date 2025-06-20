@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Collections;
 using System.Threading.Tasks;
+using Nethermind.Evm.CodeAnalysis.IL.Delegates;
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeInfo : IThreadPoolWorkItem
@@ -66,7 +67,7 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             Codehash = codeHash;
 
-            if (codeHash is not null && AotContractsRepository.TryGetIledCode(codeHash.Value, out ILExecutionStep ilCode))
+            if (codeHash is not null && AotContractsRepository.TryGetIledCode(codeHash.Value, out ILEmittedEntryPoint ilCode))
             {
                 Metrics.IncrementIlvmAotCacheTouched();
                 IlInfo.PrecompiledContract = ilCode;
@@ -81,7 +82,7 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             Codehash = codeHash;
 
-            if (codeHash is not null && AotContractsRepository.TryGetIledCode(codeHash.Value, out ILExecutionStep ilCode))
+            if (codeHash is not null && AotContractsRepository.TryGetIledCode(codeHash.Value, out ILEmittedEntryPoint ilCode))
             {
                 Metrics.IncrementIlvmAotCacheTouched();
                 IlInfo.PrecompiledContract = ilCode;

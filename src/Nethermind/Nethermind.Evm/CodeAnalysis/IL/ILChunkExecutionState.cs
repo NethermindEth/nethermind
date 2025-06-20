@@ -12,6 +12,7 @@ public enum ContractState
     Failed = 1 << 3,// failed execution due to EvmException
     Return = 1 << 4,// failed execution due to EvmException
     Revert = 1 << 5,// failed execution due to EvmException
+    Jumping = 1 << 6, // internal method is jumping to another segment
 }
 public struct ILChunkExecutionState()
 {
@@ -23,10 +24,12 @@ public struct ILChunkExecutionState()
         ContractState.Revert => true,
         _ => false
     };
-    //ShouldFail || ShouldReturn || ShouldStop || ShouldRevert;
-    public readonly bool ShouldFail => ExceptionType != EvmExceptionType.None;
+    public readonly bool ShouldJump => ContractState == ContractState.Jumping;
+    public readonly bool ShouldHalt => ContractState == ContractState.Halted;
 
     public ReadOnlyMemory<byte> ReturnData;
+
+    public int JumpDestination;
 
     public ContractState ContractState;
 

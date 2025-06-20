@@ -33,7 +33,8 @@ internal static class OpcodeEmitter
         SubSegmentMetadata currentSubSegment,
         int pc, OpcodeMetadata opcodeMetadata,
         Locals<TDelegateType> locals,
-        Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        IEnvirementLoader envirementLoader,
+        Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         switch (op)
         {
@@ -41,22 +42,22 @@ internal static class OpcodeEmitter
                 return;
 
             case Instruction.JUMP:
-                EmitJumpInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitJumpInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.JUMPI:
-                EmitJumpiInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitJumpiInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
 
             case Instruction.POP:
                 return;
             case Instruction.STOP:
-                EmitStopInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitStopInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.CHAINID:
-                EmitChainIdInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitChainIdInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.NOT:
-                EmitNotInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitNotInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.PUSH0:
             case Instruction.PUSH1:
@@ -67,7 +68,7 @@ internal static class OpcodeEmitter
             case Instruction.PUSH6:
             case Instruction.PUSH7:
             case Instruction.PUSH8:
-                EmiPush_sInstructions(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmiPush_sInstructions(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.PUSH9:
             case Instruction.PUSH10:
@@ -93,35 +94,35 @@ internal static class OpcodeEmitter
             case Instruction.PUSH30:
             case Instruction.PUSH31:
             case Instruction.PUSH32:
-                EmitPush_bInstructions(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitPush_bInstructions(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.ADD:
                 EmitBinaryUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
                 return;
             case Instruction.SUB:
-                EmitSubInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitSubInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.MUL:
-                EmitMulInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitMulInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
 
             case Instruction.MOD:
-                EmitModInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitModInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.SMOD:
-                EmitSModInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitSModInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.DIV:
-                EmitDivInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitDivInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.SDIV:
-                EmitSDivInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitSDivInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.ADDMOD:
-                EmitAddModeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitAddModeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.MULMOD:
-                EmitMulModInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitMulModInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.SHL:
                 EmitShiftUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), isLeft: true, evmExceptionLabels);
@@ -142,7 +143,7 @@ internal static class OpcodeEmitter
                 EmitBitwiseUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Vector256).GetMethod(nameof(Vector256.Xor), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
                 return;
             case Instruction.EXP:
-                EmitExpInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitExpInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.LT:
                 EmitComparisonUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels);
@@ -157,10 +158,10 @@ internal static class OpcodeEmitter
                 EmitComparisonInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, evmExceptionLabels);
                 return;
             case Instruction.EQ:
-                EmitEqInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitEqInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.ISZERO:
-                EmitIsZeroInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitIsZeroInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.DUP1:
             case Instruction.DUP2:
@@ -178,7 +179,7 @@ internal static class OpcodeEmitter
             case Instruction.DUP14:
             case Instruction.DUP15:
             case Instruction.DUP16:
-                EmitDupInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitDupInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.SWAP1:
             case Instruction.SWAP2:
@@ -196,150 +197,150 @@ internal static class OpcodeEmitter
             case Instruction.SWAP14:
             case Instruction.SWAP15:
             case Instruction.SWAP16:
-                EmitSwapInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitSwapInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.CODESIZE:
-                EmitCodeSizeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitCodeSizeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.PC:
-                EmitPcInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitPcInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.COINBASE:
-                EmitCoinbaseInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitCoinbaseInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.TIMESTAMP:
-                EmitTimestampInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitTimestampInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.NUMBER:
-                EmitNumberInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitNumberInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.GASLIMIT:
-                EmitGasLimitInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitGasLimitInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.CALLER:
-                EmitCallerInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitCallerInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.ADDRESS:
-                EmitAddressInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitAddressInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.ORIGIN:
-                EmitOriginInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitOriginInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.CALLVALUE:
-                EmitCallValueInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitCallValueInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.GASPRICE:
-                EmitGasPriceInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitGasPriceInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.CALLDATACOPY:
-                EmitCallDataCopyInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitCallDataCopyInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.CALLDATALOAD:
-                EmitCalldataLoadInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitCalldataLoadInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.CALLDATASIZE:
-                EmitCalldataSizeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitCalldataSizeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.MSIZE:
-                EmitMSizeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitMSizeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.MSTORE:
-                EmitMStoreInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitMStoreInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.MSTORE8:
-                EmitMStore8Instruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitMStore8Instruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.MLOAD:
-                EmitMLoadInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitMLoadInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.MCOPY:
-                EmitMCopyInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitMCopyInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.KECCAK256:
-                EmitKeccak256Instruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitKeccak256Instruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.BYTE:
-                EmitByteInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitByteInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.CODECOPY:
-                EmitCodeCopyInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitCodeCopyInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.GAS:
-                EmitGasInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitGasInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.RETURNDATASIZE:
-                EmitReturnDataSizeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitReturnDataSizeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.RETURNDATACOPY:
-                EmitReturnDataCopyInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitReturnDataCopyInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.RETURN or Instruction.REVERT:
-                EmitReturnOrRevertInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitReturnOrRevertInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.BASEFEE:
-                EmitBaseFeeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitBaseFeeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.BLOBBASEFEE:
-                EmitBlobBaseFeeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitBlobBaseFeeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.PREVRANDAO:
-                EmitPrevRandaoInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitPrevRandaoInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.BLOBHASH:
-                EmitBlobHashInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitBlobHashInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.BLOCKHASH:
-                EmitBlockHashInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitBlockHashInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.SIGNEXTEND:
-                EmitSignExtendInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitSignExtendInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.LOG0:
             case Instruction.LOG1:
             case Instruction.LOG2:
             case Instruction.LOG3:
             case Instruction.LOG4:
-                EmitLogInstructions(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitLogInstructions(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.TSTORE:
-                EmitTStoreInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitTStoreInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.TLOAD:
-                EmitTLoadInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitTLoadInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.SSTORE:
-                EmitSStoreInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitSStoreInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.SLOAD:
-                EmitSLoadInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitSLoadInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.EXTCODESIZE:
-                EmitExtcodeSizeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitExtcodeSizeInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.EXTCODECOPY:
-                EmitExtcodeCopyInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitExtcodeCopyInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.EXTCODEHASH:
-                EmitExtcodeHashInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitExtcodeHashInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.SELFBALANCE:
-                EmitSelfBalanceInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitSelfBalanceInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.BALANCE:
-                EmitBalanceInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitBalanceInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.SELFDESTRUCT:
-                EmitSelfDestructInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitSelfDestructInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.CALL:
             case Instruction.CALLCODE:
             case Instruction.DELEGATECALL:
             case Instruction.STATICCALL:
-                EmitCallInstructions(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitCallInstructions(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             case Instruction.CREATE:
             case Instruction.CREATE2:
-                EmitCreateInstructions(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, locals, evmExceptionLabels, escapeLabels);
+                EmitCreateInstructions(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
             default:
                 method.FakeBranch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
@@ -351,15 +352,15 @@ internal static class OpcodeEmitter
 internal static class OpcodeEmitters
 {
     internal static void EmitChainIdInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadChainId(locals, false);
+        envLoader.LoadChainId(method, locals, false);
         method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
         return;
     }
     internal static void EmitLogInstructions<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         var topicsCount = (sbyte)(op - Instruction.LOG0);
         using Local logEntry = method.DeclareLocal<LogEntry>(locals.GetLocalName());
@@ -373,7 +374,7 @@ internal static class OpcodeEmitters
         method.Call(Word.GetUInt256ByRef);
 
                                             // UpdateMemoryCost
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
 
         method.LoadLocalAddress(locals.gasAvailable);
@@ -402,7 +403,7 @@ internal static class OpcodeEmitters
         method.LoadConstant((ulong)0);
         method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadEnvRef(locals);
+        envLoader.LoadEnv(method, locals, true);
         method.LoadField(
             GetFieldInfo(
                 typeof(ExecutionEnvironment),
@@ -410,7 +411,7 @@ internal static class OpcodeEmitters
             )
         );
 
-        method.LoadMemory(locals, true);
+        envLoader.LoadMemory(method, locals, true);
         method.LoadLocalAddress(locals.uint256A); // position
         method.LoadLocalAddress(locals.uint256B); // length
         method.Call(
@@ -440,7 +441,7 @@ internal static class OpcodeEmitters
         method.NewObject(typeof(LogEntry), typeof(Address), typeof(byte[]), typeof(Hash256[]));
         method.StoreLocal(logEntry);
 
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
         using Local accessTrackerLocal = method.DeclareLocal<StackAccessTracker>(locals.GetLocalName());
         method.Call(typeof(EvmState).GetProperty(nameof(EvmState.AccessTracker), BindingFlags.Instance | BindingFlags.Public).GetGetMethod());
@@ -458,7 +459,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitSignExtendInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label signIsNegative = method.DefineLabel(locals.GetLabelName());
         Label endOfOpcodeHandling = method.DefineLabel(locals.GetLabelName());
@@ -515,7 +516,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitBlockHashInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label blockHashReturnedNull = method.DefineLabel(locals.GetLabelName());
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
@@ -528,8 +529,8 @@ internal static class OpcodeEmitters
         method.Call(typeof(UInt256Extensions).GetMethod(nameof(UInt256Extensions.ToLong), BindingFlags.Static | BindingFlags.Public, [typeof(UInt256).MakeByRefType()]));
         method.StoreLocal(locals.int64A);
 
-        method.LoadBlockhashProvider(locals, false);
-        method.LoadHeader(locals, false);
+        envLoader.LoadBlockhashProvider(method, locals, false);
+        envLoader.LoadHeader(method, locals, false);
 
         method.LoadLocalAddress(locals.int64A);
         method.CallVirtual(typeof(IBlockhashProvider).GetMethod(nameof(IBlockhashProvider.GetBlockhash), [typeof(BlockHeader), typeof(long).MakeByRefType()]));
@@ -555,14 +556,14 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitBlobHashInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label blobVersionedHashNotFound = method.DefineLabel(locals.GetLabelName());
         Label indexTooLarge = method.DefineLabel(locals.GetLabelName());
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
         using Local byteMatrix = method.DeclareLocal(typeof(byte[][]), locals.GetLocalName());
-        method.LoadTxContext(locals, true);
+        envLoader.LoadTxContext(method, locals, true);
         method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes), false, out _));
         method.StoreLocal(byteMatrix);
 
@@ -600,13 +601,13 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitPrevRandaoInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label isPostMergeBranch = method.DefineLabel(locals.GetLabelName());
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
 
-        method.LoadBlockContext(locals, true);
+        envLoader.LoadBlockContext(method, locals, true);
         method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
         method.Duplicate();
@@ -626,11 +627,11 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitBlobBaseFeeInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         using Local uint256Nullable = method.DeclareLocal(typeof(UInt256?), locals.GetLocalName());
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadBlockContext(locals, true);
+        envLoader.LoadBlockContext(method, locals, true);
         method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.BlobBaseFee), false, out _));
         method.StoreLocal(uint256Nullable);
         method.LoadLocalAddress(uint256Nullable);
@@ -639,10 +640,10 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitBaseFeeInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadBlockContext(locals, true);
+        envLoader.LoadBlockContext(method, locals, true);
         method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
         method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.BaseFeePerGas), false, out _));
@@ -651,7 +652,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitReturnOrRevertInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.LoadLocalAddress(locals.uint256A);
@@ -661,8 +662,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.uint256B);
         method.Call(Word.GetUInt256ByRef);
 
-
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
@@ -670,14 +670,14 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadResult(locals, true);
-        method.LoadMemory(locals, true);
+        envLoader.LoadResult(method, locals, true);
+        envLoader.LoadMemory(method, locals, true);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.uint256B);
         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Load), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ReturnData)));
 
-        method.LoadResult(locals, true);
+        envLoader.LoadResult(method, locals, true);
         switch (op)
         {
             case Instruction.REVERT:
@@ -693,7 +693,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitReturnDataCopyInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
@@ -716,7 +716,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(UInt256).GetMethod(nameof(UInt256.AddOverflow)));
         method.LoadLocalAddress(locals.uint256R);
 
-        method.LoadReturnDataBuffer(locals, true);
+        envLoader.LoadReturnDataBuffer(method, locals, true);
         method.Call(typeof(ReadOnlyMemory<byte>).GetProperty(nameof(ReadOnlyMemory<byte>.Length)).GetMethod!);
         method.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
         method.Or();
@@ -740,7 +740,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
         method.BranchIfTrue(endOfOpcode);
 
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
@@ -748,7 +748,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadReturnDataBuffer(locals, false);
+        envLoader.LoadReturnDataBuffer(method, locals, false);
         method.LoadLocalAddress(locals.uint256B);
         method.LoadLocalAddress(locals.uint256C);
         method.Call(MethodInfo<UInt256>("op_Explicit", typeof(int), new[] { typeof(UInt256).MakeByRefType() }));
@@ -756,7 +756,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
         method.StoreLocal(locals.localZeroPaddedSpan);
 
-        method.LoadMemory(locals, true);
+        envLoader.LoadMemory(method, locals, true);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localZeroPaddedSpan);
         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -766,17 +766,17 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitReturnDataSizeInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadReturnDataBuffer(locals, true);
+        envLoader.LoadReturnDataBuffer(method, locals, true);
         method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
         method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
         return;
     }
 
     internal static void EmitGasInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         method.LoadLocal(locals.gasAvailable);
@@ -785,7 +785,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitCodeCopyInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 3);
@@ -818,7 +818,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
         method.BranchIfTrue(endOfOpcode);
 
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
@@ -826,7 +826,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadMachineCode(locals, true);
+        envLoader.LoadMachineCode(method, locals, true);
         method.LoadConstant(codeinfo.MachineCode.Length);
         method.LoadLocalAddress(locals.uint256B);
         method.LoadLocalAddress(locals.uint256C);
@@ -836,7 +836,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(byte).MakeByRefType(), typeof(int), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
         method.StoreLocal(locals.localZeroPaddedSpan);
 
-        method.LoadMemory(locals, true);
+        envLoader.LoadMemory(method, locals, true);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localZeroPaddedSpan);
         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -846,7 +846,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitByteInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.Duplicate();
@@ -889,7 +889,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitKeccak256Instruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         MethodInfo refWordToRefValueHashMethod = GetAsMethodInfo<Word, ValueHash256>();
 
@@ -914,7 +914,7 @@ internal static class OpcodeEmitters
         method.LoadConstant((long)0);
         method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
@@ -922,7 +922,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadMemory(locals, true);
+        envLoader.LoadMemory(method, locals, true);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.uint256B);
         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
@@ -933,7 +933,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitMCopyInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.LoadLocalAddress(locals.uint256A);
@@ -959,7 +959,7 @@ internal static class OpcodeEmitters
         method.LoadConstant((long)0);
         method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
@@ -971,9 +971,9 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadMemory(locals, true);
+        envLoader.LoadMemory(method, locals, true);
         method.LoadLocalAddress(locals.uint256A);
-        method.LoadMemory(locals, true);
+        envLoader.LoadMemory(method, locals, true);
         method.LoadLocalAddress(locals.uint256B);
         method.LoadLocalAddress(locals.uint256C);
         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
@@ -982,13 +982,13 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitMLoadInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.LoadLocalAddress(locals.uint256A);
         method.Call(Word.GetUInt256ByRef);
 
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
@@ -1000,7 +1000,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadMemory(locals, true);
+        envLoader.LoadMemory(method, locals, true);
         method.LoadLocalAddress(locals.uint256A);
         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType()]));
         method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(Span<byte>)));
@@ -1013,7 +1013,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitMStore8Instruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.LoadLocalAddress(locals.uint256A);
@@ -1022,7 +1022,7 @@ internal static class OpcodeEmitters
         method.CallGetter(Word.GetByte0, BitConverter.IsLittleEndian);
         method.StoreLocal(locals.byte8A);
 
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
@@ -1033,7 +1033,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadMemory(locals, true);
+        envLoader.LoadMemory(method, locals, true);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocal(locals.byte8A);
 
@@ -1042,7 +1042,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitMStoreInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.LoadLocalAddress(locals.uint256A);
@@ -1050,7 +1050,7 @@ internal static class OpcodeEmitters
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
         method.StoreLocal(locals.wordRef256B);
 
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
@@ -1061,7 +1061,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadMemory(locals, true);
+        envLoader.LoadMemory(method, locals, true);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocal(locals.wordRef256B);
         method.Call(Word.GetMutableSpan);
@@ -1070,21 +1070,21 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitMSizeInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
 
-        method.LoadMemory(locals, true);
+        envLoader.LoadMemory(method, locals, true);
         method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
         method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
         return;
     }
 
     internal static void EmitNumberInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadBlockContext(locals, true);
+        envLoader.LoadBlockContext(method, locals, true);
         method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
         method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.Number), false, out _));
@@ -1093,10 +1093,10 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitGasLimitInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadBlockContext(locals, true);
+        envLoader.LoadBlockContext(method, locals, true);
         method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
         method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.GasLimit), false, out _));
@@ -1105,20 +1105,20 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitCallerInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadEnvRef(locals);
+        envLoader.LoadEnv(method, locals, true);
 
         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Caller)));
         method.Call(Word.SetAddress);
     }
 
     internal static void EmitAddressInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadEnvRef(locals);
+        envLoader.LoadEnv(method, locals, true);
 
         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
         method.Call(Word.SetAddress);
@@ -1126,25 +1126,25 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitOriginInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadTxContext(locals, true);
+        envLoader.LoadTxContext(method, locals, true);
         method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.Origin), false, out _));
         method.Call(Word.SetAddress);
     }
 
     internal static void EmitCallValueInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadEnvRef(locals);
+        envLoader.LoadEnv(method, locals, true);
         method.LoadFieldAddress(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
         method.Call(Word.SetUInt256ByRef);
     }
 
     internal static Label EmitCallDataCopyInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
@@ -1176,7 +1176,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
         method.BranchIfTrue(endOfOpcode);
 
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
@@ -1184,7 +1184,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadCallData(locals, false);
+        envLoader.LoadCalldata(method, locals, false);
         method.LoadLocalAddress(locals.uint256B);
         method.LoadLocal(locals.uint256C);
         method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
@@ -1193,7 +1193,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
         method.StoreLocal(locals.localZeroPaddedSpan);
 
-        method.LoadMemory(locals, true);
+        envLoader.LoadMemory(method, locals, true);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localZeroPaddedSpan);
         method.CallVirtual(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -1203,7 +1203,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitCalldataLoadInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.LoadLocalAddress(locals.uint256A);
@@ -1211,7 +1211,7 @@ internal static class OpcodeEmitters
 
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
 
-        method.LoadCallData(locals, false);
+        envLoader.LoadCalldata(method, locals, false);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadConstant(Word.Size);
         method.LoadConstant((int)PadDirection.Right);
@@ -1221,30 +1221,30 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitCalldataSizeInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadCallData(locals, true);
+        envLoader.LoadCalldata(method, locals, true);
         method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
         method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
         return;
     }
 
     internal static void EmitGasPriceInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadTxContext(locals, true);
+        envLoader.LoadTxContext(method, locals, true);
         method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.GasPrice), false, out _));
         method.Call(Word.SetUInt256ByVal);
         return;
     }
 
     internal static void EmitTimestampInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadBlockContext(locals, true);
+        envLoader.LoadBlockContext(method, locals, true);
         method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
         method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.Timestamp), false, out _));
@@ -1253,10 +1253,10 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitCoinbaseInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadBlockContext(locals, true);
+        envLoader.LoadBlockContext(method, locals, true);
         method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
 
         method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.GasBeneficiary), false, out _));
@@ -1265,7 +1265,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitPcInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         method.LoadConstant(pc);
@@ -1274,7 +1274,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitCodeSizeInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         method.LoadConstant(codeinfo.MachineCode.Length);
@@ -1283,7 +1283,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitSwapInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         int count = (int)op - (int)Instruction.SWAP1 + 1;
 
@@ -1300,7 +1300,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitDupInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         var count = (int)op - (int)Instruction.DUP1 + 1;
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
@@ -1310,7 +1310,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitIsZeroInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.Duplicate();
@@ -1323,7 +1323,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitEqInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         var refWordToRefByteMethod = GetAsMethodInfo<Word, byte>();
         var readVector256Method = GetReadUnalignedMethodInfo<Vector256<byte>>();
@@ -1347,7 +1347,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitExpInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label powerIsZero = method.DefineLabel(locals.GetLabelName());
         Label baseIsOneOrZero = method.DefineLabel(locals.GetLabelName());
@@ -1370,7 +1370,7 @@ internal static class OpcodeEmitters
 
         // load spec
         method.LoadLocal(locals.gasAvailable);
-        method.LoadSpec(locals, false);
+        envLoader.LoadSpec(method, locals, false);
         method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExpByteCost)));
         method.LoadConstant((long)32);
         method.LoadLocal(locals.uint64A);
@@ -1413,7 +1413,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitMulModInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label push0Zero = method.DefineLabel(locals.GetLabelName());
         Label fallbackToUInt256Call = method.DefineLabel(locals.GetLabelName());
@@ -1459,7 +1459,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitAddModeInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label push0Zero = method.DefineLabel(locals.GetLabelName());
         Label fallbackToUInt256Call = method.DefineLabel(locals.GetLabelName());
@@ -1481,7 +1481,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitSDivInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label fallBackToOldBehavior = method.DefineLabel(locals.GetLabelName());
         Label pushZeroLabel = method.DefineLabel(locals.GetLabelName());
@@ -1529,7 +1529,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitTStoreInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.LoadLocalAddress(locals.uint256A);
@@ -1539,34 +1539,34 @@ internal static class OpcodeEmitters
         method.Call(Word.GetArray);
         method.StoreLocal(locals.localArray);
 
-        method.LoadEnvRef(locals);
+        envLoader.LoadEnv(method, locals, true);
 
         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
         method.LoadLocalAddress(locals.uint256A);
         method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
         method.StoreLocal(locals.storageCell);
 
-        method.LoadWorldState(locals, false);
+        envLoader.LoadWorldState(method, locals, false);
         method.LoadLocalAddress(locals.storageCell);
         method.LoadLocal(locals.localArray);
         method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.SetTransientState), [typeof(StorageCell).MakeByRefType(), typeof(byte[])]));
     }
 
     internal static void EmitTLoadInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.LoadLocalAddress(locals.uint256A);
         method.Call(Word.GetUInt256ByRef);
 
-        method.LoadEnvRef(locals);
+        envLoader.LoadEnv(method, locals, true);
 
         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
         method.LoadLocalAddress(locals.uint256A);
         method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
         method.StoreLocal(locals.storageCell);
 
-        method.LoadWorldState(locals, false);
+        envLoader.LoadWorldState(method, locals, false);
         method.LoadLocalAddress(locals.storageCell);
         method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.GetTransientState), [typeof(StorageCell).MakeByRefType()]));
         method.StoreLocal(locals.localReadonOnlySpan);
@@ -1577,10 +1577,10 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitSLoadInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.LoadLocal(locals.gasAvailable);
-        method.LoadSpec(locals, false);
+        envLoader.LoadSpec(method, locals, false);
         method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetSLoadCost)));
         method.Subtract();
         method.Duplicate();
@@ -1592,7 +1592,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.uint256A);
         method.Call(Word.GetUInt256ByRef);
 
-        method.LoadEnvRef(locals);
+        envLoader.LoadEnv(method, locals, true);
 
         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
         method.LoadLocalAddress(locals.uint256A);
@@ -1600,16 +1600,16 @@ internal static class OpcodeEmitters
         method.StoreLocal(locals.storageCell);
 
         method.LoadLocalAddress(locals.gasAvailable);
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
         method.LoadLocalAddress(locals.storageCell);
         method.LoadConstant((int)VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.StorageAccessType.SLOAD);
-        method.LoadSpec(locals, false);
-        method.LoadTxTracer(locals, false);
+        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, false);
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.Public));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadWorldState(locals, false);
+        envLoader.LoadWorldState(method, locals, false);
         method.LoadLocalAddress(locals.storageCell);
         method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.Get), [typeof(StorageCell).MakeByRefType()]));
         method.StoreLocal(locals.localReadonOnlySpan);
@@ -1620,10 +1620,10 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitExtcodeSizeInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.LoadLocal(locals.gasAvailable);
-        method.LoadSpec(locals, false);
+        envLoader.LoadSpec(method, locals, false);
         method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
         method.Subtract();
         method.Duplicate();
@@ -1636,22 +1636,22 @@ internal static class OpcodeEmitters
         method.StoreLocal(locals.address);
 
         method.LoadLocalAddress(locals.gasAvailable);
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
         method.LoadLocal(locals.address);
         method.LoadConstant(false);
-        method.LoadWorldState(locals, false);
-        method.LoadSpec(locals, false);
-        method.LoadTxTracer(locals, false);
+        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, false);
         method.LoadConstant(true);
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
 
-        method.LoadCodeInfoRepository(locals, false);
-        method.LoadWorldState(locals, false);
+        envLoader.LoadCodeInfoRepository(method, locals, false);
+        envLoader.LoadWorldState(method, locals, false);
         method.LoadLocal(locals.address);
-        method.LoadSpec(locals, false);
+        envLoader.LoadSpec(method, locals, false);
         method.LoadConstant(false);
         method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec), typeof(bool)]));
         method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
@@ -1663,7 +1663,7 @@ internal static class OpcodeEmitters
     }
 
     internal static Label EmitExtcodeCopyInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 4);
@@ -1671,7 +1671,7 @@ internal static class OpcodeEmitters
         method.Call(Word.GetUInt256ByRef);
 
         method.LoadLocal(locals.gasAvailable);
-        method.LoadSpec(locals, false);
+        envLoader.LoadSpec(method, locals, false);
         method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
         method.LoadLocalAddress(locals.uint256C);
         method.LoadLocalAddress(locals.lbool);
@@ -1697,12 +1697,12 @@ internal static class OpcodeEmitters
         method.Call(Word.GetUInt256ByRef);
 
         method.LoadLocalAddress(locals.gasAvailable);
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
         method.LoadLocal(locals.address);
         method.LoadConstant(false);
-        method.LoadWorldState(locals, false);
-        method.LoadSpec(locals, false);
-        method.LoadTxTracer(locals, false);
+        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, false);
         method.LoadConstant(true);
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
@@ -1711,7 +1711,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
         method.BranchIfTrue(endOfOpcode);
 
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
@@ -1719,10 +1719,10 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        method.LoadCodeInfoRepository(locals, false);
-        method.LoadWorldState(locals, false);
+        envLoader.LoadCodeInfoRepository(method, locals, false);
+        envLoader.LoadWorldState(method, locals, false);
         method.LoadLocal(locals.address);
-        method.LoadSpec(locals, false);
+        envLoader.LoadSpec(method, locals, false);
         method.LoadConstant(false);
         method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec), typeof(bool)]));
         method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
@@ -1735,7 +1735,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
         method.StoreLocal(locals.localZeroPaddedSpan);
 
-        method.LoadMemory(locals, true);
+        envLoader.LoadMemory(method, locals, true);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localZeroPaddedSpan);
         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -1745,12 +1745,12 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitExtcodeHashInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
         method.LoadLocal(locals.gasAvailable);
-        method.LoadSpec(locals, false);
+        envLoader.LoadSpec(method, locals, false);
         method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeHashCost)));
         method.Subtract();
         method.Duplicate();
@@ -1763,12 +1763,12 @@ internal static class OpcodeEmitters
         method.StoreLocal(locals.address);
 
         method.LoadLocalAddress(locals.gasAvailable);
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
         method.LoadLocal(locals.address);
         method.LoadConstant(false);
-        method.LoadWorldState(locals, false);
-        method.LoadSpec(locals, false);
-        method.LoadTxTracer(locals, false);
+        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, false);
         method.LoadConstant(true);
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
@@ -1777,19 +1777,19 @@ internal static class OpcodeEmitters
         Label pushhashcodeLabel = method.DefineLabel(locals.GetLabelName());
 
         // account exists
-        method.LoadWorldState(locals, false);
+        envLoader.LoadWorldState(method, locals, false);
         method.LoadLocal(locals.address);
         method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.AccountExists)));
         method.BranchIfFalse(pushZeroLabel);
 
-        method.LoadWorldState(locals, false);
+        envLoader.LoadWorldState(method, locals, false);
         method.LoadLocal(locals.address);
         method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.IsDeadAccount)));
         method.BranchIfTrue(pushZeroLabel);
 
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.LoadCodeInfoRepository(locals, false);
-        method.LoadWorldState(locals, false);
+        envLoader.LoadCodeInfoRepository(method, locals, false);
+        envLoader.LoadWorldState(method, locals, false);
         method.LoadLocal(locals.address);
         method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.GetExecutableCodeHash), [typeof(IWorldState), typeof(Address)]));
         method.Call(Word.SetKeccak);
@@ -1803,11 +1803,11 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitSelfBalanceInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadWorldState(locals, false);
-        method.LoadEnvRef(locals);
+        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadEnv(method, locals, true);
 
         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
         method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
@@ -1815,10 +1815,10 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitBalanceInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.LoadLocal(locals.gasAvailable);
-        method.LoadSpec(locals, false);
+        envLoader.LoadSpec(method, locals, false);
         method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetBalanceCost)));
         method.Subtract();
         method.Duplicate();
@@ -1831,26 +1831,26 @@ internal static class OpcodeEmitters
         method.StoreLocal(locals.address);
 
         method.LoadLocalAddress(locals.gasAvailable);
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
         method.LoadLocal(locals.address);
         method.LoadConstant(false);
-        method.LoadWorldState(locals, false);
-        method.LoadSpec(locals, false);
-        method.LoadTxTracer(locals, false);
+        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, false);
         method.LoadConstant(true);
         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.LoadWorldState(locals, false);
+        envLoader.LoadWorldState(method, locals, false);
         method.LoadLocal(locals.address);
         method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
         method.Call(Word.SetUInt256ByVal);
     }
 
     internal static void EmitDivInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label fallBackToOldBehavior = method.DefineLabel(locals.GetLabelName());
         Label pushZeroLabel = method.DefineLabel(locals.GetLabelName());
@@ -1890,7 +1890,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitSModInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label bIsOneOrZero = method.DefineLabel(locals.GetLabelName());
         Label endofOpcode = method.DefineLabel(locals.GetLabelName());
@@ -1911,7 +1911,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitModInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label pushZeroLabel = method.DefineLabel(locals.GetLabelName());
         Label fallBackToOldBehavior = method.DefineLabel(locals.GetLabelName());
@@ -1934,7 +1934,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitMulInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label push0Zero = method.DefineLabel(locals.GetLabelName());
         Label pushItemA = method.DefineLabel(locals.GetLabelName());
@@ -1983,7 +1983,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitSubInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label pushNegItemB = method.DefineLabel(locals.GetLabelName());
         Label pushItemA = method.DefineLabel(locals.GetLabelName());
@@ -2012,7 +2012,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitPush_bInstructions<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         int length = Math.Min(codeinfo.MachineCode.Length - pc - 1, op - Instruction.PUSH0);
         var immediateBytes = codeinfo.MachineCode.Slice(pc + 1, length).Span;
@@ -2033,7 +2033,7 @@ internal static class OpcodeEmitters
                 method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
                 method.Convert<nint>();
             }
-            method.LoadMachineCode(locals, true);
+            envLoader.LoadMachineCode(method, locals, true);
             method.Convert<nint>();
             method.LoadConstant(pc + 1);
             method.Convert<nint>();
@@ -2044,7 +2044,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmiPush_sInstructions<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         if (op is Instruction.PUSH0)
         {
@@ -2065,7 +2065,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitNotInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         var refWordToRefByteMethod = GetAsMethodInfo<Word, byte>();
         var readVector256Method = GetReadUnalignedMethodInfo<Vector256<byte>>();
@@ -2083,7 +2083,7 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitSStoreInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label endOfOpcode;
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
@@ -2094,41 +2094,21 @@ internal static class OpcodeEmitters
         method.Call(Word.GetReadOnlySpan);
         method.StoreLocal(locals.localReadonOnlySpan);
 
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
-        method.LoadWorldState(locals, false);
+        envLoader.LoadWorldState(method, locals, false);
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localReadonOnlySpan);
-        method.LoadSpec(locals, false);
-        method.LoadTxTracer(locals, false);
+        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, false);
 
 
         MethodInfo nonTracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
                     .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionSStore), BindingFlags.Static | BindingFlags.Public)
                     .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
 
-        MethodInfo tracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
-                    .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionSStore), BindingFlags.Static | BindingFlags.Public)
-                    .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
-
-        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-        {
-            method.Call(nonTracingSStoreMethod);
-        }
-        else
-        {
-            Label callNonTracingMode = method.DefineLabel(locals.GetLabelName());
-            Label skipBeyondCalls = method.DefineLabel(locals.GetLabelName());
-            method.LoadTxTracer(locals, false);
-            method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
-            method.BranchIfFalse(callNonTracingMode);
-            method.Call(tracingSStoreMethod);
-            method.Branch(skipBeyondCalls);
-            method.MarkLabel(callNonTracingMode);
-            method.Call(nonTracingSStoreMethod);
-            method.MarkLabel(skipBeyondCalls);
-        }
+        method.Call(nonTracingSStoreMethod);
 
         endOfOpcode = method.DefineLabel(locals.GetLabelName());
         method.Duplicate();
@@ -2136,14 +2116,14 @@ internal static class OpcodeEmitters
         method.LoadConstant((int)EvmExceptionType.None);
         method.BranchIfEqual(endOfOpcode);
 
-        method.LoadResult(locals, true);
+        envLoader.LoadResult(method, locals, true);
         method.Duplicate();
         method.LoadLocal(locals.uint32A);
         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
         method.LoadConstant((int)ContractState.Failed);
         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
 
-        method.LoadGasAvailable(locals, true);
+        envLoader.LoadGasAvailable(method, locals, true);
         method.LoadLocal(locals.gasAvailable);
         method.StoreIndirect<long>();
         method.FakeBranch(escapeLabels.exitLabel); ;
@@ -2152,18 +2132,15 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitSelfDestructInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         MethodInfo selfDestructNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
             .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
 
-        MethodInfo selfDestructTracing = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
-            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
-
         Label skipGasDeduction = method.DefineLabel(locals.GetLabelName());
         Label happyPath = method.DefineLabel(locals.GetLabelName());
 
-        method.LoadSpec(locals, false);
+        envLoader.LoadSpec(method, locals, false);
         method.CallVirtual(typeof(IReleaseSpec).GetProperty(nameof(IReleaseSpec.UseShanghaiDDosProtection)).GetGetMethod());
         method.BranchIfFalse(skipGasDeduction);
 
@@ -2177,36 +2154,21 @@ internal static class OpcodeEmitters
 
         method.MarkLabel(skipGasDeduction);
 
-        method.LoadVmState(locals, false);
-        method.LoadWorldState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
+        envLoader.LoadWorldState(method, locals, false);
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.Call(Word.GetAddress);
         method.LoadLocalAddress(locals.gasAvailable);
-        method.LoadSpec(locals, false);
-        method.LoadTxTracer(locals, false);
-        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-        {
-            method.Call(selfDestructNotTracing);
-        }
-        else
-        {
-            Label skipNonTracingCall = method.DefineLabel(locals.GetLabelName());
-            Label skipTracingCall = method.DefineLabel(locals.GetLabelName());
-            method.LoadTxTracer(locals, false);
-            method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
-            method.BranchIfFalse(skipTracingCall);
-            method.Call(selfDestructTracing);
-            method.Branch(skipNonTracingCall);
-            method.MarkLabel(skipTracingCall);
-            method.Call(selfDestructNotTracing);
-            method.MarkLabel(skipNonTracingCall);
-        }
+        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, false);
+        method.Call(selfDestructNotTracing);
+
         method.StoreLocal(locals.uint32A);
         method.LoadLocal(locals.uint32A);
         method.LoadConstant((int)EvmExceptionType.None);
         method.BranchIfEqual(happyPath);
 
-        method.LoadResult(locals, true);
+        envLoader.LoadResult(method, locals, true);
         method.Duplicate();
         method.LoadLocal(locals.uint32A);
         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
@@ -2216,20 +2178,16 @@ internal static class OpcodeEmitters
         method.FakeBranch(escapeLabels.exitLabel);
 
         method.MarkLabel(happyPath);
-        method.LoadResult(locals, true);
+        envLoader.LoadResult(method, locals, true);
         method.LoadConstant((int)ContractState.Finished);
         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
         method.FakeBranch(escapeLabels.returnLabel);
     }
 
     internal static void EmitCallInstructions<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label happyPath;
-        MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
-                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionCall), BindingFlags.Static | BindingFlags.Public)
-                            .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
-
         MethodInfo callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
             .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionCall), BindingFlags.Static | BindingFlags.Public)
             .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
@@ -2240,12 +2198,12 @@ internal static class OpcodeEmitters
 
         happyPath = method.DefineLabel(locals.GetLabelName());
 
-        method.LoadVmState(locals, false);
-        method.LoadWorldState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
+        envLoader.LoadWorldState(method, locals, false);
         method.LoadLocalAddress(locals.gasAvailable);
-        method.LoadSpec(locals, false);
-        method.LoadTxTracer(locals, false);
-        method.LoadLogger(locals, false);
+        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, false);
+        envLoader.LoadLogger(method, locals, false);
 
         method.LoadConstant((int)op);
 
@@ -2260,7 +2218,7 @@ internal static class OpcodeEmitters
 
         if (op is Instruction.DELEGATECALL)
         {
-            method.LoadEnvRef(locals);
+            envLoader.LoadEnv(method, locals, true);
             method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
         }
         else if (op is Instruction.STATICCALL)
@@ -2290,33 +2248,18 @@ internal static class OpcodeEmitters
 
         method.LoadLocalAddress(toPushToStack);
 
-        method.LoadReturnDataBuffer(locals, true);
+        envLoader.LoadReturnDataBuffer(method, locals, true);
 
         method.LoadLocalAddress(newStateToExe);
 
-        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-        {
-            method.Call(callMethodNotTracing);
-        }
-        else
-        {
-            Label skipNonTracingCall = method.DefineLabel(locals.GetLabelName());
-            Label skipTracingCall = method.DefineLabel(locals.GetLabelName());
-            method.LoadTxTracer(locals, false);
-            method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
-            method.BranchIfFalse(skipTracingCall);
-            method.Call(callMethodTracign);
-            method.Branch(skipNonTracingCall);
-            method.MarkLabel(skipTracingCall);
-            method.Call(callMethodNotTracing);
-            method.MarkLabel(skipNonTracingCall);
-        }
+        method.Call(callMethodNotTracing);
+         
         method.StoreLocal(locals.uint32A);
         method.LoadLocal(locals.uint32A);
         method.LoadConstant((int)EvmExceptionType.None);
         method.BranchIfEqual(happyPath);
 
-        method.LoadResult(locals, true);
+        envLoader.LoadResult(method, locals, true);
         method.Duplicate();
         method.LoadLocal(locals.uint32A);
         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
@@ -2336,18 +2279,8 @@ internal static class OpcodeEmitters
         method.Call(typeof(object).GetMethod(nameof(ReferenceEquals), BindingFlags.Static | BindingFlags.Public));
         method.BranchIfTrue(skipStateMachineScheduling);
 
-        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-        {
-            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
-        }
-        else
-        {
-            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
-            EmitCallToEndInstructionTrace(method, locals.gasAvailable, locals);
-        }
-
-        // cast object to CallResult and store it in
-        method.LoadResult(locals, true);
+        // cast object to CallResult and store it in 
+        envLoader.LoadResult(method, locals, true);
         method.Duplicate();
         method.LoadLocal(newStateToExe);
         method.CastClass(typeof(EvmState));
@@ -2371,12 +2304,8 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitCreateInstructions<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
-        MethodInfo callMethodTracign = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>)
-                            .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.IsPrecompiling>.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
-                            .MakeGenericMethod(typeof(VirtualMachine.IsTracing));
-
         MethodInfo callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
             .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
             .MakeGenericMethod(typeof(VirtualMachine.NotTracing));
@@ -2385,13 +2314,13 @@ internal static class OpcodeEmitters
         using Local newStateToExe = method.DeclareLocal<object>(locals.GetLocalName());
         Label happyPath = method.DefineLabel(locals.GetLabelName());
 
-        method.LoadVmState(locals, false);
+        envLoader.LoadVmState(method, locals, false);
 
-        method.LoadWorldState(locals, false);
+        envLoader.LoadWorldState(method, locals, false);
         method.LoadLocalAddress(locals.gasAvailable);
-        method.LoadSpec(locals, false);
-        method.LoadTxTracer(locals, false);
-        method.LoadLogger(locals, false);
+        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, false);
+        envLoader.LoadLogger(method, locals, false);
 
         method.LoadConstant((int)op);
 
@@ -2424,34 +2353,19 @@ internal static class OpcodeEmitters
 
         method.LoadLocalAddress(toPushToStack);
 
-        method.LoadReturnDataBuffer(locals, true);
+        envLoader.LoadReturnDataBuffer(method, locals, true);
 
         method.LoadLocalAddress(newStateToExe);
 
-        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-        {
-            method.Call(callMethodNotTracing);
-        }
-        else
-        {
-            Label skipNonTracingCall = method.DefineLabel(locals.GetLabelName());
-            Label skipTracingCall = method.DefineLabel(locals.GetLabelName());
-            method.LoadTxTracer(locals, false);
-            method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
-            method.BranchIfFalse(skipTracingCall);
-            method.Call(callMethodTracign);
-            method.Branch(skipNonTracingCall);
-            method.MarkLabel(skipTracingCall);
-            method.Call(callMethodNotTracing);
-            method.MarkLabel(skipNonTracingCall);
-        }
+        method.Call(callMethodNotTracing);
+
         method.StoreLocal(locals.uint32A);
 
         method.LoadLocal(locals.uint32A);
         method.LoadConstant((int)EvmExceptionType.None);
         method.BranchIfEqual(happyPath);
 
-        method.LoadResult(locals, true);
+        envLoader.LoadResult(method, locals, true);
         method.Duplicate();
         method.LoadLocal(locals.uint32A);
         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ExceptionType)));
@@ -2479,17 +2393,7 @@ internal static class OpcodeEmitters
         method.LoadNull();
         method.BranchIfEqual(skipStateMachineScheduling);
 
-        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-        {
-            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
-        }
-        else
-        {
-            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
-            EmitCallToEndInstructionTrace(method, locals.gasAvailable, locals);
-        }
-
-        method.LoadResult(locals, true);
+        envLoader.LoadResult(method, locals, true);
         method.Duplicate();
         method.LoadLocal(newStateToExe);
         method.CastClass(typeof(EvmState));
@@ -2502,16 +2406,16 @@ internal static class OpcodeEmitters
     }
 
     internal static void EmitStopInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
-        method.LoadResult(locals, true);
+        envLoader.LoadResult(method, locals, true);
         method.LoadConstant((int)ContractState.Finished);
         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
         method.FakeBranch(escapeLabels.returnLabel);
     }
 
     internal static void EmitJumpiInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label noJump = method.DefineLabel(locals.GetLabelName());
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
@@ -2520,39 +2424,41 @@ internal static class OpcodeEmitters
         method.BranchIfTrue(noJump);
 
         // we jump into the jump table
-
-        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.StoreLocal(locals.wordRef256A);
-
-        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-        {
-            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
-        }
-        else
-        {
-            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
-            EmitCallToEndInstructionTrace(method, locals.gasAvailable, locals);
-        }
-        method.Branch(escapeLabels.jumpTable);
+        HandleJumpdestination(method, codeinfo, contractMetadata, currentSubSegment, pc, envLoader, locals, evmExceptionLabels, escapeLabels);
 
         method.MarkLabel(noJump);
     }
 
-    internal static void EmitJumpInstruction<TDelegateType>(
-        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label jumpTable, Label exitLabel) escapeLabels)
+    private static void HandleJumpdestination<TDelegateType>(Emit<TDelegateType> method, CodeInfo codeinfo, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.StoreLocal(locals.wordRef256A);
+        method.Duplicate();
+        method.CallGetter(Word.GetInt0, BitConverter.IsLittleEndian);
+        method.StoreLocal(locals.jmpDestination);
 
-        if (ilCompilerConfig.IsIlEvmAggressiveModeEnabled)
-        {
-            UpdateStackHeadAndPushRerSegmentMode(method, locals.stackHeadRef, locals.stackHeadIdx, pc, currentSubSegment);
-        }
-        else
-        {
-            UpdateStackHeadIdxAndPushRefOpcodeMode(method, locals.stackHeadRef, locals.stackHeadIdx, opcodeMetadata);
-            EmitCallToEndInstructionTrace(method, locals.gasAvailable, locals);
-        }
-        method.FakeBranch(escapeLabels.jumpTable);
+        method.EmitCheck(nameof(Word.IsShort));
+        method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.InvalidJumpDestination));
+
+        method.LoadLocal(locals.jmpDestination);
+        method.LoadConstant(0);
+        method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.InvalidJumpDestination));
+
+        method.LoadLocal(locals.jmpDestination);
+        method.LoadConstant(codeinfo.MachineCode.Length);
+        method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.InvalidJumpDestination));
+
+        envLoader.LoadResult(method, locals, true);
+        method.Duplicate();
+        method.LoadConstant((int)ContractState.Jumping);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
+
+        method.LoadLocal(locals.jmpDestination);
+        method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.JumpDestination)));
+    }
+
+    internal static void EmitJumpInstruction<TDelegateType>(
+        Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, IEnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
+    {
+        HandleJumpdestination(method, codeinfo, contractMetadata, currentSubSegment, pc, envLoader, locals, evmExceptionLabels, escapeLabels);
     }
 }
