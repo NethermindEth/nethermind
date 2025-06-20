@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Buffers;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Logging;
+using System;
+using System.Buffers;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace Nethermind.Crypto;
 
@@ -30,10 +33,34 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
     {
         for (int i = 0; i < wrapper.Blobs.Length; i++)
         {
-            Ckzg.BlobToKzgCommitment(wrapper.Commitments[i], wrapper.Blobs[i], KzgPolynomialCommitments.CkzgSetup);
-            Ckzg.ComputeBlobKzgProof(wrapper.Proofs[i], wrapper.Blobs[i], wrapper.Commitments[i], KzgPolynomialCommitments.CkzgSetup);
+            Ckzg.BlobToKzgCommitment(wrapper.Commitments[i], wrapper.Blobs[i], _ckzgSetup);
+            Ckzg.ComputeBlobKzgProof(wrapper.Proofs[i], wrapper.Blobs[i], wrapper.Commitments[i], _ckzgSetup);
         }
     }
+
+
+    internal static IntPtr _ckzgSetup = IntPtr.Zero;
+
+    private static Task? _initializeTask;
+
+    public static bool IsInitialized => _ckzgSetup != IntPtr.Zero;
+
+    public Task InitAsync(ILogger logger = default) => _initializeTask ??= Task.Run(() =>
+    {
+        if (_ckzgSetup != IntPtr.Zero) return;
+
+        string trustedSetupTextFileLocation = Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
+                         string.Empty, "kzg_trusted_setup.txt");
+
+        if (logger.IsInfo)
+            logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
+        _ckzgSetup = Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8);
+
+        if (_ckzgSetup == IntPtr.Zero)
+        {
+            throw new InvalidOperationException("Unable to load trusted setup");
+        }
+    });
 
     public bool ValidateLengths(ShardBlobNetworkWrapper wrapper)
     {
@@ -59,7 +86,7 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
         {
             try
             {
-                return Ckzg.VerifyBlobKzgProof(wrapper.Blobs[0], wrapper.Commitments[0], wrapper.Proofs[0], KzgPolynomialCommitments.CkzgSetup);
+                return Ckzg.VerifyBlobKzgProof(wrapper.Blobs[0], wrapper.Commitments[0], wrapper.Proofs[0], _ckzgSetup);
             }
             catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
             {
@@ -85,7 +112,19 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
 
         try
         {
-            return Ckzg.VerifyBlobKzgProofBatch(flatBlobs, flatCommitments, flatProofs, wrapper.Blobs.Length, KzgPolynomialCommitments.CkzgSetup);
+            return Ckzg.VerifyBlobKzgProofBatch(flatBlobs, flatCommitments, flatProofs, wrapper.Blobs.Length, _ckzgSetup);
+        }
+        catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
+        {
+            return false;
+        }
+    }
+
+    public bool VerifyProof(ReadOnlySpan<byte> commitment, ReadOnlySpan<byte> z, ReadOnlySpan<byte> y, ReadOnlySpan<byte> proof)
+    {
+        try
+        {
+            return Ckzg.VerifyKzgProof(commitment, z, y, proof, _ckzgSetup);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {

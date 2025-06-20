@@ -4,9 +4,11 @@
 using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Logging;
 
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 namespace Nethermind.Crypto;
@@ -38,14 +40,19 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
 
         for (int i = 0; i < wrapper.Blobs.Length; i++)
         {
-            Ckzg.BlobToKzgCommitment(wrapper.Commitments[i], wrapper.Blobs[i], KzgPolynomialCommitments.CkzgSetup);
-            Ckzg.ComputeCellsAndKzgProofs(cells, proofs, wrapper.Blobs[i], KzgPolynomialCommitments.CkzgSetup);
+            Ckzg.BlobToKzgCommitment(wrapper.Commitments[i], wrapper.Blobs[i], BlobProofsManagerV0._ckzgSetup);
+            Ckzg.ComputeCellsAndKzgProofs(cells, proofs, wrapper.Blobs[i], BlobProofsManagerV0._ckzgSetup);
 
             for (int j = 0; j < Ckzg.CellsPerExtBlob; j++)
             {
                 proofs.Slice(Ckzg.BytesPerProof * j, Ckzg.BytesPerProof).CopyTo(wrapper.Proofs[i * Ckzg.CellsPerExtBlob + j]);
             }
         }
+    }
+
+    public Task InitAsync(ILogger logger = default)
+    {
+        throw new NotImplementedException();
     }
 
     public bool ValidateLengths(ShardBlobNetworkWrapper wrapper)
@@ -87,7 +94,7 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
             for (int i = 0; i < wrapper.Blobs.Length; i++)
             {
 
-                Ckzg.ComputeCells(cells.Slice(i * Ckzg.BytesPerCell * Ckzg.CellsPerExtBlob, Ckzg.BytesPerCell * Ckzg.CellsPerExtBlob), wrapper.Blobs[i], KzgPolynomialCommitments.CkzgSetup);
+                Ckzg.ComputeCells(cells.Slice(i * Ckzg.BytesPerCell * Ckzg.CellsPerExtBlob, Ckzg.BytesPerCell * Ckzg.CellsPerExtBlob), wrapper.Blobs[i], BlobProofsManagerV0._ckzgSetup);
 
                 for (int j = 0; j < Ckzg.CellsPerExtBlob; j++)
                 {
@@ -100,11 +107,16 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
             }
 
             return Ckzg.VerifyCellKzgProofBatch(flatCommitments, indices, cells,
-                flatProofs, wrapper.Blobs.Length * Ckzg.CellsPerExtBlob, KzgPolynomialCommitments.CkzgSetup);
+                flatProofs, wrapper.Blobs.Length * Ckzg.CellsPerExtBlob, BlobProofsManagerV0._ckzgSetup);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {
             return false;
         }
+    }
+
+    public bool VerifyProof(ReadOnlySpan<byte> commitment, ReadOnlySpan<byte> z, ReadOnlySpan<byte> y, ReadOnlySpan<byte> proof)
+    {
+        throw new NotImplementedException();
     }
 }

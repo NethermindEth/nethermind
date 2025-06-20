@@ -53,7 +53,7 @@ public static class TxErrorMessages
         "MissingBlobVersionedHash: Must be set.";
 
     public static readonly string InvalidBlobVersionedHashSize =
-        $"InvalidBlobVersionedHashSize: Cannot exceed {KzgPolynomialCommitments.BytesPerBlobVersionedHash}.";
+        $"InvalidBlobVersionedHashSize: Cannot exceed {IKzg.BytesPerBlobVersionedHash}.";
 
     public const string InvalidBlobVersionedHashVersion =
         "InvalidBlobVersionedHashVersion: Blob version not supported.";

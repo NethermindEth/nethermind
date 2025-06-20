@@ -16,9 +16,11 @@ public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
 {
     public static readonly PointEvaluationPrecompile Instance = new();
 
+    private static readonly IKzg Mgr = IBlobProofsManager.For(ProofVersion.V1);
+
     private static readonly byte[] PointEvaluationSuccessfulResponse =
         ((UInt256)Ckzg.FieldElementsPerBlob).ToBigEndian()
-        .Concat(KzgPolynomialCommitments.BlsModulus.ToBigEndian())
+        .Concat(IKzg.BlsModulus.ToBigEndian())
         .ToArray();
 
     public static Address Address { get; } = Address.FromNumber(0x0a);
@@ -46,9 +48,9 @@ public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
             ReadOnlySpan<byte> proof = inputDataSpan[144..192];
             Span<byte> hash = stackalloc byte[32];
 
-            return KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, hash)
+            return Mgr.TryComputeCommitmentHashV1(commitment, hash)
                    && hash.SequenceEqual(versionedHash)
-                   && KzgPolynomialCommitments.VerifyProof(commitment, z, y, proof);
+                   && Mgr.VerifyProof(commitment, z, y, proof);
         }
 
         Metrics.PointEvaluationPrecompile++;

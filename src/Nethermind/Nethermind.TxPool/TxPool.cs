@@ -462,8 +462,7 @@ namespace Nethermind.TxPool
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            bool startBroadcast = _txPoolConfig.PersistentBroadcastEnabled
-                                  && (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
+            bool startBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
                                   TxHandlingOptions.PersistentBroadcast;
 
             if (!AcceptTxWhenNotSynced &&
@@ -693,7 +692,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    dropBlobs |= tx.SupportsBlobs && (tx.GetProofVersion() != headSpec.BlobProofVersion || (ulong)tx.BlobVersionedHashes!.Length > headSpec.MaxBlobsPerTx);
+                    dropBlobs |= tx.SupportsBlobs && (tx.GetProofVersion() != headSpec.BlobProofVersion || (ulong)tx.BlobVersionedHashes!.Length > headSpec.MaxBlobCount);
 
                     if (dropBlobs)
                     {

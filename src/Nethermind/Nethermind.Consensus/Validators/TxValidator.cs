@@ -217,8 +217,8 @@ public sealed class BlobFieldsTxValidator : ITxValidator
                 switch (transaction.BlobVersionedHashes[i])
                 {
                     case null: return TxErrorMessages.MissingBlobVersionedHash;
-                    case { Length: not KzgPolynomialCommitments.BytesPerBlobVersionedHash }: return TxErrorMessages.InvalidBlobVersionedHashSize;
-                    case { Length: KzgPolynomialCommitments.BytesPerBlobVersionedHash } when transaction.BlobVersionedHashes[i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1: return TxErrorMessages.InvalidBlobVersionedHashVersion;
+                    case { Length: not IKzg.BytesPerBlobVersionedHash }: return TxErrorMessages.InvalidBlobVersionedHashSize;
+                    case { Length: IKzg.BytesPerBlobVersionedHash } when transaction.BlobVersionedHashes[i][0] != IKzg.KzgBlobHashVersionV1: return TxErrorMessages.InvalidBlobVersionedHashVersion;
                 }
             }
 

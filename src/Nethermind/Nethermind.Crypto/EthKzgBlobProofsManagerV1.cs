@@ -3,7 +3,9 @@
 
 using CkzgLib;
 using Nethermind.Core;
+using Nethermind.Logging;
 using System;
+using System.Threading.Tasks;
 
 namespace Nethermind.Crypto;
 
@@ -80,6 +82,23 @@ internal class EthKzgBlobProofsManagerV1 : IBlobProofsManager
             }
 
             return kzg.VerifyCellKZGProofBatch(wrapper.Commitments, indices, cells, proofs);
+        }
+        catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
+        {
+            return false;
+        }
+    }
+
+    public Task InitAsync(ILogger logger = default)
+    {
+        return Task.CompletedTask;
+    }
+
+    public bool VerifyProof(ReadOnlySpan<byte> commitment, ReadOnlySpan<byte> z, ReadOnlySpan<byte> y, ReadOnlySpan<byte> proof)
+    {
+        try
+        {
+            return kzg.VerifyKzgProof(commitment.ToArray(), z.ToArray(), y.ToArray(), proof.ToArray());
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {
