@@ -34,7 +34,7 @@ public class EnvirementLoader : IEnvirementLoader
     public static readonly FieldInfo REF_TX_CONTEXT_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.TxExecutionContext), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo REF_BLK_CONTEXT_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.BlockExecutionContext), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo REF_ENV_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Environment), BindingFlags.Public | BindingFlags.Instance);
-
+    public static readonly FieldInfo REF_MEMORY_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Memory), BindingFlags.Public | BindingFlags.Instance);
 
     public const int REF_BUNDLED_ARGS_INDEX = 0;
     public const int OBJ_TXTRACER_INDEX = REF_BUNDLED_ARGS_INDEX + 1;
@@ -153,10 +153,12 @@ public class EnvirementLoader : IEnvirementLoader
 
     public void LoadMemory<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        LoadVmState(il, locals, false);
-        il.Call(typeof(EvmState).GetProperty(nameof(EvmState.Memory), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
+        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
+        il.LoadField(REF_MEMORY_INDEX);
         if (!loadAddress)
-            il.LoadObject<EvmPooledMemory>();
+        {
+            il.LoadIndirect<Memory<byte>>();
+        }
     }
 
     public void LoadProgramCounter<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
@@ -179,10 +181,13 @@ public class EnvirementLoader : IEnvirementLoader
     public void LoadSpec<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadFieldAddress(OBJ_SPEC);
-        if (!loadAddress)
+        if (loadAddress)
         {
-            il.LoadIndirect<IReleaseSpec>();
+            il.LoadFieldAddress(OBJ_SPEC);
+        }
+        else
+        {
+            il.LoadField(OBJ_SPEC);
         }
     }
 

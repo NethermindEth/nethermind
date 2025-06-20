@@ -173,12 +173,12 @@ public static class Precompiler
         _currentBundleSize = 0;
     }
 
-    public static Emit<ILEmittedInternalMethod> EmitInternalMethod(Emit<ILEmittedInternalMethod> method, int pc, CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
+    public static Emit<ILEmittedInternalInternalMethod> EmitInternalMethod(Emit<ILEmittedInternalInternalMethod> method, int pc, CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
     {
         var machineCodeAsSpan = codeInfo.MachineCode.Span;
 
         SubSegmentMetadata currentSubsegment = contractMetadata.SubSegments[pc];
-        using var locals = new Locals<ILEmittedInternalMethod>(method);
+        using var locals = new Locals<ILEmittedInternalInternalMethod>(method);
         var envLoader = EnvirementLoader.Instance;
 
         Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
@@ -289,7 +289,7 @@ public static class Precompiler
         foreach (var (programCounter, currentSubsegment) in contractMetadata.SubSegments)
         {
             string methodName = $"Segment[{currentSubsegment.Start}::{currentSubsegment.End}]";
-            var internalMethod = Sigil.Emit<ILEmittedInternalMethod>.BuildMethod(
+            var internalMethod = Sigil.Emit<ILEmittedInternalInternalMethod>.BuildMethod(
                 typeBuilder,
                 methodName,
                 MethodAttributes.Private | MethodAttributes.Static,

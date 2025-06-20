@@ -18,6 +18,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle
         public ref int ProgramCounter;
         public ref int StackHead;
         public ref Word StackHeadRef;
+        public ref EvmPooledMemory Memory;
         public ref readonly ExecutionEnvironment Environment;
         public ref readonly TxExecutionContext TxExecutionContext;
         public ref readonly BlockExecutionContext BlockExecutionContext;
@@ -50,6 +51,8 @@ namespace Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle
             Environment = ref evmState.Env;
             TxExecutionContext = ref Environment.TxExecutionContext;
             BlockExecutionContext = ref TxExecutionContext.BlockExecutionContext;
+
+            Memory = ref evmState.Memory;
         }
     }
 }
