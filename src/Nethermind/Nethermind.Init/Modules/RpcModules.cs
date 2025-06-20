@@ -12,6 +12,8 @@ using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Proof;
@@ -36,6 +38,9 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .RegisterSingletonJsonRpcModule<INetRpcModule, NetRpcModule>()
             .RegisterSingletonJsonRpcModule<IParityRpcModule, ParityRpcModule>()
             .RegisterSingletonJsonRpcModule<IWeb3RpcModule, Web3RpcModule>()
+
+            .AddSingleton<IFeeHistoryOracle, FeeHistoryOracle>()
+            .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
 
             .AddScoped<IProofRpcModule, ProofRpcModule>()
             .RegisterBoundedJsonRpcModule<IProofRpcModule, ProofModuleFactory>(2, jsonRpcConfig.Timeout)

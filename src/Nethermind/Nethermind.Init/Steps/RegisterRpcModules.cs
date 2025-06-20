@@ -5,24 +5,15 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
-using Nethermind.JsonRpc.Modules.DebugModule;
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Personal;
-using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
-using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 
@@ -33,15 +24,11 @@ public class RegisterRpcModules : IStep
 {
     private readonly INethermindApi _api;
     protected readonly IJsonRpcConfig JsonRpcConfig;
-    private readonly IPoSSwitcher _poSSwitcher;
-    private readonly IBlocksConfig _blocksConfig;
 
-    public RegisterRpcModules(INethermindApi api, IPoSSwitcher poSSwitcher)
+    public RegisterRpcModules(INethermindApi api)
     {
         _api = api;
         JsonRpcConfig = _api.Config<IJsonRpcConfig>();
-        _blocksConfig = _api.Config<IBlocksConfig>();
-        _poSSwitcher = poSSwitcher;
     }
 
     public virtual async Task Execute(CancellationToken cancellationToken)
@@ -75,7 +62,6 @@ public class RegisterRpcModules : IStep
         ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
 
         RpcLimits.Init(JsonRpcConfig.RequestQueueLimit);
-        RegisterEthRpcModule(rpcModuleProvider);
 
         PersonalRpcModule personalRpcModule = new(
             _api.EthereumEcdsa,
@@ -122,50 +108,5 @@ public class RegisterRpcModules : IStep
         ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Enabled.OrderBy(static x => x))}");
 
         await Task.CompletedTask;
-    }
-
-    protected ModuleFactoryBase<IEthRpcModule> CreateEthModuleFactory()
-    {
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        StepDependencyException.ThrowIfNull(_api.TxPool);
-        StepDependencyException.ThrowIfNull(_api.TxSender);
-        StepDependencyException.ThrowIfNull(_api.Wallet);
-        StepDependencyException.ThrowIfNull(_api.StateReader);
-        StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
-        StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
-        StepDependencyException.ThrowIfNull(_api.ProtocolsManager);
-
-        var feeHistoryOracle = new FeeHistoryOracle(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
-        _api.DisposeStack.Push(feeHistoryOracle);
-
-        IBlocksConfig blockConfig = _blocksConfig;
-        ulong secondsPerSlot = blockConfig.SecondsPerSlot;
-
-        return new EthModuleFactory(
-            _api.TxPool,
-            _api.TxSender,
-            _api.Wallet,
-            _api.BlockTree,
-            JsonRpcConfig,
-            _api.LogManager,
-            _api.StateReader,
-            _api,
-            _api.SpecProvider,
-            _api.ReceiptStorage,
-            _api.GasPriceOracle,
-            _api.EthSyncingInfo,
-            feeHistoryOracle,
-            _api.ProtocolsManager,
-            secondsPerSlot);
-    }
-
-    protected virtual void RegisterEthRpcModule(IRpcModuleProvider rpcModuleProvider)
-    {
-        ModuleFactoryBase<IEthRpcModule> ethModuleFactory = CreateEthModuleFactory();
-
-        rpcModuleProvider.RegisterBounded(ethModuleFactory,
-            JsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, JsonRpcConfig.Timeout);
     }
 }
