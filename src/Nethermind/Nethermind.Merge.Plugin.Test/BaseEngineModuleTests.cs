@@ -277,7 +277,7 @@ public abstract partial class BaseEngineModuleTests
 
         public BeaconSync? BeaconSync { get; set; }
 
-        public IWithdrawalProcessor? WithdrawalProcessor { get; set; }
+        public IWithdrawalProcessor WithdrawalProcessor => ((MainBlockProcessingContext)MainProcessingContext).LifetimeScope.Resolve<IWithdrawalProcessor>();
 
         public ISyncPeerPool SyncPeerPool { get; set; }
 
@@ -322,6 +322,7 @@ public abstract partial class BaseEngineModuleTests
 
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)
+                .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
                 .AddModule(new MergeModule(configProvider));
 
         protected override IBlockProducer CreateTestBlockProducer()
@@ -363,8 +364,6 @@ public abstract partial class BaseEngineModuleTests
 
         protected override IBlockProcessor CreateBlockProcessor(IWorldState worldState)
         {
-            WithdrawalProcessor = new WithdrawalProcessor(worldState, LogManager);
-
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,

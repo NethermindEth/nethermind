@@ -2,22 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
-using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Merge.AuRa.InitializationSteps;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.AuRa
@@ -68,29 +68,31 @@ namespace Nethermind.Merge.AuRa
                 _poSSwitcher);
         }
 
-        public override IEnumerable<StepInfo> GetSteps()
-        {
-            yield return typeof(InitializeBlockchainAuRaMerge);
-        }
-
-        public override IModule Module => new AuraMergeModule();
+        public override IModule Module => new AuRaMergeModule();
     }
 
-    public class AuraMergeModule : Module
+    /// <summary>
+    /// Note: <see cref="AuRaMergeModule"/> is applied also when <see cref="AuRaModule"/> is applied.
+    /// Note: <see cref="AuRaMergePlugin"/> subclasses <see cref="MergePlugin"/>, but some component that is set
+    /// in <see cref="MergePlugin"/> is replaced later by standard AuRa components.
+    /// </summary>
+    public class AuRaMergeModule : Module
     {
         protected override void Load(ContainerBuilder builder)
         {
-            base.Load(builder);
-
-            // Nothing right now, just making it clear it is using `MergePluginModule`
             builder
-                .AddModule(new MergePluginModule())
+                .AddModule(new BaseMergePluginModule())
 
                 // Aura (non merge) use `BlockProducerStarter` directly.
                 .AddSingleton<IBlockProducerEnvFactory, AuRaMergeBlockProducerEnvFactory>()
                 .AddSingleton<IBlockProducerTxSourceFactory, AuRaMergeBlockProducerTxSourceFactory>()
 
                 .AddSingleton<IAuRaBlockProcessorFactory, AuRaMergeBlockProcessorFactory>()
+
+                .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
+                .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
+                .AddDecorator<ISealValidator, MergeSealValidator>()
+                .AddDecorator<ISealer, MergeSealer>()
                 ;
         }
     }

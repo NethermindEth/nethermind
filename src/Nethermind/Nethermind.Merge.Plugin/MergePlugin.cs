@@ -376,6 +376,10 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     public virtual IModule Module => new MergePluginModule();
 }
 
+/// <summary>
+/// Code for Ethereum. As in Mainnet. Block processing code should be here as other chain have a tendency to replace
+/// them completely.
+/// </summary>
 public class MergePluginModule : Module
 {
     protected override void Load(ContainerBuilder builder)
@@ -384,12 +388,17 @@ public class MergePluginModule : Module
             .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
             .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
 
+            .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
+            .AddDecorator<ISealValidator, MergeSealValidator>()
+            .AddDecorator<ISealer, MergeSealer>()
+
             .AddModule(new BaseMergePluginModule());
     }
 }
 
 /// <summary>
-/// Common post merge code, also uses by some plugins.
+/// Common post merge code, also uses by some plugins. These are components generally needed for sync and engine api.
+/// Note: Used by <see cref="OptimismModule"/>, <see cref="TaikoModule"/>, <see cref="AuRaMergeModule"/>
 /// </summary>
 public class BaseMergePluginModule : Module
 {
@@ -415,10 +424,6 @@ public class BaseMergePluginModule : Module
 
             .AddSingleton<StartingSyncPivotUpdater>()
             .ResolveOnServiceActivation<StartingSyncPivotUpdater, ISyncModeSelector>()
-
-            .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
-            .AddDecorator<ISealValidator, MergeSealValidator>()
-            .AddDecorator<ISealer, MergeSealer>()
 
             // Invalid chain tracker wrapper should be after other validator.
             .AddDecorator<IHeaderValidator, InvalidHeaderInterceptor>()
