@@ -239,7 +239,6 @@ public class SyncServerTests
             mergeHeaderValidator,
             Always.Valid,
             MainnetSpecProvider.Instance,
-            new BlockDecoder(),
             LimboLogs.Instance);
 
         ctx.SyncServer = new SyncServer(
@@ -461,7 +460,6 @@ public class SyncServerTests
             headerValidatorWithInterceptor,
             Always.Valid,
             MainnetSpecProvider.Instance,
-            new BlockDecoder(),
             LimboLogs.Instance);
 
         ctx.SyncServer = new SyncServer(
@@ -502,7 +500,6 @@ public class SyncServerTests
             headerValidator,
             Always.Valid,
             MainnetSpecProvider.Instance,
-            new BlockDecoder(),
             LimboLogs.Instance);
 
         ctx.SyncServer = new SyncServer(

@@ -23,7 +23,6 @@ public class BlockValidator(
     IHeaderValidator? headerValidator,
     IUnclesValidator? unclesValidator,
     ISpecProvider? specProvider,
-    BlockDecoder? blockDecoder,
     ILogManager? logManager)
     : IBlockValidator
 {
@@ -31,7 +30,7 @@ public class BlockValidator(
     private readonly ITxValidator _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
     private readonly IUnclesValidator _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    private readonly BlockDecoder _blockDecoder = blockDecoder ?? throw new ArgumentNullException(nameof(blockDecoder));
+    private readonly BlockDecoder _blockDecoder = new();
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle) =>

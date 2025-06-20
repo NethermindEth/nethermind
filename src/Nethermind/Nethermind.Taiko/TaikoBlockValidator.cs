@@ -20,7 +20,7 @@ public class TaikoBlockValidator(
     IUnclesValidator unclesValidator,
     ISpecProvider specProvider,
     IEthereumEcdsa ecdsa,
-    ILogManager logManager) : BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, new BlockDecoder(), logManager)
+    ILogManager logManager) : BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager)
 {
     private static readonly byte[] AnchorSelector = Keccak.Compute("anchor(bytes32,bytes32,uint64,uint32)").Bytes[0..4].ToArray();
     private static readonly byte[] AnchorV2Selector = Keccak.Compute("anchorV2(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32))").Bytes[0..4].ToArray();

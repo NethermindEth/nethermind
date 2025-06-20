@@ -147,7 +147,6 @@ public class TestBlockchain : IDisposable
         IPoSSwitcher PoSSwitcher,
         IHeaderValidator HeaderValidator,
         IBlockValidator BlockValidator,
-        BlockDecoder BlockDecoder,
         IChainLevelInfoRepository ChainLevelInfoRepository,
         IMainProcessingContext MainProcessingContext,
         IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory,
