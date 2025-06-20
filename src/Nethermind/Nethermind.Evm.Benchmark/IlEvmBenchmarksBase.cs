@@ -210,9 +210,7 @@ namespace Nethermind.Evm.Benchmark
             SetMode<TIsOptimizing>();
             InsertCode(bytecode, ContractAddress);
             BuildBlock();
-            IterationStepTxs();
             SeedAccounts();
-            if (Mode == STD) IlAnalyzer.StopPrecompilerBackgroundThread(vmConfigOptimizing!);
         }
 
         [GlobalSetup(Target = nameof(ExecuteCodeStd))]
@@ -220,6 +218,10 @@ namespace Nethermind.Evm.Benchmark
 
         [GlobalSetup(Target = nameof(ExecuteCodeAot))]
         public void GlobalSetupAot() => GlobalSetup<IsPrecompiling>();
+
+        [IterationSetup]
+        public void Setup() => IterationStepTxs(); // rent evm state
+
 
         [BenchmarkCategory("STD"), Benchmark(Baseline = true)]
         public void ExecuteCodeStd() => RunTxs();
@@ -414,7 +416,6 @@ namespace Nethermind.Evm.Benchmark
             if (Mode == AOT)
             {
 
-                IlAnalyzer.StartPrecompilerBackgroundThread(vmConfigOptimizing ?? new VMConfig(), NullLogger.Instance);
                 IlAnalyzer.Analyse(driverCodeInfo, vmConfigOptimizing!.IlEvmEnabledMode, vmConfigOptimizing!, NullLogger.Instance);
                 IlAnalyzer.Analyse(targetCodeInfo, vmConfigOptimizing!.IlEvmEnabledMode, vmConfigOptimizing!, NullLogger.Instance);
             }
@@ -464,7 +465,6 @@ namespace Nethermind.Evm.Benchmark
             targetCodeInfo = codeInfo;
             if (Mode == AOT)
             {
-                IlAnalyzer.StartPrecompilerBackgroundThread(vmConfigOptimizing ?? new VMConfig(), NullLogger.Instance);
                 IlAnalyzer.Analyse(codeInfo, vmConfigOptimizing!.IlEvmEnabledMode, vmConfigOptimizing!, NullLogger.Instance);
 
             }
