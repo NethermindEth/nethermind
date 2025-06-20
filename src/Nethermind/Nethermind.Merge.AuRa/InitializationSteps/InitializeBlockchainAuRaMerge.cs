@@ -21,7 +21,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
         private readonly AuRaNethermindApi _api;
         private readonly AuRaChainSpecEngineParameters _parameters;
 
-        public InitializeBlockchainAuRaMerge(AuRaNethermindApi api) : base(api)
+        public InitializeBlockchainAuRaMerge(AuRaNethermindApi api, AuRaGasLimitOverrideFactory gasLimitOverrideFactory) : base(api, gasLimitOverrideFactory)
         {
             _api = api;
             _parameters = _api.ChainSpec.EngineChainSpecParametersProvider
@@ -49,7 +49,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 new ExecutionRequestsProcessor(transactionProcessor),
                 CreateAuRaValidator(worldState, transactionProcessor),
                 txFilter,
-                GetGasLimitCalculator(),
+                _gasLimitOverrideFactory.GetGasLimitCalculator(),
                 contractRewriter,
                 preWarmer: preWarmer);
         }

@@ -3,18 +3,14 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Data;
-using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
-using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
@@ -35,17 +31,14 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps;
 public class InitializeBlockchainAuRa : InitializeBlockchain
 {
     private readonly AuRaNethermindApi _api;
-    private readonly AuRaChainSpecEngineParameters _parameters;
     private INethermindApi NethermindApi => _api;
 
-    private readonly IAuraConfig _auraConfig;
+    protected readonly AuRaGasLimitOverrideFactory _gasLimitOverrideFactory;
 
-    public InitializeBlockchainAuRa(AuRaNethermindApi api) : base(api)
+    public InitializeBlockchainAuRa(AuRaNethermindApi api, AuRaGasLimitOverrideFactory gasLimitOverrideFactory) : base(api)
     {
         _api = api;
-        _parameters = _api.ChainSpec.EngineChainSpecParametersProvider
-            .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-        _auraConfig = NethermindApi.Config<IAuraConfig>();
+        _gasLimitOverrideFactory = gasLimitOverrideFactory;
     }
 
     protected override async Task InitBlockchain()
@@ -103,7 +96,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             new ExecutionRequestsProcessor(transactionProcessor),
             CreateAuRaValidator(worldState, transactionProcessor),
             txFilter,
-            GetGasLimitCalculator(),
+            _gasLimitOverrideFactory.GetGasLimitCalculator(),
             contractRewriter,
             preWarmer: preWarmer);
     }
@@ -145,33 +138,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         }
 
         return validator;
-    }
-
-    protected AuRaContractGasLimitOverride? GetGasLimitCalculator()
-    {
-        if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
-        var blockGasLimitContractTransitions = _parameters.BlockGasLimitContractTransitions;
-
-        if (blockGasLimitContractTransitions?.Any() == true)
-        {
-            AuRaContractGasLimitOverride gasLimitCalculator = new(
-                blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
-                    new BlockGasLimitContract(
-                        _api.AbiEncoder,
-                        blockGasLimitContractTransition.Value,
-                        blockGasLimitContractTransition.Key,
-                        _api.ReadOnlyTxProcessingEnvFactory.Create()))
-                    .ToArray<IBlockGasLimitContract>(),
-                _api.GasLimitCalculatorCache,
-                _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
-                new TargetAdjustedGasLimitCalculator(_api.SpecProvider, NethermindApi.Config<IBlocksConfig>()),
-                _api.LogManager);
-
-            return gasLimitCalculator;
-        }
-
-        // do not return target gas limit calculator here - this is used for validation to check if the override should have been used
-        return null;
     }
 
     private IComparer<Transaction> CreateTxPoolTxComparer(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
