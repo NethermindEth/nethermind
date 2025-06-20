@@ -267,11 +267,14 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return count;
     }
 
+    private TrieNode DirtyNodesGetOrAdd(in TrieStoreDirtyNodesCache.Key key, TrieNode node) =>
+        GetDirtyNodeShard(key).GetOrAdd(key, node);
+
     private bool DirtyNodesTryGetValue(in TrieStoreDirtyNodesCache.Key key, out TrieNode? node) =>
         GetDirtyNodeShard(key).TryGetValue(key, out node);
 
-    private void DirtyNodesSaveInCache(in TrieStoreDirtyNodesCache.Key key, TrieNode node) =>
-        GetDirtyNodeShard(key).SaveInCache(key, node);
+    private void DirtyNodesIncrementMemory(in TrieStoreDirtyNodesCache.Key key, TrieNode node) =>
+        GetDirtyNodeShard(key).IncrementMemory(node);
 
     private bool DirtyNodesIsNodeCached(TrieStoreDirtyNodesCache.Key key) =>
         GetDirtyNodeShard(key).IsNodeCached(key);
@@ -285,30 +288,28 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private TrieNode SaveOrReplaceInDirtyNodesCache(Hash256? address, ref TreePath path, NodeCommitInfo nodeCommitInfo, TrieNode node)
     {
         TrieStoreDirtyNodesCache.Key key = new(address, path, node.Keccak);
-        if (DirtyNodesTryGetValue(in key, out TrieNode cachedNodeCopy))
+        TrieNode cachedNodeCopy = DirtyNodesGetOrAdd(in key, node);
+        if (!ReferenceEquals(cachedNodeCopy, node))
         {
             Metrics.LoadedFromCacheNodesCount++;
-            if (!ReferenceEquals(cachedNodeCopy, node))
+            if (_logger.IsTrace) Trace(node, cachedNodeCopy);
+            cachedNodeCopy.ResolveKey(GetTrieStore(address), ref path, nodeCommitInfo.IsRoot);
+            if (node.Keccak != cachedNodeCopy.Keccak)
             {
-                if (_logger.IsTrace) Trace(node, cachedNodeCopy);
-                cachedNodeCopy.ResolveKey(GetTrieStore(address), ref path, nodeCommitInfo.IsRoot);
-                if (node.Keccak != cachedNodeCopy.Keccak)
-                {
-                    ThrowNodeIsNotSame(node, cachedNodeCopy);
-                }
-
-                if (!nodeCommitInfo.IsRoot)
-                {
-                    nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
-                }
-
-                node = cachedNodeCopy;
-                Metrics.ReplacedNodesCount++;
+                ThrowNodeIsNotSame(node, cachedNodeCopy);
             }
+
+            if (!nodeCommitInfo.IsRoot)
+            {
+                nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
+            }
+
+            node = cachedNodeCopy;
+            Metrics.ReplacedNodesCount++;
         }
         else
         {
-            DirtyNodesSaveInCache(key, node);
+            DirtyNodesIncrementMemory(key, node);
         }
 
         return node;
@@ -319,8 +320,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowNodeIsNotSame(TrieNode node, TrieNode cachedNodeCopy) =>
             throw new InvalidOperationException($"The hash of replacement node {cachedNodeCopy} is not the same as the original {node}.");
     }
@@ -375,7 +375,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return rlp;
     }
 
-
     public byte[] LoadRlp(Hash256? address, in TreePath path, Hash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
     {
         byte[]? rlp = TryLoadRlp(address, path, keccak, nodeStorage, readFlags);
@@ -386,8 +385,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         return rlp;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowMissingNode(Hash256? address, in TreePath path, Hash256 keccak)
         {
             throw new MissingTrieNodeException($"Node A:{address} P:{path} H:{keccak} is missing from the DB", address, path, keccak);
