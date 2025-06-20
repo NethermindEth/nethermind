@@ -130,8 +130,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                     // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
                     // as normally, test blockchain don't use INethermindApi at all. Note: This test does not
                     // seems to use aura block processor which means a lot of aura things is not available here.
-                    .AddModule(new AuraModule(ChainSpec))
-                    .AddModule(new AuraMergeModule())
+                    .AddModule(new AuRaModule(ChainSpec))
+                    .AddModule(new AuRaMergeModule())
                     .AddSingleton<NethermindApi.Dependencies>()
                     .AddSingleton<IReportingValidator>(NullReportingValidator.Instance)
                     .AddSingleton<ISealer>(NullSealEngine.Instance) // Test not originally made with aura sealer
