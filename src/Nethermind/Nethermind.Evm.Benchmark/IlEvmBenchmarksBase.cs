@@ -70,7 +70,7 @@ namespace Nethermind.Evm.Benchmark
         {
 
             SeedCell(AddressABalanceCell, 1000);
-            SeedCell(AddressBBalanceCell, 1000);
+            SeedCell(AddressBBalanceCell, 0);
 
             _transactions = new[]
             {
@@ -212,6 +212,7 @@ namespace Nethermind.Evm.Benchmark
             BuildBlock();
             IterationStepTxs();
             SeedAccounts();
+            if (Mode == STD) IlAnalyzer.StopPrecompilerBackgroundThread(vmConfigOptimizing!);
         }
 
         [GlobalSetup(Target = nameof(ExecuteCodeStd))]
@@ -229,7 +230,6 @@ namespace Nethermind.Evm.Benchmark
         [IterationCleanup]
         public void Cleanup()
         {
-            if (Mode == AOT) IlAnalyzer.StopPrecompilerBackgroundThread(vmConfigOptimizing!);
             _evmState?.Dispose();
             _stateProvider!.Commit(_specProvider!.GenesisSpec);
             snapshot = _stateProvider!.TakeSnapshot();
