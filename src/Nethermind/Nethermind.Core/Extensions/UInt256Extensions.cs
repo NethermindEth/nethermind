@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
@@ -63,5 +64,21 @@ public static class UInt256Extensions
         }
 
         return Unsafe.As<Word, ValueHash256>(ref result);
+    }
+
+    public static int CountLeadingZeros(this in UInt256 uInt256)
+    {
+        // Scan from the highest limb down to the lowest
+        for (int i = 3; i >= 0; i--)
+        {
+            ulong limb = uInt256[i];
+            if (limb != 0)
+            {
+                return (3 - i) * 64 + BitOperations.LeadingZeroCount(limb);
+            }
+        }
+
+        // All four limbs were zero
+        return 256;
     }
 }

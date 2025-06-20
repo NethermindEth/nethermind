@@ -79,9 +79,6 @@
     <Project Path="Nethermind.TxPool.Test/Nethermind.TxPool.Test.csproj" />
     <Project Path="Nethermind.Wallet.Test/Nethermind.Wallet.Test.csproj" />
   </Folder>
-  <Folder Name="/Tools/">
-    <Project Path="Nethermind.Tools.GasHistorian/Nethermind.Tools.GasHistorian.csproj" />
-  </Folder>
   <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
   <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />

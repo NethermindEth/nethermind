@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Config;
@@ -27,7 +28,7 @@ using Nethermind.Network.Config;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializePlugins))]
+[RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializeBlockProducer), typeof(InitializePlugins))]
 public class RegisterRpcModules : IStep
 {
     private readonly INethermindApi _api;
@@ -76,12 +77,6 @@ public class RegisterRpcModules : IStep
         RpcLimits.Init(JsonRpcConfig.RequestQueueLimit);
         RegisterEthRpcModule(rpcModuleProvider);
 
-        RegisterProofRpcModule(rpcModuleProvider);
-
-        RegisterDebugRpcModule(rpcModuleProvider);
-
-        RegisterTraceRpcModule(rpcModuleProvider);
-
         PersonalRpcModule personalRpcModule = new(
             _api.EthereumEcdsa,
             _api.Wallet,
@@ -129,58 +124,6 @@ public class RegisterRpcModules : IStep
         await Task.CompletedTask;
     }
 
-    protected virtual void RegisterProofRpcModule(IRpcModuleProvider rpcModuleProvider)
-    {
-        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.ReceiptFinder);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        ProofModuleFactory proofModuleFactory = new(
-            _api.WorldStateManager,
-            _api.ReadOnlyTxProcessingEnvFactory,
-            _api.BlockTree,
-            _api.BlockPreprocessor,
-            _api.ReceiptFinder,
-            _api.SpecProvider,
-            _api.LogManager);
-        rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, JsonRpcConfig.Timeout);
-    }
-
-    protected virtual void RegisterDebugRpcModule(IRpcModuleProvider rpcModuleProvider)
-    {
-        StepDependencyException.ThrowIfNull(_api.DbProvider);
-        StepDependencyException.ThrowIfNull(_api.BlockPreprocessor);
-        StepDependencyException.ThrowIfNull(_api.BlockValidator);
-        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
-        StepDependencyException.ThrowIfNull(_api.KeyStore);
-        StepDependencyException.ThrowIfNull(_api.PeerPool);
-        StepDependencyException.ThrowIfNull(_api.BadBlocksStore);
-        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-
-        DebugModuleFactory debugModuleFactory = new(
-            _api.WorldStateManager,
-            _api.DbProvider,
-            _api.BlockTree,
-            JsonRpcConfig,
-            _api.CreateBlockchainBridge(),
-            _blocksConfig.SecondsPerSlot,
-            _api.BlockValidator,
-            _api.BlockPreprocessor,
-            _api.RewardCalculatorSource,
-            _api.ReceiptStorage,
-            new ReceiptMigration(_api),
-            _api.ConfigProvider,
-            _api.SpecProvider,
-            _api.SyncModeSelector,
-            _api.BadBlocksStore,
-            _api.FileSystem,
-            _api.LogManager);
-        rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, JsonRpcConfig.Timeout);
-    }
-
     protected ModuleFactoryBase<IEthRpcModule> CreateEthModuleFactory()
     {
         StepDependencyException.ThrowIfNull(_api.BlockTree);
@@ -192,6 +135,7 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.StateReader);
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
         StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
+        StepDependencyException.ThrowIfNull(_api.ProtocolsManager);
 
         var feeHistoryOracle = new FeeHistoryOracle(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
         _api.DisposeStack.Push(feeHistoryOracle);
@@ -213,6 +157,7 @@ public class RegisterRpcModules : IStep
             _api.GasPriceOracle,
             _api.EthSyncingInfo,
             feeHistoryOracle,
+            _api.ProtocolsManager,
             secondsPerSlot);
     }
 
@@ -222,35 +167,5 @@ public class RegisterRpcModules : IStep
 
         rpcModuleProvider.RegisterBounded(ethModuleFactory,
             JsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, JsonRpcConfig.Timeout);
-    }
-
-    protected ModuleFactoryBase<ITraceRpcModule> CreateTraceModuleFactory()
-    {
-        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.DbProvider);
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-
-        return new TraceModuleFactory(
-            _api.WorldStateManager,
-            _api.BlockTree,
-            JsonRpcConfig,
-            _api.CreateBlockchainBridge(),
-            _blocksConfig.SecondsPerSlot,
-            _api.BlockPreprocessor,
-            _api.RewardCalculatorSource,
-            _api.ReceiptStorage,
-            _api.SpecProvider,
-            _poSSwitcher,
-            _api.LogManager);
-    }
-
-    protected virtual void RegisterTraceRpcModule(IRpcModuleProvider rpcModuleProvider)
-    {
-        ModuleFactoryBase<ITraceRpcModule> traceModuleFactory = CreateTraceModuleFactory();
-
-        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, JsonRpcConfig.Timeout);
     }
 }

@@ -616,34 +616,6 @@ namespace Nethermind.Core.Extensions
             public readonly bool WithZeroX;
         }
 
-        private readonly struct StateSmallMemory
-        {
-            public StateSmallMemory(Memory<byte> bytes, bool withZeroX)
-            {
-                Bytes = bytes;
-                WithZeroX = withZeroX;
-            }
-
-            public readonly Memory<byte> Bytes;
-            public readonly bool WithZeroX;
-        }
-
-        private struct StateOld
-        {
-            public StateOld(byte[] bytes, int leadingZeros, bool withZeroX, bool withEip55Checksum)
-            {
-                Bytes = bytes;
-                LeadingZeros = leadingZeros;
-                WithZeroX = withZeroX;
-                WithEip55Checksum = withEip55Checksum;
-            }
-
-            public int LeadingZeros;
-            public byte[] Bytes;
-            public bool WithZeroX;
-            public bool WithEip55Checksum;
-        }
-
         private readonly struct State
         {
             public State(byte[] bytes, int leadingZeros, bool withZeroX)

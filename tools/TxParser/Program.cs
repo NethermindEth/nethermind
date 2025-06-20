@@ -15,6 +15,7 @@ const ulong chainId = BlockchainIds.Mainnet;
 LegacySignatureTxValidator legacySignatureTxValidator = new(chainId);
 SignatureTxValidator signatureTxValidator = SignatureTxValidator.Instance;
 EthereumEcdsa ecdsa = new(chainId);
+ExpectedChainIdTxValidator expectedChainIdTxValidator = new(chainId);
 
 while (true)
 {
@@ -35,6 +36,16 @@ while (true)
         {
             Console.WriteLine($"err: {signatureValidation.Error}");
             continue;
+        }
+
+        if (tx.Type != TxType.Legacy)
+        {
+            signatureValidation = expectedChainIdTxValidator.IsWellFormed(tx, spec);
+            if (!signatureValidation)
+            {
+                Console.WriteLine($"err: {signatureValidation.Error}");
+                continue;
+            }
         }
 
         Address? sender = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);

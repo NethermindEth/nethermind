@@ -56,7 +56,7 @@ namespace Nethermind.Evm.Tracing
 
             // Calculate and return additional gas required in case of insufficient funds.
             UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);
-            if (tx.Value != UInt256.Zero && tx.Value > senderBalance && !tx.IsSystem())
+            if (tx.ValueRef != UInt256.Zero && tx.ValueRef > senderBalance && !tx.IsSystem())
             {
                 return gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
             }
@@ -126,8 +126,8 @@ namespace Nethermind.Evm.Tracing
             transaction.CopyTo(txClone);
             txClone.GasLimit = gasLimit;
 
-            BlockExecutionContext blCtx = new(block, _specProvider.GetSpec(block));
-            _transactionProcessor.CallAndRestore(txClone, in blCtx, tracer.WithCancellation(token));
+            _transactionProcessor.SetBlockExecutionContext(new(block, _specProvider.GetSpec(block)));
+            _transactionProcessor.CallAndRestore(txClone, tracer.WithCancellation(token));
 
             return !tracer.OutOfGas;
         }

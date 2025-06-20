@@ -42,6 +42,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
@@ -111,12 +112,15 @@ public class TestBlockchain : IDisposable
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
     public ManualTimestamper Timestamper { get; private set; } = null!;
-    public BlocksConfig BlocksConfig { get; protected set; } = new();
+    public IBlocksConfig BlocksConfig => Container.Resolve<IBlocksConfig>();
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
     public IExecutionRequestsProcessor MainExecutionRequestsProcessor => ((MainBlockProcessingContext)_fromContainer.MainProcessingContext).LifetimeScope.Resolve<IExecutionRequestsProcessor>();
     public IChainLevelInfoRepository ChainLevelInfoRepository => _fromContainer.ChainLevelInfoRepository;
+
+    protected IBlockProducerEnvFactory BlockProducerEnvFactory => _fromContainer.BlockProducerEnvFactory;
+    protected ISealer Sealer => _fromContainer.Sealer;
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
@@ -148,9 +152,12 @@ public class TestBlockchain : IDisposable
         IChainLevelInfoRepository ChainLevelInfoRepository,
         IMainProcessingContext MainProcessingContext,
         IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory,
+        IBlockProducerEnvFactory BlockProducerEnvFactory,
         Configuration Configuration,
         ISealer Sealer
-    );
+    )
+    {
+    }
 
     public class Configuration
     {
@@ -227,9 +234,7 @@ public class TestBlockchain : IDisposable
         BlockProcessingQueue = chainProcessor;
         chainProcessor.Start();
 
-        ITxSource txPoolTxSource = Container.Resolve<ITxSource>();
-        ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
-        BlockProducer = CreateTestBlockProducer(txPoolTxSource, _fromContainer.Sealer, transactionComparerProvider);
+        BlockProducer = CreateTestBlockProducer();
         BlockProducerRunner ??= CreateBlockProducerRunner();
         BlockProducerRunner.Start();
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
@@ -275,7 +280,8 @@ public class TestBlockchain : IDisposable
             // Some validator configurations
             .AddSingleton<ISealValidator>(Always.Valid)
             .AddSingleton<IUnclesValidator>(Always.Valid)
-            .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD));
+            .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD))
+        ;
 
     protected virtual IEnumerable<IConfig> CreateConfigs()
     {
@@ -292,28 +298,14 @@ public class TestBlockchain : IDisposable
             : new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
     }
 
-    protected virtual IBlockProducer CreateTestBlockProducer(ITxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+    protected virtual IBlockProducer CreateTestBlockProducer()
     {
-        BlockProducerEnvFactory blockProducerEnvFactory = new(
-            WorldStateManager,
-            ReadOnlyTxProcessingEnvFactory,
-            BlockTree,
-            SpecProvider,
-            BlockValidator,
-            NoBlockRewards.Instance,
-            ReceiptStorage,
-            BlockPreprocessorStep,
-            TxPool,
-            transactionComparerProvider,
-            BlocksConfig,
-            LogManager);
-
-        BlockProducerEnv env = blockProducerEnvFactory.Create(txPoolTxSource);
+        BlockProducerEnv env = BlockProducerEnvFactory.Create();
         return new TestBlockProducer(
             env.TxSource,
             env.ChainProcessor,
             env.ReadOnlyStateProvider,
-            sealer,
+            Sealer,
             BlockTree,
             Timestamper,
             SpecProvider,
@@ -376,7 +368,7 @@ public class TestBlockchain : IDisposable
             SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, state),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), state),
             state,
             ReceiptStorage,
             new BeaconBlockRootHandler(TxProcessor, state),
@@ -488,30 +480,5 @@ public static class ContainerBuilderExtensions
             configurer(conf);
             return conf;
         });
-    }
-
-    /// <summary>
-    /// Some test require exposed `TrieStore` and `IPruningTrieStore` which is not normally exposed at all
-    /// hidden in `PruningTrieStateFactory`. So this create mini state configuration for that.
-    /// It does not cover the full standard world state configuration though, so not for general use.
-    /// </summary>
-    public static ContainerBuilder ConfigureTrieStoreExposedWorldStateManager(this ContainerBuilder builder)
-    {
-        return builder
-            // Need to manually create the WorldStateManager to expose the triestore which is normally hidden by PruningTrieStateFactory
-            // This means it does not use pruning triestore by default though which is potential edge case.
-            .AddSingleton<TrieStore>(ctx => TestTrieStoreFactory.Build(ctx.Resolve<IDbProvider>().StateDb, LimboLogs.Instance))
-            .Bind<IPruningTrieStore, TrieStore>()
-            .AddSingleton<IWorldStateManager>(ctx =>
-            {
-                IDbProvider dbProvider = ctx.Resolve<IDbProvider>();
-                TrieStore trieStore = ctx.Resolve<TrieStore>();
-                PreBlockCaches preBlockCaches = new PreBlockCaches();
-                WorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance,
-                    preBlockCaches: preBlockCaches);
-                return new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
-            })
-            .AddSingleton<TrieStoreBoundaryWatcher>() // Normally not exposed also
-            .ResolveOnServiceActivation<TrieStoreBoundaryWatcher, IWorldStateManager>();
     }
 }

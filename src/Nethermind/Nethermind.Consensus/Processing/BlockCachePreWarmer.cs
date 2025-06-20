@@ -10,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
-using Nethermind.Core.Cpu;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -25,7 +24,7 @@ namespace Nethermind.Consensus.Processing;
 
 public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFactory, IWorldState worldStateToWarmup, ISpecProvider specProvider, int concurrency, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
 {
-    private int _concurrencyLevel = (concurrency == 0 ? RuntimeInformation.PhysicalCoreCount - 1 : concurrency);
+    private int _concurrencyLevel = (concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency);
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, worldStateToWarmup), Environment.ProcessorCount * 2);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
 
@@ -181,7 +180,7 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
                     {
                         worldState.WarmUp(tx.AccessList); // eip-2930
                     }
-                    TransactionResult result = state.Scope.TransactionProcessor.Warmup(tx, in state.BlockContext, NullTxTracer.Instance);
+                    TransactionResult result = state.Scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
                     if (state.Logger.IsTrace) state.Logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
                 }
                 catch (Exception ex) when (ex is EvmException or OverflowException)
@@ -360,7 +359,6 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
         public readonly Block Block = block;
         public readonly Hash256 StateRoot = stateRoot;
         public readonly IReleaseSpec Spec = spec;
-        public readonly BlockExecutionContext blkCtx = new BlockExecutionContext(block.Header, spec);
 
         public BlockState InitThreadState()
         {
@@ -376,7 +374,6 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
         public readonly IReadOnlyTxProcessorSource Env;
         public readonly IReadOnlyTxProcessingScope Scope;
 
-        public ref readonly BlockExecutionContext BlockContext => ref Src.blkCtx;
         public ref readonly ILogger Logger => ref Src.PreWarmer._logger;
         public IReleaseSpec Spec => Src.Spec;
         public Block Block => Src.Block;
@@ -386,6 +383,7 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
             Src = src;
             Env = src.PreWarmer._envPool.Get();
             Scope = Env.Build(src.StateRoot);
+            Scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(Block.Header, Spec));
         }
 
         public void Dispose()

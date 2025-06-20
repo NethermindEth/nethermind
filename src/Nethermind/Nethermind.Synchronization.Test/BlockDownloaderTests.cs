@@ -673,7 +673,7 @@ public partial class BlockDownloaderTests
         public byte ProtocolVersion { get; } = default;
         public Hash256 HeadHash { get; set; }
         public long HeadNumber { get; set; }
-        public UInt256 TotalDifficulty { get; set; }
+        public UInt256? TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
@@ -1143,7 +1143,7 @@ public partial class BlockDownloaderTests
         public Hash256 HeadHash { get; set; } = null!;
         public PublicKey Id => Node.Id;
         public long HeadNumber { get; set; }
-        public UInt256 TotalDifficulty { get; set; }
+        public UInt256? TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
@@ -1402,7 +1402,7 @@ public partial class BlockDownloaderTests
 
                 _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                     ? Keccak.EmptyTreeHash
-                    : ReceiptTrie<TxReceipt>.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamDecoder<TxReceipt>()!);
+                    : ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamDecoder<TxReceipt>()!);
             }
 
             using ReceiptsMessage message = new(receipts.ToPooledList());

@@ -431,7 +431,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="accessedAddresses">address</param>
     /// <param name="accessedStorageCells">cell</param>
     /// <remarks>Depends on <see cref="IsTracingAccess"/></remarks>
-    void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells);
+    void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells);
 
     /// <summary>
     /// Reports fees of a transaction

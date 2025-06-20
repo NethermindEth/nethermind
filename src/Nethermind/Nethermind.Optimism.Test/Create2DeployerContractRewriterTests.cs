@@ -28,16 +28,14 @@ internal class Create2DeployerContractRewriterTests
             CanyonTimestamp = canyonHeader.Timestamp,
         });
 
-        MemDb stateDb = new();
-        MemDb codeDb = new();
-        TrieStore ts = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
-        WorldState ws = new(ts, codeDb, LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        IWorldState ws = worldStateManager.GlobalWorldState;
 
         Create2DeployerContractRewriter rewriter = new(specHelper, new TestSingleReleaseSpecProvider(Cancun.Instance), blockTree);
 
         rewriter.RewriteContract(blockTree.FindHeader(1, BlockTreeLookupOptions.None)!, ws);
 
-        byte[] setCode = ws.GetCode(PreInstalls.Create2Deployer);
+        byte[] setCode = ws.GetCode(PreInstalls.Create2Deployer)!;
         Assert.That(setCode, Is.Not.Empty);
     }
 }

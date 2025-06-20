@@ -32,6 +32,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
@@ -323,10 +324,10 @@ public abstract partial class BaseEngineModuleTests
             base.ConfigureContainer(builder, configProvider)
                 .AddModule(new MergeModule(configProvider));
 
-        protected override IBlockProducer CreateTestBlockProducer(ITxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+        protected override IBlockProducer CreateTestBlockProducer()
         {
-            IBlockProducer preMergeBlockProducer =
-                base.CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
+            IBlockProducer preMergeBlockProducer = base.CreateTestBlockProducer();
+
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
             ISyncConfig syncConfig = new SyncConfig();
@@ -340,22 +341,12 @@ public abstract partial class BaseEngineModuleTests
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
-            BlockProducerEnvFactory blockProducerEnvFactory = new(
-                WorldStateManager!,
-                ReadOnlyTxProcessingEnvFactory,
-                BlockTree,
-                SpecProvider,
-                BlockValidator,
-                NoBlockRewards.Instance,
-                ReceiptStorage,
-                BlockPreprocessorStep,
-                TxPool,
-                transactionComparerProvider,
-                blocksConfig,
-                LogManager);
-            blockProducerEnvFactory.ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
+            if (ExecutionRequestsProcessorOverride is not null)
+            {
+                ((BlockProducerEnvFactory)BlockProducerEnvFactory).ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
+            }
 
-            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
+            BlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
             BlockImprovementContextFactory ??= new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
@@ -378,7 +369,7 @@ public abstract partial class BaseEngineModuleTests
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), worldState),
                 worldState,
                 ReceiptStorage,
                 new BeaconBlockRootHandler(TxProcessor, worldState),

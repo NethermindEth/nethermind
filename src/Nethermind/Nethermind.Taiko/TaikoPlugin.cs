@@ -35,6 +35,7 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
@@ -46,7 +47,6 @@ namespace Nethermind.Taiko;
 public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
     public const string Taiko = "Taiko";
-    private const string L1OriginDbName = "L1Origin";
     public string Author => "Nethermind";
     public string Name => Taiko;
     public string Description => "Taiko support for Nethermind";
@@ -55,7 +55,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     private ILogger _logger;
 
     private IMergeConfig _mergeConfig = null!;
-    private ISyncConfig _syncConfig = null!;
 
     private IBlockCacheService? _blockCacheService;
 
@@ -65,7 +64,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         _api = (TaikoNethermindApi)api;
         _mergeConfig = _api.Config<IMergeConfig>();
-        _syncConfig = _api.Config<ISyncConfig>();
         _logger = _api.LogManager.GetClassLogger();
 
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
@@ -74,8 +72,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         _blockCacheService = _api.Context.Resolve<IBlockCacheService>();
         _api.FinalizationManager = new ManualBlockFinalizationManager();
 
-        _api.RewardCalculatorSource = NoBlockRewards.Instance;
-        _api.SealValidator = NullSealEngine.Instance;
         _api.GossipPolicy = ShouldNotGossip.Instance;
 
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
@@ -83,26 +79,10 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         return Task.CompletedTask;
     }
 
-    public void InitTxTypesAndRlpDecoders(INethermindApi api)
-    {
-        _api = (TaikoNethermindApi)api;
-
-        ArgumentNullException.ThrowIfNull(_api.DbProvider);
-        ArgumentNullException.ThrowIfNull(_api.DbFactory);
-
-        IRlpStreamDecoder<L1Origin> r1OriginDecoder = new L1OriginDecoder();
-        Rlp.RegisterDecoder(typeof(L1Origin), r1OriginDecoder);
-
-
-        IDb db = _api.DbFactory.CreateDb(new DbSettings(L1OriginDbName, L1OriginDbName.ToLower()));
-        _api.DbProvider!.RegisterDb(L1OriginDbName, db);
-        _api.L1OriginStore = new(_api.DbProvider.GetDb<IDb>(L1OriginDbName), r1OriginDecoder);
-    }
-
-    public async Task InitRpcModules()
+    public Task InitRpcModules()
     {
         if (_api is null)
-            return;
+            return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
@@ -120,12 +100,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_api.EngineRequestsTracker);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
-
-        // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
-        // Then we will wait 5s more to ensure everything is processed
-        while (!_api.BlockProcessingQueue.IsEmpty)
-            await Task.Delay(100);
-        await Task.Delay(5000);
 
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
@@ -196,11 +170,11 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         _api.RpcModuleProvider.RegisterSingle(engine);
 
         if (_logger.IsInfo) _logger.Info("Taiko Engine Module has been enabled");
+        return Task.CompletedTask;
     }
 
     private static TaikoPayloadPreparationService CreatePayloadPreparationService(TaikoNethermindApi api, IRlpStreamDecoder<Transaction> txDecoder)
     {
-        ArgumentNullException.ThrowIfNull(api.L1OriginStore);
         ArgumentNullException.ThrowIfNull(api.SpecProvider);
 
         IReadOnlyTxProcessorSource txProcessingEnv = api.ReadOnlyTxProcessingEnvFactory.Create();
@@ -250,7 +224,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public IEnumerable<StepInfo> GetSteps()
     {
         yield return typeof(InitializeBlockchainTaiko);
-        yield return typeof(RegisterTaikoRpcModules);
     }
 
     // IConsensusPlugin
@@ -260,7 +233,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         throw new NotSupportedException();
     }
 
-    public IBlockProducer InitBlockProducer(ITxSource? _ = null)
+    public IBlockProducer InitBlockProducer()
     {
         throw new NotSupportedException();
     }
@@ -286,11 +259,18 @@ public class TaikoModule : Module
             .Map<TaikoChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<TaikoChainSpecEngineParameters>())
 
+            // L1 origin store
+            .AddSingleton<IRlpStreamDecoder<L1Origin>, L1OriginDecoder>()
+            .AddKeyedSingleton<IDb>(L1OriginStore.L1OriginDbName, (ctx) => ctx
+                .Resolve<IDbFactory>().CreateDb(new DbSettings(L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName.ToLower())))
+            .AddSingleton<IL1OriginStore, L1OriginStore>()
+
+            // Sync modification
             .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance)
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
-
             .AddDecorator<BeaconSync>((_, strategy) =>
             {
+                // Normally not turned on at start because `StartingSyncPivotUpdater` waiting for pivot
                 strategy.AllowBeaconHeaderSync();
                 return strategy;
             })
@@ -300,7 +280,21 @@ public class TaikoModule : Module
             .AddSingleton<IHeaderValidator, TaikoHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
 
+            // Blok proccessing
+            .AddScoped<IValidationTransactionExecutor, TaikoBlockValidationTransactionExecutor>()
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
+
+            .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>
+                new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))
+
+            // Rpc
+            .RegisterSingletonJsonRpcModule<ITaikoExtendedEthRpcModule, TaikoExtendedEthModule>()
+
+            // Need to set the rlp globally
+            .OnBuild((ctx) =>
+            {
+                Rlp.RegisterDecoder(typeof(L1Origin), ctx.Resolve<IRlpStreamDecoder<L1Origin>>());
+            })
             ;
     }
 }

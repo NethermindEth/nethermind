@@ -122,12 +122,15 @@ namespace Nethermind.ExternalSigner.Plugin
             ArgumentNullException.ThrowIfNull(transaction);
 
             TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
+            //Clef will complain about certain fields if they are serialized
+            if (transactionForRpc is EIP1559TransactionForRpc eip1559ForRpc)
+                eip1559ForRpc.GasPrice = null;
             SignTransactionResponse? signed = rpcClient.Post<SignTransactionResponse>(
                 "account_signTransaction",
                 transactionForRpc).GetAwaiter().GetResult();
             if (signed is null || signed.Tx is null) ThrowInvalidOperationSignFailed();
 
-            transaction.Signature = new Signature(signed.Tx.R!.Value, signed.Tx.S!.Value, (ulong)(signed.Tx.V! + Signature.VOffset));
+            transaction.Signature = new Signature(signed.Tx.R!.Value, signed.Tx.S!.Value, transaction.Type == TxType.Legacy ? (ulong)(signed.Tx.V!) : (ulong)(signed.Tx.V!) + Signature.VOffset);
         }
 
         public Signature SignMessage(byte[] message, Address address)

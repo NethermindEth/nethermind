@@ -4,15 +4,17 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
-using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Merge.AuRa.InitializationSteps;
 using Nethermind.Merge.Plugin;
@@ -50,28 +52,6 @@ namespace Nethermind.Merge.AuRa
             }
         }
 
-        public override IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
-        {
-            _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
-                _auraApi!.ChainSpec,
-                _auraApi.AbiEncoder,
-                _auraApi.CreateStartBlockProducer,
-                _api.ReadOnlyTxProcessingEnvFactory,
-                _api.WorldStateManager!,
-                _api.BlockTree!,
-                _api.SpecProvider!,
-                _api.BlockValidator!,
-                _api.RewardCalculatorSource!,
-                _api.ReceiptStorage!,
-                _api.BlockPreprocessor!,
-                _api.TxPool!,
-                _api.TransactionComparerProvider!,
-                _api.Config<IBlocksConfig>(),
-                _api.LogManager);
-
-            return base.InitBlockProducer(consensusPlugin, txSource);
-        }
-
         protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()
             => new AuRaPostMergeBlockProducerFactory(
                 _api.SpecProvider!,
@@ -92,7 +72,33 @@ namespace Nethermind.Merge.AuRa
         public override IEnumerable<StepInfo> GetSteps()
         {
             yield return typeof(InitializeBlockchainAuRaMerge);
-            yield return typeof(RegisterAuRaMergeRpcModules);
+        }
+
+        public override IModule Module => new AuRaMergeModule();
+    }
+
+    /// <summary>
+    /// Note: <see cref="AuRaMergeModule"/> is applied also when <see cref="AuRaModule"/> is applied.
+    /// Note: <see cref="AuRaMergePlugin"/> subclasses <see cref="MergePlugin"/>, but some component that is set
+    /// in <see cref="MergePlugin"/> is replaced later by standard AuRa components.
+    /// </summary>
+    public class AuRaMergeModule : Module
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            builder
+                .AddModule(new BaseMergePluginModule())
+
+                // Aura (non merge) use `BlockProducerStarter` directly.
+                .AddSingleton<IBlockProducerEnvFactory, AuRaMergeBlockProducerEnvFactory>()
+                .AddSingleton<IBlockProducerTxSourceFactory, AuRaMergeBlockProducerTxSourceFactory>()
+
+                .AddSingleton<IAuRaBlockProcessorFactory, AuRaMergeBlockProcessorFactory>()
+
+                .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
+                .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
+                .AddDecorator<ISealValidator, MergeSealValidator>()
+                ;
         }
     }
 }

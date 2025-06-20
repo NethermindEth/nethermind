@@ -21,6 +21,7 @@ namespace Nethermind.Consensus.Processing
     /// <summary>
     /// Not thread safe.
     /// </summary>
+    /// Only used by AuRa now. Will be removed later.
     public class ReadOnlyChainProcessingEnv : IAsyncDisposable
     {
         private readonly BlockchainProcessor _blockProcessingQueue;
@@ -41,7 +42,7 @@ namespace Nethermind.Consensus.Processing
             IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null)
         {
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor =
-                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
+                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState);
 
             BlockProcessor = CreateBlockProcessor(scope, blockTree, blockValidator, rewardCalculator, receiptStorage, specProvider, logManager, transactionsExecutor);
 

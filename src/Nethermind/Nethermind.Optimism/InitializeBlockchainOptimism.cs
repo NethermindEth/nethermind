@@ -30,8 +30,6 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 
     protected override async Task InitBlockchain()
     {
-        api.SimulateTransactionProcessorFactory = new SimulateOptimismTransactionProcessorFactory(api.L1CostHelper, api.SpecHelper);
-
         await base.InitBlockchain();
 
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
@@ -71,7 +69,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             api.SpecProvider,
             api.BlockValidator,
             api.RewardCalculatorSource.Get(transactionProcessor),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
             worldState,
             api.ReceiptStorage!,
             new BlockhashStore(api.SpecProvider, worldState),
@@ -83,9 +81,6 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             new ExecutionRequestsProcessor(transactionProcessor),
             preWarmer: preWarmer);
     }
-
-    protected override IHealthHintService CreateHealthHintService() =>
-        new ManualHealthHintService(_blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint);
 
     protected override IBlockProductionPolicy CreateBlockProductionPolicy() => AlwaysStartBlockProductionPolicy.Instance;
 

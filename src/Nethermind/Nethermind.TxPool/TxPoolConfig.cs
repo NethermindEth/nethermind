@@ -24,5 +24,7 @@ namespace Nethermind.TxPool
         public long? MaxBlobTxSize { get; set; } = 1.MiB();
         public bool ProofsTranslationEnabled { get; set; } = false;
         public int? ReportMinutes { get; set; } = null;
+        public bool AcceptTxWhenNotSynced { get; set; } = false;
+        public bool PersistentBroadcastEnabled { get; set; } = true;
     }
 }

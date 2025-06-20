@@ -55,7 +55,7 @@ public class StartBlockProducerAuRa(
     ISigner engineSigner,
     IGasPriceOracle gasPriceOracle,
     ReportingContractBasedValidator.Cache reportingContractValidatorCache,
-    DisposableStack disposeStack,
+    IDisposableStack disposeStack,
     AuRaContractGasLimitOverride.Cache gasLimitCalculatorCache,
     IAbiEncoder abiEncoder,
     IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
@@ -70,6 +70,7 @@ public class StartBlockProducerAuRa(
     IBlockValidator blockValidator,
     IRewardCalculatorSource rewardCalculatorSource,
     IBlockProducerEnvFactory blockProducerEnvFactory,
+    IAuRaStepCalculator stepCalculator,
     ILogManager logManager)
 {
     private readonly AuRaChainSpecEngineParameters _parameters = chainSpec.EngineChainSpecParametersProvider
@@ -81,19 +82,10 @@ public class StartBlockProducerAuRa(
     private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
     private TxPriorityContract? _txPriorityContract;
     private TxPriorityContract.LocalDataSource? _localDataSource;
-    private IAuRaStepCalculator? _stepCalculator;
-
-    private IAuRaStepCalculator StepCalculator
-    {
-        get
-        {
-            return _stepCalculator ??= new AuRaStepCalculator(_parameters.StepDuration, timestamper, logManager);
-        }
-    }
 
     public IBlockProductionTrigger CreateTrigger()
     {
-        BuildBlocksOnAuRaSteps onAuRaSteps = new(StepCalculator, logManager);
+        BuildBlocksOnAuRaSteps onAuRaSteps = new(stepCalculator, logManager);
         BuildBlocksOnlyWhenNotProcessing onlyWhenNotProcessing = new(
             onAuRaSteps,
             blockProcessingQueue,
@@ -122,7 +114,7 @@ public class StartBlockProducerAuRa(
             sealer,
             blockTree,
             timestamper,
-            StepCalculator,
+            stepCalculator,
             reportingValidator,
             auraConfig,
             gasLimitCalculator,
@@ -280,7 +272,6 @@ public class StartBlockProducerAuRa(
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = scope.WorldState,
                 TxSource = CreateTxSourceForProducer(additionalTxSource),
-                ReadOnlyTxProcessingEnv = readOnlyTxProcessingEnvFactory.Create(),
             };
         }
 

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -25,10 +26,10 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -36,7 +37,6 @@ using Nethermind.Wallet;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(
-        typeof(InitializeStateDb),
         typeof(InitializePlugins),
         typeof(InitializeBlockTree),
         typeof(SetupKeyStore),
@@ -45,6 +45,7 @@ namespace Nethermind.Init.Steps
     public class InitializeBlockchain(INethermindApi api) : IStep
     {
         private readonly INethermindApi _api = api;
+        private readonly IServiceStopper _serviceStopper = api.Context.Resolve<IServiceStopper>();
 
         public async Task Execute(CancellationToken _)
         {
@@ -82,13 +83,12 @@ namespace Nethermind.Init.Steps
             _api.ReceiptMonitor = receiptCanonicalityMonitor;
 
             _api.BlockPreprocessor.AddFirst(
-                new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
+                new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
             VirtualMachine.WarmUpEvmInstructions();
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
-            InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
 
             // TODO: can take the tx sender from plugin here maybe
@@ -100,7 +100,6 @@ namespace Nethermind.Init.Steps
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
 
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.ReadOnlyStateProvider, txPool);
-            setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
                 ? new(
                     _api.ReadOnlyTxProcessingEnvFactory,
@@ -130,17 +129,17 @@ namespace Nethermind.Init.Steps
 
             getApi.DisposeStack.Push(blockchainProcessor);
 
-            setApi.MainProcessingContext = new MainProcessingContext(
+            var mainProcessingContext = setApi.MainProcessingContext = new MainProcessingContext(
                 transactionProcessor,
                 mainBlockProcessor,
                 blockchainProcessor,
                 mainWorldState);
+            _serviceStopper.AddStoppable(mainProcessingContext);
             setApi.BlockProcessingQueue = blockchainProcessor;
 
             IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
             IFilterStore filterStore = setApi.FilterStore = new FilterStore(getApi.TimerFactory, rpcConfig.FiltersTimeout);
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
-            setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
             _api.DisposeStack.Push(filterStore);
 
@@ -200,9 +199,6 @@ namespace Nethermind.Init.Steps
             return virtualMachine;
         }
 
-        protected virtual IHealthHintService CreateHealthHintService() =>
-            new HealthHintService(_api.ChainSpec!);
-
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
             new BlockProductionPolicy(_api.Config<IMiningConfig>());
 
@@ -238,7 +234,7 @@ namespace Nethermind.Init.Steps
             return new BlockProcessor(_api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(transactionProcessor),
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
                 worldState,
                 _api.ReceiptStorage!,
                 new BeaconBlockRootHandler(transactionProcessor, worldState),
@@ -247,11 +243,6 @@ namespace Nethermind.Init.Steps
                 new WithdrawalProcessor(worldState, _api.LogManager),
                 new ExecutionRequestsProcessor(transactionProcessor),
                 preWarmer: preWarmer);
-        }
-
-        // TODO: remove from here - move to consensus?
-        protected virtual void InitSealEngine()
-        {
         }
     }
 }

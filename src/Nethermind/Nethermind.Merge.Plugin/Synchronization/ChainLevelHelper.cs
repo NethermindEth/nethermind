@@ -3,12 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
@@ -136,7 +136,7 @@ public class ChainLevelHelper : IChainLevelHelper
         }
         else
         {
-            headers.RemoveRange(toTake, headers.Count - toTake);
+            CollectionsMarshal.SetCount(headers, toTake);
         }
 
         return headers.ToArray();

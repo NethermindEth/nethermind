@@ -66,13 +66,18 @@ internal static unsafe partial class EvmInstructions
             lookup[(int)Instruction.SAR] = &InstructionSar<TTracingInst>;
         }
 
+        if (spec.CLZEnabled)
+        {
+            lookup[(int)Instruction.CLZ] = &InstructionMath1Param<OpCLZ>;
+        }
+
         // Cryptographic hash opcode.
         lookup[(int)Instruction.KECCAK256] = &InstructionKeccak256<TTracingInst>;
 
         // Environment opcodes.
         lookup[(int)Instruction.ADDRESS] = &InstructionEnvAddress<OpAddress, TTracingInst>;
         lookup[(int)Instruction.BALANCE] = &InstructionBalance<TTracingInst>;
-        lookup[(int)Instruction.ORIGIN] = &InstructionEnvAddress<OpOrigin, TTracingInst>;
+        lookup[(int)Instruction.ORIGIN] = &InstructionBlkAddress<OpOrigin, TTracingInst>;
         lookup[(int)Instruction.CALLER] = &InstructionEnvAddress<OpCaller, TTracingInst>;
         lookup[(int)Instruction.CALLVALUE] = &InstructionEnvUInt256<OpCallValue, TTracingInst>;
         lookup[(int)Instruction.CALLDATALOAD] = &InstructionCallDataLoad<TTracingInst>;
@@ -80,7 +85,7 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.CALLDATACOPY] = &InstructionCodeCopy<OpCallDataCopy, TTracingInst>;
         lookup[(int)Instruction.CODESIZE] = &InstructionEnvUInt32<OpCodeSize, TTracingInst>;
         lookup[(int)Instruction.CODECOPY] = &InstructionCodeCopy<OpCodeCopy, TTracingInst>;
-        lookup[(int)Instruction.GASPRICE] = &InstructionEnvUInt256<OpGasPrice, TTracingInst>;
+        lookup[(int)Instruction.GASPRICE] = &InstructionBlkUInt256<OpGasPrice, TTracingInst>;
 
         lookup[(int)Instruction.EXTCODESIZE] = &InstructionExtCodeSize<TTracingInst>;
         lookup[(int)Instruction.EXTCODECOPY] = &InstructionExtCodeCopy<TTracingInst>;
@@ -103,11 +108,11 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.BLOCKHASH] = &InstructionBlockHash<TTracingInst>;
 
         // More environment opcodes.
-        lookup[(int)Instruction.COINBASE] = &InstructionEnvAddress<OpCoinbase, TTracingInst>;
-        lookup[(int)Instruction.TIMESTAMP] = &InstructionEnvUInt64<OpTimestamp, TTracingInst>;
-        lookup[(int)Instruction.NUMBER] = &InstructionEnvUInt64<OpNumber, TTracingInst>;
+        lookup[(int)Instruction.COINBASE] = &InstructionBlkAddress<OpCoinbase, TTracingInst>;
+        lookup[(int)Instruction.TIMESTAMP] = &InstructionBlkUInt64<OpTimestamp, TTracingInst>;
+        lookup[(int)Instruction.NUMBER] = &InstructionBlkUInt64<OpNumber, TTracingInst>;
         lookup[(int)Instruction.PREVRANDAO] = &InstructionPrevRandao<TTracingInst>;
-        lookup[(int)Instruction.GASLIMIT] = &InstructionEnvUInt64<OpGasLimit, TTracingInst>;
+        lookup[(int)Instruction.GASLIMIT] = &InstructionBlkUInt64<OpGasLimit, TTracingInst>;
         if (spec.ChainIdOpcodeEnabled)
         {
             lookup[(int)Instruction.CHAINID] = &InstructionChainId<TTracingInst>;
@@ -118,7 +123,7 @@ internal static unsafe partial class EvmInstructions
         }
         if (spec.BaseFeeEnabled)
         {
-            lookup[(int)Instruction.BASEFEE] = &InstructionEnvUInt256<OpBaseFee, TTracingInst>;
+            lookup[(int)Instruction.BASEFEE] = &InstructionBlkUInt256<OpBaseFee, TTracingInst>;
         }
         if (spec.IsEip4844Enabled)
         {
@@ -326,7 +331,7 @@ internal static unsafe partial class EvmInstructions
         }
         bool notOutOfGas = ChargeAccountAccessGas(ref gasAvailable, vm, address, chargeForWarm);
         return notOutOfGas
-               && (!vm.EvmState.Env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(vm.WorldState, address, spec, out Address delegated)
+               && (!vm.TxExecutionContext.CodeInfoRepository.TryGetDelegation(vm.WorldState, address, spec, out Address delegated)
                    // Charge additional gas for the delegated account if it exists.
                    || ChargeAccountAccessGas(ref gasAvailable, vm, delegated, chargeForWarm));
     }
