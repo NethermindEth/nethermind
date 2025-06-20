@@ -171,4 +171,5 @@ public class ChainSpecParamsJson
     public ulong? OpIsthmusTransitionTimestamp { get; set; }
     public SortedSet<BlobScheduleSettings> BlobSchedule { get; set; } = [];
     public ulong? Eip7594TransitionTimestamp { get; set; }
+    public ulong? Eip7939TransitionTimestamp { get; set; }
 }

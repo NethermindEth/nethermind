@@ -153,8 +153,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip7918TransitionTimestamp = chainSpecJson.Params.Eip7918TransitionTimestamp,
             Eip7823TransitionTimestamp = chainSpecJson.Params.Eip7823TransitionTimestamp,
             Eip7825TransitionTimestamp = chainSpecJson.Params.Eip7825TransitionTimestamp,
-            Eip7934TransitionTimestamp = chainSpecJson.Params.Eip7934TransitionTimestamp,
-            Eip7934MaxRlpBlockSize = chainSpecJson.Params.Eip7934MaxRlpBlockSize ?? Eip7934Constants.DefaultMaxRlpBlockSize,
             Eip4788ContractAddress = chainSpecJson.Params.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
             Eip2935TransitionTimestamp = chainSpecJson.Params.Eip2935TransitionTimestamp,
             Eip2935ContractAddress = chainSpecJson.Params.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
@@ -189,6 +187,10 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             BlobSchedule = chainSpecJson.Params.BlobSchedule,
 
             Eip7594TransitionTimestamp = chainSpecJson.Params.Eip7594TransitionTimestamp,
+            Eip7939TransitionTimestamp = chainSpecJson.Params.Eip7939TransitionTimestamp,
+
+            Eip7934TransitionTimestamp = chainSpecJson.Params.Eip7934TransitionTimestamp,
+            Eip7934MaxRlpBlockSize = chainSpecJson.Params.Eip7934MaxRlpBlockSize ?? Eip7934Constants.DefaultMaxRlpBlockSize,
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
