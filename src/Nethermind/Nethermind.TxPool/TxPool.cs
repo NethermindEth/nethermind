@@ -1,14 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Channels;
-using System.Threading.Tasks;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -21,8 +13,15 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
 using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
-
 using ITimer = Nethermind.Core.Timers.ITimer;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
@@ -51,6 +50,8 @@ namespace Nethermind.TxPool
         private readonly IBlobTxStorage _blobTxStorage;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
+        private readonly ITxFilterPipeline? _softEvictionTxFilter;
+        private readonly ITxFilterPipeline? _evictionTxFilter;
         private readonly bool _blobReorgsSupportEnabled;
         private readonly DelegationCache _pendingDelegations = new();
 
@@ -102,6 +103,8 @@ namespace Nethermind.TxPool
             IComparer<Transaction> comparer,
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter? incomingTxFilter = null,
+            ITxFilterPipeline? softEvictionTxFilter = null,
+            ITxFilterPipeline? evictionTxFilter = null,
             bool thereIsPriorityContract = false)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -109,6 +112,8 @@ namespace Nethermind.TxPool
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
+            _softEvictionTxFilter = softEvictionTxFilter;
+            _evictionTxFilter = evictionTxFilter;
             AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
@@ -140,7 +145,7 @@ namespace Nethermind.TxPool
             [
                 new NotSupportedTxFilter(txPoolConfig, _logger),
                 new SizeTxFilter(txPoolConfig, _logger),
-                new GasLimitTxFilter(_headInfo, txPoolConfig, _logger),
+                new GasLimitTxFilter(_headInfo, txPoolConfig, logManager),
                 new PriorityFeeTooLowFilter(_logger),
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
                 new MalformedTxFilter(_specProvider, validator, _logger)
@@ -679,7 +684,7 @@ namespace Nethermind.TxPool
             int i = 0;
             UInt256 cumulativeCost = 0;
             IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
-            bool dropBlobs = false;
+            bool dropNextTxs = false;
 
             foreach (Transaction tx in transactions)
             {
@@ -692,13 +697,29 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    dropBlobs |= tx.SupportsBlobs && (tx.GetProofVersion() != headSpec.BlobProofVersion || (ulong)tx.BlobVersionedHashes!.Length > headSpec.MaxBlobsPerTx);
-
-                    if (dropBlobs)
+                    if (dropNextTxs)
                     {
                         _hashCache.DeleteFromLongTerm(tx.Hash!);
                         updateTx(transactions, tx, changedGasBottleneck: null, lastElement);
                         continue;
+                    }
+
+                    if (tx.SupportsBlobs)
+                    {
+                        if (_softEvictionTxFilter is not null && !_softEvictionTxFilter.Execute(tx, null!, headSpec))
+                        {
+                            _hashCache.DeleteFromLongTerm(tx.Hash!);
+                            _broadcaster.StopBroadcast(tx.Hash!);
+                            updateTx(transactions, tx, changedGasBottleneck: null, lastElement);
+                            dropNextTxs = true;
+                        }
+
+                        if (_evictionTxFilter is not null && !_evictionTxFilter.Execute(tx, null!, headSpec))
+                        {
+                            _broadcaster.StopBroadcast(tx.Hash!);
+                            updateTx(transactions, tx, changedGasBottleneck: null, lastElement);
+                            dropNextTxs = true;
+                        }
                     }
 
                     previousTxBottleneck ??= tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,

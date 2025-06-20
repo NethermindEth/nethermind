@@ -11,13 +11,13 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Merge.AuRa.InitializationSteps;
 

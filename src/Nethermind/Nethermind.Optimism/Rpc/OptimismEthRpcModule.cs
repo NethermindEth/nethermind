@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -178,6 +179,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
     public override ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
+        var tx = Rlp.Decode<Transaction>(Convert.FromHexString("04f8d183aa36a780843b9aca008502540be4008307a12094000000000000000000000000000000000000dead8080c0f860f85e83aa36a7941a91344808bf2f2faaf370f101e819a64b65bd518081e5a03e236c596110a10a058f4a42dfb2b6356bac14f0f3c21cd7f54117ae1696a21ea03540128888900321925d49926bb54e28aa8363e778d1d95672c9c7458231e67a80a037c9c3029fc59be7e0a92b333fa1fe89ffae2eed23a4c94404de124e60cfd501a003149b93fa9c4c726cc98c67e87af14de1b548d954bbf6a3c460c8bc871c021a"));
         (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
         if (transaction is null)
         {

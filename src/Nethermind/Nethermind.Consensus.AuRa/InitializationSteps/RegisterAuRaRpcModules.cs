@@ -18,7 +18,6 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -35,6 +34,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Facade;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 

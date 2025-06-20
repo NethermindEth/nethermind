@@ -1,11 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Text.Unicode;
-using System.Threading;
-using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
@@ -14,7 +9,6 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -23,6 +17,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -32,7 +27,12 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc;
 using Nethermind.State;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 using Nethermind.Wallet;
+using System.Collections.Generic;
+using System.Text.Unicode;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Init.Steps
 {
@@ -204,6 +204,15 @@ namespace Nethermind.Init.Steps
 
         protected virtual ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
         {
+            ITxFilterPipeline softEvictionTxFilter = new TxFilterPipelineBuilder(_api.LogManager)
+                .WithCustomTxFilter(new ProofVersionTxFilter())
+                .Build;
+
+            ITxFilterPipeline evictionTxFilter = new TxFilterPipelineBuilder(_api.LogManager)
+                .WithCustomTxFilter(new TxGasLimitTxFilter())
+                .WithCustomTxFilter(new BlobLimitTxFilter())
+                .Build;
+
             TxPool.TxPool txPool = new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 chainHeadInfoProvider,
@@ -211,7 +220,11 @@ namespace Nethermind.Init.Steps
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _api.TxGossipPolicy);
+                _api.TxGossipPolicy,
+                null,
+                softEvictionTxFilter,
+                evictionTxFilter
+                );
 
             _api.DisposeStack.Push(txPool);
             return txPool;

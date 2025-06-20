@@ -6,6 +6,7 @@ using Nethermind.TxPool;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Merge.AuRa
 {

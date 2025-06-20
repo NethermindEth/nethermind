@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps
 {

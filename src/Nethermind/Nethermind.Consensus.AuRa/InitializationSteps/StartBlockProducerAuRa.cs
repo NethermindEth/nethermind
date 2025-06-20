@@ -34,6 +34,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
@@ -210,7 +211,7 @@ public class StartBlockProducerAuRa(
                 apiTxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(_minGasPricesContractDataStore);
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(logManager)
                 .WithCustomTxFilter(auraTxFilter)
-                .WithBaseFeeFilter(specProvider)
+                .WithBaseFeeFilter()
                 .WithNullTxFilter()
                 .Build;
 
@@ -236,7 +237,7 @@ public class StartBlockProducerAuRa(
         ITxFilter txSourceFilter = apiTxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(_minGasPricesContractDataStore);
         ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(logManager)
             .WithCustomTxFilter(txSourceFilter)
-            .WithBaseFeeFilter(specProvider)
+            .WithBaseFeeFilter()
             .Build;
         return new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline);
     }

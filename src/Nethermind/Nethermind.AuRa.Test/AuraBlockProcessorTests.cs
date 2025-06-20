@@ -12,7 +12,6 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,6 +29,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
 

@@ -10,17 +10,17 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Ignores transactions that outright exceed block gas limit or configured max block gas limit.
     /// </summary>
-    internal sealed class GasLimitTxFilter : IIncomingTxFilter
+    public sealed class GasLimitTxFilter : IIncomingTxFilter
     {
         private readonly IChainHeadInfoProvider _chainHeadInfoProvider;
         private readonly ILogger _logger;
         private readonly long _configuredGasLimit;
 
         public GasLimitTxFilter(IChainHeadInfoProvider chainHeadInfoProvider, ITxPoolConfig txPoolConfig,
-            ILogger logger)
+            ILogManager logManager)
         {
             _chainHeadInfoProvider = chainHeadInfoProvider;
-            _logger = logger;
+            _logger = logManager.GetClassLogger();
             _configuredGasLimit = txPoolConfig.GasLimit ?? long.MaxValue;
         }
 

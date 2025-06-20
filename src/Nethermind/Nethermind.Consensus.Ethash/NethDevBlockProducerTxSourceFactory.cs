@@ -8,6 +8,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Consensus.Ethash;
 
@@ -21,9 +22,9 @@ public class NethDevBlockProducerTxSourceFactory(
     public ITxSource Create()
     {
         ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(logManager)
-            .WithBaseFeeFilter(specProvider)
+            .WithBaseFeeFilter()
             .WithNullTxFilter()
-            .WithMinGasPriceFilter(blocksConfig, specProvider)
+            .WithMinGasPriceFilter(blocksConfig)
             .Build;
 
         return new TxPoolTxSource(

@@ -8,12 +8,12 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {

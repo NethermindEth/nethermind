@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus.Transactions;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
@@ -14,6 +13,7 @@ using System.Linq;
 using System.Collections.Generic;
 using NSubstitute;
 using Nethermind.Core.Specs;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Consensus.Producers.Test;
 

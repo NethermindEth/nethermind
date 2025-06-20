@@ -18,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
+using Nethermind.TxPool.Filters;
 
 [assembly: InternalsVisibleTo("Nethermind.AuRa.Test")]
 
@@ -52,9 +53,9 @@ namespace Nethermind.Consensus.Producers
 
             Func<Transaction, bool> filter = (tx) => _txFilterPipeline.Execute(tx, parent, spec);
 
-            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, filter, gasLimit).ToArray();
-            IEnumerable<(Transaction tx, long blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, filter, (int)spec.MaxBlobCount);
-            if (_logger.IsInfo) _logger.Info($"Collecting pending transactions at block gas limit {gasLimit}. {pendingTransactions.Sum(x => x.Value.Length)} / {transactions.Count()}");
+            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, filter, gasLimit);
+            IEnumerable<(Transaction tx, long blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, filter, (int)spec.MaxBlobCount).ToList();
+            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int checkedTransactions = 0;
             int selectedTransactions = 0;

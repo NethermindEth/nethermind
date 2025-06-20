@@ -22,6 +22,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Consensus.AuRa
 {

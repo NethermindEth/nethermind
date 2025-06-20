@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;

@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Consensus.Transactions
+namespace Nethermind.TxPool.Filters
 {
     public interface ITxFilterPipeline
     {

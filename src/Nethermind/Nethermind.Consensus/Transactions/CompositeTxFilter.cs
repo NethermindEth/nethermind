@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 using System.Linq;
 
 namespace Nethermind.Consensus.Transactions

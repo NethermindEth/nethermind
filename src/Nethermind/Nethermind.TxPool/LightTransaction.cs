@@ -62,6 +62,5 @@ public class LightTransaction : Transaction
         ProofVersion = proofVersion;
         _size = size;
     }
-
     public ProofVersion ProofVersion { get; set; }
 }

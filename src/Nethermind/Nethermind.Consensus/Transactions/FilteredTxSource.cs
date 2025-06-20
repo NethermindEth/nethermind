@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 using System;
 using System.Collections.Generic;
 

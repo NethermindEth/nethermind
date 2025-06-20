@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Consensus.Transactions
 {

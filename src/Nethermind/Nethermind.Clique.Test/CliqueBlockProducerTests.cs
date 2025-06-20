@@ -39,6 +39,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Clique.Test;
 

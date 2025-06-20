@@ -7,6 +7,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Consensus.Producers
 {

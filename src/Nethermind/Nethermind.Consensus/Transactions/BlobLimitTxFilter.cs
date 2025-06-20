@@ -8,8 +8,8 @@ using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Consensus.Transactions;
 
-public class TxGasLimitTxFilter : ITxFilter
+public class BlobLimitTxFilter : ITxFilter
 {
     public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
-        => !spec.IsEip7825Enabled || tx.GasLimit <= Eip7825Constants.DefaultTxGasLimitCap ? AcceptTxResult.Accepted : AcceptTxResult.GasLimitExceeded;
+        => !tx.SupportsBlobs || spec.MaxBlobsPerTx >= (ulong)tx.BlobVersionedHashes!.Length ? AcceptTxResult.Accepted : AcceptTxResult.Invalid;
 }

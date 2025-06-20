@@ -5,12 +5,13 @@ using System;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Consensus.Transactions
 {
-    public class TxFilterPipelineBuilder
+    public class TxFilterPipelineBuilder(ILogManager logManager)
     {
-        private readonly TxFilterPipeline _filterPipeline;
+        private readonly TxFilterPipeline _filterPipeline = new(logManager);
 
         public static ITxFilterPipeline CreateStandardFilteringPipeline(
             ILogManager logManager,
@@ -20,32 +21,23 @@ namespace Nethermind.Consensus.Transactions
             ArgumentNullException.ThrowIfNull(specProvider);
 
             return new TxFilterPipelineBuilder(logManager)
-                .WithMinGasPriceFilter(blocksConfig, specProvider)
-                .WithBaseFeeFilter(specProvider)
-                .WithTxGasLimitFilter()
+                .WithMinGasPriceFilter(blocksConfig)
+                .WithBaseFeeFilter()
+                .WithCustomTxFilter(new TxGasLimitTxFilter())
+                .WithCustomTxFilter(new ProofVersionTxFilter())
+                .WithCustomTxFilter(new BlobLimitTxFilter())
                 .Build;
         }
 
-        public TxFilterPipelineBuilder(ILogManager logManager)
-        {
-            _filterPipeline = new TxFilterPipeline(logManager);
-        }
-
-        public TxFilterPipelineBuilder WithMinGasPriceFilter(IBlocksConfig blocksConfig, ISpecProvider specProvider)
+        public TxFilterPipelineBuilder WithMinGasPriceFilter(IBlocksConfig blocksConfig)
         {
             _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(blocksConfig));
             return this;
         }
 
-        public TxFilterPipelineBuilder WithBaseFeeFilter(ISpecProvider specProvider)
+        public TxFilterPipelineBuilder WithBaseFeeFilter()
         {
             _filterPipeline.AddTxFilter(new BaseFeeTxFilter());
-            return this;
-        }
-
-        public TxFilterPipelineBuilder WithTxGasLimitFilter()
-        {
-            _filterPipeline.AddTxFilter(new TxGasLimitTxFilter());
             return this;
         }
 

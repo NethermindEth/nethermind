@@ -9,12 +9,12 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.State;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Merge.AuRa.InitializationSteps
 {

@@ -3,13 +3,13 @@
 
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 using System;
 
 namespace Nethermind.Consensus.AuRa.Transactions

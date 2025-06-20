@@ -14,11 +14,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 using NSubstitute;
@@ -27,6 +25,7 @@ using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -535,8 +534,8 @@ namespace Nethermind.Blockchain.Test
 
             BlocksConfig blocksConfig = new() { MinGasPrice = testCase.MinGasPriceForMining };
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
-                .WithMinGasPriceFilter(blocksConfig, specProvider)
-                .WithBaseFeeFilter(specProvider)
+                .WithMinGasPriceFilter(blocksConfig)
+                .WithBaseFeeFilter()
                 .Build;
 
             SetAccountStates(testCase.MissingAddresses);
