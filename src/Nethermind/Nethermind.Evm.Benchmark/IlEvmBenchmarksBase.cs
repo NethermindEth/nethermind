@@ -228,12 +228,7 @@ namespace Nethermind.Evm.Benchmark
         public void ExecuteCodeAot() => RunTxs();
 
         [IterationCleanup]
-        public void Cleanup()
-        {
-            _evmState?.Dispose();
-            _stateProvider!.Commit(_specProvider!.GenesisSpec);
-            snapshot = _stateProvider!.TakeSnapshot();
-        }
+        public void Cleanup() => IterationCleanup();
     }
 
 
@@ -272,7 +267,7 @@ namespace Nethermind.Evm.Benchmark
         public void ExecuteCodeAot() => Run();
 
         [IterationCleanup]
-        public void Cleanup() => _evmState?.Dispose();
+        public void Cleanup() => IterationCleanup();
     }
 
 
@@ -522,7 +517,14 @@ namespace Nethermind.Evm.Benchmark
                 _stateProvider!.Restore(snapshot.Value);
             }
 
+        }
 
+
+        public void IterationCleanup()
+        {
+            _stateProvider!.Commit(_specProvider!.GenesisSpec);
+            snapshot = _stateProvider!.TakeSnapshot();
+            _evmState?.Dispose();
         }
 
 
