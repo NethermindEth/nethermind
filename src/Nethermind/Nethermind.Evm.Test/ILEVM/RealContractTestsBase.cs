@@ -53,7 +53,6 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
                 IlEvmContractsPerDllCount = 1,
-                IsIlEvmAggressiveModeEnabled = true,
                 IlEvmPersistPrecompiledContractsOnDisk = false,
             };
         }

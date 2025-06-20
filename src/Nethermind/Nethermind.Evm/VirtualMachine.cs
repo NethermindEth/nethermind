@@ -772,7 +772,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                         ref chunkExecutionState)
                    )
                 {
-                    UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head - 1);
+                    UpdateCurrentState(vmState, ++programCounter, gasAvailable, stack.Head - 1);
                     Metrics.IlvmAotPrecompiledCalls--; // this will treat continuations as new calls
                     return new CallResult(chunkExecutionState.CallResult);
                 }

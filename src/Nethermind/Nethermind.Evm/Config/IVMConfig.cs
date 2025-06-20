@@ -32,11 +32,6 @@ public interface IVMConfig : IConfig
     public int IlEvmAnalysisThreshold { get; set; }
 
     [ConfigItem(
-        Description = "Activates or Deactivates aggressive optimizations",
-        DefaultValue = "false")]
-    public bool IsIlEvmAggressiveModeEnabled { get; set; }
-
-    [ConfigItem(
         Description = "Sets Analysis Queue Max Size",
         DefaultValue = "8")]
     public int IlEvmAnalysisQueueMaxSize { get; set; }

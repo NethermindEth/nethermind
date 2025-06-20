@@ -133,7 +133,6 @@ public class SyntheticBenchmarkTests
             IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
             IlEvmAnalysisThreshold = 256,
             IlEvmAnalysisQueueMaxSize = 256,
-            IsIlEvmAggressiveModeEnabled = true,
             IlEvmPersistPrecompiledContractsOnDisk = false,
         }, Prague.Instance);
 
@@ -172,7 +171,6 @@ public class SyntheticBenchmarkTests
             IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
             IlEvmAnalysisThreshold = 256,
             IlEvmAnalysisQueueMaxSize = 256,
-            IsIlEvmAggressiveModeEnabled = true,
             IlEvmPersistPrecompiledContractsOnDisk = false,
         }, Prague.Instance);
 
