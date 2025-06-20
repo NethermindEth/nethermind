@@ -31,6 +31,7 @@ using BenchmarkDotNet.Columns;
 using Nethermind.Precompiles.Benchmark;
 using System.Threading.Tasks;
 using System.Threading;
+using Perfolizer.Horology;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -126,8 +127,16 @@ namespace Nethermind.Benchmark.Runner
         {
             var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
 
-            RunIsolatedProcess(exePath, $"-m ilevm -c 0");
-            RunIsolatedProcess(exePath , $"-m ilevm -c 2");
+
+            var summary = BenchmarkRunner.Run([
+                            typeof(Nethermind.Evm.Benchmark.Fib),
+                            typeof(Nethermind.Evm.Benchmark.Prime),
+                            typeof(Nethermind.Evm.Benchmark.Weth)
+                        ], new DashboardConfig(Job.VeryLongRun
+                                .WithPlatform(Platform.X64)
+                                .WithJit(Jit.RyuJit)
+                                .WithRuntime(CoreRuntime.Core90)
+                                ));
         }
 
         private static void RunWethBenchmarksInIsolation()
