@@ -79,26 +79,28 @@ namespace Nethermind.Evm.Precompiles
             UInt256 expLength = new(extendedInput.Slice(32, 32), true);
             UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
 
-            if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
+            bool isModexpRepricingEnabled = true;
+
+            if (ExceedsMaxInputSize(isModexpRepricingEnabled, baseLength, expLength, modulusLength))
             {
                 return long.MaxValue;
             }
 
-            UInt256 complexity = MultComplexity(baseLength, modulusLength, releaseSpec.IsEip7883Enabled);
+            UInt256 complexity = MultComplexity(baseLength, modulusLength, isModexpRepricingEnabled);
 
             UInt256 expLengthUpTo32 = UInt256.Min(32, expLength);
             UInt256 startIndex = 96 + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
             UInt256 exp = new(inputData.Span.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
-            UInt256 iterationCount = CalculateIterationCount(expLength, exp, releaseSpec.IsEip7883Enabled);
+            UInt256 iterationCount = CalculateIterationCount(expLength, exp, isModexpRepricingEnabled);
             bool overflow = UInt256.MultiplyOverflow(complexity, iterationCount, out UInt256 result);
             result /= 3;
             return result > long.MaxValue || overflow
                 ? long.MaxValue
-                : Math.Max(releaseSpec.IsEip7883Enabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExpEip2565, (long)result);
+                : Math.Max(isModexpRepricingEnabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExpEip2565, (long)result);
         }
 
-        private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, UInt256 baseLength, UInt256 expLength, UInt256 modulusLength)
-            => releaseSpec.IsEip7823Enabled &&
+        private static bool ExceedsMaxInputSize(bool isEip7823Enabled, UInt256 baseLength, UInt256 expLength, UInt256 modulusLength)
+            => isEip7823Enabled &&
                 (baseLength > ModExpMaxInputSizeEip7823 || expLength > ModExpMaxInputSizeEip7823 || modulusLength > ModExpMaxInputSizeEip7823);
 
         private static (int, int, int) GetInputLengths(ReadOnlyMemory<byte> inputData)
@@ -119,8 +121,10 @@ namespace Nethermind.Evm.Precompiles
         {
             Metrics.ModExpPrecompile++;
 
+            bool isModexpRepricingEnabled = true;
+
             (int baseLength, int expLength, int modulusLength) = GetInputLengths(inputData);
-            if (ExceedsMaxInputSize(releaseSpec, (uint)baseLength, (uint)expLength, (uint)modulusLength))
+            if (ExceedsMaxInputSize(isModexpRepricingEnabled, (uint)baseLength, (uint)expLength, (uint)modulusLength))
             {
                 return IPrecompile.Failure;
             }

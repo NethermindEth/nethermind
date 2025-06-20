@@ -23,8 +23,6 @@ public class Cancun : Shanghai
         MaxBlobCount = 6;
         TargetBlobCount = 3;
         BlobBaseFeeUpdateFraction = 3338477;
-        // hack for testing modexp repricing
-        IsEip7883Enabled = true;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Cancun());
