@@ -16,8 +16,6 @@ namespace Nethermind.Logging
             _logger = new NUnitLogger(level);
         }
 
-        public ILogger GetClassLogger(Type type) => GetClassLogger();
-
         public ILogger GetClassLogger<T>() => GetClassLogger();
 
         public ILogger GetClassLogger([CallerFilePath] string filePath = "") => new(_logger);

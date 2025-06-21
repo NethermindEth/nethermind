@@ -14,8 +14,6 @@ public class TestErrorLogManager : ILogManager
 
     public IReadOnlyCollection<Error> Errors => _errors;
 
-    public ILogger GetClassLogger(Type type) => GetClassLogger();
-
     public ILogger GetClassLogger<T>() => GetClassLogger();
 
     public ILogger GetClassLogger([CallerFilePath] string filePath = "") => new(new TestErrorLogger(_errors));

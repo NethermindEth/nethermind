@@ -63,9 +63,7 @@ namespace Nethermind.Logging.NLog
             return logDirectory;
         }
 
-        private static readonly ConcurrentDictionary<Type, ILogger> s_loggers = new();
         private static readonly ConcurrentDictionary<string, ILogger> s_namedLoggers = new();
-        private static readonly Func<Type, ILogger> s_loggerBuilder = BuildLogger;
         private static readonly Func<string, ILogger> s_namedLoggerBuilder = BuildNamedLogger;
         private static readonly Func<string, ILogger> s_classLoggerBuilder = BuildClassLogger;
         private readonly EventHandler<LoggingConfigurationChangedEventArgs> _logManagerOnConfigurationChanged;
@@ -77,9 +75,7 @@ namespace Nethermind.Logging.NLog
         private static ILogger BuildClassLogger(string filePath)
             => new(new NLogLogger());
 
-        public ILogger GetClassLogger(Type type) => s_loggers.GetOrAdd(type, s_loggerBuilder);
-
-        public ILogger GetClassLogger<T>() => GetClassLogger(typeof(T));
+        public ILogger GetClassLogger<T>() => TypedLogger<T>.Logger;
 
         public ILogger GetClassLogger([CallerFilePath] string filePath = "") => !string.IsNullOrEmpty(filePath) ?
             s_namedLoggers.GetOrAdd(filePath, s_classLoggerBuilder) :
@@ -178,6 +174,11 @@ namespace Nethermind.Logging.NLog
         public void Dispose()
         {
             LogManager.ConfigurationChanged -= _logManagerOnConfigurationChanged;
+        }
+
+        private static class TypedLogger<T>
+        {
+            public static ILogger Logger { get; } = BuildLogger(typeof(T));
         }
     }
 }
