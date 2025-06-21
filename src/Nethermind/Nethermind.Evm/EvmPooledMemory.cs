@@ -391,16 +391,14 @@ public struct EvmPooledMemory : IEvmMemory
         }
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowArgumentOutOfRangeException()
     {
         Metrics.EvmExceptions++;
         throw new ArgumentOutOfRangeException("Word size must be 32 bytes");
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowOutOfGasException()
     {
         Metrics.EvmExceptions++;

@@ -59,16 +59,14 @@ internal sealed class LinkedListNode<T>
             }
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void InvalidRemoveFromEmptyList()
         {
             throw new InvalidOperationException("This method shouldn't be called on empty list");
         }
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     static void InvalidNotSingleNodeList()
     {
         throw new InvalidOperationException("This should only be true for a list with only one node");

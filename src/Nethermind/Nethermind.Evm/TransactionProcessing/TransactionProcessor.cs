@@ -872,8 +872,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return new GasConsumed(spentGas, operationGas);
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
     }
 
