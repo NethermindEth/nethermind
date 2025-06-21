@@ -37,7 +37,7 @@ public class TaikoTransactionProcessor(
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
         in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
     {
-        bool gasBeneficiaryNotDestroyed = substate?.DestroyList.Contains(header.GasBeneficiary) != true;
+        bool gasBeneficiaryNotDestroyed = substate.DestroyList.Contains(header.GasBeneficiary) != true;
         if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
         {
             UInt256 tipFees = (UInt256)spentGas * premiumPerGas;

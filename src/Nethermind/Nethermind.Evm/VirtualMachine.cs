@@ -207,7 +207,7 @@ public sealed unsafe partial class VirtualMachine(
                         TransactionSubstate? substate = HandleException(in callResult, ref previousCallOutput);
                         if (substate is not null)
                         {
-                            return substate;
+                            return substate.Value;
                         }
                         // Continue execution if the exception did not immediately finalize the transaction.
                         continue;
@@ -295,7 +295,7 @@ public sealed unsafe partial class VirtualMachine(
             TransactionSubstate? failSubstate = HandleFailure<TTracingInst>(failure, ref previousCallOutput);
             if (failSubstate is not null)
             {
-                return failSubstate;
+                return failSubstate.Value;
             }
         }
     }
