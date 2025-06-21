@@ -29,6 +29,7 @@ namespace Nethermind.TxPool
         ProofVersion CurrentProofVersion { get; }
 
         bool IsSyncing { get; }
+        bool IsProcessingBlock { get; }
 
         event EventHandler<BlockReplacementEventArgs> HeadChanged;
     }

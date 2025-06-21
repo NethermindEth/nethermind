@@ -80,7 +80,7 @@ namespace Nethermind.TxPool
             _headInfo = chainHeadInfoProvider;
             _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             // Allocate closure once
-            _gossipFilter = t => _txGossipPolicy.ShouldGossipTransaction(t);
+            _gossipFilter = _txGossipPolicy.ShouldGossipTransaction;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _persistentTxs = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
             _accumulatedTemporaryTxs = new ResettableList<Transaction>(512, 4);
@@ -305,7 +305,13 @@ namespace Nethermind.TxPool
                 _txsToSend.Reset();
             }
 
-            NotifyPeers();
+            // Don't broadcast txs while producing a block as it
+            // allocates a lot and we want to minimize GCs at this time
+            // also head about to change which could change the filter results
+            if (!_headInfo.IsProcessingBlock)
+            {
+                NotifyPeers();
+            }
             _timer.Enabled = true;
         }
 

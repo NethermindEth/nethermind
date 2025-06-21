@@ -287,6 +287,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
+    private bool IsProcessingBlock { get => _isProcessingBlock; set { _isProcessingBlock = value; _blockTree.IsProcessingBlock = value; } }
+
     private async Task RunProcessingLoop()
     {
         if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Reader.Count} blocks waiting in the queue.");
@@ -298,7 +300,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
-            _isProcessingBlock = true;
+            IsProcessingBlock = true;
             try
             {
                 if (blockRef.IsInDb || blockRef.Block is null)
@@ -331,7 +333,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             finally
             {
-                _isProcessingBlock = false;
+                IsProcessingBlock = false;
                 Interlocked.Decrement(ref _queueCount);
             }
 
@@ -413,7 +415,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
             Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
             int blockQueueCount = _blockQueue.Reader.Count;
-            Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (_isProcessingBlock ? 1 : 0), 0);
+            Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (IsProcessingBlock ? 1 : 0), 0);
             Metrics.ProcessingQueueSize = blockQueueCount;
             _stats.UpdateStats(lastProcessed, processingBranch.Root, blockProcessingTimeInMicrosecs);
         }
