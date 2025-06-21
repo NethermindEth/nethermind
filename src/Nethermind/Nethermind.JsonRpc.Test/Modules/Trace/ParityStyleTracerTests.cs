@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -26,16 +28,16 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.TxPool;
 using NUnit.Framework;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using Nethermind.Facade;
 using Nethermind.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
+using Nethermind.Evm.OverridableEnv;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace;
 
@@ -93,9 +95,27 @@ public class ParityStyleTracerTests
         _blockTree.SuggestBlock(genesis);
         _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);
 
-        IOverridableTxProcessorSource txProcessingSource = Substitute.For<IOverridableTxProcessorSource>();
         _tracer = new Tracer(stateProvider, _processor, _processor);
-        var env = new TracerEnv(_tracer, txProcessingSource);
+        var env = Substitute.For<IOverridableEnv<ITracer>>();
+        env.Build(Arg.Any<Hash256>(), out ITracer tracer)
+            .Returns((c) =>
+            {
+                c[1] = _tracer;
+                return Substitute.For<IDisposable>();
+            });
+        env.BuildAndOverride(Arg.Any<BlockHeader>(), out ITracer tracer2)
+            .Returns((c) =>
+            {
+                c[1] = _tracer;
+                return Substitute.For<IDisposable>();
+            });
+        env.BuildAndOverride(Arg.Any<BlockHeader>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), out ITracer tracer3)
+            .Returns((c) =>
+            {
+                c[2] = _tracer;
+                return Substitute.For<IDisposable>();
+            });
+
         _traceRpcModule = new(NullReceiptStorage.Instance, env, _blockTree, _jsonRpcConfig, _stateReader, Substitute.For<IBlockchainBridge>(), new BlocksConfig());
     }
 

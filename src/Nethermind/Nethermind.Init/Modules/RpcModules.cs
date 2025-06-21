@@ -43,6 +43,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .AddScoped<ITraceRpcModule, TraceRpcModule>()
             .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(2, jsonRpcConfig.Timeout)
 
+            .AddScoped<GethStyleTracer.BlockProcessingComponents>()
             .AddScoped<IGethStyleTracer, GethStyleTracer>()
             .AddScoped<IReceiptsMigration, ReceiptMigration>()
             .AddScoped<IDebugBridge, DebugBridge>()
