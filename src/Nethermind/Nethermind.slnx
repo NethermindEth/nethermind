@@ -10,6 +10,10 @@
   <Folder Name="/Plugins/Analytics/">
     <Project Path="Nethermind.Analytics/Nethermind.Analytics.csproj" />
   </Folder>
+  <Folder Name="/Plugins/Flashbots/">
+    <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
+    <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
+  </Folder>
   <Folder Name="/Plugins/Hive/">
     <Project Path="Nethermind.Hive.Test/Nethermind.Hive.Test.csproj" />
     <Project Path="Nethermind.Hive/Nethermind.Hive.csproj" />
@@ -17,10 +21,6 @@
   <Folder Name="/Plugins/Merge/">
     <Project Path="Nethermind.Merge.Plugin.Test/Nethermind.Merge.Plugin.Test.csproj" />
     <Project Path="Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj" />
-  </Folder>
-  <Folder Name="/Plugins/Flashbots/">
-    <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
-    <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
   </Folder>
   <Folder Name="/Plugins/Signer/">
     <Project Path="Nethermind.ExternalSigner.Plugin/Nethermind.ExternalSigner.Plugin.csproj" />
@@ -53,6 +53,7 @@
     <Project Path="Nethermind.Ethash.Test/Nethermind.Ethash.Test.csproj" />
     <Project Path="Nethermind.EthStats.Test/Nethermind.EthStats.Test.csproj" />
     <Project Path="Nethermind.Evm.Test/Nethermind.Evm.Test.csproj" />
+    <Project Path="Nethermind.Experimental.Abi.Test\Nethermind.Experimental.Abi.Test.csproj" Type="Classic C#" />
     <Project Path="Nethermind.Facade.Test/Nethermind.Facade.Test.csproj" />
     <Project Path="Nethermind.HealthChecks.Test/Nethermind.HealthChecks.Test.csproj" />
     <Project Path="Nethermind.JsonRpc.Test/Nethermind.JsonRpc.Test.csproj" />
@@ -95,6 +96,7 @@
   <Project Path="Nethermind.Era1/Nethermind.Era1.csproj" />
   <Project Path="Nethermind.EthStats/Nethermind.EthStats.csproj" />
   <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
+  <Project Path="Nethermind.Experimental.Abi\Nethermind.Experimental.Abi.csproj" Type="Classic C#" />
   <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
   <Project Path="Nethermind.Grpc/Nethermind.Grpc.csproj" />
   <Project Path="Nethermind.HealthChecks/Nethermind.HealthChecks.csproj" />
