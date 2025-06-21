@@ -80,7 +80,7 @@ namespace Nethermind.Crypto
             KeccakRlpStream stream = new();
             _txDecoder.EncodeTx(stream, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
 
-            return ecdsa.RecoverAddress(tx.Signature, stream.GetHash());
+            return ecdsa.RecoverAddress(tx.Signature, stream.GetValueHash());
         }
 
         public static ulong CalculateV(ulong chainId, bool addParity = true) => chainId * 2 + 35ul + (addParity ? 1u : 0u);
