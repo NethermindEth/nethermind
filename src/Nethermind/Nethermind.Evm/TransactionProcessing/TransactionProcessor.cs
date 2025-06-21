@@ -178,7 +178,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
-            PayFees(tx, header, spec, tracer, substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
             tx.SpentGas = spentGas.SpentGas;
 
             // Finalize
@@ -664,14 +664,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     if (tx.IsLegacyContractCreation)
                     {
-                        if (!DeployLegacyContract(spec, env.ExecutingAccount, substate, ref gasAvailable))
+                        if (!DeployLegacyContract(spec, env.ExecutingAccount, in substate, ref gasAvailable))
                         {
                             goto FailContractCreate;
                         }
                     }
                     else
                     {
-                        if (!DeployEofContract(spec, env.ExecutingAccount, substate, ref gasAvailable))
+                        if (!DeployEofContract(spec, env.ExecutingAccount, in substate, ref gasAvailable))
                         {
                             goto FailContractCreate;
                         }
@@ -693,7 +693,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 statusCode = StatusCode.Success;
             }
 
-            gasConsumed = Refund(tx, header, spec, opts, substate, gasAvailable,
+            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable,
                 VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
             goto Complete;
         FailContractCreate:

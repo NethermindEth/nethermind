@@ -53,7 +53,7 @@ public readonly struct TransactionSubstate
     public bool ShouldRevert { get; }
     public long Refund { get; }
     public IReadOnlyCollection<LogEntry> Logs => _logs ?? _emptyLogs;
-    public IReadOnlyCollection<Address> DestroyList => _destroyList;
+    public IReadOnlyCollection<Address> DestroyList => _destroyList ?? _emptyDestroyList;
 
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected)
     {
