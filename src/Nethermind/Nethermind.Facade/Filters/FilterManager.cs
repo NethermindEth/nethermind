@@ -28,6 +28,7 @@ namespace Nethermind.Blockchain.Filters
 
         private Hash256? _lastBlockHash;
         private readonly IFilterStore _filterStore;
+        private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
         private long _logIndex;
 
@@ -35,12 +36,14 @@ namespace Nethermind.Blockchain.Filters
             IFilterStore filterStore,
             IBlockProcessor blockProcessor,
             ITxPool txPool,
-            ILogManager logManager)
+            ILogManager logManager,
+            IBlockFinder blockFinder)
         {
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
             blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             blockProcessor.BlockProcessed += OnBlockProcessed;
             blockProcessor.TransactionProcessed += OnTransactionProcessed;
             _filterStore.FilterRemoved += OnFilterRemoved;
@@ -223,7 +226,7 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsDebug) _logger.Debug($"Filter with id: {filter.Id} contains {logs.Count} logs.");
         }
 
-        private static FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index)
+        private FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index)
         {
             if (logFilter.FromBlock.Type == BlockParameterType.BlockNumber &&
                 logFilter.FromBlock.BlockNumber > txReceipt.BlockNumber)
@@ -251,7 +254,12 @@ namespace Nethermind.Blockchain.Filters
 
             if (logFilter.FromBlock.Type == BlockParameterType.Latest || logFilter.ToBlock.Type == BlockParameterType.Latest)
             {
-                //TODO: check if is last mined block
+                // Check if the receipt is from the last mined block
+                Block? latestBlock = _blockFinder.FindLatestBlock();
+                if (latestBlock is null || txReceipt.BlockNumber != latestBlock.Number)
+                {
+                    return null;
+                }
                 return new FilterLog(index, txReceipt, logEntry);
             }
 
