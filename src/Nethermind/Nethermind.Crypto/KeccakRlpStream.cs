@@ -14,10 +14,9 @@ namespace Nethermind.Crypto
     {
         private readonly KeccakHash _keccakHash;
 
-        public Hash256 GetHash()
-        {
-            return new Hash256(_keccakHash.GenerateValueHash());
-        }
+        public Hash256 GetHash() => new Hash256(_keccakHash.GenerateValueHash());
+
+        public ValueHash256 GetValueHash() => _keccakHash.GenerateValueHash();
 
         public KeccakRlpStream()
         {

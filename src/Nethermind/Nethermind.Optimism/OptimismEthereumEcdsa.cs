@@ -21,4 +21,6 @@ public class OptimismEthereumEcdsa : Ecdsa, IEthereumEcdsa
     public Address? RecoverAddress(Signature signature, Hash256 message) => _ethereumEcdsa.RecoverAddress(signature, message);
 
     public Address? RecoverAddress(Span<byte> signatureBytes, Hash256 message) => _ethereumEcdsa.RecoverAddress(signatureBytes, message);
+
+    public Address? RecoverAddress(Signature signature, in ValueHash256 message) => _ethereumEcdsa.RecoverAddress(signature, in message);
 }

@@ -31,12 +31,13 @@ namespace Nethermind.Crypto
         {
         }
 
-        public Address? RecoverAddress(Signature signature, Hash256 message) => RecoverAddress(signature.Bytes, signature.RecoveryId, message.Bytes);
+        public Address? RecoverAddress(Signature signature, in ValueHash256 message) => RecoverAddress(signature.Bytes, signature.RecoveryId, message.Bytes);
 
+        public Address? RecoverAddress(Signature signature, Hash256 message) => RecoverAddress(signature.Bytes, signature.RecoveryId, message.Bytes);
 
         public Address? RecoverAddress(Span<byte> signatureBytes65, Hash256 message) => RecoverAddress(signatureBytes65[..64], signatureBytes65[64], message.Bytes);
 
-        public static Address? RecoverAddress(Span<byte> signatureBytes64, byte v, Span<byte> message)
+        public static Address? RecoverAddress(Span<byte> signatureBytes64, byte v, ReadOnlySpan<byte> message)
         {
             Span<byte> publicKey = stackalloc byte[65];
             bool success = SpanSecP256k1.RecoverKeyFromCompact(
