@@ -347,12 +347,10 @@ internal class TrieStoreDirtyNodesCache
         [MethodImpl(MethodImplOptions.NoInlining)]
         void LogNodeRemoval(TrieNode node) => _logger.Trace($"Removing {node} from memory.");
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowKeccakIsNull(TrieNode node) => throw new InvalidOperationException($"Removed {node}");
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowPersistedNodeDoesNotMatch(in Key key, TrieNode node, Hash256 keccak)
             => throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
     }
