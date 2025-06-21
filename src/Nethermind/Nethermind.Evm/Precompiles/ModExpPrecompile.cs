@@ -128,7 +128,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         if (baseLength == 0 && modulusLength == 0)
             return (Bytes.Empty, true);
 
-        using mpz_t modulusInt = default;
+        using var modulusInt = mpz_t.Create();
 
         fixed (byte* modulusData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength))
         {
@@ -139,9 +139,9 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         if (Gmp.mpz_sgn(modulusInt) == 0)
             return (new byte[modulusLength], true);
 
-        using mpz_t baseInt = default;
-        using mpz_t expInt = default;
-        using mpz_t powmResult = default;
+        using var baseInt = mpz_t.Create();
+        using var expInt = mpz_t.Create();
+        using var powmResult = mpz_t.Create();
 
         fixed (byte* baseData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength))
         fixed (byte* expData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength))
