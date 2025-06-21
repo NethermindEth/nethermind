@@ -172,8 +172,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                     builder.UpdateSingleton<IRpcModuleFactory<ITraceRpcModule>>(builder => builder.AddSingleton<IRewardCalculatorSource, RewardCalculator>());
 
                     // Filter manager need the block processor, but the block processor is currently not completely DI, so need to patch it in.
-                    builder.AddSingleton<IFilterManager, IFilterStore, ITxPool, ILogManager>((store, txPool, logManager) =>
-                            new FilterManager(store, _blockchain.BlockProcessor, txPool, logManager));
+                    builder.AddSingleton<IFilterManager, IFilterStore, ITxPool, ILogManager, IBlockFinder>((store, txPool, logManager, blockFinder) =>
+                            new FilterManager(store, _blockchain.BlockProcessor, txPool, logManager, blockFinder));
 
                     if (_blockFinderOverride is not null) builder.AddSingleton(_blockFinderOverride);
                     if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
