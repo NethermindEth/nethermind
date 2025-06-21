@@ -139,7 +139,7 @@ namespace Nethermind.Init.Steps
 
             IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
             IFilterStore filterStore = setApi.FilterStore = new FilterStore(getApi.TimerFactory, rpcConfig.FiltersTimeout);
-            setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
+            setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager, getApi.BlockTree!);
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
             _api.DisposeStack.Push(filterStore);
 
