@@ -6,9 +6,12 @@ using System.Reflection;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -60,10 +63,21 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             // Crypto
             .AddSingleton<ICryptoRandom>(new CryptoRandom())
 
-            .AddSingleton<IFilterStore, ITimerFactory, IJsonRpcConfig>((timerFactory, rpcConfig) => new FilterStore(timerFactory, rpcConfig.FiltersTimeout))
+            .AddSingleton<IFilterStore, ITimerFactory, IJsonRpcConfig>((timerFactory, rpcConfig) => new FilterStore(timerFactory, rpcConfig.FiltersTimeout));
 
-            .AddSingleton<IFilterManager, IFilterStore, IMainProcessingContext, ITxPool, ILogManager>((store, processingContext, txPool, logManager) =>
-                    new FilterManager(store, processingContext.BlockProcessor, txPool, logManager))
+        builder.Register((ctx) =>
+            {
+                var store = ctx.Resolve<IFilterStore>();
+                var processingContext = ctx.Resolve<IMainProcessingContext>();
+                var txPool = ctx.Resolve<ITxPool>();
+                var logManager = ctx.Resolve<ILogManager>();
+                var blockFinder = ctx.Resolve<IBlockFinder>();
+                return new FilterManager(store, processingContext.BlockProcessor, txPool, logManager, blockFinder);
+            })
+            .As<IFilterManager>()
+            .SingleInstance()
+
+            ;
 
             ;
 
