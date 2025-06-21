@@ -55,7 +55,7 @@ public class AuthorizationListForRpc
             new Tuple(tuple.ChainId,
                     tuple.Nonce,
                     tuple.CodeAddress,
-                    tuple.AuthoritySignature.RecoveryId,
+                    tuple.AuthoritySignature.V - Signature.VOffset,
                     new UInt256(tuple.AuthoritySignature.S.Span, true),
                     new UInt256(tuple.AuthoritySignature.R.Span, true))));
 
