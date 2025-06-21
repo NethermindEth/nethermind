@@ -31,7 +31,7 @@ namespace Nethermind.Crypto
         {
         }
 
-        public Address? RecoverAddress(Signature signature, Hash256 message) => RecoverAddress(signature.BytesWithRecovery, message);
+        public Address? RecoverAddress(Signature signature, Hash256 message) => RecoverAddress(signature.Bytes, signature.RecoveryId, message.Bytes);
 
 
         public Address? RecoverAddress(Span<byte> signatureBytes65, Hash256 message) => RecoverAddress(signatureBytes65[..64], signatureBytes65[64], message.Bytes);
