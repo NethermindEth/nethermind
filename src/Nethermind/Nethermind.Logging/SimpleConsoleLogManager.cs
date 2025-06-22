@@ -14,11 +14,6 @@ namespace Nethermind.Logging
 
         public static ILogManager Instance { get; } = new SimpleConsoleLogManager();
 
-        public ILogger GetClassLogger(Type type)
-        {
-            return new(SimpleConsoleLogger.Instance);
-        }
-
         public ILogger GetClassLogger<T>()
         {
             return new(SimpleConsoleLogger.Instance);
