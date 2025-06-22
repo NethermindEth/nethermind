@@ -11,7 +11,7 @@ namespace Nethermind.Crypto
             => Sign(privateKey, in message.ValueHash256);
 
         Signature Sign(PrivateKey privateKey, in ValueHash256 message);
-        
+
         PublicKey? RecoverPublicKey(Signature signature, Hash256 message)
             => RecoverPublicKey(signature, in message.ValueHash256);
 
