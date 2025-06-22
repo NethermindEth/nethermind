@@ -623,8 +623,7 @@ namespace Nethermind.Trie
                 }
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static SpanSource TraverseUnknown(TrieNode node)
             {
                 throw new InvalidOperationException($"Cannot traverse unresolved node {node.Keccak}");
