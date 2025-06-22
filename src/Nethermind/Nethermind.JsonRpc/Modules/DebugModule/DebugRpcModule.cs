@@ -172,13 +172,38 @@ public class DebugRpcModule(
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
+        
+        // First try the standard approach with hash filtering
         var transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, options);
-        if (transactionTrace is null)
+        if (transactionTrace is not null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transactionTrace hash {transactionHash}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
         }
 
-        return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+        // If that fails, try tracing the entire block and find the transaction
+        var blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, options);
+        if (blockTrace is not null)
+        {
+            // Find the transaction index in the block
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                if (block.Transactions[i].Hash == transactionHash)
+                {
+                    var txTrace = blockTrace.ElementAtOrDefault(i);
+                    if (txTrace is not null)
+                    {
+                        return ResultWrapper<GethLikeTxTrace>.Success(txTrace);
+                    }
+                    break;
+                }
+            }
+        }
+
+        // If both methods fail, provide detailed error information
+        var transactionHashes = string.Join(", ", block.Transactions.Select(tx => tx.Hash?.ToString() ?? "null"));
+        return ResultWrapper<GethLikeTxTrace>.Fail(
+            $"Transaction {transactionHash} not found or could not be traced. Block contains {block.Transactions.Length} transactions with hashes: [{transactionHashes}]", 
+            ErrorCodes.ResourceNotFound);
     }
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null)
