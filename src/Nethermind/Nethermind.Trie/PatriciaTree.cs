@@ -573,13 +573,21 @@ namespace Nethermind.Trie
             }
         }
 
-        private SpanSource TraverseNode(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private SpanSource TraverseNode(TrieNode node, scoped in TraverseContext traverseContext,
+            scoped ref TreePath path)
         {
             if (node.IsBranch)
             {
                 return TraverseBranches(node, traverseContext, ref path);
             }
 
+            return TraverseExtensionOrLeaf(node, traverseContext, ref path);
+        }
+
+
+        private SpanSource TraverseExtensionOrLeaf(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
+        {
             if (_logger.IsTrace) Trace(node, traverseContext);
 
             if (traverseContext.IsNodeRead && traverseContext.RemainingUpdatePathLength == 0)
@@ -895,7 +903,7 @@ namespace Nethermind.Trie
                 traverseContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + 1);
                 if (!childNode.IsBranch)
                 {
-                    return TraverseNode(childNode, in traverseContext, ref path);
+                    return TraverseExtensionOrLeaf(childNode, in traverseContext, ref path);
                 }
 
                 // Traverse next branch
