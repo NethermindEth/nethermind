@@ -1357,8 +1357,7 @@ namespace Nethermind.Trie
                 $"Found an {nameof(NodeType.Extension)} {node.Keccak} that is missing a child.");
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowMissingPrefixException()
         {
             throw new InvalidDataException("An attempt to visit a node without a prefix path.");
