@@ -68,9 +68,14 @@ namespace Nethermind.JsonRpc
         public const int LimitExceeded = -32005;
 
         /// <summary>
-        ///
+        /// VM execution error
         /// </summary>
         public const int ExecutionError = -32015;
+
+        /// <summary>
+        /// Geth-compatible execution reverted error
+        /// </summary>
+        public const int ExecutionReverted = 3;
 
         /// <summary>
         /// Request exceeds defined timeout limit

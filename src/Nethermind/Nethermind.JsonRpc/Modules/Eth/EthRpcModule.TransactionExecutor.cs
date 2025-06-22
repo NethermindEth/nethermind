@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -83,9 +84,34 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
 
-                return result.Error is null
-                    ? ResultWrapper<string>.Success(result.OutputData.ToHexString(true))
-                    : TryGetInputError(result) ?? ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
+                if (result.Error is null)
+                {
+                    return ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
+                }
+
+                // Check for input error first
+                var inputError = TryGetInputError(result);
+                if (inputError is not null)
+                {
+                    return inputError;
+                }
+
+                // Check if this is a revert (Geth compatibility)
+                if (IsRevertError(result.Error))
+                {
+                    // Return Geth-compatible error format for reverts
+                    string revertData = result.OutputData.ToHexString(true);
+                    return ResultWrapper<string>.Fail("execution reverted", ErrorCodes.ExecutionReverted, revertData);
+                }
+
+                // Other execution errors
+                return ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
+            }
+
+            private static bool IsRevertError(string error)
+            {
+                // Check if the error is a revert - this matches the "revert" constant from TransactionSubstate
+                return error.StartsWith("revert", StringComparison.Ordinal);
             }
         }
 
