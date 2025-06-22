@@ -251,7 +251,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("^mainnet ^sepolia", 0)]
     [TestCase("mainnet fast", 15537394L)]
-    [TestCase("sepolia", 1450408)]
+    [TestCase("sepolia", 1450409)]
     public void Barriers_defaults_are_correct(string configWildcard, long barrier)
     {
         Test<ISyncConfig, long>(configWildcard, static c => c.AncientBodiesBarrier, barrier);
