@@ -15,7 +15,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Evm;
 
-public readonly struct TransactionSubstate
+public readonly ref struct TransactionSubstate
 {
     private readonly ILogger _logger;
     private static readonly List<Address> _emptyDestroyList = new(0);
@@ -64,7 +64,7 @@ public readonly struct TransactionSubstate
         ShouldRevert = false;
     }
 
-    public static TransactionSubstate FailedInitCode { get; } = new TransactionSubstate("Eip 7698: Invalid CreateTx InitCode");
+    public static TransactionSubstate FailedInitCode => new TransactionSubstate("Eip 7698: Invalid CreateTx InitCode");
 
     private TransactionSubstate(string errorCode)
     {

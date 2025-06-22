@@ -204,10 +204,10 @@ public sealed unsafe partial class VirtualMachine(
                     // Handle exceptions raised during the call execution.
                     if (callResult.IsException)
                     {
-                        TransactionSubstate? substate = HandleException(in callResult, ref previousCallOutput);
-                        if (substate is not null)
+                        TransactionSubstate substate = HandleException(in callResult, ref previousCallOutput, out bool terminate);
+                        if (terminate)
                         {
-                            return substate.Value;
+                            return substate;
                         }
                         // Continue execution if the exception did not immediately finalize the transaction.
                         continue;
@@ -292,10 +292,10 @@ public sealed unsafe partial class VirtualMachine(
 
         // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
-            TransactionSubstate? failSubstate = HandleFailure<TTracingInst>(failure, ref previousCallOutput);
-            if (failSubstate is not null)
+            TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, ref previousCallOutput, out bool shouldExit);
+            if (shouldExit)
             {
-                return failSubstate.Value;
+                return failSubstate;
             }
         }
     }
@@ -505,7 +505,7 @@ public sealed unsafe partial class VirtualMachine(
         }
     }
 
-    private TransactionSubstate PrepareTopLevelSubstate(in CallResult callResult)
+    private TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
     {
         return new TransactionSubstate(
             callResult.Output,
@@ -584,7 +584,7 @@ public sealed unsafe partial class VirtualMachine(
     /// A <see cref="TransactionSubstate"/> if the failure occurs in the top-level call; otherwise, <c>null</c>
     /// to indicate that execution should continue with the parent call frame.
     /// </returns>
-    private TransactionSubstate? HandleFailure<TTracingInst>(Exception failure, ref ZeroPaddedSpan previousCallOutput)
+    private TransactionSubstate HandleFailure<TTracingInst>(Exception failure, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
         where TTracingInst : struct, IFlag
     {
         // Log the exception if trace logging is enabled.
@@ -624,6 +624,7 @@ public sealed unsafe partial class VirtualMachine(
         {
             // For an OverflowException, force the error type to a generic Other error.
             EvmExceptionType finalErrorType = failure is OverflowException ? EvmExceptionType.Other : errorType;
+            shouldExit = true;
             return new TransactionSubstate(finalErrorType, txTracer.IsTracing);
         }
 
@@ -643,7 +644,8 @@ public sealed unsafe partial class VirtualMachine(
         _currentState = _stateStack.Pop();
         _currentState.IsContinuation = true;
 
-        return null;
+        shouldExit = false;
+        return default;
     }
 
     /// <summary>
@@ -689,7 +691,7 @@ public sealed unsafe partial class VirtualMachine(
     /// A <see cref="TransactionSubstate"/> instance if the failure occurred in a top-level call,
     /// otherwise <c>null</c> to indicate that execution should continue in the parent frame.
     /// </returns>
-    private TransactionSubstate? HandleException(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+    private TransactionSubstate HandleException(scoped in CallResult callResult, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
     {
         // Cache the tracer to minimize repeated field accesses.
         ITxTracer txTracer = _txTracer;
@@ -709,6 +711,7 @@ public sealed unsafe partial class VirtualMachine(
         // If this is the top-level call, return a final transaction substate encapsulating the error.
         if (_currentState.IsTopLevel)
         {
+            shouldExit = true;
             return new TransactionSubstate(callResult.ExceptionType, txTracer.IsTracing);
         }
 
@@ -728,7 +731,8 @@ public sealed unsafe partial class VirtualMachine(
         _currentState.IsContinuation = true;
 
         // Return null to indicate that the failure was handled and execution should continue in the parent frame.
-        return null;
+        shouldExit = false;
+        return default;
     }
 
     /// <summary>
