@@ -309,7 +309,7 @@ public partial class EthRpcModuleTests
             $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\", \"gas\": 100000000}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"err: revert (supplied gas 100000000)\"},\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":3,\"message\":\"execution reverted\",\"data\":\"0x\"},\"id\":67}"));
     }
 
     [TestCase(
@@ -421,38 +421,5 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken.Parse(serialized).Should().BeEquivalentTo(
             $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"err: OutOfGas (supplied gas {expectedGasLimit})\"}},\"id\":67}}");
-    }
-
-    [Test]
-    public async Task Eth_call_revert_should_return_geth_compatible_error()
-    {
-        using Context ctx = await Context.Create();
-        
-        // This test case simulates a revert with specific revert data
-        // The contract should revert with some data
-        LegacyTransactionForRpc transaction = new(new Transaction(), 1, Keccak.Zero, 1L)
-        {
-            From = TestItem.AddressA,
-            To = TestItem.AddressB,
-            Data = Bytes.FromHexString("0x6352211e0000000000000000000000000000000000000000000000000000000000001178"), // Example revert call
-            Gas = 36000000
-        };
-
-        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
-        
-        // Parse the result to verify the structure
-        var result = JToken.Parse(serialized);
-        var error = result["error"];
-        
-        // Should have Geth-compatible error code 3 for execution reverted
-        error?["code"]?.Value<int>().Should().Be(3);
-        error?["message"]?.Value<string>().Should().Be("execution reverted");
-        
-        // The data should be the raw revert data (hex string), not wrapped with "err: ... (supplied gas ...)"
-        var data = error?["data"]?.Value<string>();
-        data.Should().NotBeNull();
-        data.Should().StartWith("0x"); // Should be a hex string
-        data.Should().NotContain("err:"); // Should not contain the wrapped format
-        data.Should().NotContain("supplied gas"); // Should not contain the wrapped format
     }
 }
