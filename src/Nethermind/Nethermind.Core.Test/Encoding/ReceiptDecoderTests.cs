@@ -268,6 +268,40 @@ namespace Nethermind.Core.Test.Encoding
             AssertMessageReceipt(txReceipt, deserialized);
         }
 
+        [Test]
+        public void Can_skip_state_and_status_with_rlp_behavior()
+        {
+            TxReceipt txReceipt = Build.A.Receipt.TestObject;
+            txReceipt.Bloom = new Bloom();
+            txReceipt.Bloom.Set(Keccak.EmptyTreeHash.Bytes);
+            txReceipt.GasUsedTotal = 1000;
+            txReceipt.PostTransactionState = TestItem.KeccakH;
+            txReceipt.StatusCode = 1;
+
+            ReceiptMessageDecoder decoder = new();
+
+            // Test normal encoding (should include state/status)
+            byte[] normalEncoded = decoder.EncodeNew(txReceipt, RlpBehaviors.None);
+            
+            // Test with skip behavior (should skip state/status)
+            byte[] skipEncoded = decoder.EncodeNew(txReceipt, RlpBehaviors.SkipReceiptStateAndStatus);
+            
+            // Skip encoding should be shorter than normal
+            Assert.That(skipEncoded.Length, Is.LessThan(normalEncoded.Length), "Skip encoding should be shorter than normal");
+
+            // Test that the property still works (backward compatibility)
+            txReceipt.SkipStateAndStatusInRlp = true;
+            byte[] propertySkipEncoded = decoder.EncodeNew(txReceipt, RlpBehaviors.None);
+            
+            // Property and behavior should produce same length (both skip)
+            Assert.That(propertySkipEncoded.Length, Is.EqualTo(skipEncoded.Length), "Property and behavior should produce same result");
+
+            // Test that both property AND behavior need to allow encoding
+            txReceipt.SkipStateAndStatusInRlp = false; // property allows
+            byte[] bothAllowEncoded = decoder.EncodeNew(txReceipt, RlpBehaviors.None); // behavior allows
+            Assert.That(bothAllowEncoded.Length, Is.EqualTo(normalEncoded.Length), "When both allow, should include state/status");
+        }
+
         private void AssertMessageReceipt(TxReceipt txReceipt, TxReceipt deserialized)
         {
             Assert.That(deserialized.Bloom, Is.EqualTo(txReceipt.Bloom), "bloom");
