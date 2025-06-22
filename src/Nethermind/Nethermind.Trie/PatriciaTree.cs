@@ -1359,14 +1359,6 @@ namespace Nethermind.Trie
 
         [DoesNotReturn]
         [StackTraceHidden]
-        private static void ThrowMissingLeafException(in TraverseContext traverseContext)
-        {
-            throw new TrieException(
-                $"Could not find the leaf node to delete: {traverseContext.UpdatePath.ToHexString()}");
-        }
-
-        [DoesNotReturn]
-        [StackTraceHidden]
         private static void ThrowMissingPrefixException()
         {
             throw new InvalidDataException("An attempt to visit a node without a prefix path.");
