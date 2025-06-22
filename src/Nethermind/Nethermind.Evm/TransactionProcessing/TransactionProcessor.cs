@@ -791,7 +791,7 @@ namespace Nethermind.Evm.TransactionProcessing
             UInt256 fees = (UInt256)spentGas * premiumPerGas;
 
             // n.b. destroyed accounts already set to zero balance
-            bool gasBeneficiaryNotDestroyed = substate.DestroyList.Contains(header.GasBeneficiary) != true;
+            bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
             if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
             {
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
