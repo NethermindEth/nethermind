@@ -17,6 +17,13 @@ public class SepoliaSpecProvider : ISpecProvider
     public const ulong PragueTimestamp = 0x67C7FD60;
     public const ulong OsakaTimestamp = 0xFFFFFFFF;
 
+    // Sepolia Proof-of-Stake transition block numbers per EIP-3675
+    // Terminal PoW block: 1450408 (last block mined with Proof-of-Work)
+    // PoS transition block: 1450409 (first block using Proof-of-Stake consensus)
+    // Ancient barriers are set to PoS transition block to expire all pre-merge block history
+    public const long TerminalPoWBlock = 1450408;
+    public const long PoSTransitionBlock = 1450409;
+
     private static IReleaseSpec? _prague;
 
     private static IReleaseSpec Prague => LazyInitializer.EnsureInitialized(ref _prague,
