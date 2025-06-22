@@ -172,49 +172,13 @@ public class DebugRpcModule(
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
-        
-        // First try the standard approach with hash filtering
         var transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, options);
-        if (transactionTrace is not null)
+        if (transactionTrace is null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+            return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transactionTrace hash {transactionHash}", ErrorCodes.ResourceNotFound);
         }
 
-        // If that fails, check if the transaction exists in the block before expensive fallback
-        int transactionIndex = -1;
-        for (int i = 0; i < block.Transactions.Length; i++)
-        {
-            if (block.Transactions[i].Hash == transactionHash)
-            {
-                transactionIndex = i;
-                break;
-            }
-        }
-
-        if (transactionIndex == -1)
-        {
-            // Transaction not found in block at all
-            var transactionHashes = string.Join(", ", block.Transactions.Select(tx => tx.Hash?.ToString() ?? "null"));
-            return ResultWrapper<GethLikeTxTrace>.Fail(
-                $"Transaction {transactionHash} not found in block. Block contains {block.Transactions.Length} transactions with hashes: [{transactionHashes}]", 
-                ErrorCodes.ResourceNotFound);
-        }
-
-        // Try tracing the entire block and get the specific transaction trace
-        var blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, options);
-        if (blockTrace is not null)
-        {
-            var txTrace = blockTrace.ElementAtOrDefault(transactionIndex);
-            if (txTrace is not null)
-            {
-                return ResultWrapper<GethLikeTxTrace>.Success(txTrace);
-            }
-        }
-
-        // If block tracing also fails, return error
-        return ResultWrapper<GethLikeTxTrace>.Fail(
-            $"Failed to trace transaction {transactionHash} (index {transactionIndex}) in block", 
-            ErrorCodes.InternalError);
+        return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null)

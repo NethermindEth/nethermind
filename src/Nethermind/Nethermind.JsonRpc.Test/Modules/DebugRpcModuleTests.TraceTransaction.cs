@@ -78,11 +78,24 @@ public partial class DebugRpcModuleTests
     {
         using Context context = await Context.Create();
 
-        var transaction = factory(context.Blockchain);
+        var transaction = factory(context.Blockchain);        
         await context.Blockchain.AddBlock(transaction);
 
-        var blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
-        var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByHash", blockRlp, transaction.Hash, options);
+        // Get the block and encode it as RLP
+        var block = context.Blockchain.BlockTree.Head!;
+        var blockRlp = Rlp.Encode(block);
+        
+        // Decode the RLP back to a block to ensure we're using the same transaction hash 
+        // that will be used during the actual RPC processing
+        var decodedBlock = Rlp.Decode<Block>(blockRlp);
+        Assert.That(decodedBlock.Transactions.Length, Is.EqualTo(1), "Decoded block should contain exactly one transaction");
+        
+        // Use the transaction hash from the decoded block to ensure consistency
+        // with what the RPC method will see when it decodes the same RLP
+        var transactionHashFromDecodedBlock = decodedBlock.Transactions[0].Hash;
+        Assert.That(transactionHashFromDecodedBlock, Is.Not.Null, "Transaction hash from decoded block should not be null");
+
+        var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByHash", blockRlp.ToString(), transactionHashFromDecodedBlock, options);
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(response).RootElement,
