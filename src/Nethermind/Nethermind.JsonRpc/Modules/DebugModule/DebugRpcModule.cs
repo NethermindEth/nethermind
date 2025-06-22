@@ -180,30 +180,41 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
         }
 
-        // If that fails, try tracing the entire block and find the transaction
-        var blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, options);
-        if (blockTrace is not null)
+        // If that fails, check if the transaction exists in the block before expensive fallback
+        int transactionIndex = -1;
+        for (int i = 0; i < block.Transactions.Length; i++)
         {
-            // Find the transaction index in the block
-            for (int i = 0; i < block.Transactions.Length; i++)
+            if (block.Transactions[i].Hash == transactionHash)
             {
-                if (block.Transactions[i].Hash == transactionHash)
-                {
-                    var txTrace = blockTrace.ElementAtOrDefault(i);
-                    if (txTrace is not null)
-                    {
-                        return ResultWrapper<GethLikeTxTrace>.Success(txTrace);
-                    }
-                    break;
-                }
+                transactionIndex = i;
+                break;
             }
         }
 
-        // If both methods fail, provide detailed error information
-        var transactionHashes = string.Join(", ", block.Transactions.Select(tx => tx.Hash?.ToString() ?? "null"));
+        if (transactionIndex == -1)
+        {
+            // Transaction not found in block at all
+            var transactionHashes = string.Join(", ", block.Transactions.Select(tx => tx.Hash?.ToString() ?? "null"));
+            return ResultWrapper<GethLikeTxTrace>.Fail(
+                $"Transaction {transactionHash} not found in block. Block contains {block.Transactions.Length} transactions with hashes: [{transactionHashes}]", 
+                ErrorCodes.ResourceNotFound);
+        }
+
+        // Try tracing the entire block and get the specific transaction trace
+        var blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, options);
+        if (blockTrace is not null)
+        {
+            var txTrace = blockTrace.ElementAtOrDefault(transactionIndex);
+            if (txTrace is not null)
+            {
+                return ResultWrapper<GethLikeTxTrace>.Success(txTrace);
+            }
+        }
+
+        // If block tracing also fails, return error
         return ResultWrapper<GethLikeTxTrace>.Fail(
-            $"Transaction {transactionHash} not found or could not be traced. Block contains {block.Transactions.Length} transactions with hashes: [{transactionHashes}]", 
-            ErrorCodes.ResourceNotFound);
+            $"Failed to trace transaction {transactionHash} (index {transactionIndex}) in block", 
+            ErrorCodes.InternalError);
     }
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null)
