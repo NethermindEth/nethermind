@@ -104,7 +104,7 @@ public class PerTableDbConfig
                 string? valObj = (string?)propertyInfo.GetValue(dbConfig);
                 if (!string.IsNullOrEmpty(valObj))
                 {
-                    if (!valObj.EndsWith(";")) throw new InvalidConfigurationException($"Rocksdb config must end with `;`. Invalid property is {propertyName} in {prefixed}.", -1);
+                    if (!valObj.EndsWith(';')) throw new InvalidConfigurationException($"Rocksdb config must end with `;`. Invalid property is {propertyName} in {prefixed}.", -1);
                     val += valObj;
                 }
             }

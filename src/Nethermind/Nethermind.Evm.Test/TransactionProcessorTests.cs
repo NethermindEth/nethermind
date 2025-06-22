@@ -38,7 +38,7 @@ public class TransactionProcessorTests
     private readonly bool _isEip155Enabled;
     private readonly ISpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
-    private TransactionProcessor _transactionProcessor;
+    private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
 
     public TransactionProcessorTests(bool eip155Enabled)
@@ -52,10 +52,8 @@ public class TransactionProcessorTests
     [SetUp]
     public void Setup()
     {
-        MemDb stateDb = new();
-        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
-        PreBlockCaches preBlockCaches = new();
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance, preBlockCaches);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);

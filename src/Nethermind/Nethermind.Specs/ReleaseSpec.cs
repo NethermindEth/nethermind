@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -83,20 +83,28 @@ namespace Nethermind.Specs
         public bool IsEip3860Enabled { get; set; }
         public bool IsEip4895Enabled { get; set; }
         public bool IsEip4844Enabled { get; set; }
-        public bool IsRip7212Enabled { get; set; }
+        public bool IsEip7951Enabled { get; set; }
         public bool IsOpGraniteEnabled { get; set; }
         public bool IsOpHoloceneEnabled { get; set; }
         public bool IsOpIsthmusEnabled { get; set; }
         public bool IsEip7623Enabled { get; set; }
+        public bool IsEip7883Enabled { get; set; }
         public bool IsEip5656Enabled { get; set; }
         public bool IsEip6780Enabled { get; set; }
         public bool IsEip4788Enabled { get; set; }
         public bool IsEip7702Enabled { get; set; }
+        public bool IsEip7823Enabled { get; set; }
         public bool IsEip4844FeeCollectorEnabled { get; set; }
         public bool IsEip7002Enabled { get; set; }
         public bool IsEip7251Enabled { get; set; }
+        public bool IsEip7825Enabled { get; set; }
+        public bool IsEip7918Enabled { get; set; }
+
         public ulong TargetBlobCount { get; set; }
         public ulong MaxBlobCount { get; set; }
+
+        private ulong? _maxBlobsPerTx;
+        public ulong MaxBlobsPerTx { get => _maxBlobsPerTx ?? MaxBlobCount; set => _maxBlobsPerTx = value; }
         public UInt256 BlobBaseFeeUpdateFraction { get; set; }
 
 
@@ -142,8 +150,11 @@ namespace Nethermind.Specs
             set => _eip2935ContractAddress = value;
         }
 
+        public bool IsEip7594Enabled { get; set; }
+
         Array? IReleaseSpec.EvmInstructionsNoTrace { get; set; }
 
         Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
+        public bool IsEip7939Enabled { get; set; }
     }
 }

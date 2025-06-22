@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
@@ -15,6 +15,7 @@ public class SepoliaSpecProvider : ISpecProvider
     public const ulong ShanghaiTimestamp = 0x63fd7d60;
     public const ulong CancunTimestamp = 0x65B97D60;
     public const ulong PragueTimestamp = 0x67C7FD60;
+    public const ulong OsakaTimestamp = 0xFFFFFFFF;
 
     private static IReleaseSpec? _prague;
 
@@ -30,7 +31,8 @@ public class SepoliaSpecProvider : ISpecProvider
             { Timestamp: null } or { Timestamp: < ShanghaiTimestamp } => London.Instance,
             { Timestamp: < CancunTimestamp } => Shanghai.Instance,
             { Timestamp: < PragueTimestamp } => Cancun.Instance,
-            _ => Prague
+            { Timestamp: < OsakaTimestamp } => Prague,
+            _ => Osaka.Instance
         };
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -55,7 +57,7 @@ public class SepoliaSpecProvider : ISpecProvider
         (ForkActivation)1735371,
         (1735371, ShanghaiTimestamp),
         (1735371, CancunTimestamp),
-        (1735371, PragueTimestamp)
+        (1735371, PragueTimestamp),
     ];
 
     public static SepoliaSpecProvider Instance { get; } = new();

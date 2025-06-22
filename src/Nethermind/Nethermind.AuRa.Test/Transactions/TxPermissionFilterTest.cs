@@ -13,6 +13,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -280,14 +281,14 @@ public class TxPermissionFilterTest
                 SpecProvider,
                 Always.Valid,
                 new RewardCalculator(SpecProvider),
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), worldState),
                 worldState,
                 ReceiptStorage,
                 new BeaconBlockRootHandler(TxProcessor, worldState),
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                TxProcessor,
+                new ExecutionRequestsProcessor(TxProcessor),
                 null,
                 txFilter: PermissionBasedTxFilter,
                 preWarmer: CreateBlockCachePreWarmer());

@@ -8,6 +8,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Test;

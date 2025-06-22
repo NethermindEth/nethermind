@@ -4,14 +4,16 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
@@ -27,6 +29,7 @@ using Nethermind.Evm.Tracing.Debugger;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.Evm;
 
+using Word = Vector256<byte>;
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
@@ -63,7 +66,7 @@ public sealed unsafe partial class VirtualMachine(
     internal static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
     internal static readonly OutOfGasException PrecompileOutOfGasException = new();
 
-    private readonly byte[] _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
+    private readonly ValueHash256 _chainId = ((UInt256)specProvider.ChainId).ToValueHash();
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -88,10 +91,21 @@ public sealed unsafe partial class VirtualMachine(
     public IReleaseSpec Spec => _spec;
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _worldState;
-    public ReadOnlySpan<byte> ChainId => _chainId;
+    public ref readonly ValueHash256 ChainId => ref _chainId;
     public ReadOnlyMemory<byte> ReturnDataBuffer { get; set; } = Array.Empty<byte>();
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
+
+    private BlockExecutionContext _blockExecutionContext;
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
+    public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
+
+    private TxExecutionContext _txExecutionContext;
+    public ref readonly TxExecutionContext TxExecutionContext => ref _txExecutionContext;
+    /// <summary>
+    /// Transaction context
+    /// </summary>
+    public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
 
     private EvmState _vmState;
     public EvmState EvmState { get => _vmState; private set => _vmState = value; }
@@ -102,7 +116,7 @@ public sealed unsafe partial class VirtualMachine(
     /// or a failure condition is reached. This method handles both precompiled contracts and regular
     /// EVM calls, along with proper state management, tracing, and error handling.
     /// </summary>
-    /// <typeparam name="TTracingInstructions">
+    /// <typeparam name="TTracingInst">
     /// The type of tracing instructions flag used to conditionally trace execution actions.
     /// </typeparam>
     /// <param name="evmState">The initial EVM state to begin transaction execution.</param>
@@ -114,25 +128,21 @@ public sealed unsafe partial class VirtualMachine(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-    public TransactionSubstate ExecuteTransaction<TTracingInstructions>(
+    public TransactionSubstate ExecuteTransaction<TTracingInst>(
         EvmState evmState,
         IWorldState worldState,
         ITxTracer txTracer)
-        where TTracingInstructions : struct, IFlag
+        where TTracingInst : struct, IFlag
     {
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
         _worldState = worldState;
 
-        // Extract the transaction execution context from the EVM environment.
-        ref readonly TxExecutionContext txExecutionContext = ref evmState.Env.TxExecutionContext;
-
         // Prepare the specification and opcode mapping based on the current block header.
-        IReleaseSpec spec = PrepareSpecAndOpcodes<TTracingInstructions>(
-            txExecutionContext.BlockExecutionContext.Header);
+        IReleaseSpec spec = PrepareSpecAndOpcodes<TTracingInst>(BlockExecutionContext.Header);
 
         // Initialize the code repository and set up the initial execution state.
-        _codeInfoRepository = txExecutionContext.CodeInfoRepository;
+        _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = evmState;
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;
@@ -173,7 +183,7 @@ public sealed unsafe partial class VirtualMachine(
                     // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
                     if (_currentState.Env.CodeInfo is not null)
                     {
-                        callResult = ExecuteCall<TTracingInstructions>(
+                        callResult = ExecuteCall<TTracingInst>(
                             _currentState,
                             _previousCallResult,
                             previousCallOutput,
@@ -254,7 +264,7 @@ public sealed unsafe partial class VirtualMachine(
                         else
                         {
                             // Process a standard call return.
-                            previousCallOutput = HandleRegularReturn<TTracingInstructions>(in callResult, previousState);
+                            previousCallOutput = HandleRegularReturn<TTracingInst>(in callResult, previousState);
                         }
 
                         // Commit the changes from the completed call frame if execution was successful.
@@ -282,7 +292,7 @@ public sealed unsafe partial class VirtualMachine(
 
         // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
-            TransactionSubstate? failSubstate = HandleFailure<TTracingInstructions>(failure, ref previousCallOutput);
+            TransactionSubstate? failSubstate = HandleFailure<TTracingInst>(failure, ref previousCallOutput);
             if (failSubstate is not null)
             {
                 return failSubstate;
@@ -298,8 +308,8 @@ public sealed unsafe partial class VirtualMachine(
         previousCallOutput = ZeroPaddedSpan.Empty;
     }
 
-    private ZeroPaddedSpan HandleRegularReturn<TTracingInstructions>(scoped in CallResult callResult, EvmState previousState)
-        where TTracingInstructions : struct, IFlag
+    private ZeroPaddedSpan HandleRegularReturn<TTracingInst>(scoped in CallResult callResult, EvmState previousState)
+        where TTracingInst : struct, IFlag
     {
         ZeroPaddedSpan previousCallOutput;
         ReturnDataBuffer = callResult.Output.Bytes;
@@ -312,7 +322,7 @@ public sealed unsafe partial class VirtualMachine(
         if (previousState.IsPrecompile)
         {
             // parity induced if else for vmtrace
-            if (TTracingInstructions.IsActive)
+            if (TTracingInst.IsActive)
             {
                 _txTracer.ReportMemoryChange(_previousCallOutputDestination, previousCallOutput);
             }
@@ -563,7 +573,7 @@ public sealed unsafe partial class VirtualMachine(
     /// reporting error details via the tracer, and either finalizing the top-level transaction
     /// or preparing to revert to the parent call frame.
     /// </summary>
-    /// <typeparam name="TTracingInstructions">
+    /// <typeparam name="TTracingInst">
     /// A type parameter representing tracing instructions. It must be a struct implementing <see cref="IFlag"/>.
     /// </typeparam>
     /// <param name="failure">The exception that caused the failure during execution.</param>
@@ -574,8 +584,8 @@ public sealed unsafe partial class VirtualMachine(
     /// A <see cref="TransactionSubstate"/> if the failure occurs in the top-level call; otherwise, <c>null</c>
     /// to indicate that execution should continue with the parent call frame.
     /// </returns>
-    private TransactionSubstate? HandleFailure<TTracingInstructions>(Exception failure, ref ZeroPaddedSpan previousCallOutput)
-        where TTracingInstructions : struct, IFlag
+    private TransactionSubstate? HandleFailure<TTracingInst>(Exception failure, ref ZeroPaddedSpan previousCallOutput)
+        where TTracingInst : struct, IFlag
     {
         // Log the exception if trace logging is enabled.
         if (_logger.IsTrace)
@@ -597,7 +607,7 @@ public sealed unsafe partial class VirtualMachine(
         EvmExceptionType errorType = evmException?.ExceptionType ?? EvmExceptionType.Other;
 
         // If the tracing instructions flag is active, report zero remaining gas and log the error.
-        if (TTracingInstructions.IsActive)
+        if (TTracingInst.IsActive)
         {
             txTracer.ReportOperationRemainingGas(0);
             txTracer.ReportOperationError(errorType);
@@ -804,7 +814,7 @@ public sealed unsafe partial class VirtualMachine(
     /// Prepares the release specification and opcode methods to be used during EVM execution,
     /// based on the provided block header and the tracing instructions flag.
     /// </summary>
-    /// <typeparam name="TTracingInstructions">
+    /// <typeparam name="TTracingInst">
     /// A value type implementing <see cref="IFlag"/> that indicates whether tracing-specific opcodes
     /// should be used.
     /// </typeparam>
@@ -814,14 +824,14 @@ public sealed unsafe partial class VirtualMachine(
     /// <returns>
     /// The prepared <see cref="IReleaseSpec"/> instance, with its associated opcode methods cached for execution.
     /// </returns>
-    private IReleaseSpec PrepareSpecAndOpcodes<TTracingInstructions>(BlockHeader header)
-        where TTracingInstructions : struct, IFlag
+    private IReleaseSpec PrepareSpecAndOpcodes<TTracingInst>(BlockHeader header)
+        where TTracingInst : struct, IFlag
     {
         // Retrieve the release specification based on the block's number and timestamp.
         IReleaseSpec spec = _specProvider.GetSpec(header.Number, header.Timestamp);
 
         // Check if tracing instructions are inactive.
-        if (!TTracingInstructions.IsActive)
+        if (!TTracingInst.IsActive)
         {
             // Occasionally refresh the opcode cache for non-tracing opcodes.
             // The cache is flushed every 10,000 transactions until a threshold of 500,000 transactions.
@@ -832,18 +842,18 @@ public sealed unsafe partial class VirtualMachine(
             {
                 if (_logger.IsDebug)
                 {
-                    _logger.Debug("Resetting EVM instruction cache");
+                    _logger.Debug("Refreshing EVM instruction cache");
                 }
                 // Regenerate the non-traced opcode set to pick up any updated PGO optimized methods.
-                spec.EvmInstructionsNoTrace = EvmInstructions.GenerateOpCodes<TTracingInstructions>(spec);
+                spec.EvmInstructionsNoTrace = EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
             }
             // Ensure the non-traced opcode set is generated and assign it to the _opcodeMethods field.
-            _opcodeMethods = (OpCode[])(spec.EvmInstructionsNoTrace ??= EvmInstructions.GenerateOpCodes<TTracingInstructions>(spec));
+            _opcodeMethods = (OpCode[])(spec.EvmInstructionsNoTrace ??= EvmInstructions.GenerateOpCodes<TTracingInst>(spec));
         }
         else
         {
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
-            _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= EvmInstructions.GenerateOpCodes<TTracingInstructions>(spec));
+            _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= EvmInstructions.GenerateOpCodes<TTracingInst>(spec));
         }
 
         // Store the spec in field for future access and return it.
@@ -1008,7 +1018,7 @@ public sealed unsafe partial class VirtualMachine(
     /// stack initialization, and memory updates. It then dispatches the bytecode execution using a
     /// specialized interpreter that is optimized at compile time based on the tracing instructions flag.
     /// </summary>
-    /// <typeparam name="TTracingInstructions">
+    /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> that indicates, via a compile-time constant,
     /// whether tracing-specific opcodes and behavior should be used.
     /// </typeparam>
@@ -1031,15 +1041,15 @@ public sealed unsafe partial class VirtualMachine(
     /// </returns>
     /// <remarks>
     /// The generic struct parameter is used to eliminate runtime if-statements via compile-time evaluation
-    /// of <c>TTracingInstructions.IsActive</c>.
+    /// of <c>TTracingInst.IsActive</c>.
     /// </remarks>
     [SkipLocalsInit]
-    private CallResult ExecuteCall<TTracingInstructions>(
+    private CallResult ExecuteCall<TTracingInst>(
         EvmState vmState,
         ReadOnlyMemory<byte>? previousCallResult,
         ZeroPaddedSpan previousCallOutput,
         scoped in UInt256 previousCallOutputDestination)
-        where TTracingInstructions : struct, IFlag
+        where TTracingInst : struct, IFlag
     {
         // Obtain a reference to the execution environment for convenience.
         ref readonly ExecutionEnvironment env = ref vmState.Env;
@@ -1072,7 +1082,7 @@ public sealed unsafe partial class VirtualMachine(
         vmState.InitializeStacks();
 
         // Create an EVM stack using the current stack head, tracer, and data stack slice.
-        EvmStack stack = new(vmState.DataStackHead, _txTracer, vmState.DataStack.AsSpan());
+        EvmStack stack = new(vmState.DataStackHead, _txTracer, AsAlignedSpan(vmState.DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength));
 
         // Cache the available gas from the state for local use.
         long gasAvailable = vmState.GasAvailable;
@@ -1080,10 +1090,10 @@ public sealed unsafe partial class VirtualMachine(
         // If a previous call result exists, push its bytes onto the stack.
         if (previousCallResult is not null)
         {
-            stack.PushBytes(previousCallResult.Value.Span);
+            stack.PushBytes<TTracingInst>(previousCallResult.Value.Span);
 
             // Report the remaining gas if tracing instructions are enabled.
-            if (TTracingInstructions.IsActive)
+            if (TTracingInst.IsActive)
             {
                 _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
             }
@@ -1112,11 +1122,11 @@ public sealed unsafe partial class VirtualMachine(
         // The second generic parameter is selected based on whether the transaction tracer is cancelable:
         // - OffFlag is used when cancelation is not needed.
         // - OnFlag is used when cancelation is enabled.
-        // This leverages the compile-time evaluation of TTracingInstructions to optimize away runtime checks.
+        // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
         return _txTracer.IsCancelable switch
         {
-            false => RunByteCode<TTracingInstructions, OffFlag>(ref stack, gasAvailable),
-            true => RunByteCode<TTracingInstructions, OnFlag>(ref stack, gasAvailable),
+            false => RunByteCode<TTracingInst, OffFlag>(ref stack, gasAvailable),
+            true => RunByteCode<TTracingInst, OnFlag>(ref stack, gasAvailable),
         };
 
     Empty:
@@ -1134,7 +1144,7 @@ public sealed unsafe partial class VirtualMachine(
     /// conditional branches. It also updates the VM state as instructions are executed, handles exceptions,
     /// and returns an appropriate <see cref="CallResult"/>.
     /// </summary>
-    /// <typeparam name="TTracingInstructions">
+    /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> that indicates at compile time whether tracing-specific logic should be enabled.
     /// </typeparam>
     /// <typeparam name="TCancelable">
@@ -1155,10 +1165,10 @@ public sealed unsafe partial class VirtualMachine(
     /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
     /// </remarks>
     [SkipLocalsInit]
-    private unsafe CallResult RunByteCode<TTracingInstructions, TCancelable>(
+    private unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         long gasAvailable)
-        where TTracingInstructions : struct, IFlag
+        where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
         // Reset return data and set the current section index from the VM state.
@@ -1184,6 +1194,7 @@ public sealed unsafe partial class VirtualMachine(
         // Or have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
         fixed (OpCode* opcodeMethods = &_opcodeMethods[0])
         {
+            ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
             // Iterate over the instructions using a while loop because opcodes may modify the program counter.
             while ((uint)programCounter < (uint)codeSection.Length)
             {
@@ -1192,14 +1203,14 @@ public sealed unsafe partial class VirtualMachine(
                 debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
                 // Fetch the current instruction from the code section.
-                Instruction instruction = codeSection[programCounter];
+                Instruction instruction = Unsafe.Add(ref code, programCounter);
 
                 // If cancellation is enabled and cancellation has been requested, throw an exception.
                 if (TCancelable.IsActive && _txTracer.IsCancelled)
                     ThrowOperationCanceledException();
 
                 // If tracing is enabled, start an instruction trace.
-                if (TTracingInstructions.IsActive)
+                if (TTracingInst.IsActive)
                     StartInstructionTrace(instruction, gasAvailable, programCounter, in stack);
 
                 // Advance the program counter to point to the next instruction.
@@ -1227,7 +1238,7 @@ public sealed unsafe partial class VirtualMachine(
                     break;
 
                 // If tracing is enabled, complete the trace for the current instruction.
-                if (TTracingInstructions.IsActive)
+                if (TTracingInst.IsActive)
                     EndInstructionTrace(gasAvailable);
 
                 // If return data has been set, exit the loop to process the returned value.
@@ -1240,7 +1251,7 @@ public sealed unsafe partial class VirtualMachine(
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
         {
             // If tracing is enabled, complete the trace for the current instruction.
-            if (TTracingInstructions.IsActive)
+            if (TTracingInst.IsActive)
                 EndInstructionTrace(gasAvailable);
             UpdateCurrentState(programCounter, gasAvailable, stack.Head);
         }
@@ -1357,9 +1368,37 @@ public sealed unsafe partial class VirtualMachine(
 
         if (_txTracer.IsTracingStack)
         {
-            Memory<byte> stackMemory = vmState.DataStack.AsMemory().Slice(0, stackValue.Head * EvmStack.WordSize);
+            Memory<byte> stackMemory = AsAlignedMemory(vmState.DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength).Slice(0, stackValue.Head * EvmStack.WordSize);
             _txTracer.SetOperationStack(new TraceStack(stackMemory));
         }
+    }
+
+    private unsafe static int GetAlignmentOffset(byte[] array, uint alignment)
+    {
+        ArgumentNullException.ThrowIfNull(array);
+        ArgumentOutOfRangeException.ThrowIfNotEqual(BitOperations.IsPow2(alignment), true, nameof(alignment));
+
+        // The input array should be pinned and we are just using the Pointer to
+        // calculate alignment, not using data so not creating memory hole.
+        nuint address = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
+
+        uint mask = alignment - 1;
+        // address & mask is misalignment, so (–address) & mask is exactly the adjustment
+        uint adjustment = (uint)((-(nint)address) & mask);
+
+        return (int)adjustment;
+    }
+
+    private unsafe static Span<byte> AsAlignedSpan(byte[] array, uint alignment, int size)
+    {
+        int offset = GetAlignmentOffset(array, alignment);
+        return array.AsSpan(offset, size);
+    }
+
+    private unsafe static Memory<byte> AsAlignedMemory(byte[] array, uint alignment, int size)
+    {
+        int offset = GetAlignmentOffset(array, alignment);
+        return array.AsMemory(offset, size);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

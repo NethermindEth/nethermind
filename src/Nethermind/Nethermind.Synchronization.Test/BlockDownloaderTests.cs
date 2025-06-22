@@ -157,6 +157,35 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task ForwardHeaderProvider_ReturnedSameHeaders_EvenAfterSuggestion()
+    {
+        long headNumber = 200;
+        int fastSyncLag = 10;
+        bool withReceipts = true;
+        long chainLength = headNumber + 1;
+
+        IForwardHeaderProvider mockForwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
+
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
+        {
+            FastSync = true,
+            StateMinDistanceFromHead = fastSyncLag,
+        }),
+            configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
+
+        Context ctx = node.Resolve<Context>();
+        SyncPeerMock syncPeer = new(chainLength, withReceipts, Response.AllCorrect | Response.WithTransactions);
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        mockForwardHeaderProvider.GetBlockHeaders(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())!
+            .Returns((c) => syncPeer.GetBlockHeaders(0, 200, 0, default));
+
+        Func<Task> act = async () => await ctx.FastSyncUntilNoRequest(peerInfo);
+        await act.Should().NotThrowAsync();
+    }
+
+    [Test]
     public async Task Ancestor_lookup_simple()
     {
         IBlockTree instance = CachedBlockTreeBuilder.OfLength(1024);
@@ -619,6 +648,13 @@ public partial class BlockDownloaderTests
             error = null;
             return true;
         }
+
+        public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? errorMessage)
+        {
+            Thread.Sleep(1000);
+            errorMessage = null;
+            return true;
+        }
     }
 
     private class ThrowingPeer : ISyncPeer
@@ -637,7 +673,7 @@ public partial class BlockDownloaderTests
         public byte ProtocolVersion { get; } = default;
         public Hash256 HeadHash { get; set; }
         public long HeadNumber { get; set; }
-        public UInt256 TotalDifficulty { get; set; }
+        public UInt256? TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
@@ -1107,7 +1143,7 @@ public partial class BlockDownloaderTests
         public Hash256 HeadHash { get; set; } = null!;
         public PublicKey Id => Node.Id;
         public long HeadNumber { get; set; }
-        public UInt256 TotalDifficulty { get; set; }
+        public UInt256? TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
@@ -1366,7 +1402,7 @@ public partial class BlockDownloaderTests
 
                 _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                     ? Keccak.EmptyTreeHash
-                    : ReceiptTrie<TxReceipt>.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamDecoder<TxReceipt>()!);
+                    : ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamDecoder<TxReceipt>()!);
             }
 
             using ReceiptsMessage message = new(receipts.ToPooledList());

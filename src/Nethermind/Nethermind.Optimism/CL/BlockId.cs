@@ -3,8 +3,6 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Optimism.CL.Derivation;
-using Nethermind.Optimism.CL.L1Bridge;
 
 namespace Nethermind.Optimism.CL;
 
@@ -13,8 +11,10 @@ namespace Nethermind.Optimism.CL;
 /// </summary>
 public readonly record struct BlockId
 {
-    public ulong Number { get; private init; }
-    public Hash256 Hash { get; private init; }
+    public ulong Number { get; init; }
+    public Hash256 Hash { get; init; }
+
+    public static BlockId Zero => new() { Number = 0, Hash = Hash256.Zero };
 
     public static BlockId FromL2Block(L2Block? block) => block is null
         ? new() { Number = 0, Hash = Hash256.Zero }
@@ -27,6 +27,16 @@ public readonly record struct BlockId
 
     public static BlockId FromL1BlockInfo(L1BlockInfo blockInfo) => new() { Number = blockInfo.Number, Hash = blockInfo.BlockHash };
 
-    public bool IsNewerThan(BlockId newBlockId) =>
+    public bool IsOlderThan(BlockId newBlockId) =>
         Number < newBlockId.Number;
+
+    public bool IsOlderThan(ulong otherBlockNumber) =>
+        Number < otherBlockNumber;
+
+    public bool IsNewerThan(ulong otherBlockNumber) => Number > otherBlockNumber;
+
+    public override string ToString()
+    {
+        return $"{Number} ({Hash.ToShortString()})";
+    }
 }

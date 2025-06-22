@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 return 8;
             }
 
-            return 408 + (transaction.Data?.Length ?? 0);
+            return 408 + (transaction.Data.Length);
         }
     }
 }

@@ -21,6 +21,7 @@ using NBitcoin.Secp256k1;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -108,6 +109,7 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithSessionOptions(_sessionOptions)
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
             .WithEnrBuilder(enrBuilder)
+            .WithTalkResponder(new TalkReqAndRespHandler())
             .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
             .WithServices(s =>
             {
@@ -347,6 +349,8 @@ public class DiscoveryV5App : IDiscoveryApp
         }
         await _appShutdownSource.CancelAsync();
     }
+
+    string IStoppableService.Description => "discv5";
 
     public void AddNodeToDiscovery(Node node)
     {

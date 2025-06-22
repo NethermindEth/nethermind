@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -36,14 +37,38 @@ public class OptimismBlockValidator(
     private const string NonNullWithdrawalsRootError =
         $"{nameof(BlockHeader.WithdrawalsRoot)} is not null";
 
-    protected override bool ValidateWithdrawals(Block block, IReleaseSpec spec, out string? error)
+    public override bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, out string? errorMessage)
     {
-        BlockHeader header = block.Header;
+        if (!ValidateTxRootMatchesTxs(header, toBeValidated, out Hash256? txRoot))
+        {
+            errorMessage = BlockErrorMessages.InvalidTxRoot(header.TxRoot!, txRoot);
+            return false;
+        }
 
+        if (!ValidateUnclesHashMatches(header, toBeValidated, out _))
+        {
+            errorMessage = BlockErrorMessages.InvalidUnclesHash;
+            return false;
+        }
+
+        if (!ValidateWithdrawals(header, toBeValidated, out errorMessage))
+        {
+            return false;
+        }
+
+        errorMessage = null;
+        return true;
+    }
+
+    protected override bool ValidateWithdrawals(Block block, IReleaseSpec spec, out string? error) =>
+        ValidateWithdrawals(block.Header, block.Body, out error);
+
+    private bool ValidateWithdrawals(BlockHeader header, BlockBody body, out string? error)
+    {
         // From the most recent
         if (specHelper.IsIsthmus(header))
         {
-            if (block.Withdrawals is null || block.Withdrawals.Length != 0)
+            if (body.Withdrawals is null || body.Withdrawals.Length != 0)
             {
                 error = NonEmptyWithdrawalsList;
                 return false;

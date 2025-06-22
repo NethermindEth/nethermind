@@ -73,7 +73,7 @@ public static class T8nInputProcessor
         IReleaseSpec spec;
         try
         {
-            spec = JsonToEthereumTest.ParseSpec(arguments.StateFork);
+            spec = SpecNameParser.Parse(arguments.StateFork);
         }
         catch (NotSupportedException e)
         {

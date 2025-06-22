@@ -7,7 +7,6 @@ using System.Linq;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.VisualStudio.TestPlatform.CommunicationUtilities;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -250,5 +249,12 @@ public class WebSocketExtensionsTests
             SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
 
         await webSocketsClient.ReceiveLoopAsync(cts.Token);
+    }
+
+    [Test]
+    public void Correct_isnull_on_result()
+    {
+        Assert.That(new ReceiveResult().IsNull, Is.False);
+        Assert.That(default(ReceiveResult).IsNull, Is.True);
     }
 }

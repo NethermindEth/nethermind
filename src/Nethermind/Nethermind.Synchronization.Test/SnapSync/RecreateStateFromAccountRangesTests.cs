@@ -52,8 +52,7 @@ public class RecreateStateFromAccountRangesTests
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
         MemDb db = new();
-        TrieStore fullStore = TestTrieStoreFactory.Build(db, LimboLogs.Instance);
-        IScopedTrieStore store = fullStore.GetTrieStore(null);
+        IScopedTrieStore store = new RawScopedTrieStore(db);
         StateTree tree = new(store, LimboLogs.Instance);
 
         IList<TrieNode> nodes = new List<TrieNode>();
@@ -313,7 +312,7 @@ public class RecreateStateFromAccountRangesTests
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
         byte[][] proofs = firstProof.Concat(lastProof).ToArray();
 
-        StateTree newTree = new(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
+        StateTree newTree = new(new TestRawTrieStore(new MemDb()), LimboLogs.Instance);
 
         PathWithAccount[] receiptAccounts = TestItem.Tree.AccountsWithPaths[0..2];
 
@@ -343,7 +342,7 @@ public class RecreateStateFromAccountRangesTests
     [Test]
     public void CorrectlyDetermineMaxKeccakExist()
     {
-        StateTree tree = new StateTree(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
+        StateTree tree = new StateTree(new TestRawTrieStore(new MemDb()), LimboLogs.Instance);
 
         PathWithAccount ac1 = new PathWithAccount(Keccak.Zero, Build.An.Account.WithBalance(1).TestObject);
         PathWithAccount ac2 = new PathWithAccount(Keccak.Compute("anything"), Build.An.Account.WithBalance(2).TestObject);
@@ -361,7 +360,7 @@ public class RecreateStateFromAccountRangesTests
         byte[][] lastProof = CreateProofForPath(ac2.Path.Bytes, tree);
         byte[][] proofs = firstProof.Concat(lastProof).ToArray();
 
-        StateTree newTree = new(TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
+        StateTree newTree = new(new TestRawTrieStore(new MemDb()), LimboLogs.Instance);
 
         PathWithAccount[] receiptAccounts = { ac1, ac2 };
 

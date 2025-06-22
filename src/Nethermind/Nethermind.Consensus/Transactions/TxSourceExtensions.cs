@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.Transactions
             }
             else if (secondTxSource is CompositeTxSource cts2)
             {
-                cts2.First(secondTxSource);
+                cts2.First(txSource);
                 return cts2;
             }
             else

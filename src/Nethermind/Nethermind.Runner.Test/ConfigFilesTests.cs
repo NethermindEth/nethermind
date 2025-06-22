@@ -250,7 +250,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     }
 
     [TestCase("^mainnet ^sepolia", 0)]
-    [TestCase("mainnet fast", 0)]
+    [TestCase("mainnet fast", 15537394L)]
     [TestCase("sepolia", 1450408)]
     public void Barriers_defaults_are_correct(string configWildcard, long barrier)
     {
@@ -347,7 +347,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("chiado", 17_000_000L, 5UL, 3000)]
     [TestCase("gnosis", 17_000_000L, 5UL, 3000)]
-    [TestCase("mainnet", 36_000_000L)]
+    [TestCase("mainnet", 45_000_000L)]
     [TestCase("sepolia", 60_000_000L)]
     [TestCase("holesky", 60_000_000L)]
     [TestCase("^chiado ^gnosis ^mainnet ^sepolia ^holesky")]

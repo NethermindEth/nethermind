@@ -30,7 +30,7 @@ jobs:
       - name: Submit package
         env:
           PPA_GPG_KEYID: ${{ secrets.PPA_GPG_KEYID }}
-        working-directory: scripts/deployment/ppa
+        working-directory: scripts/build/ppa
         run: |
           version=${{ github.event.release.tag_name }}
           json=$(curl -sL ${{ github.event.release.assets_url }})

@@ -16,12 +16,11 @@ namespace Nethermind.Taiko.BlockTransactionExecutors;
 
 public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState) : IBlockProcessor.IBlockTransactionsExecutor
 {
-    private readonly IWorldState _worldState = worldState;
-    private readonly ITransactionProcessorAdapter _txProcessor = txProcessor;
-
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        => txProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
-    public TxReceipt[] ProcessTransactions(Block block, in BlockExecutionContext blkCtx, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token)
+    public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (block.Transactions.Length == 0)
         {
@@ -37,7 +36,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {
-            Snapshot snap = _worldState.TakeSnapshot();
+            Snapshot snap = worldState.TakeSnapshot();
             Transaction tx = block.Transactions[i];
 
             if (tx.Type == TxType.Blob)
@@ -50,10 +49,10 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
 
             try
             {
-                if (!_txProcessor.Execute(tx, in blkCtx, receiptsTracer))
+                if (!txProcessor.Execute(tx, receiptsTracer))
                 {
                     // if the transaction was invalid, we ignore it and continue
-                    _worldState.Restore(snap);
+                    worldState.Restore(snap);
                     continue;
                 }
             }
@@ -61,7 +60,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
             {
                 // sometimes invalid transactions can throw exceptions because
                 // they are detected later in the processing pipeline
-                _worldState.Restore(snap);
+                worldState.Restore(snap);
                 continue;
             }
             // only end the trace if the transaction was successful

@@ -12,11 +12,13 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -100,14 +102,14 @@ public class AuRaContractGasLimitOverrideTests
                 SpecProvider,
                 Always.Valid,
                 new RewardCalculator(SpecProvider),
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), worldState),
                 worldState,
                 ReceiptStorage,
                 new BeaconBlockRootHandler(TxProcessor, worldState),
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                TxProcessor,
+                new ExecutionRequestsProcessor(TxProcessor),
                 auRaValidator: null,
                 gasLimitOverride: GasLimitCalculator as AuRaContractGasLimitOverride,
                 preWarmer: CreateBlockCachePreWarmer());

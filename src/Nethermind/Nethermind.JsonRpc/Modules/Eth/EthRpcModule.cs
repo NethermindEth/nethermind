@@ -30,6 +30,8 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -60,6 +62,7 @@ public partial class EthRpcModule(
     IGasPriceOracle gasPriceOracle,
     IEthSyncingInfo ethSyncingInfo,
     IFeeHistoryOracle feeHistoryOracle,
+    IProtocolsManager protocolsManager,
     ulong? secondsPerSlot) : IEthRpcModule
 {
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
@@ -76,6 +79,7 @@ public partial class EthRpcModule(
     protected readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
     protected readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
+    protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
 
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
@@ -85,7 +89,7 @@ public partial class EthRpcModule(
 
     public ResultWrapper<string> eth_protocolVersion()
     {
-        int highestVersion = P2PProtocolInfoProvider.GetHighestVersionOfEthProtocol();
+        int highestVersion = _protocolsManager.GetHighestProtocolVersion(Protocol.Eth);
         return ResultWrapper<string>.Success(highestVersion.ToHexString());
     }
 
@@ -224,7 +228,7 @@ public partial class EthRpcModule(
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
         return searchResult.IsError
-            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
+            ? ResultWrapper<UInt256?>.Success(null)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Transactions.Length);
     }
 
@@ -232,7 +236,7 @@ public partial class EthRpcModule(
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         return searchResult.IsError
-            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
+            ? ResultWrapper<UInt256?>.Success(null)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Transactions.Length);
     }
 
@@ -240,7 +244,7 @@ public partial class EthRpcModule(
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
         return searchResult.IsError
-            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
+            ? ResultWrapper<UInt256?>.Success(null)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Uncles.Length);
     }
 
@@ -248,7 +252,7 @@ public partial class EthRpcModule(
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         return searchResult.IsError
-            ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
+            ? ResultWrapper<UInt256?>.Success(null)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Uncles.Length);
     }
 
@@ -369,10 +373,10 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, true);
         if (searchResult.IsError)
         {
-            return GetFailureResult<BlockForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
+            return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
-        Block? block = searchResult.Object;
+        Block block = searchResult.Object!;
         if (returnFullTransactionObjects && block is not null)
         {
             _blockchainBridge.RecoverTxSenders(block);
@@ -433,75 +437,65 @@ public partial class EthRpcModule(
     public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex)
     {
         ResultWrapper<TransactionForRpc> result = GetTransactionByBlockAndIndex(new BlockParameter(blockHash), positionIndex);
-        if (result.Result.ResultType == ResultType.Success)
-        {
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"eth_getTransactionByBlockHashAndIndex request {blockHash}, index: {positionIndex}, result: {result.Data.Hash}");
-        }
+        if (_logger.IsTrace && result.Result.ResultType == ResultType.Success) _logger.Trace($"eth_getTransactionByBlockHashAndIndex request {blockHash}, index: {positionIndex}, result: {result.Data?.Hash}");
         return result;
     }
 
     public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
     {
         ResultWrapper<TransactionForRpc> result = GetTransactionByBlockAndIndex(blockParameter, positionIndex);
-        if (result.Result.ResultType == ResultType.Success)
-        {
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {result.Data.Hash}");
-        }
+        if (_logger.IsTrace && result.Result.ResultType == ResultType.Success) _logger.Trace($"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {result.Data?.Hash}");
         return result;
     }
 
-    protected virtual ResultWrapper<TransactionForRpc> GetTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
+    protected virtual ResultWrapper<TransactionForRpc?> GetTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return GetFailureResult<TransactionForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
+            return ResultWrapper<TransactionForRpc?>.Success(null);
         }
 
-        Block? block = searchResult.Object;
-        if (positionIndex < 0 || positionIndex > block!.Transactions.Length - 1)
+        Block block = searchResult.Object!;
+        if (positionIndex < 0 || positionIndex > block.Transactions.Length - 1)
         {
-            return ResultWrapper<TransactionForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
+            return ResultWrapper<TransactionForRpc?>.Success(null);
         }
 
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, block.Hash, block.Number, (int)positionIndex, block.BaseFeePerGas, _specProvider.ChainId);
-        return ResultWrapper<TransactionForRpc>.Success(transactionModel);
+        return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
 
-    public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex)
+    public ResultWrapper<BlockForRpc?> eth_getUncleByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex)
     {
         return GetUncle(new BlockParameter(blockHash), positionIndex);
     }
 
-    public ResultWrapper<BlockForRpc> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter,
+    public ResultWrapper<BlockForRpc?> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter,
         UInt256 positionIndex)
     {
         return GetUncle(blockParameter, positionIndex);
     }
 
-    private ResultWrapper<BlockForRpc> GetUncle(BlockParameter blockParameter, UInt256 positionIndex)
+    private ResultWrapper<BlockForRpc?> GetUncle(BlockParameter blockParameter, UInt256 positionIndex)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return GetFailureResult<BlockForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
+            return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
-        Block block = searchResult.Object;
-        if (positionIndex < 0 || positionIndex > block!.Uncles.Length - 1)
+        Block block = searchResult.Object!;
+        if (positionIndex < 0 || positionIndex > block.Uncles.Length - 1)
         {
-            return ResultWrapper<BlockForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
+            return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
         BlockHeader uncleHeader = block.Uncles[(int)positionIndex];
-        return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(new Block(uncleHeader), false, _specProvider));
+        return ResultWrapper<BlockForRpc?>.Success(new BlockForRpc(new Block(uncleHeader), false, _specProvider));
     }
 
     public ResultWrapper<UInt256?> eth_newFilter(Filter filter)
@@ -768,12 +762,7 @@ public partial class EthRpcModule(
         (TxReceipt? receipt, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetReceiptAndGasInfo(txHash);
         if (receipt is null || gasInfo is null)
         {
-            Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
-            return blockHash is null
-                ? GetFailureResult<ReceiptForRpc, Block>(
-                    new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable),
-                    _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
-                : ResultWrapper<ReceiptForRpc>.Success(null);
+            return ResultWrapper<ReceiptForRpc>.Success(null);
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
@@ -785,8 +774,7 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
         return searchResult switch
         {
-            { ErrorCode: ErrorCodes.PrunedHistoryUnavailable } => GetFailureResult<ReceiptForRpc[], Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet()),
-            { IsError: true } => ResultWrapper<ReceiptForRpc[]>.Success(null),
+            { IsError: true } => ResultWrapper<ReceiptForRpc[]?>.Success(null),
             _ => _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider)
         };
     }

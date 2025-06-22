@@ -48,6 +48,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.WorldStateManager);
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
         StepDependencyException.ThrowIfNull(_api.Sealer);
+        StepDependencyException.ThrowIfNull(_api.ProtocolsManager);
 
         if (_config.SequencerUrl is null && _logger.IsWarn)
         {
@@ -78,6 +79,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
             _api.GasPriceOracle,
             _api.EthSyncingInfo,
             feeHistoryOracle,
+            _api.ProtocolsManager,
             _api.ConfigProvider.GetConfig<IBlocksConfig>().SecondsPerSlot,
             sequencerJsonRpcClient,
             _api.EthereumEcdsa,
@@ -88,39 +90,5 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
 
         rpcModuleProvider.RegisterBounded(optimismEthModuleFactory,
             JsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, JsonRpcConfig.Timeout);
-    }
-
-    protected override void RegisterTraceRpcModule(IRpcModuleProvider rpcModuleProvider)
-    {
-        StepDependencyException.ThrowIfNull(_api.WorldStateManager);
-        StepDependencyException.ThrowIfNull(_api.DbProvider);
-        StepDependencyException.ThrowIfNull(_api.BlockTree);
-        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
-        StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
-        StepDependencyException.ThrowIfNull(_api.SpecProvider);
-        StepDependencyException.ThrowIfNull(_api.L1CostHelper);
-        StepDependencyException.ThrowIfNull(_api.SpecHelper);
-
-        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
-        ulong secondsPerSlot = blockConfig.SecondsPerSlot;
-
-        OptimismTraceModuleFactory traceModuleFactory = new(
-            _api.WorldStateManager,
-            _api.BlockTree,
-            JsonRpcConfig,
-            _api.CreateBlockchainBridge(),
-            secondsPerSlot,
-            _api.BlockPreprocessor,
-            _api.RewardCalculatorSource,
-            _api.ReceiptStorage,
-            _api.SpecProvider,
-            _poSSwitcher,
-            _api.LogManager,
-            _api.L1CostHelper,
-            _api.SpecHelper,
-            new Create2DeployerContractRewriter(_api.SpecHelper, _api.SpecProvider, _api.BlockTree),
-            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()));
-
-        rpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, JsonRpcConfig.Timeout);
     }
 }

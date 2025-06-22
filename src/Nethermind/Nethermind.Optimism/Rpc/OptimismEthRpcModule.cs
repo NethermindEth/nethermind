@@ -22,6 +22,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
@@ -51,6 +52,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
+        IProtocolsManager protocolsManager,
         ulong? secondsPerSlot,
 
         IJsonRpcClient? sequencerRpcClient,
@@ -70,6 +72,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
        gasPriceOracle,
        ethSyncingInfo,
        feeHistoryOracle,
+       protocolsManager,
        secondsPerSlot)
     {
         _sequencerRpcClient = sequencerRpcClient;
@@ -191,18 +194,18 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
 
-    protected override ResultWrapper<TransactionForRpc> GetTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
+    protected override ResultWrapper<TransactionForRpc?> GetTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError || searchResult.Object is null)
         {
-            return GetFailureResult<TransactionForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
+            return GetFailureResult<TransactionForRpc?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
         }
 
         Block block = searchResult.Object;
         if (positionIndex < 0 || positionIndex > block!.Transactions.Length - 1)
         {
-            return ResultWrapper<TransactionForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
+            return ResultWrapper<TransactionForRpc?>.Success(null);
         }
 
         Transaction transaction = block.Transactions[(int)positionIndex];
@@ -218,7 +221,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
             depositTx.DepositReceiptVersion = (receipt as OptimismTxReceipt)?.DepositReceiptVersion;
         }
 
-        return ResultWrapper<TransactionForRpc>.Success(transactionModel);
+        return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
 
     protected override ResultWrapper<BlockForRpc?> GetBlock(BlockParameter blockParameter, bool returnFullTransactionObjects)

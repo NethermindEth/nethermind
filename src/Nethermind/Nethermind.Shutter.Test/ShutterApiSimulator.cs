@@ -11,6 +11,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -41,7 +42,7 @@ public class ShutterApiSimulator(
     ShutterValidatorsInfo validatorsInfo,
     Random rnd
         ) : ShutterApi(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
-        logManager, specProvider, timestamper, worldStateManager, fileSystem,
+        logManager, specProvider, timestamper, new ReadOnlyTxProcessingEnvFactory(worldStateManager, blockTree, specProvider, logManager), fileSystem,
         keyStoreConfig, cfg, validatorsInfo, ShutterTestsCommon.SlotLength, IPAddress.None)
 {
     public int EonUpdateCalled = 0;

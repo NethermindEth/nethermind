@@ -385,136 +385,48 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(bool value)
-        {
-            Encode(value ? (byte)1 : (byte)0);
-        }
+        public void Encode(bool value) => Encode(value ? (byte)1 : (byte)0);
 
-        public void Encode(int value)
-        {
-            Encode((long)value);
-        }
+        public void Encode(int value) => Encode((ulong)(long)value);
 
-        public void Encode(long value)
-        {
-            if (value == 0L)
-            {
-                EncodeEmptyByteArray();
-                return;
-            }
+        public void Encode(long value) => Encode((ulong)value);
 
-            if (value > 0)
-            {
-                byte byte6 = (byte)(value >> 8);
-                byte byte5 = (byte)(value >> 16);
-                byte byte4 = (byte)(value >> 24);
-                byte byte3 = (byte)(value >> 32);
-                byte byte2 = (byte)(value >> 40);
-                byte byte1 = (byte)(value >> 48);
-                byte byte0 = (byte)(value >> 56);
-
-                if (value < 256L * 256L * 256L * 256L * 256L * 256L * 256L)
-                {
-                    if (value < 256L * 256L * 256L * 256L * 256L * 256L)
-                    {
-                        if (value < 256L * 256L * 256L * 256L * 256L)
-                        {
-                            if (value < 256L * 256L * 256L * 256L)
-                            {
-                                if (value < 256 * 256 * 256)
-                                {
-                                    if (value < 256 * 256)
-                                    {
-                                        if (value < 128)
-                                        {
-                                            WriteByte((byte)value);
-                                            return;
-                                        }
-
-                                        if (value < 256)
-                                        {
-                                            WriteByte(129);
-                                            WriteByte((byte)value);
-                                            return;
-                                        }
-
-                                        WriteByte(130);
-                                        WriteByte(byte6);
-                                        WriteByte((byte)value);
-                                        return;
-                                    }
-
-                                    WriteByte(131);
-                                    WriteByte(byte5);
-                                    WriteByte(byte6);
-                                    WriteByte((byte)value);
-                                    return;
-                                }
-
-                                WriteByte(132);
-                                WriteByte(byte4);
-                                WriteByte(byte5);
-                                WriteByte(byte6);
-                                WriteByte((byte)value);
-                                return;
-                            }
-
-                            WriteByte(133);
-                            WriteByte(byte3);
-                            WriteByte(byte4);
-                            WriteByte(byte5);
-                            WriteByte(byte6);
-                            WriteByte((byte)value);
-                            return;
-                        }
-
-                        WriteByte(134);
-                        WriteByte(byte2);
-                        WriteByte(byte3);
-                        WriteByte(byte4);
-                        WriteByte(byte5);
-                        WriteByte(byte6);
-                        WriteByte((byte)value);
-                        return;
-                    }
-
-                    WriteByte(135);
-                    WriteByte(byte1);
-                    WriteByte(byte2);
-                    WriteByte(byte3);
-                    WriteByte(byte4);
-                    WriteByte(byte5);
-                    WriteByte(byte6);
-                    WriteByte((byte)value);
-                    return;
-                }
-
-                WriteByte(136);
-                WriteByte(byte0);
-                WriteByte(byte1);
-                WriteByte(byte2);
-                WriteByte(byte3);
-                WriteByte(byte4);
-                WriteByte(byte5);
-                WriteByte(byte6);
-                WriteByte((byte)value);
-                return;
-            }
-
-            Encode(value, 8);
-        }
-
-        private void Encode(BigInteger bigInteger, int outputLength = -1)
-        {
-            Rlp rlp = bigInteger == 0
-                ? Rlp.OfEmptyByteArray
-                : Rlp.Encode(bigInteger.ToBigEndianByteArray(outputLength));
-            Write(rlp.Bytes);
-        }
-
+        [SkipLocalsInit]
         public void Encode(ulong value)
         {
-            Encode((UInt256)value);
+            if (value < 128)
+            {
+                // Single-byte optimization for [0..127]
+                byte singleByte = value > 0 ? (byte)value : EmptyArrayByte;
+                WriteByte(singleByte);
+                return;
+            }
+
+            // Count leading zero bytes
+            int leadingZeroBytes = BitOperations.LeadingZeroCount(value) >> 3;
+            int valueLength = sizeof(ulong) - leadingZeroBytes;
+
+            value = BinaryPrimitives.ReverseEndianness(value);
+            Span<byte> valueSpan = MemoryMarshal.CreateSpan(ref Unsafe.As<ulong, byte>(ref value), sizeof(ulong));
+            // Ok to stackalloc even if we don't use with SkipLocalsInit
+            Span<byte> output = stackalloc byte[1 + sizeof(ulong)];
+
+            byte prefix = (byte)(0x80 + valueLength);
+            if (leadingZeroBytes > 0)
+            {
+                // Reuse space in valueSpan for prefix rather than copying
+                valueSpan[leadingZeroBytes - 1] = prefix;
+                output = valueSpan.Slice(leadingZeroBytes - 1, 1 + valueLength);
+            }
+            else
+            {
+                // Build final output: prefix + value bytes
+                output[0] = prefix;
+                valueSpan.Slice(leadingZeroBytes, valueLength).CopyTo(output.Slice(1));
+                output = output.Slice(0, 1 + valueLength);
+            }
+
+            Write(output);
         }
 
         public void Encode(in UInt256 value, int length = -1)
@@ -560,6 +472,10 @@ namespace Nethermind.Serialization.Rlp
             }
             Encode(input.Value.Span);
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Encode(in ReadOnlyMemory<byte> input)
+            => Encode(input.Span);
 
         public void Encode(ReadOnlySpan<byte> input)
         {
@@ -1342,8 +1258,7 @@ namespace Nethermind.Serialization.Rlp
 
             return DecodeLargerByteArraySpan(prefix);
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedValue(int buffer0)
             {
                 throw new RlpException($"Unexpected byte value {buffer0}");
@@ -1374,22 +1289,19 @@ namespace Nethermind.Serialization.Rlp
             ThrowUnexpectedPrefix(prefix);
             return default;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedPrefix(int prefix)
             {
                 throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedLength(int length)
             {
                 throw new RlpException($"Expected length greater or equal 56 and was {length}");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedLengthOfLength()
             {
                 throw new RlpException("Expected length of length less or equal 4");

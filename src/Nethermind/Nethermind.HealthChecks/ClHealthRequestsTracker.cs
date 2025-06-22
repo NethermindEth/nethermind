@@ -10,9 +10,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.HealthChecks;
 
-public class ClHealthRequestsTracker(ITimestamper timestamper, int maxIntervalClRequestTime, ILogger logger)
+public class ClHealthRequestsTracker(ITimestamper timestamper, IHealthChecksConfig healthChecksConfig, ILogManager logManager)
     : IEngineRequestsTracker, IClHealthTracker, IAsyncDisposable
 {
+    private readonly int _maxIntervalClRequestTime = healthChecksConfig.MaxIntervalClRequestTime;
+    private readonly ILogger _logger = logManager.GetClassLogger<ClHealthRequestsTracker>();
+
     private const int ClUnavailableReportMessageDelay = 5;
 
     private DateTime _latestForkchoiceUpdated = timestamper.UtcNow;
@@ -38,21 +41,21 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, int maxIntervalCl
     {
         if (!CheckClAlive())
         {
-            if (logger.IsWarn)
-                logger.Warn("Not receiving ForkChoices from the consensus client that are required to sync.");
+            if (_logger.IsWarn)
+                _logger.Warn("Not receiving ForkChoices from the consensus client that are required to sync.");
         }
     }
 
     private bool IsRequestTooOld(DateTime now, DateTime requestTime)
     {
         TimeSpan diff = (now - requestTime).Duration();
-        return diff > TimeSpan.FromSeconds(maxIntervalClRequestTime);
+        return diff > TimeSpan.FromSeconds(_maxIntervalClRequestTime);
     }
 
     public bool CheckClAlive()
     {
         var now = timestamper.UtcNow;
-        return !IsRequestTooOld(now, _latestForkchoiceUpdated) && !IsRequestTooOld(now, _latestNewPayload);
+        return !IsRequestTooOld(now, _latestForkchoiceUpdated) || !IsRequestTooOld(now, _latestNewPayload);
     }
 
     public void OnForkchoiceUpdatedCalled()

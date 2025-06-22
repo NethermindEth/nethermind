@@ -145,7 +145,7 @@ public class NodeLifecycleManagerTests
 
         Assert.That(sentMsg, Is.Not.Null);
         _nodeTable.Buckets[0].BondedItemsCount.Should().Be(32);
-        sentMsg!.Nodes.Length.Should().Be(12);
+        sentMsg!.Nodes.Count.Should().Be(12);
     }
 
     [Test]

@@ -36,7 +36,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private readonly IShutterConfig _cfg;
     private readonly TimeSpan _slotLength;
     private readonly TimeSpan _blockWaitCutoff;
-    private readonly ReadOnlyTxProcessingEnvFactory _envFactory;
+    private readonly IReadOnlyTxProcessingEnvFactory _envFactory;
     private bool _haveCheckedRegistered = false;
     private ulong _blockWaitTaskId = 0;
     private readonly Dictionary<ulong, Dictionary<ulong, BlockWaitTask>> _blockWaitTasks = [];
@@ -46,7 +46,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     public ShutterBlockHandler(
         ulong chainId,
         IShutterConfig cfg,
-        ReadOnlyTxProcessingEnvFactory envFactory,
+        IReadOnlyTxProcessingEnvFactory envFactory,
         IBlockTree blockTree,
         IAbiEncoder abiEncoder,
         IReceiptFinder receiptFinder,

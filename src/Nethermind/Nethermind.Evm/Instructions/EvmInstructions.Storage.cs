@@ -45,7 +45,8 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the result of the operation.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionTLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         // Increment the opcode metric for TLOAD.
         Metrics.TloadOpcode++;
@@ -63,7 +64,7 @@ internal static partial class EvmInstructions
         ReadOnlySpan<byte> value = vm.WorldState.GetTransientState(in storageCell);
 
         // Push the retrieved value onto the stack.
-        stack.PushBytes(value);
+        stack.PushBytes<TTracingInst>(value);
 
         // If storage tracing is enabled, record the operation (ensuring gas remains non-negative).
         if (vm.TxTracer.IsTracingStorage)
@@ -143,15 +144,15 @@ internal static partial class EvmInstructions
     /// and then writes the word into memory.
     /// </para>
     /// </summary>
-    /// <typeparam name="TTracingInstructions">A flag type indicating whether tracing is active.</typeparam>
+    /// <typeparam name="TTracingInst">A flag type indicating whether tracing is active.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The EVM stack.</param>
     /// <param name="gasAvailable">The remaining gas, which is decremented by both the base and memory extension costs.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInstructions : struct, IFlag
+    public static EvmExceptionType InstructionMStore<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -170,7 +171,7 @@ internal static partial class EvmInstructions
         vmState.Memory.SaveWord(in result, bytes);
 
         // Report memory changes if tracing is active.
-        if (TTracingInstructions.IsActive)
+        if (TTracingInst.IsActive)
             vm.TxTracer.ReportMemoryChange((long)result, bytes);
 
         return EvmExceptionType.None;
@@ -188,15 +189,15 @@ internal static partial class EvmInstructions
     /// and then stores the single byte at the specified memory location.
     /// </para>
     /// </summary>
-    /// <typeparam name="TTracingInstructions">A flag type indicating whether tracing is active.</typeparam>
+    /// <typeparam name="TTracingInst">A flag type indicating whether tracing is active.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The EVM stack.</param>
     /// <param name="gasAvailable">The remaining gas, reduced by the operation cost and any memory extension costs.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore8<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInstructions : struct, IFlag
+    public static EvmExceptionType InstructionMStore8<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -215,7 +216,7 @@ internal static partial class EvmInstructions
         vmState.Memory.SaveByte(in result, data);
 
         // Report the memory change if tracing is active.
-        if (TTracingInstructions.IsActive)
+        if (TTracingInst.IsActive)
             vm.TxTracer.ReportMemoryChange(result, data);
 
         return EvmExceptionType.None;
@@ -233,15 +234,15 @@ internal static partial class EvmInstructions
     /// retrieves the corresponding memory word, and pushes it onto the stack.
     /// </para>
     /// </summary>
-    /// <typeparam name="TTracingInstructions">A flag type indicating whether tracing is active.</typeparam>
+    /// <typeparam name="TTracingInst">A flag type indicating whether tracing is active.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The EVM stack.</param>
     /// <param name="gasAvailable">The remaining gas, adjusted for memory access.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMLoad<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInstructions : struct, IFlag
+    public static EvmExceptionType InstructionMLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -257,11 +258,11 @@ internal static partial class EvmInstructions
         Span<byte> bytes = vmState.Memory.LoadSpan(in result);
 
         // Report the memory load if tracing is active.
-        if (TTracingInstructions.IsActive)
+        if (TTracingInst.IsActive)
             vm.TxTracer.ReportMemoryChange(result, bytes);
 
         // Push the loaded bytes onto the stack.
-        stack.PushBytes(bytes);
+        stack.PushBytes<TTracingInst>(bytes);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -278,15 +279,15 @@ internal static partial class EvmInstructions
     /// memory region from the source to the destination after verifying that enough gas is available.
     /// </para>
     /// </summary>
-    /// <typeparam name="TTracingInstructions">A flag type indicating whether tracing is active.</typeparam>
+    /// <typeparam name="TTracingInst">A flag type indicating whether tracing is active.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The EVM stack.</param>
     /// <param name="gasAvailable">The available gas, reduced by both the base cost and the dynamic cost calculated from the length.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMCopy<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInstructions : struct, IFlag
+    public static EvmExceptionType InstructionMCopy<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         // Increment the opcode metric for MCOPY.
         Metrics.MCopyOpcode++;
@@ -307,14 +308,14 @@ internal static partial class EvmInstructions
         Span<byte> bytes = vmState.Memory.LoadSpan(in b, c);
 
         // Report the memory change at the source if tracing is active.
-        if (TTracingInstructions.IsActive)
+        if (TTracingInst.IsActive)
             vm.TxTracer.ReportMemoryChange(b, bytes);
 
         // Write the bytes into memory at the destination offset.
         vmState.Memory.Save(in a, bytes);
 
         // Report the memory change at the destination if tracing is active.
-        if (TTracingInstructions.IsActive)
+        if (TTracingInst.IsActive)
             vm.TxTracer.ReportMemoryChange(a, bytes);
 
         return EvmExceptionType.None;
@@ -333,15 +334,15 @@ internal static partial class EvmInstructions
     /// and legacy gas calculations.
     /// </para>
     /// </summary>
-    /// <typeparam name="TTracingInstructions">A flag type indicating whether detailed tracing is enabled.</typeparam>
+    /// <typeparam name="TTracingInst">A flag type indicating whether detailed tracing is enabled.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The EVM stack.</param>
     /// <param name="gasAvailable">The available gas, which is decremented by multiple cost adjustments during storage modification.</param>
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSStore<TTracingInstructions>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInstructions : struct, IFlag
+    internal static EvmExceptionType InstructionSStore<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         // Increment the SSTORE opcode metric.
         Metrics.IncrementSStoreOpcode();
@@ -491,7 +492,7 @@ internal static partial class EvmInstructions
         }
 
         // Report storage changes for tracing if enabled.
-        if (TTracingInstructions.IsActive)
+        if (TTracingInst.IsActive)
         {
             ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
             byte[] storageBytes = new byte[32]; // Allocated on the heap to avoid stack allocation.
@@ -527,7 +528,8 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter (unused in this instruction).</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the result of the operation.</returns>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    internal static EvmExceptionType InstructionSLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
 
@@ -552,7 +554,7 @@ internal static partial class EvmInstructions
 
         // Retrieve the persistent storage value and push it onto the stack.
         ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell);
-        stack.PushBytes(value);
+        stack.PushBytes<TTracingInst>(value);
 
         // Log the storage load operation if tracing is enabled.
         if (vm.TxTracer.IsTracingStorage)
@@ -574,7 +576,8 @@ internal static partial class EvmInstructions
     /// zero-padding if necessary.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCallDataLoad(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionCallDataLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -582,7 +585,7 @@ internal static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 result))
             goto StackUnderflow;
         // Load 32 bytes from input data, applying zero padding as needed.
-        stack.PushBytes(vm.EvmState.Env.InputData.SliceWithZeroPadding(result, 32));
+        stack.PushBytes<TTracingInst>(vm.EvmState.Env.InputData.SliceWithZeroPadding(result, 32));
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

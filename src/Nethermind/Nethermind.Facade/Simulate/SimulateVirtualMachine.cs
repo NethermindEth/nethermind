@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
@@ -10,15 +11,15 @@ namespace Nethermind.Facade.Simulate;
 
 public class SimulateVirtualMachine(IVirtualMachine virtualMachine) : IVirtualMachine
 {
-    public TransactionSubstate ExecuteTransaction<TTracingInstructions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
-            where TTracingInstructions : struct, IFlag
+    public TransactionSubstate ExecuteTransaction<TTracingInst>(EvmState state, IWorldState worldState, ITxTracer txTracer)
+            where TTracingInst : struct, IFlag
     {
         if (txTracer.IsTracingActions && TryGetLogsMutator(txTracer, out ITxLogsMutator logsMutator))
         {
             logsMutator.SetLogsToMutate(state.AccessTracker.Logs);
         }
 
-        return virtualMachine.ExecuteTransaction<TTracingInstructions>(state, worldState, txTracer);
+        return virtualMachine.ExecuteTransaction<TTracingInst>(state, worldState, txTracer);
     }
 
     private static bool TryGetLogsMutator(ITxTracer txTracer, [NotNullWhen(true)] out ITxLogsMutator? txLogsMutator)
@@ -35,4 +36,14 @@ public class SimulateVirtualMachine(IVirtualMachine virtualMachine) : IVirtualMa
                 return false;
         }
     }
+
+    public ref readonly BlockExecutionContext BlockExecutionContext => ref virtualMachine.BlockExecutionContext;
+
+    public ref readonly TxExecutionContext TxExecutionContext => ref virtualMachine.TxExecutionContext;
+
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        => virtualMachine.SetBlockExecutionContext(blockExecutionContext);
+
+    public void SetTxExecutionContext(in TxExecutionContext txExecutionContext)
+        => virtualMachine.SetTxExecutionContext(txExecutionContext);
 }

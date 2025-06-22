@@ -11,6 +11,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
@@ -19,6 +20,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -131,7 +133,7 @@ public class TxCertifierFilterTests
 
     public class TestTxPermissionsBlockchain : TestContractBlockchain
     {
-        public ReadOnlyTxProcessingEnv ReadOnlyTransactionProcessorSource { get; private set; }
+        public IReadOnlyTxProcessorSource ReadOnlyTransactionProcessorSource { get; private set; }
         public RegisterContract RegisterContract { get; private set; }
         public CertifierContract CertifierContract { get; private set; }
 
@@ -152,14 +154,14 @@ public class TxCertifierFilterTests
                 SpecProvider,
                 Always.Valid,
                 new RewardCalculator(SpecProvider),
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), worldState),
                 worldState,
                 ReceiptStorage,
                 new BeaconBlockRootHandler(TxProcessor, worldState),
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                TxProcessor,
+                new ExecutionRequestsProcessor(TxProcessor),
                 auRaValidator: null,
                 preWarmer: CreateBlockCachePreWarmer());
         }

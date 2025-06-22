@@ -17,6 +17,9 @@ namespace Nethermind.State;
 /// </summary>
 public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 {
+    new ref readonly UInt256 GetBalance(Address address);
+    new ref readonly ValueHash256 GetCodeHash(Address address);
+
     /// <summary>
     /// Return the original persistent storage value from the storage cell
     /// </summary>
@@ -121,7 +124,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true);
 
-    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false, bool commitRoots = true);
+    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);
 
     void CommitTree(long blockNumber);
     ArrayPoolList<AddressAsKey>? GetAccountChanges();

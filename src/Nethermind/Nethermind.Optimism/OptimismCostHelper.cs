@@ -15,6 +15,10 @@ namespace Nethermind.Optimism;
 
 public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1BlockAddr) : ICostHelper
 {
+    public OptimismCostHelper(IOptimismSpecHelper opSpecHelper, OptimismChainSpecEngineParameters chainSpecEngineParameters) : this(opSpecHelper, chainSpecEngineParameters.L1BlockAddress!)
+    {
+    }
+
     private readonly StorageCell _l1BaseFeeSlot = new(l1BlockAddr, new UInt256(1));
     private readonly StorageCell _overheadSlot = new(l1BlockAddr, new UInt256(5));
     private readonly StorageCell _scalarSlot = new(l1BlockAddr, new UInt256(6));

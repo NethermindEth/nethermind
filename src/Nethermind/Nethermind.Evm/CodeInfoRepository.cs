@@ -74,13 +74,19 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         ICodeInfo cachedCodeInfo = InternalGetCachedCode(worldState, codeSource, vmSpec);
 
-        if (TryGetDelegatedAddress(cachedCodeInfo.MachineCode.Span, out delegationAddress))
+        if (!cachedCodeInfo.IsEmpty && TryGetDelegatedAddress(cachedCodeInfo.MachineCode.Span, out delegationAddress))
         {
             if (followDelegation)
                 cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress, vmSpec);
         }
 
         return cachedCodeInfo;
+    }
+
+    private static ICodeInfo InternalGetCachedCode(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
+    {
+        ref readonly ValueHash256 codeHash = ref worldState.GetCodeHash(codeSource);
+        return InternalGetCachedCode(worldState, in codeHash, vmSpec);
     }
 
     private static ICodeInfo InternalGetCachedCode(IReadOnlyStateProvider worldState, Address codeSource, IReleaseSpec vmSpec)
@@ -97,18 +103,18 @@ public class CodeInfoRepository : ICodeInfoRepository
             cachedCodeInfo = CodeInfo.Empty;
         }
 
-        cachedCodeInfo ??= _codeCache.Get(codeHash);
+        cachedCodeInfo ??= _codeCache.Get(in codeHash);
         if (cachedCodeInfo is null)
         {
-            byte[]? code = worldState.GetCode(codeHash);
+            byte[]? code = worldState.GetCode(in codeHash);
 
             if (code is null)
             {
-                MissingCode(codeHash);
+                MissingCode(in codeHash);
             }
 
             cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec, ValidationStrategy.ExtractHeader);
-            _codeCache.Set(codeHash, cachedCodeInfo);
+            _codeCache.Set(in codeHash, cachedCodeInfo);
         }
         else
         {
@@ -117,8 +123,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         return cachedCodeInfo;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void MissingCode(in ValueHash256 codeHash)
         {
             throw new DataException($"Code {codeHash} missing in the state");
@@ -260,7 +265,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out ICodeInfo? codeInfo)
         {
-            codeInfo = Get(codeHash);
+            codeInfo = Get(in codeHash);
             return codeInfo is not null;
         }
     }
