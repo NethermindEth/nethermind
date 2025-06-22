@@ -86,7 +86,7 @@ namespace Nethermind.Serialization.Rlp
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
-            if (!item.SkipStateAndStatusInRlp)
+            if (!item.SkipStateAndStatusInRlp && (rlpBehaviors & RlpBehaviors.SkipReceiptStateAndStatus) == RlpBehaviors.None)
             {
                 contentLength += isEip658Receipts
                     ? Rlp.LengthOf(item.StatusCode)
@@ -161,7 +161,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             rlpStream.StartSequence(totalContentLength);
-            if (!item.SkipStateAndStatusInRlp)
+            if (!item.SkipStateAndStatusInRlp && (rlpBehaviors & RlpBehaviors.SkipReceiptStateAndStatus) == RlpBehaviors.None)
             {
                 if (isEip658Receipts)
                 {

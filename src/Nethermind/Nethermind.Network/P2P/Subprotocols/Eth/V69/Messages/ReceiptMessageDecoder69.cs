@@ -83,7 +83,7 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
 
         bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
-        if (!item.SkipStateAndStatusInRlp)
+        if (!item.SkipStateAndStatusInRlp && (rlpBehaviors & RlpBehaviors.SkipReceiptStateAndStatus) == RlpBehaviors.None)
         {
             contentLength += isEip658Receipts
                 ? Rlp.LengthOf(item.StatusCode)
@@ -124,7 +124,7 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
 
         rlpStream.Encode((byte)item.TxType);
 
-        if (!item.SkipStateAndStatusInRlp)
+        if (!item.SkipStateAndStatusInRlp && (rlpBehaviors & RlpBehaviors.SkipReceiptStateAndStatus) == RlpBehaviors.None)
         {
             if ((rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts)
             {

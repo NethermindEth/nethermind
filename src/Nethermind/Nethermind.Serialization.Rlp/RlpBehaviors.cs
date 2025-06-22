@@ -30,5 +30,11 @@ public enum RlpBehaviors
     /// See https://eips.ethereum.org/EIPS/eip-4844#networking
     /// </summary>
     InMempoolForm = 64,
-    ExcludeHashes = 128
+    ExcludeHashes = 128,
+
+    /// <summary>
+    /// Skip encoding state root and status code in receipt RLP serialization.
+    /// Used for receipt root calculation when receipts are encoded without state/status information.
+    /// </summary>
+    SkipReceiptStateAndStatus = 256
 }
