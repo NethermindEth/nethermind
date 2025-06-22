@@ -33,7 +33,6 @@ namespace Nethermind.Core
             Bloom = other.Bloom;
             Logs = other.Logs;
             Error = other.Error;
-            SkipStateAndStatusInRlp = other.SkipStateAndStatusInRlp;
         }
 
         /// <summary>
@@ -65,12 +64,6 @@ namespace Nethermind.Core
         public Bloom? Bloom { get => _boom ?? CalculateBloom(); set => _boom = value; }
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
-
-        /// <summary>
-        /// Ignores receipt output on RLP serialization.
-        /// Output is either StateRoot or StatusCode depending on eip configuration.
-        /// </summary>
-        public bool SkipStateAndStatusInRlp { get; set; }
 
         public Bloom CalculateBloom()
             => _boom = Logs?.Length == 0 ? Bloom.Empty : new Bloom(Logs);

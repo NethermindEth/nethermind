@@ -45,7 +45,6 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
         else if (firstItem.Length is >= 1 and <= 4)
         {
             txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
-            txReceipt.SkipStateAndStatusInRlp = true;
         }
         else
         {
@@ -83,7 +82,7 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
 
         bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
-        if (!item.SkipStateAndStatusInRlp && (rlpBehaviors & RlpBehaviors.SkipReceiptStateAndStatus) == RlpBehaviors.None)
+        if ((rlpBehaviors & RlpBehaviors.SkipReceiptStateAndStatus) == RlpBehaviors.None)
         {
             contentLength += isEip658Receipts
                 ? Rlp.LengthOf(item.StatusCode)
@@ -124,7 +123,7 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
 
         rlpStream.Encode((byte)item.TxType);
 
-        if (!item.SkipStateAndStatusInRlp && (rlpBehaviors & RlpBehaviors.SkipReceiptStateAndStatus) == RlpBehaviors.None)
+        if ((rlpBehaviors & RlpBehaviors.SkipReceiptStateAndStatus) == RlpBehaviors.None)
         {
             if ((rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts)
             {

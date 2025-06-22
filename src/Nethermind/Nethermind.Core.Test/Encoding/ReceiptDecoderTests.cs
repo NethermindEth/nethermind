@@ -289,17 +289,19 @@ namespace Nethermind.Core.Test.Encoding
             // Skip encoding should be shorter than normal
             Assert.That(skipEncoded.Length, Is.LessThan(normalEncoded.Length), "Skip encoding should be shorter than normal");
 
-            // Test that the property still works (backward compatibility)
-            txReceipt.SkipStateAndStatusInRlp = true;
-            byte[] propertySkipEncoded = decoder.EncodeNew(txReceipt, RlpBehaviors.None);
+            // Verify that decoding works correctly for both cases
+            TxReceipt normalDecoded = decoder.Decode(new RlpStream(normalEncoded), RlpBehaviors.None);
+            TxReceipt skipDecoded = decoder.Decode(new RlpStream(skipEncoded), RlpBehaviors.None);
             
-            // Property and behavior should produce same length (both skip)
-            Assert.That(propertySkipEncoded.Length, Is.EqualTo(skipEncoded.Length), "Property and behavior should produce same result");
-
-            // Test that both property AND behavior need to allow encoding
-            txReceipt.SkipStateAndStatusInRlp = false; // property allows
-            byte[] bothAllowEncoded = decoder.EncodeNew(txReceipt, RlpBehaviors.None); // behavior allows
-            Assert.That(bothAllowEncoded.Length, Is.EqualTo(normalEncoded.Length), "When both allow, should include state/status");
+            // Both should have the same gas usage
+            Assert.That(normalDecoded.GasUsedTotal, Is.EqualTo(txReceipt.GasUsedTotal), "Normal decoded gas should match");
+            Assert.That(skipDecoded.GasUsedTotal, Is.EqualTo(txReceipt.GasUsedTotal), "Skip decoded gas should match");
+            
+            // Normal encoding includes state/status
+            Assert.That(normalDecoded.PostTransactionState, Is.EqualTo(txReceipt.PostTransactionState), "Normal decoded should have state");
+            
+            // Skip encoding should have no state/status (it's in the gas field)
+            Assert.That(skipDecoded.PostTransactionState, Is.Null, "Skip decoded should have no state");
         }
 
         private void AssertMessageReceipt(TxReceipt txReceipt, TxReceipt deserialized)
