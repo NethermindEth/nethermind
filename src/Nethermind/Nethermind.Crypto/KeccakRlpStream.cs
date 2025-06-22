@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -14,10 +12,9 @@ namespace Nethermind.Crypto
     {
         private readonly KeccakHash _keccakHash;
 
-        public Hash256 GetHash()
-        {
-            return new Hash256(_keccakHash.GenerateValueHash());
-        }
+        public Hash256 GetHash() => new Hash256(_keccakHash.GenerateValueHash());
+
+        public ValueHash256 GetValueHash() => _keccakHash.GenerateValueHash();
 
         public KeccakRlpStream()
         {
