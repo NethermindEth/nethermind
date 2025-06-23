@@ -63,4 +63,8 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "false",
         Description = "Accept transactions when not synced.")]
     bool AcceptTxWhenNotSynced { get; set; }
+
+    [ConfigItem(DefaultValue = "true",
+        Description = "Add local transactions to persistent broadcast.")]
+    bool PersistentBroadcastEnabled { get; set; }
 }

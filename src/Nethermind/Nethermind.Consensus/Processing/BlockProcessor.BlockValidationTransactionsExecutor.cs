@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -23,7 +24,7 @@ namespace Nethermind.Consensus.Processing
         public class BlockValidationTransactionsExecutor(
             ITransactionProcessorAdapter transactionProcessor,
             IWorldState stateProvider)
-            : IBlockProcessor.IBlockTransactionsExecutor
+            : IValidationTransactionExecutor
         {
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
@@ -54,8 +55,7 @@ namespace Nethermind.Consensus.Processing
                 TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             private void ThrowInvalidBlockException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
             {
                 throw new InvalidBlockException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.Error}");

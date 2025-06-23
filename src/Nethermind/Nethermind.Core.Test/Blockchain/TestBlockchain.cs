@@ -20,7 +20,6 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Crypto;
@@ -42,8 +41,6 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Blockchain;
@@ -56,6 +53,7 @@ public class TestBlockchain : IDisposable
     public IEthereumEcdsa EthereumEcdsa => _fromContainer.EthereumEcdsa;
     public INonceManager NonceManager => _fromContainer.NonceManager;
     public ITransactionProcessor TxProcessor => _fromContainer.MainProcessingContext.TransactionProcessor;
+    public IMainProcessingContext MainProcessingContext => _fromContainer.MainProcessingContext;
     public IReceiptStorage ReceiptStorage => _fromContainer.ReceiptStorage;
     public ITxPool TxPool => _fromContainer.TxPool;
     public IWorldStateManager WorldStateManager => _fromContainer.WorldStateManager;
@@ -112,7 +110,7 @@ public class TestBlockchain : IDisposable
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
     public ManualTimestamper Timestamper { get; private set; } = null!;
-    public BlocksConfig BlocksConfig { get; protected set; } = new();
+    public IBlocksConfig BlocksConfig => Container.Resolve<IBlocksConfig>();
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
@@ -280,7 +278,8 @@ public class TestBlockchain : IDisposable
             // Some validator configurations
             .AddSingleton<ISealValidator>(Always.Valid)
             .AddSingleton<IUnclesValidator>(Always.Valid)
-            .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD));
+            .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD))
+        ;
 
     protected virtual IEnumerable<IConfig> CreateConfigs()
     {
@@ -479,31 +478,5 @@ public static class ContainerBuilderExtensions
             configurer(conf);
             return conf;
         });
-    }
-
-    /// <summary>
-    /// Some test require exposed `TrieStore` and `IPruningTrieStore` which is not normally exposed at all
-    /// hidden in `PruningTrieStateFactory`. So this create mini state configuration for that.
-    /// It does not cover the full standard world state configuration though, so not for general use.
-    /// </summary>
-    public static ContainerBuilder ConfigureTrieStoreExposedWorldStateManager(this ContainerBuilder builder)
-    {
-        return builder
-            // Need to manually create the WorldStateManager to expose the triestore which is normally hidden by PruningTrieStateFactory
-            // This means it does not use pruning triestore by default though which is potential edge case.
-            .AddSingleton<TrieStore>(ctx =>
-                new TrieStore(new NodeStorage(ctx.Resolve<IDbProvider>().StateDb), No.Pruning, Persist.EveryBlock, ctx.Resolve<IPruningConfig>(), LimboLogs.Instance))
-            .Bind<IPruningTrieStore, TrieStore>()
-            .AddSingleton<IWorldStateManager>(ctx =>
-            {
-                IDbProvider dbProvider = ctx.Resolve<IDbProvider>();
-                TrieStore trieStore = ctx.Resolve<TrieStore>();
-                PreBlockCaches preBlockCaches = new PreBlockCaches();
-                WorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, LimboLogs.Instance,
-                    preBlockCaches: preBlockCaches);
-                return new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
-            })
-            .AddSingleton<TrieStoreBoundaryWatcher>() // Normally not exposed also
-            .ResolveOnServiceActivation<TrieStoreBoundaryWatcher, IWorldStateManager>();
     }
 }

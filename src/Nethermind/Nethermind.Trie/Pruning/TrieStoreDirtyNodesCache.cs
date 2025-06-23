@@ -61,26 +61,16 @@ internal class TrieStoreDirtyNodesCache
         KeyMemoryUsage += MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
     }
 
-    public void SaveInCache(in Key key, TrieNode node)
-    {
-        Debug.Assert(node.Keccak is not null, "Cannot store in cache nodes without resolved key.");
-        if (TryAdd(key, node))
-        {
-            IncrementMemory(node);
-        }
-    }
-
     public TrieNode FindCachedOrUnknown(in Key key)
     {
-        if (TryGetValue(key, out TrieNode trieNode))
+        TrieNode trieNode = GetOrAdd(in key, this);
+        if (trieNode.NodeType != NodeType.Unknown)
         {
             Metrics.LoadedFromCacheNodesCount++;
         }
         else
         {
-            trieNode = new TrieNode(NodeType.Unknown, key.Keccak);
             if (_logger.IsTrace) Trace(trieNode);
-            SaveInCache(key, trieNode);
         }
 
         return trieNode;
@@ -150,11 +140,25 @@ internal class TrieStoreDirtyNodesCache
         ? _byHashObjectCache.TryGetValue(key.Keccak, out node)
         : _byKeyObjectCache.TryGetValue(key, out node);
 
-    private bool TryAdd(in Key key, TrieNode node) => _storeByHash
-        ? _byHashObjectCache.TryAdd(key.Keccak, node)
-        : _byKeyObjectCache.TryAdd(key, node);
+    private TrieNode GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash
+        ? _byHashObjectCache.GetOrAdd(key.Keccak, static (keccak, cache) =>
+        {
+            TrieNode trieNode = new(NodeType.Unknown, keccak);
+            cache.IncrementMemory(trieNode);
+            return trieNode;
+        }, cache)
+        : _byKeyObjectCache.GetOrAdd(key, static (key, cache) =>
+        {
+            TrieNode trieNode = new(NodeType.Unknown, key.Keccak);
+            cache.IncrementMemory(trieNode);
+            return trieNode;
+        }, cache);
 
-    private void IncrementMemory(TrieNode node)
+    public TrieNode GetOrAdd(in Key key, TrieNode node) => _storeByHash
+        ? _byHashObjectCache.GetOrAdd(key.Keccak, node)
+        : _byKeyObjectCache.GetOrAdd(key, node);
+
+    public void IncrementMemory(TrieNode node)
     {
         long memoryUsage = node.GetMemorySize(false) + KeyMemoryUsage;
         Interlocked.Increment(ref _count);
@@ -343,12 +347,10 @@ internal class TrieStoreDirtyNodesCache
         [MethodImpl(MethodImplOptions.NoInlining)]
         void LogNodeRemoval(TrieNode node) => _logger.Trace($"Removing {node} from memory.");
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowKeccakIsNull(TrieNode node) => throw new InvalidOperationException($"Removed {node}");
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowPersistedNodeDoesNotMatch(in Key key, TrieNode node, Hash256 keccak)
             => throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
     }

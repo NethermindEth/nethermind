@@ -229,8 +229,7 @@ namespace Nethermind.JsonRpc.Modules
 
                     return Unsafe.As<IJsonRpcParam>(constructorInvoker.Invoke([]));
 
-                    [DoesNotReturn]
-                    [StackTraceHidden]
+                    [DoesNotReturn, StackTraceHidden]
                     static void ThrowNotJsonRpc()
                     {
                         throw new InvalidOperationException("This parameter is not an IJsonRpcParam");

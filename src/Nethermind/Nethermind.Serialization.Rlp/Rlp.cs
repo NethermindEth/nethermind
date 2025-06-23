@@ -437,8 +437,7 @@ namespace Nethermind.Serialization.Rlp
             Unsafe.As<byte, ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), (nuint)position + 1)) = hash.ValueHash256;
             return newPosition;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowArgumentOutOfRangeException()
             {
                 throw new ArgumentOutOfRangeException(nameof(buffer));
@@ -1074,8 +1073,7 @@ namespace Nethermind.Serialization.Rlp
                 address = new AddressStructRef(Read(20));
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             private static void ThrowInvalidPrefix(ref ValueDecoderContext ctx, int prefix)
             {
                 throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {ctx.Position} in the message of length {ctx.Data.Length} starting with {ctx.Data[..Math.Min(DebugMessageContentLength, ctx.Data.Length)].ToHexString()}");
@@ -1104,16 +1102,13 @@ namespace Nethermind.Serialization.Rlp
 
                 return new UInt256(byteSpan, true);
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 static void ThrowDataTooLong() => throw new RlpException("UInt256 cannot be longer than 32 bytes");
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 static void ThrowNonCanonicalUInt256(int position) => throw new RlpException($"Non-canonical UInt256 (leading zero bytes) at position {position}");
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 static void ThrowInvalidLength(int position) => throw new RlpException($"Invalid length at position {position}");
             }
 
@@ -1347,37 +1342,32 @@ namespace Nethermind.Serialization.Rlp
                 ThrowUnexpectedPrefix(prefix);
                 return default;
 
-                [DoesNotReturn]
-                [StackTraceHidden]
+                [DoesNotReturn, StackTraceHidden]
                 static void ThrowNotMemoryBacked()
                 {
                     throw new RlpException("Rlp not backed by a Memory<byte>");
                 }
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedPrefix(int prefix)
             {
                 throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedLength(int length)
             {
                 throw new RlpException($"Expected length greater or equal 56 and was {length}");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedValue(int buffer0)
             {
                 throw new RlpException($"Unexpected byte value {buffer0}");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedLengthOfLength()
             {
                 throw new RlpException("Expected length of length less or equal 4");
