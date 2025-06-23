@@ -28,9 +28,6 @@ namespace Nethermind.Db.Test
     [TestFixture(100, 200, Explicit = true)]
     // TODO: test for different block ranges intersection
     // TODO: run internal state verification for each test
-    // TODO: test for periodic/frequent reorgs
-    // TODO: test for consecutive reorgs
-    // TODO: test for reorgs along with compaction
     [Parallelizable(ParallelScope.All)]
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class LogIndexStorageTests(int batchCount, int blocksPerBatch)
@@ -126,7 +123,7 @@ namespace Nethermind.Db.Test
 
         [Combinatorial]
         public async Task Set_ReorgLast_Get_Test(
-            [Values(1, 5, 20)] int revertCount,
+            [Values(1, 5, 20)] int reorgDepth,
             [Values(100, int.MaxValue)] int compactionDistance
         )
         {
@@ -134,17 +131,16 @@ namespace Nethermind.Db.Test
 
             await SetReceiptsAsync(logIndexStorage, _testData.Batches);
 
-            BlockReceipts[] revertBlocks = _testData.Batches.SelectMany(b => b).TakeLast(revertCount).ToArray();
-            foreach (BlockReceipts revertBlock in revertBlocks)
-                await logIndexStorage.ReorgFrom(revertBlock);
+            BlockReceipts[] reorgBlocks = _testData.Batches.SelectMany(b => b).TakeLast(reorgDepth).ToArray();
+            foreach (BlockReceipts block in reorgBlocks)
+                await logIndexStorage.ReorgFrom(block);
 
-            var lastBlock = _testData.Batches[^1][^1].BlockNumber;
-            VerifyReceipts(logIndexStorage, _testData, maxBlock: lastBlock - revertCount);
+            VerifyReceipts(logIndexStorage, _testData, excludedBlocks: reorgBlocks);
         }
 
         [Combinatorial]
         public async Task Set_ReorgAndSetLast_Get_Test(
-            [Values(1, 5, 20)] int revertCount,
+            [Values(1, 5, 20)] int reorgDepth,
             [Values(100, int.MaxValue)] int compactionDistance
         )
         {
@@ -152,11 +148,11 @@ namespace Nethermind.Db.Test
 
             await SetReceiptsAsync(logIndexStorage, _testData.Batches);
 
-            BlockReceipts[] revertBlocks = _testData.Batches.SelectMany(b => b).TakeLast(revertCount).ToArray();
-            foreach (BlockReceipts revertBlock in revertBlocks)
+            BlockReceipts[] reorgBlocks = _testData.Batches.SelectMany(b => b).TakeLast(reorgDepth).ToArray();
+            foreach (BlockReceipts block in reorgBlocks)
             {
-                await logIndexStorage.ReorgFrom(revertBlock);
-                await logIndexStorage.SetReceiptsAsync([revertBlock], false);
+                await logIndexStorage.ReorgFrom(block);
+                await logIndexStorage.SetReceiptsAsync([block], false);
             }
 
             VerifyReceipts(logIndexStorage, _testData);
@@ -164,7 +160,7 @@ namespace Nethermind.Db.Test
 
         [Combinatorial]
         public async Task Set_ReorgLast_SetLast_Get_Test(
-            [Values(1, 5, 20)] int revertCount,
+            [Values(1, 5, 20)] int reorgDepth,
             [Values(100, int.MaxValue)] int compactionDistance
         )
         {
@@ -172,19 +168,19 @@ namespace Nethermind.Db.Test
 
             await SetReceiptsAsync(logIndexStorage, _testData.Batches);
 
-            BlockReceipts[] revertBlocks = _testData.Batches.SelectMany(b => b).TakeLast(revertCount).ToArray();
+            BlockReceipts[] reorgBlocks = _testData.Batches.SelectMany(b => b).TakeLast(reorgDepth).ToArray();
 
-            foreach (BlockReceipts revertBlock in revertBlocks)
-                await logIndexStorage.ReorgFrom(revertBlock);
+            foreach (BlockReceipts block in reorgBlocks)
+                await logIndexStorage.ReorgFrom(block);
 
-            await logIndexStorage.SetReceiptsAsync(revertBlocks, false);
+            await logIndexStorage.SetReceiptsAsync(reorgBlocks, false);
 
             VerifyReceipts(logIndexStorage, _testData);
         }
 
         [Combinatorial]
         public async Task Set_ReorgUnexisting_Get_Test(
-            [Values(1, 5)] int revertCount,
+            [Values(1, 5)] int reorgDepth,
             [Values(100, int.MaxValue)] int compactionDistance
         )
         {
@@ -192,31 +188,91 @@ namespace Nethermind.Db.Test
 
             await SetReceiptsAsync(logIndexStorage, _testData.Batches);
 
-            BlockReceipts[] revertBlocks = GenerateBlocks(new Random(43), _testData.Batches[^1][^1].BlockNumber, revertCount);
-            foreach (BlockReceipts revertBlock in revertBlocks)
-                await logIndexStorage.ReorgFrom(revertBlock);
+            BlockReceipts[] reorgBlocks = GenerateBlocks(new Random(42), _testData.Batches[^1][^1].BlockNumber, reorgDepth);
+            foreach (BlockReceipts block in reorgBlocks)
+                await logIndexStorage.ReorgFrom(block);
 
-            VerifyReceipts(logIndexStorage, _testData);
+            VerifyReceipts(logIndexStorage, _testData, excludedBlocks: reorgBlocks);
         }
 
         [Ignore("Not working yet.")]
         [Combinatorial]
         public async Task Set_Compact_ReorgLast_Get_Test(
-            [Values(1, 5)] int revertCount,
-            [Values(100, int.MaxValue)] int compactionDistance
+            [Values(1, 5)] int reorgDepth
         )
         {
-            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance);
+            await using var logIndexStorage = CreateLogIndexStorage();
 
             await SetReceiptsAsync(logIndexStorage, _testData.Batches);
             logIndexStorage.Compact();
 
-            BlockReceipts[] revertBlocks = _testData.Batches.SelectMany(b => b).TakeLast(revertCount).ToArray();
-            foreach (BlockReceipts revertBlock in revertBlocks)
-                await logIndexStorage.ReorgFrom(revertBlock);
+            BlockReceipts[] reorgBlocks = _testData.Batches.SelectMany(b => b).TakeLast(reorgDepth).ToArray();
+            foreach (BlockReceipts block in reorgBlocks)
+                await logIndexStorage.ReorgFrom(block);
 
             var lastBlock = _testData.Batches[^1][^1].BlockNumber;
-            VerifyReceipts(logIndexStorage, _testData, maxBlock: lastBlock - revertCount);
+            VerifyReceipts(logIndexStorage, _testData, maxBlock: lastBlock - reorgDepth);
+        }
+
+        [Combinatorial]
+        public async Task Set_PeriodicReorg_Get_Test(
+            [Values(10, 70)] int reorgFrequency,
+            [Values(1, 5)] int maxReorgDepth,
+            [Values] bool compactAfter
+        )
+        {
+            await using var logIndexStorage = CreateLogIndexStorage();
+
+            var random = new Random(42);
+            var allReorgBlocks = new List<BlockReceipts>();
+            var allAddedBlocks = new List<BlockReceipts>();
+
+            foreach (BlockReceipts[][] batches in _testData.Batches.GroupBy(b => b[0].BlockNumber / reorgFrequency).Select(g => g.ToArray()))
+            {
+                await SetReceiptsAsync(logIndexStorage, batches);
+
+                var reorgDepth = random.Next(1, maxReorgDepth);
+                BlockReceipts[] reorgBlocks = batches.SelectMany(b => b).TakeLast(reorgDepth).ToArray();
+                BlockReceipts[] addedBlocks = GenerateBlocks(random, reorgBlocks.First().BlockNumber, reorgBlocks.Length);
+
+                allReorgBlocks.AddRange(reorgBlocks);
+                allAddedBlocks.AddRange(addedBlocks);
+
+                foreach (BlockReceipts block in reorgBlocks)
+                    await logIndexStorage.ReorgFrom(block);
+
+                if (compactAfter)
+                    logIndexStorage.Compact();
+
+                await logIndexStorage.SetReceiptsAsync(addedBlocks, false);
+            }
+
+            VerifyReceipts(logIndexStorage, _testData, excludedBlocks: allReorgBlocks, addedBlocks: allAddedBlocks);
+        }
+
+        [Ignore("Not supported, but probably is not needed.")]
+        [Combinatorial]
+        public async Task Set_ConsecutiveReorgsLast_Get_Test(
+            [Values(new[] { 2, 1 }, new[] { 1, 2 })] int[] reorgDepths,
+            [Values] bool compactBetween
+        )
+        {
+            await using var logIndexStorage = CreateLogIndexStorage();
+
+            await SetReceiptsAsync(logIndexStorage, _testData.Batches);
+
+            var testBlocks = _testData.Batches.SelectMany(b => b).ToArray();
+
+            foreach (var reorgDepth in reorgDepths)
+            {
+                foreach (BlockReceipts block in testBlocks.TakeLast(reorgDepth).ToArray())
+                    await logIndexStorage.ReorgFrom(block);
+
+                if (compactBetween)
+                    logIndexStorage.Compact();
+            }
+
+            VerifyReceipts(logIndexStorage, _testData, excludedBlocks: testBlocks.TakeLast(reorgDepths.Max()).ToArray());
         }
 
         [Combinatorial]
@@ -334,22 +390,33 @@ namespace Nethermind.Db.Test
                 }
             }
 
-            foreach (var blockReceipts in testData.Batches)
-            foreach (var (blockNumber, txReceipts) in blockReceipts)
-            foreach (var txReceipt in txReceipts)
+            var maps = GenerateMaps(testData.Batches.SelectMany(b => b));
+            testData.AddressMap = maps.address;
+            testData.TopicMap = maps.topic;
+
+            return testData;
+        }
+
+        private static (Dictionary<Address, HashSet<int>> address, Dictionary<Hash256, HashSet<int>> topic) GenerateMaps(IEnumerable<BlockReceipts> blocks)
+        {
+            var excludedAddresses = new Dictionary<Address, HashSet<int>>();
+            var excludedTopics = new Dictionary<Hash256, HashSet<int>>();
+
+            foreach (var block in blocks)
+            foreach (var txReceipt in block.Receipts)
             foreach (var log in txReceipt.Logs!)
             {
-                var addressMap = testData.AddressMap.GetOrAdd(log.Address, _ => []);
-                addressMap.Add(blockNumber);
+                var addressMap = excludedAddresses.GetOrAdd(log.Address, _ => []);
+                addressMap.Add(block.BlockNumber);
 
                 foreach (var topic in log.Topics)
                 {
-                    var topicMap = testData.TopicMap.GetOrAdd(topic, _ => []);
-                    topicMap.Add(blockNumber);
+                    var topicMap = excludedTopics.GetOrAdd(topic, _ => []);
+                    topicMap.Add(block.BlockNumber);
                 }
             }
 
-            return testData;
+            return (excludedAddresses, excludedTopics);
         }
 
         private static TxReceipt[] GenerateReceipts(Random random, Address[] addresses, Hash256[] topics)
@@ -423,27 +490,71 @@ namespace Nethermind.Db.Test
                 $"\n\tDB size: {LogIndexMigration.GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndex))}");
         }
 
-        private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData, int? maxBlock = null)
+        private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
+            Dictionary<Address, HashSet<int>>? excludedAddresses = null,
+            Dictionary<Hash256, HashSet<int>>? excludedTopics = null,
+            HashSet<int>? excludedBlockNums = null,
+            Dictionary<Address, HashSet<int>>? addedAddresses = null,
+            Dictionary<Hash256, HashSet<int>>? addedTopics = null
+        )
         {
-            maxBlock ??= int.MaxValue;
-
-            foreach (var (address, expectedNums) in testData.AddressMap)
+            foreach (var (address, nums) in testData.AddressMap)
             {
+                IEnumerable<int> expectedNums = nums;
+
+                if (excludedAddresses != null && excludedAddresses.TryGetValue(address, out HashSet<int> addressExcludedBlocks))
+                    expectedNums = expectedNums.Except(addressExcludedBlocks);
+
+                if (excludedBlockNums != null)
+                    expectedNums = expectedNums.Except(excludedBlockNums);
+
+                if (addedAddresses != null && addedAddresses.TryGetValue(address, out HashSet<int> addressAddedBlocks))
+                    expectedNums = expectedNums.Concat(addressAddedBlocks);
+
                 Assert.That(
                     logIndexStorage.GetBlockNumbersFor(address, 0, int.MaxValue),
-                    Is.EquivalentTo(expectedNums.Order().TakeWhile(b => b <= maxBlock)),
+                    Is.EqualTo(expectedNums.Order()),
                     $"Address: {address}"
                 );
             }
 
-            foreach (var (topic, expectedNums) in testData.TopicMap)
+            foreach (var (topic, nums) in testData.TopicMap)
             {
+                IEnumerable<int> expectedNums = nums;
+
+                if (excludedTopics != null && excludedTopics.TryGetValue(topic, out HashSet<int> topicExcludedBlocks))
+                    expectedNums = expectedNums.Except(topicExcludedBlocks);
+
+                if (excludedBlockNums != null)
+                    expectedNums = expectedNums.Except(excludedBlockNums);
+
+                if (addedTopics != null && addedTopics.TryGetValue(topic, out HashSet<int> topicAddedBlocks))
+                    expectedNums = expectedNums.Concat(topicAddedBlocks);
+
                 Assert.That(
                     logIndexStorage.GetBlockNumbersFor(topic, 0, int.MaxValue),
-                    Is.EquivalentTo(expectedNums.Order().TakeWhile(b => b <= maxBlock)),
+                    Is.EqualTo(expectedNums.Order()),
                     $"Topic: {topic}"
                 );
             }
+        }
+
+        private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData, int maxBlock) => VerifyReceipts(
+            logIndexStorage, testData,
+            excludedBlockNums: Enumerable.Range(maxBlock + 1, testData.Batches[^1][^1].BlockNumber - maxBlock).ToHashSet()
+        );
+
+        private static void VerifyReceipts(ILogIndexStorage logIndexStorage, TestData testData,
+            IEnumerable<BlockReceipts>? excludedBlocks, IEnumerable<BlockReceipts>? addedBlocks = null)
+        {
+            var excludeMaps = excludedBlocks == null ? default : GenerateMaps(excludedBlocks);
+            var addMaps = addedBlocks == null ? default : GenerateMaps(addedBlocks);
+
+            VerifyReceipts(
+                logIndexStorage, testData,
+                excludedAddresses: excludeMaps.address, excludedTopics: excludeMaps.topic,
+                addedAddresses: addMaps.address, addedTopics: addMaps.topic
+            );
         }
 
         private static void GetBlockNumbersLoop(Random random, ILogIndexStorage logIndexStorage, TestData testData,
@@ -483,8 +594,8 @@ namespace Nethermind.Db.Test
         private class TestData
         {
             public readonly BlockReceipts[][] Batches;
-            public readonly Dictionary<Address, HashSet<int>> AddressMap = new();
-            public readonly Dictionary<Hash256, HashSet<int>> TopicMap = new();
+            public Dictionary<Address, HashSet<int>> AddressMap = new();
+            public Dictionary<Hash256, HashSet<int>> TopicMap = new();
 
             public TestData(int batchCount, int blocksPerBatch)
             {
