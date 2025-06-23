@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package proto;
 
-option csharp_namespace = "GetOptimum.Gateway.Proto";
+option csharp_namespace = "GetOptimum.Node.Proto";
 
 // CommandStream establish a stream connection to send and receive commands
 // between the Optimum Gateway and the p2p node
