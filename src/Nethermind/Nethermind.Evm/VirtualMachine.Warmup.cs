@@ -10,7 +10,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -88,8 +87,7 @@ public unsafe partial class VirtualMachine
 
         state.CreateAccountIfNotExists(recipient, 100.Ether());
 
-        List<byte> bytes = new();
-        bytes.Add((byte)Instruction.JUMPDEST);
+        List<byte> bytes = [(byte)Instruction.JUMPDEST];
 
         AddPrecompileCall(bytes);
 
@@ -114,10 +112,10 @@ public unsafe partial class VirtualMachine
 
     static void AddPrecompileCall(List<byte> codeToDeploy)
     {
-        byte[] x1 = "089142debb13c461f61523586a60732d8b69c5b38a3380a74da7b2961d867dbf".ToBytes();
-        byte[] y1 = "2d5fc7bbc013c16d7945f190b232eacc25da675c0eb093fe6b9f1b4b4e107b36".ToBytes();
-        byte[] x2 = "25f8c89ea3437f44f8fc8b6bfbb6312074dc6f983809a5e809ff4e1d076dd585".ToBytes();
-        byte[] y2 = "0b38c7ced6e4daef9c4347f370d6d8b58f4b1d8dc61a3c59d651a0644a2a27cf".ToBytes();
+        byte[] x1 = Bytes.FromHexString("089142debb13c461f61523586a60732d8b69c5b38a3380a74da7b2961d867dbf");
+        byte[] y1 = Bytes.FromHexString("2d5fc7bbc013c16d7945f190b232eacc25da675c0eb093fe6b9f1b4b4e107b36");
+        byte[] x2 = Bytes.FromHexString("25f8c89ea3437f44f8fc8b6bfbb6312074dc6f983809a5e809ff4e1d076dd585");
+        byte[] y2 = Bytes.FromHexString("0b38c7ced6e4daef9c4347f370d6d8b58f4b1d8dc61a3c59d651a0644a2a27cf");
 
         codeToDeploy.Add((byte)Instruction.PUSH32);     // x1
         codeToDeploy.AddRange(x1);
