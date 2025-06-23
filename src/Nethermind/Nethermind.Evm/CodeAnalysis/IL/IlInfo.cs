@@ -44,5 +44,5 @@ internal class IlInfo
     public AnalysisPhase AnalysisPhase = AnalysisPhase.NotStarted;
 
     // assumes small number of ILed
-    public ILEmittedEntryPoint? PrecompiledContract { get; set; }
+    public ILEmittedMethod? PrecompiledContract { get; set; }
 }

@@ -10,4 +10,6 @@ using System.Threading.Tasks;
 namespace Nethermind.Evm.CodeAnalysis.IL
 {
     public class NethermindPrecompileAttribute : System.Attribute;
+
+    public class NethermindPrecompileEntryPointAttribute : System.Attribute;
 }

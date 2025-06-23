@@ -2,7 +2,7 @@
   "profiles": {
     "Nethermind.Benchmark.Runner": {
       "commandName": "Project",
-      "commandLineArgs": "-m weth-bench"
+      "commandLineArgs": "-m ilevm -c 2"
     }
   }
 }

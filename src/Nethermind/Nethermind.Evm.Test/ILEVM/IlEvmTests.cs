@@ -874,6 +874,18 @@ namespace Nethermind.Evm.Test.ILEVM
                     .STOP()
                     .Done, EvmExceptionType.None);
 
+                yield return ([Instruction.JUMPDEST], Prepare.EvmCode
+                    .JUMPDEST()
+                    .PushSingle(3)
+                    .PushSingle(3)
+                    .MUL()
+                    .GAS()
+                    .JUMPDEST()
+                    .PUSHx([1])
+                    .SSTORE()
+                    .STOP()
+                    .Done, EvmExceptionType.None);
+
 
 
                 yield return ([Instruction.SHL], Prepare.EvmCode
@@ -1744,6 +1756,7 @@ namespace Nethermind.Evm.Test.ILEVM
                     .Done, EvmExceptionType.StackUnderflow);
 
 
+                // big test to check if Bytecode current maxSize fails to compile or run 
                 long maxSize = 24.KiB();
 
                 byte[] bytecode = new byte[maxSize];
@@ -1966,8 +1979,16 @@ namespace Nethermind.Evm.Test.ILEVM
             MethodInfo method = assembly
                 .GetTypes()
                 .First(type => type.CustomAttributes.Any(attr => attr.AttributeType == typeof(NethermindPrecompileAttribute)))
-                .GetMethod(nameof(ILEmittedEntryPoint));
+                .GetMethod(nameof(ILEmittedMethod));
             Assert.That(method, Is.Not.Null);
+
+            AotContractsRepository.ClearCache();
+            var hashcode = Keccak.Compute(testcase.bytecode);
+
+            AotContractsRepository.AddIledCode(hashcode, method.CreateDelegate<ILEmittedMethod>());
+            Assert.That(AotContractsRepository.TryGetIledCode(hashcode, out var iledCode), Is.True, "AOT code is not found in the repository");
+
+            enhancedChain.Execute<ITxTracer>(testcase.bytecode, NullTxTracer.Instance, forceAnalysis: false);
         }
 
 
