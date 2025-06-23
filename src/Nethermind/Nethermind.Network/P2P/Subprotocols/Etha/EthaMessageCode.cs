@@ -9,6 +9,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Etha
 {
     public static class EthaMessageCode
     {
+        public const int Status = Eth62MessageCode.Status; // 0x00
         public const int GetBlockBodies = Eth62MessageCode.GetBlockBodies; // 0x05
         public const int BlockBodies = Eth62MessageCode.BlockBodies; // 0x06
         public const int GetReceipts = Eth63MessageCode.GetReceipts; // 0x0f
