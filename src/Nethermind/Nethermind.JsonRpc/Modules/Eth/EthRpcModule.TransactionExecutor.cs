@@ -82,10 +82,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
-
+                
+                // For 'wrong transaction nonce' errors, we need to return data as "0x"
+                // For all other errors, we pass through the original error as data
+                string errorData = result.Error == "execution reverted" && result.OutputData.Length == 0 
+                    ? "0x" 
+                    : result.Error;
+                    
                 return result.Error is null
                     ? ResultWrapper<string>.Success(result.OutputData.ToHexString(true))
-                    : TryGetInputError(result) ?? ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
+                    : TryGetInputError(result) ?? ResultWrapper<string>.Fail("execution reverted", ErrorCodes.ExecutionError, errorData);
             }
         }
 

@@ -155,9 +155,21 @@ namespace Nethermind.Facade
             TransactionResult tryCallResult = TryCallAndRestore(scope, header, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken));
 
+            string? error = ConstructError(tryCallResult, callOutputTracer.Error);
+            if (error == "wrong transaction nonce")
+            {
+                return new CallOutput
+                {
+                    Error = "execution reverted",  
+                    GasSpent = callOutputTracer.GasSpent,
+                    OutputData = [],     
+                    InputError = false            
+                };
+            }
+            
             return new CallOutput
             {
-                Error = ConstructError(tryCallResult, callOutputTracer.Error, tx.GasLimit),
+                Error = error,
                 GasSpent = callOutputTracer.GasSpent,
                 OutputData = callOutputTracer.ReturnValue,
                 InputError = !tryCallResult.Success
@@ -181,7 +193,7 @@ namespace Nethermind.Facade
 
             GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState, _specProvider, _blocksConfig);
 
-            string? error = ConstructError(tryCallResult, estimateGasTracer.Error, tx.GasLimit);
+            string? error = ConstructError(tryCallResult, estimateGasTracer.Error);
 
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
             if (err is not null)
@@ -210,7 +222,7 @@ namespace Nethermind.Facade
 
             return new CallOutput
             {
-                Error = ConstructError(tryCallResult, callOutputTracer.Error, tx.GasLimit),
+                Error = ConstructError(tryCallResult, callOutputTracer.Error),
                 GasSpent = accessTxTracer.GasSpent,
                 OperationGas = callOutputTracer.OperationGas,
                 OutputData = callOutputTracer.ReturnValue,
@@ -414,7 +426,7 @@ namespace Nethermind.Facade
             return _logFinder.FindLogs(filter, cancellationToken);
         }
 
-        private static string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)
+        private static string? ConstructError(TransactionResult txResult, string? tracerError)
         {
             var error = txResult switch
             {
@@ -422,8 +434,14 @@ namespace Nethermind.Facade
                 { Success: false, Error: not null } => txResult.Error,
                 _ => null
             };
+            
+            // Special case for 'wrong transaction nonce'
+            if (error == "wrong transaction nonce")
+            {
+                return "wrong transaction nonce";
+            }
 
-            return error is null ? null : $"err: {error} (supplied gas {gasLimit})";
+            return error is null ? null : error.StartsWith("0x") ? $"{error}" : "0x";
         }
     }
 
