@@ -143,7 +143,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip2537TransitionTimestamp = chainSpecJson.Params.Eip2537TransitionTimestamp,
             Eip5656TransitionTimestamp = chainSpecJson.Params.Eip5656TransitionTimestamp,
             Eip6780TransitionTimestamp = chainSpecJson.Params.Eip6780TransitionTimestamp,
-            Rip7212TransitionTimestamp = chainSpecJson.Params.Rip7212TransitionTimestamp,
+            Eip7951TransitionTimestamp = chainSpecJson.Params.Eip7951TransitionTimestamp,
             Eip7692TransitionTimestamp = chainSpecJson.Params.Eip7692TransitionTimestamp,
             OpGraniteTransitionTimestamp = chainSpecJson.Params.OpGraniteTransitionTimestamp,
             OpHoloceneTransitionTimestamp = chainSpecJson.Params.OpHoloceneTransitionTimestamp,
@@ -187,6 +187,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             BlobSchedule = chainSpecJson.Params.BlobSchedule,
 
             Eip7594TransitionTimestamp = chainSpecJson.Params.Eip7594TransitionTimestamp,
+            Eip7939TransitionTimestamp = chainSpecJson.Params.Eip7939TransitionTimestamp,
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);

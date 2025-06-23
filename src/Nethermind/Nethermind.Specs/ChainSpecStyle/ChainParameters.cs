@@ -128,7 +128,7 @@ public class ChainParameters
     public Address Eip7251ContractAddress { get; set; }
     public ulong? Eip2935TransitionTimestamp { get; set; }
     public Address Eip2935ContractAddress { get; set; }
-    public ulong? Rip7212TransitionTimestamp { get; set; }
+    public ulong? Eip7951TransitionTimestamp { get; set; }
     public ulong? Eip7692TransitionTimestamp { get; set; }
     public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
@@ -161,5 +161,8 @@ public class ChainParameters
     /// Enables blob gas fee collection for Gnosis chain
     /// </summary>
     public ulong? Eip4844FeeCollectorTransitionTimestamp { get; set; }
+
+    public ulong? Eip7939TransitionTimestamp { get; set; }
+
     #endregion
 }

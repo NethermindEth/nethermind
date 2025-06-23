@@ -37,7 +37,7 @@ namespace Nethermind.Consensus
             SetSigner(key);
         }
 
-        public Signature Sign(Hash256 message)
+        public Signature Sign(in ValueHash256 message)
         {
             if (!CanSign) throw new InvalidOperationException("Cannot sign without provided key.");
             byte[] rs = SpanSecP256k1.SignCompact(message.Bytes, _key!.KeyBytes, out int v);

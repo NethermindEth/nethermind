@@ -83,7 +83,7 @@ namespace Nethermind.Init.Steps
             _api.ReceiptMonitor = receiptCanonicalityMonitor;
 
             _api.BlockPreprocessor.AddFirst(
-                new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
+                new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
             VirtualMachine.WarmUpEvmInstructions();
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
@@ -234,7 +234,7 @@ namespace Nethermind.Init.Steps
             return new BlockProcessor(_api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(transactionProcessor),
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
                 worldState,
                 _api.ReceiptStorage!,
                 new BeaconBlockRootHandler(transactionProcessor, worldState),
