@@ -73,7 +73,7 @@ public class ValidateSubmissionHandler
             _specProvider,
             _blockValidator,
             new Consensus.Rewards.RewardCalculator(_specProvider),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
             worldState,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, worldState),
@@ -395,7 +395,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (paymentTx.Data != null && paymentTx.Data.Value.Length != 0)
+        if (paymentTx.Data.Length != 0)
         {
             error = "Proposer payment transaction data is not empty";
             return false;

@@ -96,6 +96,17 @@ public sealed unsafe partial class VirtualMachine(
     public object ReturnData { get; set; }
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
 
+    private BlockExecutionContext _blockExecutionContext;
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
+    public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
+
+    private TxExecutionContext _txExecutionContext;
+    public ref readonly TxExecutionContext TxExecutionContext => ref _txExecutionContext;
+    /// <summary>
+    /// Transaction context
+    /// </summary>
+    public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
+
     private EvmState _vmState;
     public EvmState EvmState { get => _vmState; private set => _vmState = value; }
     public int SectionIndex { get; set; }
@@ -127,15 +138,11 @@ public sealed unsafe partial class VirtualMachine(
         _txTracer = txTracer;
         _worldState = worldState;
 
-        // Extract the transaction execution context from the EVM environment.
-        ref readonly TxExecutionContext txExecutionContext = ref evmState.Env.TxExecutionContext;
-
         // Prepare the specification and opcode mapping based on the current block header.
-        IReleaseSpec spec = PrepareSpecAndOpcodes<TTracingInst>(
-            txExecutionContext.BlockExecutionContext.Header);
+        IReleaseSpec spec = PrepareSpecAndOpcodes<TTracingInst>(BlockExecutionContext.Header);
 
         // Initialize the code repository and set up the initial execution state.
-        _codeInfoRepository = txExecutionContext.CodeInfoRepository;
+        _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = evmState;
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;
@@ -197,8 +204,8 @@ public sealed unsafe partial class VirtualMachine(
                     // Handle exceptions raised during the call execution.
                     if (callResult.IsException)
                     {
-                        TransactionSubstate? substate = HandleException(in callResult, ref previousCallOutput);
-                        if (substate is not null)
+                        TransactionSubstate substate = HandleException(in callResult, ref previousCallOutput, out bool terminate);
+                        if (terminate)
                         {
                             return substate;
                         }
@@ -285,8 +292,8 @@ public sealed unsafe partial class VirtualMachine(
 
         // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
-            TransactionSubstate? failSubstate = HandleFailure<TTracingInst>(failure, ref previousCallOutput);
-            if (failSubstate is not null)
+            TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, ref previousCallOutput, out bool shouldExit);
+            if (shouldExit)
             {
                 return failSubstate;
             }
@@ -498,7 +505,7 @@ public sealed unsafe partial class VirtualMachine(
         }
     }
 
-    private TransactionSubstate PrepareTopLevelSubstate(in CallResult callResult)
+    private TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
     {
         return new TransactionSubstate(
             callResult.Output,
@@ -577,7 +584,7 @@ public sealed unsafe partial class VirtualMachine(
     /// A <see cref="TransactionSubstate"/> if the failure occurs in the top-level call; otherwise, <c>null</c>
     /// to indicate that execution should continue with the parent call frame.
     /// </returns>
-    private TransactionSubstate? HandleFailure<TTracingInst>(Exception failure, ref ZeroPaddedSpan previousCallOutput)
+    private TransactionSubstate HandleFailure<TTracingInst>(Exception failure, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
         where TTracingInst : struct, IFlag
     {
         // Log the exception if trace logging is enabled.
@@ -617,6 +624,7 @@ public sealed unsafe partial class VirtualMachine(
         {
             // For an OverflowException, force the error type to a generic Other error.
             EvmExceptionType finalErrorType = failure is OverflowException ? EvmExceptionType.Other : errorType;
+            shouldExit = true;
             return new TransactionSubstate(finalErrorType, txTracer.IsTracing);
         }
 
@@ -636,7 +644,8 @@ public sealed unsafe partial class VirtualMachine(
         _currentState = _stateStack.Pop();
         _currentState.IsContinuation = true;
 
-        return null;
+        shouldExit = false;
+        return default;
     }
 
     /// <summary>
@@ -682,7 +691,7 @@ public sealed unsafe partial class VirtualMachine(
     /// A <see cref="TransactionSubstate"/> instance if the failure occurred in a top-level call,
     /// otherwise <c>null</c> to indicate that execution should continue in the parent frame.
     /// </returns>
-    private TransactionSubstate? HandleException(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+    private TransactionSubstate HandleException(scoped in CallResult callResult, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
     {
         // Cache the tracer to minimize repeated field accesses.
         ITxTracer txTracer = _txTracer;
@@ -702,6 +711,7 @@ public sealed unsafe partial class VirtualMachine(
         // If this is the top-level call, return a final transaction substate encapsulating the error.
         if (_currentState.IsTopLevel)
         {
+            shouldExit = true;
             return new TransactionSubstate(callResult.ExceptionType, txTracer.IsTracing);
         }
 
@@ -721,7 +731,8 @@ public sealed unsafe partial class VirtualMachine(
         _currentState.IsContinuation = true;
 
         // Return null to indicate that the failure was handled and execution should continue in the parent frame.
-        return null;
+        shouldExit = false;
+        return default;
     }
 
     /// <summary>

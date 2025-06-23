@@ -121,8 +121,8 @@ public struct EvmPooledMemory : IEvmMemory
             return;
         }
 
-        UInt256 length = (UInt256)value.Length;
-        CheckMemoryAccessViolation(in location, in length, out ulong newLength);
+        ulong length = (ulong)value.Length;
+        CheckMemoryAccessViolation(in location, length, out ulong newLength);
         UpdateSize(newLength);
 
         Array.Copy(value, 0, _memory!, (long)location, value.Length);
@@ -132,16 +132,29 @@ public struct EvmPooledMemory : IEvmMemory
     {
         if (value.Length == 0)
         {
+            // Nothing to do
             return;
         }
 
-        UInt256 length = (UInt256)value.Length;
-        CheckMemoryAccessViolation(in location, in length, out ulong newLength);
+        ulong length = (ulong)value.Length;
+        CheckMemoryAccessViolation(in location, length, out ulong newLength);
         UpdateSize(newLength);
 
-        int intLocation = (int)location;
+        if (location.u0 > int.MaxValue)
+        {
+            ThrowOutOfGas();
+        }
+
+        int intLocation = (int)location.u0;
         value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
-        _memory.AsSpan(intLocation + value.Span.Length, value.PaddingLength).Clear();
+        if (value.PaddingLength > 0)
+        {
+            ClearPadding(_memory, intLocation + value.Span.Length, value.PaddingLength);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ClearPadding(byte[] memory, int offset, int length)
+            => memory.AsSpan(offset, length).Clear();
     }
 
     public Span<byte> LoadSpan(scoped in UInt256 location)
@@ -199,6 +212,10 @@ public struct EvmPooledMemory : IEvmMemory
             return default;
         }
 
+        if (location >= Size)
+        {
+            return default;
+        }
         UInt256 largeSize = location + length;
         if (largeSize > _memory.Length)
         {
@@ -266,13 +283,10 @@ public struct EvmPooledMemory : IEvmMemory
 
         return result;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowOutOfGas()
-        {
-            throw new OutOfGasException();
-        }
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowOutOfGas() => throw new OutOfGasException();
 
     public TraceMemory GetTrace()
     {
@@ -336,6 +350,7 @@ public struct EvmPooledMemory : IEvmMemory
 
     private void UpdateSize(ulong length, bool rentIfNeeded = true)
     {
+        const int MinRentSize = 1_024;
         Length = length;
 
         if (Length > Size)
@@ -348,7 +363,7 @@ public struct EvmPooledMemory : IEvmMemory
         {
             if (_memory is null)
             {
-                _memory = ArrayPool<byte>.Shared.Rent((int)Size);
+                _memory = ArrayPool<byte>.Shared.Rent((int)Math.Max(Size, MinRentSize));
                 Array.Clear(_memory, 0, (int)Size);
             }
             else
@@ -376,16 +391,14 @@ public struct EvmPooledMemory : IEvmMemory
         }
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowArgumentOutOfRangeException()
     {
         Metrics.EvmExceptions++;
         throw new ArgumentOutOfRangeException("Word size must be 32 bytes");
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowOutOfGasException()
     {
         Metrics.EvmExceptions++;

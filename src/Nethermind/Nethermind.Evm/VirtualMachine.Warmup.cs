@@ -44,19 +44,21 @@ public unsafe partial class VirtualMachine
         state.Commit(spec);
         CodeInfoRepository codeInfoRepository = new();
         BlockHeader _header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, MainnetSpecProvider.PragueActivation.BlockNumber, Int64.MaxValue, 1UL, Bytes.Empty, 0, 0);
-        ExecutionEnvironment env = new
-        (
+
+        vm.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
+        vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0));
+
+        ExecutionEnvironment env = new(
             executingAccount: addressOne,
             codeSource: addressOne,
             caller: addressOne,
             codeInfo: new CodeInfo(bytecode),
             value: 0,
             transferValue: 0,
-            txExecutionContext: new TxExecutionContext(new BlockExecutionContext(_header, spec), addressOne, 0, null, codeInfoRepository),
-            inputData: default
-        );
+            inputData: default,
+            callDepth: 0);
 
-        using var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, state.TakeSnapshot(), env, new StackAccessTracker());
+        using var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, in env, new StackAccessTracker(), state.TakeSnapshot());
 
         vm.EvmState = evmState;
         vm._worldState = state;
@@ -93,6 +95,11 @@ public unsafe partial class VirtualMachine
                 stack.PushOne<TTracingInst>();
 
                 opcodes[i](vm, ref stack, ref gas, ref pc);
+                if (vm.ReturnData is EvmState returnState)
+                {
+                    returnState.Dispose();
+                    vm.ReturnData = null!;
+                }
 
                 state.Reset(resetBlockChanges: true);
                 stack = new(0, txTracer, evmState.DataStack);

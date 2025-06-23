@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
@@ -30,11 +31,11 @@ public class OwnedBlockBodiesTests
         BlockBody[] blockBodies = { Build.A.Block.WithTransactions(1, MainnetSpecProvider.Instance).TestObject.Body };
         blockBodies[0].Transactions[0].Data = actualMemoryOwner.Memory;
         actualMemoryOwner.Memory.Span.Fill(1);
-        blockBodies[0].Transactions[0].Data.Should().BeEquivalentTo(actualMemoryOwner.Memory);
+        blockBodies[0].Transactions[0].Data.Should().BeEquivalentTo((ReadOnlyMemory<byte>)actualMemoryOwner.Memory);
 
         OwnedBlockBodies ownedBlockBodies = new(blockBodies, memoryOwner);
         ownedBlockBodies.Disown();
         actualMemoryOwner.Memory.Span.Clear();
-        blockBodies[0].Transactions[0].Data.Should().NotBeEquivalentTo(actualMemoryOwner.Memory);
+        blockBodies[0].Transactions[0].Data.Should().NotBeEquivalentTo((ReadOnlyMemory<byte>)actualMemoryOwner.Memory);
     }
 }

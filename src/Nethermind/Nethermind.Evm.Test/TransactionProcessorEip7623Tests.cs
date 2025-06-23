@@ -26,7 +26,7 @@ public class TransactionProcessorEip7623Tests
 {
     private ISpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
-    private TransactionProcessor _transactionProcessor;
+    private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
 
     [SetUp]

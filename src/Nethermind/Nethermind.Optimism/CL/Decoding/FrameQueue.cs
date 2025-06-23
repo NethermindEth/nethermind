@@ -49,7 +49,7 @@ public class FrameQueue(ILogManager logManager) : IFrameQueue
             _frameData.Clear();
 
             var rlp = new Rlp.ValueDecoderContext(decodedChannel.Span);
-            var batchData = rlp.DecodeByteArrayMemory()!.Value;
+            var batchData = rlp.DecodeByteArrayMemory();
             var batches = BatchDecoder.DecodeSpanBatches(batchData).ToArray();
             return batches;
         }

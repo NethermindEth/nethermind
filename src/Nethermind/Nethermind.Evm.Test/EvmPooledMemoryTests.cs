@@ -156,7 +156,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             new TestBlockhashProvider(specProvider),
                 specProvider,
                 LimboLogs.Instance);
-        TransactionProcessor transactionProcessor = new TransactionProcessor(
+        ITransactionProcessor transactionProcessor = new TransactionProcessor(
                 specProvider,
                 stateProvider,
                 virtualMachine,

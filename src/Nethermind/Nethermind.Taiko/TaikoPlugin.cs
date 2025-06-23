@@ -41,13 +41,17 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Taiko.TaikoSpec;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.JsonRpc.Client;
+using Nethermind.Serialization.Json;
+using Nethermind.Taiko.Config;
+using Nethermind.Blockchain.Find;
 
 namespace Nethermind.Taiko;
 
 public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
     public const string Taiko = "Taiko";
-    private const string L1OriginDbName = "L1Origin";
     public string Author => "Nethermind";
     public string Name => Taiko;
     public string Description => "Taiko support for Nethermind";
@@ -56,7 +60,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     private ILogger _logger;
 
     private IMergeConfig _mergeConfig = null!;
-    private ISyncConfig _syncConfig = null!;
 
     private IBlockCacheService? _blockCacheService;
 
@@ -66,7 +69,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         _api = (TaikoNethermindApi)api;
         _mergeConfig = _api.Config<IMergeConfig>();
-        _syncConfig = _api.Config<ISyncConfig>();
         _logger = _api.LogManager.GetClassLogger();
 
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
@@ -80,22 +82,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
 
         return Task.CompletedTask;
-    }
-
-    public void InitTxTypesAndRlpDecoders(INethermindApi api)
-    {
-        _api = (TaikoNethermindApi)api;
-
-        ArgumentNullException.ThrowIfNull(_api.DbProvider);
-        ArgumentNullException.ThrowIfNull(_api.DbFactory);
-
-        IRlpStreamDecoder<L1Origin> r1OriginDecoder = new L1OriginDecoder();
-        Rlp.RegisterDecoder(typeof(L1Origin), r1OriginDecoder);
-
-
-        IDb db = _api.DbFactory.CreateDb(new DbSettings(L1OriginDbName, L1OriginDbName.ToLower()));
-        _api.DbProvider!.RegisterDb(L1OriginDbName, db);
-        _api.L1OriginStore = new(_api.DbProvider.GetDb<IDb>(L1OriginDbName), r1OriginDecoder);
     }
 
     public Task InitRpcModules()
@@ -194,7 +180,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     private static TaikoPayloadPreparationService CreatePayloadPreparationService(TaikoNethermindApi api, IRlpStreamDecoder<Transaction> txDecoder)
     {
-        ArgumentNullException.ThrowIfNull(api.L1OriginStore);
         ArgumentNullException.ThrowIfNull(api.SpecProvider);
 
         IReadOnlyTxProcessorSource txProcessingEnv = api.ReadOnlyTxProcessingEnvFactory.Create();
@@ -244,7 +229,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public IEnumerable<StepInfo> GetSteps()
     {
         yield return typeof(InitializeBlockchainTaiko);
-        yield return typeof(RegisterTaikoRpcModules);
     }
 
     // IConsensusPlugin
@@ -280,11 +264,18 @@ public class TaikoModule : Module
             .Map<TaikoChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<TaikoChainSpecEngineParameters>())
 
+            // L1 origin store
+            .AddSingleton<IRlpStreamDecoder<L1Origin>, L1OriginDecoder>()
+            .AddKeyedSingleton<IDb>(L1OriginStore.L1OriginDbName, (ctx) => ctx
+                .Resolve<IDbFactory>().CreateDb(new DbSettings(L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName.ToLower())))
+            .AddSingleton<IL1OriginStore, L1OriginStore>()
+
+            // Sync modification
             .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance)
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
-
             .AddDecorator<BeaconSync>((_, strategy) =>
             {
+                // Normally not turned on at start because `StartingSyncPivotUpdater` waiting for pivot
                 strategy.AllowBeaconHeaderSync();
                 return strategy;
             })
@@ -294,10 +285,58 @@ public class TaikoModule : Module
             .AddSingleton<IHeaderValidator, TaikoHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
 
+            // Blok proccessing
+            .AddScoped<IValidationTransactionExecutor, TaikoBlockValidationTransactionExecutor>()
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
 
             .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>
                 new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))
+
+            // Conditionally register SurgeGasPriceOracle if UseSurgeGasPriceOracle is enabled
+            .AddSingleton<IGasPriceOracle>((ctx) =>
+            {
+                var specProvider = ctx.Resolve<ISpecProvider>();
+                var taikoSpec = (TaikoReleaseSpec)specProvider.GenesisSpec;
+
+                if (taikoSpec.UseSurgeGasPriceOracle)
+                {
+                    var surgeConfig = ctx.Resolve<ISurgeConfig>();
+
+                    if (string.IsNullOrEmpty(surgeConfig.L1EthApiEndpoint))
+                    {
+                        throw new ArgumentException("L1EthApiEndpoint must be provided in the Surge configuration to compute the gas price");
+                    }
+
+                    var l1RpcClient = new BasicJsonRpcClient(
+                        new Uri(surgeConfig.L1EthApiEndpoint),
+                        ctx.Resolve<IJsonSerializer>(),
+                        ctx.Resolve<ILogManager>());
+
+                    return new SurgeGasPriceOracle(
+                        ctx.Resolve<IBlockFinder>(),
+                        ctx.Resolve<ILogManager>(),
+                        specProvider,
+                        ctx.Resolve<IBlocksConfig>().MinGasPrice,
+                        l1RpcClient,
+                        surgeConfig);
+                }
+
+                // Use the default GasPriceOracle
+                return new GasPriceOracle(
+                    ctx.Resolve<IBlockFinder>(),
+                    specProvider,
+                    ctx.Resolve<ILogManager>(),
+                    ctx.Resolve<IBlocksConfig>().MinGasPrice);
+            })
+
+            // Rpc
+            .RegisterSingletonJsonRpcModule<ITaikoExtendedEthRpcModule, TaikoExtendedEthModule>()
+
+            // Need to set the rlp globally
+            .OnBuild((ctx) =>
+            {
+                Rlp.RegisterDecoder(typeof(L1Origin), ctx.Resolve<IRlpStreamDecoder<L1Origin>>());
+            })
             ;
     }
 }

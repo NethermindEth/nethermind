@@ -22,14 +22,14 @@ public sealed class SimulateTransactionProcessor(
 {
     protected override bool ShouldValidate(ExecutionOptions opts) => true;
 
-    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (!validate)
         {
             opts |= ExecutionOptions.SkipValidation;
         }
 
-        return base.Execute(tx, in blCtx, tracer, opts);
+        return base.Execute(tx, tracer, opts);
     }
 }
 
@@ -41,8 +41,8 @@ public class SimulateTransactionProcessorFactory : ISimulateTransactionProcessor
     public ITransactionProcessor CreateTransactionProcessor(
         ISpecProvider specProvider,
         IWorldState stateProvider,
-        SimulateVirtualMachine virtualMachine,
-        OverridableCodeInfoRepository codeInfoRepository,
+        IVirtualMachine virtualMachine,
+        ICodeInfoRepository codeInfoRepository,
         ILogManager? logManager,
         bool validate)
     {

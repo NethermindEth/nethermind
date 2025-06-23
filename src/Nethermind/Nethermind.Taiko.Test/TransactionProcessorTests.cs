@@ -76,7 +76,8 @@ public class TransactionProcessorTests
             .WithExtraData(extraData)
             .WithBeneficiary(benefeciaryAddress).WithGasLimit(gasLimit).TestObject;
 
-        _transactionProcessor!.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+        _transactionProcessor!.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
+        _transactionProcessor!.Execute(tx, NullTxTracer.Instance);
 
         Assert.Multiple(() =>
         {
