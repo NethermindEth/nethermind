@@ -72,7 +72,7 @@ public unsafe partial class VirtualMachine
             RunOpCodes<OffFlag>(vm, state, evmState, spec);
         }
 
-        TransactionProcessor processor = new (MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
+        TransactionProcessor processor = new(MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
         processor.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
 
         RunTransactions(processor, state, spec);
@@ -83,7 +83,7 @@ public unsafe partial class VirtualMachine
         const int WarmUpIterations = 40;
 
         Address sender = Address.SystemUser;
-        Address recipient = new ("0x0000000000000000000000000000000000000100");
+        Address recipient = new("0x0000000000000000000000000000000000000100");
 
         state.CreateAccountIfNotExists(recipient, 100.Ether());
 
