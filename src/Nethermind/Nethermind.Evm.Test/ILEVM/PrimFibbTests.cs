@@ -14,6 +14,7 @@ using Nethermind.Evm.CodeAnalysis.IL.Delegates;
 using System.Reflection;
 using Nethermind.Core.Crypto;
 using System.Linq;
+using Nethermind.Evm.Tracing.GethStyle;
 
 namespace Nethermind.Evm.Test.ILEVM;
 
@@ -30,93 +31,90 @@ public class SyntheticBenchmarkTests
     }
 
     static byte[] fibbBytecode(byte[] argBytes) => Prepare.EvmCode
-                        .JUMPDEST()
-                        .PUSHx([0, 0])
-                        .POP()
-
-                        .PushData(argBytes)
-                        .COMMENT("1st/2nd fib number")
-                        .PushData(0)
-                        .PushData(1)
-                        .COMMENT("MAINLOOP:")
-                        .JUMPDEST()
-                        .DUPx(3)
-                        .ISZERO()
-                        .PushData(5 + 26 + argBytes.Length)
-                        .JUMPI()
-                        .COMMENT("fib step")
-                        .DUPx(2)
-                        .DUPx(2)
-                        .ADD()
-                        .SWAPx(2)
-                        .POP()
-                        .SWAPx(1)
-                        .COMMENT("decrement fib step counter")
-                        .SWAPx(2)
-                        .PushData(1)
-                        .SWAPx(1)
-                        .SUB()
-                        .SWAPx(2)
-                        .PushData(5 + 5 + argBytes.Length).COMMENT("goto MAINLOOP")
-                        .JUMP()
-
-                        .COMMENT("CLEANUP:")
-                        .JUMPDEST()
-                        .SWAPx(2)
-                        .POP()
-                        .POP()
-                        .SSTORE(0)
-                        .COMMENT("done: requested fib number is the only element on the stack!")
-                        .STOP()
-                        .Done;
+        .JUMPDEST()
+        .PUSHx([0, 0])
+        .POP()
+        .PushData(argBytes)
+        .COMMENT("1st/2nd fib number")
+        .PushData(0)
+        .PushData(1)
+        .COMMENT("MAINLOOP:")
+        .JUMPDEST()
+        .DUPx(3)
+        .ISZERO()
+        .PushData(5 + 26 + argBytes.Length)
+        .JUMPI()
+        .COMMENT("fib step")
+        .DUPx(2)
+        .DUPx(2)
+        .ADD()
+        .SWAPx(2)
+        .POP()
+        .SWAPx(1)
+        .COMMENT("decrement fib step counter")
+        .SWAPx(2)
+        .PushData(1)
+        .SWAPx(1)
+        .SUB()
+        .SWAPx(2)
+        .PushData(5 + 5 + argBytes.Length).COMMENT("goto MAINLOOP")
+        .JUMP()
+        .COMMENT("CLEANUP:")
+        .JUMPDEST()
+        .SWAPx(2)
+        .POP()
+        .POP()
+        .SSTORE(0)
+        .COMMENT("done: requested fib number is the only element on the stack!")
+        .STOP()
+        .Done;
 
     static byte[] isPrimeBytecode(byte[] argBytes) => Prepare.EvmCode
-                    .JUMPDEST()
-                    .PUSHx([0])
-                    .POP()
-
-                    .PUSHx(argBytes)
-                    .COMMENT("Store variable(n) in Memory")
-                    .MSTORE(0)
-                    .COMMENT("Store Indexer(i) in Memory")
-                    .PushData(2)
-                    .MSTORE(32)
-                    .COMMENT("We mark this place as a GOTO section")
-                    .JUMPDEST()
-                    .COMMENT("We check if i * i < n")
-                    .MLOAD(32)
-                    .DUPx(1)
-                    .MUL()
-                    .MLOAD(0)
-                    .LT()
-                    .PushData(4 + 47 + argBytes.Length)
-                    .JUMPI()
-                    .COMMENT("We check if n % i == 0")
-                    .MLOAD(32)
-                    .MLOAD(0)
-                    .MOD()
-                    .ISZERO()
-                    .DUPx(1)
-                    .COMMENT("if 0 we jump to the end")
-                    .PushData(4 + 51 + argBytes.Length)
-                    .JUMPI()
-                    .POP()
-                    .COMMENT("increment Indexer(i)")
-                    .MLOAD(32)
-                    .ADD(1)
-                    .MSTORE(32)
-                    .COMMENT("Loop back to top of conditional loop")
-                    .PushData(4 + 9 + argBytes.Length)
-                    .JUMP()
-                    .COMMENT("return 0")
-                    .JUMPDEST()
-                    .PushData(0)
-                    .SSTORE(0)
-                    .STOP()
-                    .JUMPDEST()
-                    .SSTORE(0)
-                    .STOP()
-                    .Done;
+        .JUMPDEST()
+        .PUSHx([0])
+        .POP()
+        .PUSHx(argBytes)
+        .COMMENT("Store variable(n) in Memory")
+        .MSTORE(0)
+        .COMMENT("Store Indexer(i) in Memory")
+        .PushData(2)
+        .MSTORE(32)
+        .COMMENT("We mark this place as a GOTO section")
+        .JUMPDEST()
+        .COMMENT("We check if i * i < n")
+        .MLOAD(32)
+        .DUPx(1)
+        .MUL()
+        .MLOAD(0)
+        .LT()
+        .PushData(4 + 47 + argBytes.Length)
+        .JUMPI()
+        .COMMENT("We check if n % i == 0")
+        .MLOAD(32)
+        .MLOAD(0)
+        .MOD()
+        .ISZERO()
+        .DUPx(1)
+        .COMMENT("if 0 we jump to the end")
+        .PushData(4 + 51 + argBytes.Length)
+        .JUMPI()
+        .POP()
+        .COMMENT("increment Indexer(i)")
+        .MLOAD(32)
+        .ADD(1)
+        .MSTORE(32)
+        .COMMENT("Loop back to top of conditional loop")
+        .PushData(4 + 9 + argBytes.Length)
+        .JUMP()
+        .COMMENT("return 0")
+        .JUMPDEST()
+        .PushData(0)
+        .SSTORE(0)
+        .STOP()
+        .JUMPDEST()
+        .SSTORE(0)
+        .STOP()
+        .Done;
 
     static IEnumerable<UInt256> f_args => [1, 23, 101, 1023, 2047, 4999];
     static IEnumerable<UInt256> p_args => [1, 23, 1023, 8000009, 16000057];
@@ -130,7 +128,6 @@ public class SyntheticBenchmarkTests
         var bytecode = fibbBytecode(argBytes);
 
         IlVirtualMachineTestsBase standardChain = new IlVirtualMachineTestsBase(new VMConfig(), Prague.Instance);
-        Path.Combine(Directory.GetCurrentDirectory(), "GeneratedContracts.dll");
 
         IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
         {
@@ -146,17 +143,25 @@ public class SyntheticBenchmarkTests
         var address = standardChain.InsertCode(bytecode);
         enhancedChain.InsertCode(bytecode);
 
+        var tracer = new GethLikeTxMemoryTracer(null, GethTraceOptions.Default);
 
-        standardChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes);
+        standardChain.Execute<ITxTracer>(bytecode, tracer, blobVersionedHashes: blobVersionedHashes);
+
+        Assert.That(tracer.BuildResult().Failed, Is.False);
+
         Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(0));
 
+        tracer = new GethLikeTxMemoryTracer(null, GethTraceOptions.Default);
+
+        enhancedChain.Execute<ITxTracer>(bytecode, tracer, blobVersionedHashes: blobVersionedHashes);
+
+        Assert.That(tracer.BuildResult().Failed, Is.False);
+
+
         var actual = standardChain.StateRoot;
-
-        enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes);
-        Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.GreaterThan(0));
-
         var expected = enhancedChain.StateRoot;
 
+        Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.GreaterThan(0));
         Assert.That(actual, Is.EqualTo(expected));
     }
 
@@ -184,12 +189,20 @@ public class SyntheticBenchmarkTests
         var address = standardChain.InsertCode(bytecode);
         enhancedChain.InsertCode(bytecode);
 
+        var tracer = new GethLikeTxMemoryTracer(null, GethTraceOptions.Default);
 
-        standardChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes);
+        standardChain.Execute<ITxTracer>(bytecode, tracer, blobVersionedHashes: blobVersionedHashes);
+
+        Assert.That(tracer.BuildResult().Failed, Is.False);
 
         Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(0));
 
-        enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes);
+        tracer = new GethLikeTxMemoryTracer(null, GethTraceOptions.Default);
+
+        enhancedChain.Execute<ITxTracer>(bytecode, tracer, blobVersionedHashes: blobVersionedHashes);
+
+        Assert.That(tracer.BuildResult().Failed, Is.False);
+
 
         var actual = standardChain.StateRoot;
         var expected = enhancedChain.StateRoot;
