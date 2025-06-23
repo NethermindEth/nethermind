@@ -19,7 +19,7 @@ FROM --platform=$TARGETPLATFORM ubuntu
 
 WORKDIR /nethermind
 
-COPY --from=build /out/Nethermind.Tools.Kute .
+COPY --from=build /out/ ./
 
 RUN apt update && apt-get install -y ca-certificates
 ENTRYPOINT ["./Nethermind.Tools.Kute"]
