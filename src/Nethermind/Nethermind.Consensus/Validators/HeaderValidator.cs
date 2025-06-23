@@ -185,6 +185,11 @@ namespace Nethermind.Consensus.Validators
                     return false;
                 }
             }
+            else if (parent.Hash != header.ParentHash)
+            {
+                error = BlockErrorMessages.MismatchedParent(header.Hash, header.ParentHash, parent.Hash);
+                return false;
+            }
 
             return true;
         }
