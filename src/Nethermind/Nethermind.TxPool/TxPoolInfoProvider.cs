@@ -13,10 +13,10 @@ namespace Nethermind.TxPool
         private readonly IAccountStateProvider _stateReader;
         private readonly ITxPool _txPool;
 
-        public TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxPool txPool)
+        public TxPoolInfoProvider(IChainHeadInfoProvider accountStateProvider, ITxPool txPool)
         {
-            _stateReader = accountStateProvider ?? throw new ArgumentNullException(nameof(accountStateProvider));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _stateReader = accountStateProvider.ReadOnlyStateProvider;
+            _txPool = txPool;
         }
 
         public TxPoolInfo GetInfo()

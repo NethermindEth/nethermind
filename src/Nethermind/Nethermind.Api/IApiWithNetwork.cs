@@ -35,7 +35,7 @@ namespace Nethermind.Api
 
         [SkipServiceCollection]
         IRpcModuleProvider? RpcModuleProvider { get; }
-        IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
+        IJsonRpcLocalStats JsonRpcLocalStats { get; }
         ISessionMonitor SessionMonitor { get; }
         IStaticNodesManager StaticNodesManager { get; }
         ITrustedNodesManager TrustedNodesManager { get; }
@@ -43,7 +43,7 @@ namespace Nethermind.Api
         ISyncPeerPool? SyncPeerPool { get; }
         ISyncServer? SyncServer { get; }
         IWebSocketsManager WebSocketsManager { get; set; }
-        ISubscriptionFactory? SubscriptionFactory { get; set; }
+        ISubscriptionFactory SubscriptionFactory { get; }
 
         [SkipServiceCollection]
         IEngineRequestsTracker EngineRequestsTracker { get; }

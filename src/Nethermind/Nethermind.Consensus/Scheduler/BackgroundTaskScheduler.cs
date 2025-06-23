@@ -39,6 +39,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private readonly IBlockProcessor _blockProcessor;
     private readonly ManualResetEvent _restartQueueSignal;
     private readonly Task<Task>[] _tasksExecutors;
+    private bool _disposed = false;
 
     public BackgroundTaskScheduler(IBlockProcessor blockProcessor, int concurrency, int capacity, ILogManager logManager)
     {
@@ -137,6 +138,8 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
     public async ValueTask DisposeAsync()
     {
+        if (!Interlocked.CompareExchange(ref _disposed, true, false)) return;
+
         _blockProcessor.BlocksProcessing -= BlockProcessorOnBlocksProcessing;
         _blockProcessor.BlockProcessed -= BlockProcessorOnBlockProcessed;
 

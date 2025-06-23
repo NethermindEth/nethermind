@@ -14,13 +14,13 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1;
-using Nethermind.Facade;
 using Nethermind.Facade.Simulate;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
@@ -62,10 +62,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
             .Bind<IEcdsa, IEthereumEcdsa>()
 
-            .AddSingleton<SimulateReadOnlyBlocksProcessingEnvFactory>()
-            .AddSingleton<IBlockchainBridgeFactory, BlockchainBridgeFactory>()
-            .AddScoped<IBlockchainBridge>((ctx) => ctx.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge())
-
+            .AddSingleton<IChainHeadInfoProvider, ChainHeadInfoProvider>()
             .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
             ;
     }

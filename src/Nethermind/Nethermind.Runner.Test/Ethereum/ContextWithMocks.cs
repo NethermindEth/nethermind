@@ -113,7 +113,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.BlockTree = Substitute.For<IBlockTree>();
             api.DbProvider = TestMemDbProvider.Init();
             api.ReceiptStorage = Substitute.For<IReceiptStorage>();
-            api.TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
             api.BloomStorage = Substitute.For<IBloomStorage>();
             api.BlockProducer = Substitute.For<IBlockProducer>();
             api.EngineSigner = Substitute.For<ISigner>();
@@ -133,7 +132,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
             api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();
             api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
-            api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();
             api.BadBlocksStore = Substitute.For<IBadBlockStore>();
         }
     }

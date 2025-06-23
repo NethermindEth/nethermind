@@ -122,12 +122,11 @@ namespace Nethermind.Api
         public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
         public IReceiptFinder ReceiptFinder => Context.Resolve<IReceiptFinder>();
-        public IReceiptMonitor? ReceiptMonitor { get; set; }
         public IRewardCalculatorSource RewardCalculatorSource => Context.Resolve<IRewardCalculatorSource>();
         public IRlpxHost RlpxPeer => Context.Resolve<IRlpxHost>();
         public IRpcModuleProvider? RpcModuleProvider => Context.Resolve<IRpcModuleProvider>();
         public IRpcAuthentication? RpcAuthentication { get; set; }
-        public IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
+        public IJsonRpcLocalStats JsonRpcLocalStats => Context.Resolve<IJsonRpcLocalStats>();
         public ISealer Sealer => Context.Resolve<ISealer>();
         public string SealEngineType => ChainSpec.SealEngineType;
         public ISealValidator SealValidator => Context.Resolve<ISealValidator>();
@@ -150,7 +149,6 @@ namespace Nethermind.Api
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
-        public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
         public IBlockFinalizationManager? FinalizationManager { get; set; }
@@ -168,7 +166,7 @@ namespace Nethermind.Api
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
-        public ISubscriptionFactory? SubscriptionFactory { get; set; }
+        public ISubscriptionFactory SubscriptionFactory => Context.Resolve<ISubscriptionFactory>();
         public IProtectedPrivateKey? NodeKey { get; set; }
 
         /// <summary>
