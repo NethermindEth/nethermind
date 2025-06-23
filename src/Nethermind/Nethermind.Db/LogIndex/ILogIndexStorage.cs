@@ -23,7 +23,7 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     Task<SetReceiptsStats> SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync);
     Task ReorgFrom(BlockReceipts block);
     SetReceiptsStats Compact();
-    SetReceiptsStats Recompact(int maxUncompressedLength = LogIndexStorage.MaxUncompressedLength);
+    SetReceiptsStats Recompact(int maxUncompressedLength = LogIndexStorage.MinLengthToCompress);
 
     PagesStats PagesStats => default;
     string TempFilePath => "";

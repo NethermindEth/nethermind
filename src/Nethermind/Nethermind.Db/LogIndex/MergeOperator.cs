@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Collections;
 
@@ -101,7 +98,7 @@ public partial class LogIndexStorage
                 if (result.Count % BlockNumSize != 0)
                     throw ValidationException("Invalid data length post-merge.");
 
-                if (result.Count > MaxUncompressedLength)
+                if (result.Count >= MinLengthToCompress)
                     storage.EnqueueCompress(key.ToArray());
 
                 return result;

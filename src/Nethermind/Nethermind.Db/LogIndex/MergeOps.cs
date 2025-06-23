@@ -63,7 +63,7 @@ public partial class LogIndexStorage
         public static Span<byte> ApplyTo(Span<byte> operand, MergeOp op, int block, bool isBackward)
         {
             // In most cases the searched block will be near or at the end of the operand, if present there
-            var i = BlockLastSearch(operand, block, isBackward);
+            var i = LastBlockSearch(operand, block, isBackward);
 
             if (op is MergeOp.ReorgOp)
             {
@@ -80,66 +80,6 @@ public partial class LogIndexStorage
             }
 
             throw new ArgumentOutOfRangeException(nameof(op), op, "Unsupported merge operation.");
-        }
-
-        private static int BlockLastSearch(ReadOnlySpan<byte> operand, int block, bool isBackward)
-        {
-            if (operand.IsEmpty)
-                return 0;
-
-            var i = operand.Length - BlockNumSize;
-            for (; i >= 0; i -= BlockNumSize)
-            {
-                var currentBlock = ReadValBlockNum(operand[i..]);
-                if (currentBlock == block)
-                    return i;
-
-                if (isBackward)
-                {
-                    if (currentBlock > block)
-                        return i - BlockNumSize;
-                }
-                else
-                {
-                    if (currentBlock < block)
-                        return i + BlockNumSize;
-                }
-            }
-
-            return i;
-        }
-
-        // TODO: check if MemoryExtensions.BinarySearch<int> can be used and will be faster
-        private static int BlockBinarySearch(ReadOnlySpan<byte> data, int target)
-        {
-            if (data.Length == 0)
-                return 0;
-
-            int count = data.Length / sizeof(int);
-            int left = 0, right = count - 1;
-
-            // Short circuits in some cases
-            if (ReadValLastBlockNum(data) == target)
-                return right * BlockNumSize;
-            if (ReadValBlockNum(data) == target)
-                return left * BlockNumSize;
-
-            while (left <= right)
-            {
-                int mid = left + (right - left) / 2;
-                int offset = mid * 4;
-
-                int value = ReadValBlockNum(data[offset..]);
-
-                if (value == target)
-                    return offset;
-                if (value < target)
-                    left = mid + 1;
-                else
-                    right = mid - 1;
-            }
-
-            return ~(left * BlockNumSize);
         }
     }
 }

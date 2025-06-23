@@ -35,7 +35,7 @@ namespace Nethermind.Db
         private readonly int _ioParallelism;
 
         private const int BlockNumSize = sizeof(int);
-        public const int MaxUncompressedLength = 128 * BlockNumSize;
+        public const int MinLengthToCompress = 128 * BlockNumSize;
 
         // Special RocksDB key postfix - any ordered prefix seeking will start on it.
         private static readonly byte[] BackwardMergeKey = Enumerable.Repeat((byte)0, BackwardMergeKeyLength).ToArray();
@@ -46,6 +46,7 @@ namespace Nethermind.Db
         private const int ForwardMergeKeyLength = BlockNumSize + 1;
 
         private readonly int _compactionDistance;
+        private readonly int _maxReorgDepth;
         private readonly MergeOperator _mergeOperator;
 
         // TODO: get rid of static fields
@@ -54,14 +55,18 @@ namespace Nethermind.Db
         private void EnqueueCompress(byte[] dbKey) => _compressQueue.TryAdd(dbKey, true);
 
         // TODO: ensure class is singleton
+        // TODO: take parameters from log-index/chain config
         public LogIndexStorage(IDbFactory dbFactory, ILogger logger,
-            int ioParallelism, int compactionDistance)
+            int ioParallelism, int compactionDistance, int maxReorgDepth = 64)
         {
             if (ioParallelism < 1) throw new ArgumentException("IO parallelism degree must be a positive value.", nameof(ioParallelism));
             _ioParallelism = ioParallelism;
 
             if (compactionDistance < 1) throw new ArgumentException("Compaction distance must be a positive value.", nameof(compactionDistance));
             _compactionDistance = compactionDistance;
+
+            if (maxReorgDepth < 0) throw new ArgumentException("Compaction distance must be a positive value.", nameof(compactionDistance));
+            _maxReorgDepth = maxReorgDepth;
 
             _logger = logger;
 
@@ -406,7 +411,7 @@ namespace Nethermind.Db
             return stats;
         }
 
-        public SetReceiptsStats Recompact(int maxUncompressedLength = MaxUncompressedLength)
+        public SetReceiptsStats Recompact(int maxUncompressedLength = MinLengthToCompress)
         {
             var stats = new SetReceiptsStats();
 
@@ -623,7 +628,8 @@ namespace Nethermind.Db
             return decompressedBlockNumbers;
         }
 
-        private static unsafe ReadOnlySpan<byte> Compress(ReadOnlySpan<byte> data, Span<byte> buffer)
+        // TODO: test on big-endian system?
+        private static unsafe ReadOnlySpan<byte> Compress(Span<byte> data, Span<byte> buffer)
         {
             int length;
             ReadOnlySpan<int> blockNumbers = MemoryMarshal.Cast<byte, int>(data);
@@ -656,28 +662,36 @@ namespace Nethermind.Db
         private static Exception ValidationException(string message) => new InvalidOperationException(message);
 
         // TODO: optimize allocations
-        // TODO: set max block value to compress at, as revert only works for uncompressed numbers
         private void CompressPostMerge(PostMergeProcessingStats stats)
         {
             var execTimestamp = Stopwatch.GetTimestamp();
 
             var block = new ActionBlock<byte[]>(dbKey =>
             {
-                var db = GetDbByKeyLength(dbKey.Length, out var prefixLength);
+                IDb db = GetDbByKeyLength(dbKey.Length, out var prefixLength);
 
                 var timestamp = Stopwatch.GetTimestamp();
-                var dbValue = db.Get(dbKey) ?? throw ValidationException("Empty value in the post-merge compression queue.");
+                Span<byte> dbValue = db.Get(dbKey) ?? throw ValidationException("Empty value in the post-merge compression queue.");
                 stats.GettingValue.Include(Stopwatch.GetElapsedTime(timestamp));
+
+                // Do not compress blocks that can be reorged, as compressed data is immutable
+                if (!UseBackwardSyncFor(dbKey))
+                    dbValue = RemoveReorgableBlocks(dbValue);
+
+                if (dbValue.Length < MinLengthToCompress)
+                    return; // Check back later
+
+                _compressQueue.TryRemove(dbKey, out _);
 
                 var firstBlock = ReadValBlockNum(dbValue);
                 var truncateBlock = ReadValLastBlockNum(dbValue);
+                ReverseBlocksIfNeeded(dbValue);
 
                 var dbKeyComp = new byte[prefixLength + BlockNumSize];
                 dbKey.AsSpan(..prefixLength).CopyTo(dbKeyComp);
                 SetKeyBlockNum(dbKeyComp, firstBlock);
 
                 timestamp = Stopwatch.GetTimestamp();
-                ReverseBlocksIfNeeded(dbValue);
                 dbValue = CompressDbValue(dbValue);
                 stats.CompressingValue.Include(Stopwatch.GetElapsedTime(timestamp));
 
@@ -692,10 +706,7 @@ namespace Nethermind.Db
             }, new() { MaxDegreeOfParallelism = _ioParallelism });
 
             foreach (var dbKey in _compressQueue.Keys)
-            {
-                _compressQueue.TryRemove(dbKey, out _);
                 block.Post(dbKey);
-            }
 
             block.Complete();
             block.Completion.Wait(); // TODO: await?
@@ -776,6 +787,77 @@ namespace Nethermind.Db
         {
             if (blocks.Length != 0 && blocks[0] > blocks[^1])
                 blocks.Reverse();
+        }
+
+        private Span<byte> RemoveReorgableBlocks(Span<byte> data)
+        {
+            var lastCompressBlock = GetLastKnownBlockNumber() - _maxReorgDepth;
+            var lastCompressIndex = LastBlockSearch(data, lastCompressBlock, false);
+
+            if (lastCompressIndex < 0) lastCompressIndex = 0;
+            if (lastCompressIndex > data.Length) lastCompressIndex = data.Length;
+
+            return data[..lastCompressIndex];
+        }
+
+        private static int LastBlockSearch(ReadOnlySpan<byte> operand, int block, bool isBackward)
+        {
+            if (operand.IsEmpty)
+                return 0;
+
+            var i = operand.Length - BlockNumSize;
+            for (; i >= 0; i -= BlockNumSize)
+            {
+                var currentBlock = ReadValBlockNum(operand[i..]);
+                if (currentBlock == block)
+                    return i;
+
+                if (isBackward)
+                {
+                    if (currentBlock > block)
+                        return i - BlockNumSize;
+                }
+                else
+                {
+                    if (currentBlock < block)
+                        return i + BlockNumSize;
+                }
+            }
+
+            return i;
+        }
+
+        // TODO: check if MemoryExtensions.BinarySearch<int> can be used and will be faster
+        private static int BinaryBlockSearch(ReadOnlySpan<byte> data, int target)
+        {
+            if (data.Length == 0)
+                return 0;
+
+            int count = data.Length / sizeof(int);
+            int left = 0, right = count - 1;
+
+            // Short circuits in some cases
+            if (ReadValLastBlockNum(data) == target)
+                return right * BlockNumSize;
+            if (ReadValBlockNum(data) == target)
+                return left * BlockNumSize;
+
+            while (left <= right)
+            {
+                int mid = left + (right - left) / 2;
+                int offset = mid * 4;
+
+                int value = ReadValBlockNum(data[offset..]);
+
+                if (value == target)
+                    return offset;
+                if (value < target)
+                    left = mid + 1;
+                else
+                    right = mid - 1;
+            }
+
+            return ~(left * BlockNumSize);
         }
     }
 }

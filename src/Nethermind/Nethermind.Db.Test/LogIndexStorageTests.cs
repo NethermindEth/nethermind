@@ -28,6 +28,7 @@ namespace Nethermind.Db.Test
     [TestFixture(100, 200, Explicit = true)]
     // TODO: test for different block ranges intersection
     // TODO: run internal state verification for each test
+    // TODO: test for process crash via Thread.Abort
     [Parallelizable(ParallelScope.All)]
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class LogIndexStorageTests(int batchCount, int blocksPerBatch)
@@ -38,9 +39,9 @@ namespace Nethermind.Db.Test
         private string _dbPath = null!;
         private IDbFactory _dbFactory = null!;
 
-        private LogIndexStorage CreateLogIndexStorage(int compactionDistance = 262_144, byte ioParallelism = 16, IDbFactory? dbFactory = null)
+        private LogIndexStorage CreateLogIndexStorage(int compactionDistance = 262_144, int ioParallelism = 16, int maxReorgDepth = 64, IDbFactory? dbFactory = null)
         {
-            return new(dbFactory ?? _dbFactory, _logger, ioParallelism, compactionDistance);
+            return new(dbFactory ?? _dbFactory, _logger, ioParallelism, compactionDistance, maxReorgDepth);
         }
 
         [SetUp]
@@ -195,11 +196,11 @@ namespace Nethermind.Db.Test
             VerifyReceipts(logIndexStorage, _testData, excludedBlocks: reorgBlocks);
         }
 
-        [Ignore("Not working yet.")]
-        [Combinatorial]
-        public async Task Set_Compact_ReorgLast_Get_Test(
-            [Values(1, 5)] int reorgDepth
-        )
+        [TestCase(1, 1)]
+        [TestCase(32, 64)]
+        [TestCase(64, 64)]
+        [TestCase(65, 64)]
+        public async Task Set_Compact_ReorgLast_Get_Test(int reorgDepth, int maxReorgDepth)
         {
             await using var logIndexStorage = CreateLogIndexStorage();
 
