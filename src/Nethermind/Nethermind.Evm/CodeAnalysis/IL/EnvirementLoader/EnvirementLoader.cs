@@ -21,24 +21,24 @@ public class EnvirementLoader : IEnvirementLoader
 
     private static readonly FieldInfo FieldInputData = typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.InputData), BindingFlags.Public | BindingFlags.Instance);
 
-    public static readonly FieldInfo REF_MACHINECODE_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.MachineCode), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo REF_MACHINECODE_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.MachineCode), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo OBJ_SPEC = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Spec), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo OBJ_SPECPROVIDER_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.SpecProvider), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo OBJ_BLOCKHASHPROVIDER_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.BlockhashProvider), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo OBJ_CODEINFOPROVIDER_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.CodeInfoRepository), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo REF_EVMSTATE_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.EvmState), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo OBJ_WORLDSTATE_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.WorldState), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo OBJ_RETURNDATABUFFER_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.ReturnDataBuffer), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo REF_GASAVAILABLE_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.GasAvailable), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo REF_PROGRAMCOUNTER_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.ProgramCounter), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo REF_STACKHEAD_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.StackHead), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo REF_STACKHEADREF_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.StackHeadRef), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo REF_TX_CONTEXT_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.TxExecutionContext), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo REF_BLK_CONTEXT_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.BlockExecutionContext), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo REF_ENV_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Environment), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo REF_MEMORY_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Memory), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo OBJ_TXTRACER_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.TxTracer), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo OBJ_LOGGER_INDEX = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Logger), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo OBJ_SPECPROVIDER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.SpecProvider), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo OBJ_BLOCKHASHPROVIDER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.BlockhashProvider), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo OBJ_CODEINFOPROVIDER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.CodeInfoRepository), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo REF_EVMSTATE_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.EvmState), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo OBJ_WORLDSTATE_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.WorldState), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo OBJ_RETURNDATABUFFER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.ReturnDataBuffer), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo REF_GASAVAILABLE_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.GasAvailable), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo REF_PROGRAMCOUNTER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.ProgramCounter), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo REF_STACKHEAD_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.StackHead), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo REF_STACKHEADREF_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.StackHeadRef), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo REF_TX_CONTEXT_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.TxExecutionContext), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo REF_BLK_CONTEXT_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.BlockExecutionContext), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo REF_ENV_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Environment), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo REF_MEMORY_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Memory), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo OBJ_TXTRACER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.TxTracer), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo OBJ_LOGGER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Logger), BindingFlags.Public | BindingFlags.Instance);
 
     public const int REF_BUNDLED_ARGS_INDEX = 0;
     public const int REF_CURRENT_STATE_INDEX = REF_BUNDLED_ARGS_INDEX + 1;
@@ -46,7 +46,7 @@ public class EnvirementLoader : IEnvirementLoader
     public void LoadBlockContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_BLK_CONTEXT_INDEX);
+        il.LoadField(REF_BLK_CONTEXT_FIELD);
         if (!loadAddress)
         {
             il.LoadObject<BlockExecutionContext>();
@@ -58,11 +58,11 @@ public class EnvirementLoader : IEnvirementLoader
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
         if (loadAddress)
         {
-            il.LoadFieldAddress(OBJ_BLOCKHASHPROVIDER_INDEX);
+            il.LoadFieldAddress(OBJ_BLOCKHASHPROVIDER_FIELD);
         }
         else
         {
-            il.LoadField(OBJ_BLOCKHASHPROVIDER_INDEX);
+            il.LoadField(OBJ_BLOCKHASHPROVIDER_FIELD);
         }
     }
 
@@ -94,18 +94,18 @@ public class EnvirementLoader : IEnvirementLoader
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
         if (loadAddress)
         {
-            il.LoadFieldAddress(OBJ_CODEINFOPROVIDER_INDEX);
+            il.LoadFieldAddress(OBJ_CODEINFOPROVIDER_FIELD);
         }
         else
         {
-            il.LoadField(OBJ_CODEINFOPROVIDER_INDEX);
+            il.LoadField(OBJ_CODEINFOPROVIDER_FIELD);
         }
     }
 
     public void LoadCurrStackHead<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_STACKHEADREF_INDEX);
+        il.LoadField(REF_STACKHEADREF_FIELD);
         if (!loadAddress)
         {
             throw new NotImplementedException("LoadCurrStackHead without address is not implemented");
@@ -115,7 +115,7 @@ public class EnvirementLoader : IEnvirementLoader
     public void LoadEnv<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_ENV_INDEX);
+        il.LoadField(REF_ENV_FIELD);
         if (!loadAddress)
         {
             il.LoadObject<ExecutionEnvironment>();
@@ -125,7 +125,7 @@ public class EnvirementLoader : IEnvirementLoader
     public void LoadGasAvailable<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_GASAVAILABLE_INDEX);
+        il.LoadField(REF_GASAVAILABLE_FIELD);
         if (!loadAddress)
         {
             il.LoadObject<ulong>();
@@ -138,11 +138,11 @@ public class EnvirementLoader : IEnvirementLoader
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
         if (loadAddress)
         {
-            il.LoadFieldAddress(OBJ_LOGGER_INDEX);
+            il.LoadFieldAddress(OBJ_LOGGER_FIELD);
         }
         else
         {
-            il.LoadField(OBJ_LOGGER_INDEX);
+            il.LoadField(OBJ_LOGGER_FIELD);
         }
     }
 
@@ -151,7 +151,7 @@ public class EnvirementLoader : IEnvirementLoader
         if (loadAddress)
         {
             il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-            il.LoadField(REF_MACHINECODE_INDEX);
+            il.LoadField(REF_MACHINECODE_FIELD);
         }
         else
         {
@@ -162,7 +162,7 @@ public class EnvirementLoader : IEnvirementLoader
     public void LoadMemory<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_MEMORY_INDEX);
+        il.LoadField(REF_MEMORY_FIELD);
         if (!loadAddress)
         {
             il.LoadIndirect<Memory<byte>>();
@@ -172,7 +172,7 @@ public class EnvirementLoader : IEnvirementLoader
     public void LoadProgramCounter<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_PROGRAMCOUNTER_INDEX);
+        il.LoadField(REF_PROGRAMCOUNTER_FIELD);
         if (!loadAddress)
         {
             il.LoadObject<int>();
@@ -202,7 +202,7 @@ public class EnvirementLoader : IEnvirementLoader
     public void LoadStackHead<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_STACKHEAD_INDEX);
+        il.LoadField(REF_STACKHEAD_FIELD);
         if (!loadAddress)
         {
             il.LoadObject<int>();
@@ -212,7 +212,7 @@ public class EnvirementLoader : IEnvirementLoader
     public void LoadTxContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_TX_CONTEXT_INDEX);
+        il.LoadField(REF_TX_CONTEXT_FIELD);
         if (!loadAddress)
         {
             il.LoadObject<TxExecutionContext>();
@@ -224,18 +224,18 @@ public class EnvirementLoader : IEnvirementLoader
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
         if (loadAddress)
         {
-            il.LoadFieldAddress(OBJ_TXTRACER_INDEX);
+            il.LoadFieldAddress(OBJ_TXTRACER_FIELD);
         }
         else
         {
-            il.LoadField(OBJ_TXTRACER_INDEX);
+            il.LoadField(OBJ_TXTRACER_FIELD);
         }
     }
 
     public void LoadVmState<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadFieldAddress(REF_EVMSTATE_INDEX);
+        il.LoadFieldAddress(REF_EVMSTATE_FIELD);
         if (!loadAddress)
         {
             il.LoadIndirect<EvmState>();
@@ -247,11 +247,11 @@ public class EnvirementLoader : IEnvirementLoader
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
         if (loadAddress)
         {
-            il.LoadFieldAddress(OBJ_WORLDSTATE_INDEX);
+            il.LoadFieldAddress(OBJ_WORLDSTATE_FIELD);
         }
         else
         {
-            il.LoadField(OBJ_WORLDSTATE_INDEX);
+            il.LoadField(OBJ_WORLDSTATE_FIELD);
         }
     }
 
@@ -260,11 +260,11 @@ public class EnvirementLoader : IEnvirementLoader
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
         if (loadAddress)
         {
-            il.LoadFieldAddress(OBJ_RETURNDATABUFFER_INDEX);
+            il.LoadFieldAddress(OBJ_RETURNDATABUFFER_FIELD);
         }
         else
         {
-            il.LoadField(OBJ_RETURNDATABUFFER_INDEX);
+            il.LoadField(OBJ_RETURNDATABUFFER_FIELD);
         }
     }
 
@@ -280,11 +280,11 @@ public class EnvirementLoader : IEnvirementLoader
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
         if (loadAddress)
         {
-            il.LoadFieldAddress(OBJ_SPECPROVIDER_INDEX);
+            il.LoadFieldAddress(OBJ_SPECPROVIDER_FIELD);
         }
         else
         {
-            il.LoadField(OBJ_SPECPROVIDER_INDEX);
+            il.LoadField(OBJ_SPECPROVIDER_FIELD);
         }
     }
 

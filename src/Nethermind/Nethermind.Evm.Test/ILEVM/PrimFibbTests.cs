@@ -15,6 +15,7 @@ using System.Reflection;
 using Nethermind.Core.Crypto;
 using System.Linq;
 using Nethermind.Evm.Tracing.GethStyle;
+using System;
 
 namespace Nethermind.Evm.Test.ILEVM;
 
@@ -137,32 +138,32 @@ public class SyntheticBenchmarkTests
             IlEvmPersistPrecompiledContractsOnDisk = false,
         }, Prague.Instance);
 
+        var expected = RunTestOnTestBlockchain(standardChain, bytecode);
+        var actual = RunTestOnTestBlockchain(enhancedChain, bytecode);
 
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    private Hash256 RunTestOnTestBlockchain(IlVirtualMachineTestsBase testBlockchain, byte[] bytecode)
+    {
         byte[][] blobVersionedHashes = null;
-
-        var address = standardChain.InsertCode(bytecode);
-        enhancedChain.InsertCode(bytecode);
+        var address = testBlockchain.InsertCode(bytecode);
 
         var tracer = new GethLikeTxMemoryTracer(null, GethTraceOptions.Default);
 
-        standardChain.Execute<ITxTracer>(bytecode, tracer, blobVersionedHashes: blobVersionedHashes);
-
+        testBlockchain.Execute<ITxTracer>(bytecode, tracer, blobVersionedHashes: blobVersionedHashes);
         Assert.That(tracer.BuildResult().Failed, Is.False);
 
-        Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(0));
+        if(testBlockchain.UseIlEvm)
+        {
+            Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.GreaterThan(0));
+        }
+        else
+        {
+            Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(0));
+        }
 
-        tracer = new GethLikeTxMemoryTracer(null, GethTraceOptions.Default);
-
-        enhancedChain.Execute<ITxTracer>(bytecode, tracer, blobVersionedHashes: blobVersionedHashes);
-
-        Assert.That(tracer.BuildResult().Failed, Is.False);
-
-
-        var actual = standardChain.StateRoot;
-        var expected = enhancedChain.StateRoot;
-
-        Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.GreaterThan(0));
-        Assert.That(actual, Is.EqualTo(expected));
+        return testBlockchain.StateRoot;
     }
 
     [Test, TestCaseSource(nameof(p_args))]
@@ -183,31 +184,9 @@ public class SyntheticBenchmarkTests
             IlEvmPersistPrecompiledContractsOnDisk = false,
         }, Prague.Instance);
 
+        var expected = RunTestOnTestBlockchain(standardChain, bytecode);
+        var actual = RunTestOnTestBlockchain(enhancedChain, bytecode);
 
-        byte[][] blobVersionedHashes = null;
-
-        var address = standardChain.InsertCode(bytecode);
-        enhancedChain.InsertCode(bytecode);
-
-        var tracer = new GethLikeTxMemoryTracer(null, GethTraceOptions.Default);
-
-        standardChain.Execute<ITxTracer>(bytecode, tracer, blobVersionedHashes: blobVersionedHashes);
-
-        Assert.That(tracer.BuildResult().Failed, Is.False);
-
-        Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(0));
-
-        tracer = new GethLikeTxMemoryTracer(null, GethTraceOptions.Default);
-
-        enhancedChain.Execute<ITxTracer>(bytecode, tracer, blobVersionedHashes: blobVersionedHashes);
-
-        Assert.That(tracer.BuildResult().Failed, Is.False);
-
-
-        var actual = standardChain.StateRoot;
-        var expected = enhancedChain.StateRoot;
-
-        Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.GreaterThan(0));
         Assert.That(actual, Is.EqualTo(expected));
     }
 
@@ -236,6 +215,11 @@ public class SyntheticBenchmarkTests
             IlEvmPrecompiledContractsPath = path,
         }, Prague.Instance);
 
+        RunRountripTestWithTestBlockchain(bytecode, path, enhancedChain);
+    }
+
+    private static void RunRountripTestWithTestBlockchain(byte[] bytecode, string path, IlVirtualMachineTestsBase enhancedChain)
+    {
         string fileName = Precompiler.GetTargetFileName();
 
         var address = enhancedChain.InsertCode(bytecode);
@@ -285,28 +269,6 @@ public class SyntheticBenchmarkTests
             IlEvmPrecompiledContractsPath = path,
         }, Prague.Instance);
 
-        string fileName = Precompiler.GetTargetFileName();
-
-        var address = enhancedChain.InsertCode(bytecode);
-
-        enhancedChain.ForceRunAnalysis(address, ILMode.DYNAMIC_AOT_MODE);
-
-        var assemblyPath = Path.Combine(path, fileName);
-
-        Assembly assembly = Assembly.LoadFile(assemblyPath);
-        MethodInfo method = assembly
-            .GetTypes()
-            .First(type => type.CustomAttributes.Any(attr => attr.AttributeType == typeof(NethermindPrecompileAttribute)))
-            .GetMethod(nameof(ILEmittedMethod));
-        Assert.That(method, Is.Not.Null);
-
-        AotContractsRepository.ClearCache();
-        var hashcode = Keccak.Compute(bytecode);
-
-        AotContractsRepository.AddIledCode(hashcode, method.CreateDelegate<ILEmittedMethod>());
-        Assert.That(AotContractsRepository.TryGetIledCode(hashcode, out var iledCode), Is.True, "AOT code is not found in the repository");
-
-        enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, forceAnalysis: false);
-        Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.GreaterThan(0));
+        RunRountripTestWithTestBlockchain(bytecode, path, enhancedChain);
     }
 }

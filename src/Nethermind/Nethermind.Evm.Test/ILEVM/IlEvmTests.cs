@@ -1756,6 +1756,7 @@ namespace Nethermind.Evm.Test.ILEVM
                     .Done, EvmExceptionType.StackUnderflow);
 
 
+                // big test to check if Bytecode current maxSize fails to compile or run 
                 long maxSize = 24.KiB();
 
                 byte[] bytecode = new byte[maxSize];

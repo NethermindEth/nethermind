@@ -108,11 +108,11 @@ public static class StackEmit
 
         envLoader.LoadArguments(il, locals, true);
         il.Duplicate();
-        il.LoadField(EnvirementLoader.REF_STACKHEADREF_INDEX);
+        il.LoadField(EnvirementLoader.REF_STACKHEADREF_FIELD);
         il.LoadConstant(offset * Word.Size);
         il.Convert<nint>();
         il.Call(UnsafeEmit.GetAddBytesOffsetRef<Word>());
-        il.StoreField(EnvirementLoader.REF_STACKHEADREF_INDEX);
+        il.StoreField(EnvirementLoader.REF_STACKHEADREF_FIELD);
     }
 
     public static void LoadItemFromSpan<T, U>(this Emit<T> il, Local idx, bool isReadOnly, Local? local = null)
