@@ -15,12 +15,10 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -63,7 +61,7 @@ public abstract partial class BaseEngineModuleTests
     {
         ThreadPool.GetMaxThreads(out int worker, out int completion);
         ThreadPool.SetMinThreads(worker, completion);
-        return KzgPolynomialCommitments.InitializeAsync();
+        return IBlobProofsManager.For(Core.ProofVersion.V0).InitAsync();
     }
 
     protected virtual MergeTestBlockchain CreateBaseBlockchain(

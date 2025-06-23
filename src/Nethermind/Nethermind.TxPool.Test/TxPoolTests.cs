@@ -21,7 +21,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -29,7 +28,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
@@ -61,7 +59,7 @@ namespace Nethermind.TxPool.Test
             _blockTree.Head.Returns(block);
             _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10000000).TestObject);
 
-            KzgPolynomialCommitments.InitializeAsync().Wait();
+            IBlobProofsManager.For(Core.ProofVersion.V0).InitAsync().Wait();
         }
 
         [Test]
@@ -1836,7 +1834,7 @@ namespace Nethermind.TxPool.Test
         }
 
 
-        private static object[] NonceAndRemovedCases =
+        private static readonly object[] NonceAndRemovedCases =
         {
             new object[]{ true, 1, AcceptTxResult.Accepted },
             new object[]{ true, 0, AcceptTxResult.Accepted},

@@ -675,17 +675,17 @@ public class TxValidatorTests
                 TestName = "Incorrect version, correct length",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 - 1))
+            yield return new TestCaseData(MakeArray(32, IKzg.KzgBlobHashVersionV1 - 1))
             {
                 TestName = "Incorrect version, correct length",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1 + 1))
+            yield return new TestCaseData(MakeArray(32, IKzg.KzgBlobHashVersionV1 + 1))
             {
                 TestName = "Incorrect version, correct length",
                 ExpectedResult = false
             };
-            yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1))
+            yield return new TestCaseData(MakeArray(32, IKzg.KzgBlobHashVersionV1))
             {
                 TestName = "Correct version, correct length",
                 ExpectedResult = true
@@ -697,7 +697,7 @@ public class TxValidatorTests
     {
         get
         {
-            yield return new TestCaseData(MakeArray(32, KzgPolynomialCommitments.KzgBlobHashVersionV1, 0))
+            yield return new TestCaseData(MakeArray(32, IKzg.KzgBlobHashVersionV1, 0))
             {
                 TestName = "Correct version, correct length",
                 ExpectedResult = true
@@ -785,7 +785,7 @@ public class TxValidatorTests
             };
 
             yield return new TestCaseData(Cancun.Instance, MakeTestObject()
-                .WithBlobVersionedHashes(new byte[][] { MakeArray(31, KzgPolynomialCommitments.KzgBlobHashVersionV1) })
+                .WithBlobVersionedHashes(new byte[][] { MakeArray(31, IKzg.KzgBlobHashVersionV1) })
                 .SignedAndResolved().TestObject)
             {
                 TestName = "BlobVersionedHashes are of a wrong length",

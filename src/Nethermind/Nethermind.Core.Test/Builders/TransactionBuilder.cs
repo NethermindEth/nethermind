@@ -157,7 +157,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.BlobVersionedHashes = Enumerable.Range(0, count.Value).Select(_ =>
             {
                 byte[] bvh = new byte[32];
-                bvh[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+                bvh[0] = IKzg.KzgBlobHashVersionV1;
                 return bvh;
             }).ToArray();
             return this;
@@ -188,10 +188,7 @@ namespace Nethermind.Core.Test.Builders
                 })]);
 
 
-                if (!KzgPolynomialCommitments.IsInitialized)
-                {
-                    KzgPolynomialCommitments.InitializeAsync().Wait();
-                }
+                proofsManager.InitAsync().Wait();
 
                 proofsManager.ComputeProofsAndCommitments(wrapper);
 

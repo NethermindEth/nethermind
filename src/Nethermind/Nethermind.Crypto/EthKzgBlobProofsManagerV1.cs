@@ -5,6 +5,7 @@ using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Logging;
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 
 namespace Nethermind.Crypto;
@@ -13,7 +14,7 @@ internal class EthKzgBlobProofsManagerV1 : IBlobProofsManager
 {
     public static EthKzgBlobProofsManagerV1 Instance { get; } = new();
 
-    readonly EthKZG.EthKZG kzg = new(2);
+    private EthKZG.EthKZG kzg = null!;
 
     public ShardBlobNetworkWrapper AllocateWrapper(params ReadOnlySpan<byte[]> blobs)
     {
@@ -91,6 +92,9 @@ internal class EthKzgBlobProofsManagerV1 : IBlobProofsManager
 
     public Task InitAsync(ILogger logger = default)
     {
+        var s = Stopwatch.StartNew();
+        kzg = new EthKZG.EthKZG(2);
+        logger.Warn($"ELAPSED: {s.Elapsed}");
         return Task.CompletedTask;
     }
 

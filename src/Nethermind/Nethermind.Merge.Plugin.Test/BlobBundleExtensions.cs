@@ -14,8 +14,8 @@ internal static class BlobBundleExtensions
 
         for (var i = 0; i < blobsBundle.Commitments.Length; i++)
         {
-            hashes[i] = new byte[KzgPolynomialCommitments.BytesPerBlobVersionedHash];
-            KzgPolynomialCommitments.TryComputeCommitmentHashV1(blobsBundle.Commitments[i], hashes[i]);
+            hashes[i] = new byte[IKzg.BytesPerBlobVersionedHash];
+            IBlobProofsManager.For(Core.ProofVersion.V0).TryComputeCommitmentHashV1(blobsBundle.Commitments[i], hashes[i]);
         }
 
         return hashes;

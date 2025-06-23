@@ -7,6 +7,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Logging;
 using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 
@@ -47,6 +48,7 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
 
     public Task InitAsync(ILogger logger = default) => _initializeTask ??= Task.Run(() =>
     {
+        var s = Stopwatch.StartNew();
         if (_ckzgSetup != IntPtr.Zero) return;
 
         string trustedSetupTextFileLocation = Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
@@ -60,6 +62,7 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
         {
             throw new InvalidOperationException("Unable to load trusted setup");
         }
+        logger.Warn($"ELAPSED2: {s.Elapsed}");
     });
 
     public bool ValidateLengths(ShardBlobNetworkWrapper wrapper)

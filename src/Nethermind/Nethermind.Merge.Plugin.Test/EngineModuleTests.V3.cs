@@ -401,7 +401,7 @@ public partial class EngineModuleTests
             foreach (byte hashByte in hashesFirstBytes)
             {
                 blobVersionedHashes[index] = new byte[32];
-                blobVersionedHashes[index][0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+                blobVersionedHashes[index][0] = IKzg.KzgBlobHashVersionV1;
                 blobVersionedHashes[index][1] = hashByte;
                 index++;
             }
@@ -416,7 +416,7 @@ public partial class EngineModuleTests
                 foreach (byte hashByte in txHashBytes)
                 {
                     txBlobVersionedHashes[txHashIndex] = new byte[32];
-                    txBlobVersionedHashes[txHashIndex][0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+                    txBlobVersionedHashes[txHashIndex][0] = IKzg.KzgBlobHashVersionV1;
                     txBlobVersionedHashes[txHashIndex][1] = hashByte;
                     txHashIndex++;
                 }

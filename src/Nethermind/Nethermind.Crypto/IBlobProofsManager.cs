@@ -17,8 +17,8 @@ public interface IBlobProofsManager : IBlobProofsBuilder, IBlobProofsVerifier, I
     static IBlobProofsManager For
         (ProofVersion version) => version switch
         {
-            ProofVersion.V0 => BlobProofsManagerV0.Instance,
-            ProofVersion.V1 => BlobProofsManagerV1.Instance,
+            ProofVersion.V0 => EthKzgBlobProofsManagerV1.Instance,
+            ProofVersion.V1 => EthKzgBlobProofsManagerV1.Instance,
             _ => throw new NotSupportedException(),
         };
 }
