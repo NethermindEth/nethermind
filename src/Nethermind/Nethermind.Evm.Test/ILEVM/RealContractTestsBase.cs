@@ -134,7 +134,7 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
     }
 
     [TearDown]
-    protected void AssertIlevmCalls()
+    protected virtual void AssertIlevmCalls()
     {
         if (UseIlEvm)
         {
