@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected ProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
         {
-            Logger = logManager?.GetClassLogger(GetType()) ?? throw new ArgumentNullException(nameof(logManager));
+            Logger = logManager?.GetClassLogger<ProtocolHandlerBase>() ?? throw new ArgumentNullException(nameof(logManager));
             StatsManager = nodeStats ?? throw new ArgumentNullException(nameof(nodeStats));
             Session = session ?? throw new ArgumentNullException(nameof(session));
 

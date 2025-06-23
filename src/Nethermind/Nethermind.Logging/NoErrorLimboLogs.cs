@@ -20,8 +20,6 @@ namespace Nethermind.Logging
 
         public static NoErrorLimboLogs Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, static () => new NoErrorLimboLogs());
 
-        public ILogger GetClassLogger(Type type) => LimboNoErrorLogger.Instance;
-
         public ILogger GetClassLogger<T>() => LimboNoErrorLogger.Instance;
 
         public ILogger GetClassLogger([CallerFilePath] string filePath = "") => LimboNoErrorLogger.Instance;

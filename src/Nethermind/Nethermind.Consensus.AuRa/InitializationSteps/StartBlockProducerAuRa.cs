@@ -56,7 +56,6 @@ public class StartBlockProducerAuRa(
     IGasPriceOracle gasPriceOracle,
     ReportingContractBasedValidator.Cache reportingContractValidatorCache,
     IDisposableStack disposeStack,
-    AuRaContractGasLimitOverride.Cache gasLimitCalculatorCache,
     IAbiEncoder abiEncoder,
     IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
     TxAuRaFilterBuilders apiTxAuRaFilterBuilders,
@@ -71,6 +70,7 @@ public class StartBlockProducerAuRa(
     IRewardCalculatorSource rewardCalculatorSource,
     IBlockProducerEnvFactory blockProducerEnvFactory,
     IAuRaStepCalculator stepCalculator,
+    AuRaGasLimitOverrideFactory gasLimitOverrideFactory,
     ILogManager logManager)
 {
     private readonly AuRaChainSpecEngineParameters _parameters = chainSpec.EngineChainSpecParametersProvider
@@ -358,28 +358,8 @@ public class StartBlockProducerAuRa(
 
     private IGasLimitCalculator CreateGasLimitCalculator()
     {
-        var blockGasLimitContractTransitions = chainSpec.EngineChainSpecParametersProvider
-            .GetChainSpecParameters<AuRaChainSpecEngineParameters>().BlockGasLimitContractTransitions;
-
-        IGasLimitCalculator gasLimitCalculator = new TargetAdjustedGasLimitCalculator(specProvider, blocksConfig);
-        if (blockGasLimitContractTransitions?.Count > 0)
-        {
-            AuRaContractGasLimitOverride auRaContractGasLimitOverride = new(
-                    blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
-                            new BlockGasLimitContract(
-                                abiEncoder,
-                                blockGasLimitContractTransition.Value,
-                                blockGasLimitContractTransition.Key,
-                                readOnlyTxProcessingEnvFactory.Create()))
-                        .ToArray<IBlockGasLimitContract>(),
-                    gasLimitCalculatorCache,
-                    auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,
-                    gasLimitCalculator,
-                    logManager);
-
-            gasLimitCalculator = auRaContractGasLimitOverride;
-        }
-
-        return gasLimitCalculator;
+        AuRaContractGasLimitOverride? auRaContractGasLimitOverride = gasLimitOverrideFactory.GetGasLimitCalculator();
+        if (auRaContractGasLimitOverride is not null) return auRaContractGasLimitOverride;
+        return new TargetAdjustedGasLimitCalculator(specProvider, blocksConfig);
     }
 }

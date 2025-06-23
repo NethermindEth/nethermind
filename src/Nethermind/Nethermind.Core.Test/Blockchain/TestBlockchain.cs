@@ -20,7 +20,6 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Crypto;
@@ -42,8 +41,6 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Blockchain;
@@ -56,6 +53,7 @@ public class TestBlockchain : IDisposable
     public IEthereumEcdsa EthereumEcdsa => _fromContainer.EthereumEcdsa;
     public INonceManager NonceManager => _fromContainer.NonceManager;
     public ITransactionProcessor TxProcessor => _fromContainer.MainProcessingContext.TransactionProcessor;
+    public IMainProcessingContext MainProcessingContext => _fromContainer.MainProcessingContext;
     public IReceiptStorage ReceiptStorage => _fromContainer.ReceiptStorage;
     public ITxPool TxPool => _fromContainer.TxPool;
     public IWorldStateManager WorldStateManager => _fromContainer.WorldStateManager;

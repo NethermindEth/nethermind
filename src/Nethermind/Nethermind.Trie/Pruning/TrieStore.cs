@@ -223,12 +223,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowNodeHasBeenSeen(long blockNumber, TrieNode node) => throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
     }
 
