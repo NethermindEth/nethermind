@@ -15,7 +15,7 @@ using Nethermind.Evm.Tracing;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
-public class EnvirementLoader : IEnvirementLoader
+public class EnvirementLoader 
 {
     public static readonly EnvirementLoader Instance = new();
 
@@ -26,7 +26,7 @@ public class EnvirementLoader : IEnvirementLoader
     public static readonly FieldInfo OBJ_SPECPROVIDER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.SpecProvider), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo OBJ_BLOCKHASHPROVIDER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.BlockhashProvider), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo OBJ_CODEINFOPROVIDER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.CodeInfoRepository), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo REF_EVMSTATE_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.EvmState), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo OBJ_EVMSTATE_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.EvmState), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo OBJ_WORLDSTATE_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.WorldState), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo OBJ_RETURNDATABUFFER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.ReturnDataBuffer), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo REF_GASAVAILABLE_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.GasAvailable), BindingFlags.Public | BindingFlags.Instance);
@@ -43,10 +43,15 @@ public class EnvirementLoader : IEnvirementLoader
     public const int REF_BUNDLED_ARGS_INDEX = 0;
     public const int REF_CURRENT_STATE_INDEX = REF_BUNDLED_ARGS_INDEX + 1;
 
-    public void LoadBlockContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    private static void LoadRefField<TDelegate>(Emit<TDelegate> il, FieldInfo field)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_BLK_CONTEXT_FIELD);
+        il.LoadField(field);
+    }
+
+    public void LoadBlockContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    {
+        LoadRefField(il, REF_BLK_CONTEXT_FIELD);
         if (!loadAddress)
         {
             il.LoadObject<BlockExecutionContext>();
@@ -104,8 +109,7 @@ public class EnvirementLoader : IEnvirementLoader
 
     public void LoadCurrStackHead<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_STACKHEADREF_FIELD);
+        LoadRefField(il, REF_STACKHEADREF_FIELD);
         if (!loadAddress)
         {
             throw new NotImplementedException("LoadCurrStackHead without address is not implemented");
@@ -114,8 +118,7 @@ public class EnvirementLoader : IEnvirementLoader
 
     public void LoadEnv<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_ENV_FIELD);
+        LoadRefField(il, REF_ENV_FIELD);
         if (!loadAddress)
         {
             il.LoadObject<ExecutionEnvironment>();
@@ -124,8 +127,7 @@ public class EnvirementLoader : IEnvirementLoader
 
     public void LoadGasAvailable<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_GASAVAILABLE_FIELD);
+        LoadRefField(il, REF_GASAVAILABLE_FIELD);
         if (!loadAddress)
         {
             il.LoadObject<ulong>();
@@ -134,7 +136,6 @@ public class EnvirementLoader : IEnvirementLoader
 
     public void LoadLogger<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
         if (loadAddress)
         {
@@ -150,8 +151,7 @@ public class EnvirementLoader : IEnvirementLoader
     {
         if (loadAddress)
         {
-            il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-            il.LoadField(REF_MACHINECODE_FIELD);
+            LoadRefField(il, REF_MACHINECODE_FIELD);
         }
         else
         {
@@ -161,8 +161,7 @@ public class EnvirementLoader : IEnvirementLoader
 
     public void LoadMemory<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_MEMORY_FIELD);
+        LoadRefField(il, REF_MEMORY_FIELD);
         if (!loadAddress)
         {
             il.LoadIndirect<Memory<byte>>();
@@ -171,8 +170,7 @@ public class EnvirementLoader : IEnvirementLoader
 
     public void LoadProgramCounter<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_PROGRAMCOUNTER_FIELD);
+        LoadRefField(il, REF_PROGRAMCOUNTER_FIELD);
         if (!loadAddress)
         {
             il.LoadObject<int>();
@@ -201,8 +199,7 @@ public class EnvirementLoader : IEnvirementLoader
 
     public void LoadStackHead<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_STACKHEAD_FIELD);
+        LoadRefField(il, REF_STACKHEAD_FIELD);
         if (!loadAddress)
         {
             il.LoadObject<int>();
@@ -211,8 +208,7 @@ public class EnvirementLoader : IEnvirementLoader
 
     public void LoadTxContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadField(REF_TX_CONTEXT_FIELD);
+        LoadRefField(il, REF_TX_CONTEXT_FIELD);
         if (!loadAddress)
         {
             il.LoadObject<TxExecutionContext>();
@@ -235,10 +231,13 @@ public class EnvirementLoader : IEnvirementLoader
     public void LoadVmState<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        il.LoadFieldAddress(REF_EVMSTATE_FIELD);
-        if (!loadAddress)
+        if(loadAddress)
         {
-            il.LoadIndirect<EvmState>();
+            il.LoadFieldAddress(OBJ_EVMSTATE_FIELD);
+        }
+        else
+        {
+            il.LoadField(OBJ_EVMSTATE_FIELD);
         }
     }
 

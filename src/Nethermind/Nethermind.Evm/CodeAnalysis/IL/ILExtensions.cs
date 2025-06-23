@@ -44,14 +44,14 @@ public static class ReleaseSpecEmit
         }
     }
 
-    public static void EmitAmortizedStaticEnvCheck<T>(this Emit<T> method, IEnvirementLoader envirementLoader, SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
+    public static void EmitAmortizedStaticEnvCheck<T>(this Emit<T> method, EnvirementLoader envirementLoader, SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
     {
         envirementLoader.LoadVmState(method, locals, false);
         method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
         method.BranchIfTrue(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StaticCallViolation));
     }
 
-    public static void EmitAmortizedOpcodeCheck<T>(this Emit<T> method, IEnvirementLoader envirementLoader,  SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
+    public static void EmitAmortizedOpcodeCheck<T>(this Emit<T> method, EnvirementLoader envirementLoader,  SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
     {
         // can be made better to save more memory using vectorized (think BitVectors)
         Label alreadyCheckedLabel = method.DefineLabel(locals.GetLabelName());
@@ -547,21 +547,21 @@ public static class UnsafeEmit
 
 static class EmitIlChunkStateExtensions
 {
-    public static void EmitIsStoping<T>(this Emit<T> method, IEnvirementLoader loader, Locals<T> locals, Label goto_label)
+    public static void EmitIsStoping<T>(this Emit<T> method, EnvirementLoader loader, Locals<T> locals, Label goto_label)
     {
         loader.LoadResult(method, locals, true);
         method.Call(GetPropertyInfo<ILChunkExecutionState>(nameof(ILChunkExecutionState.ShouldAbort), false, out _));
         method.BranchIfTrue(goto_label);
     }
 
-    public static void EmitIsHalting<T>(this Emit<T> method, IEnvirementLoader loader, Locals<T> locals, Label goto_label)
+    public static void EmitIsHalting<T>(this Emit<T> method, EnvirementLoader loader, Locals<T> locals, Label goto_label)
     {
         loader.LoadResult(method, locals, true);
         method.Call(GetPropertyInfo<ILChunkExecutionState>(nameof(ILChunkExecutionState.ShouldHalt), false, out _));
         method.BranchIfTrue(goto_label);
     }
 
-    public static void EmitIsJumping<T>(this Emit<T> method, IEnvirementLoader loader, Locals<T> locals, Label goto_label)
+    public static void EmitIsJumping<T>(this Emit<T> method, EnvirementLoader loader, Locals<T> locals, Label goto_label)
     {
         loader.LoadResult(method, locals, true);
         method.Call(GetPropertyInfo<ILChunkExecutionState>(nameof(ILChunkExecutionState.ShouldJump), false, out _));
