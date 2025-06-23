@@ -10,6 +10,10 @@
   <Folder Name="/Plugins/Analytics/">
     <Project Path="Nethermind.Analytics/Nethermind.Analytics.csproj" />
   </Folder>
+  <Folder Name="/Plugins/Flashbots/">
+    <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
+    <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
+  </Folder>
   <Folder Name="/Plugins/Hive/">
     <Project Path="Nethermind.Hive.Test/Nethermind.Hive.Test.csproj" />
     <Project Path="Nethermind.Hive/Nethermind.Hive.csproj" />
@@ -17,10 +21,6 @@
   <Folder Name="/Plugins/Merge/">
     <Project Path="Nethermind.Merge.Plugin.Test/Nethermind.Merge.Plugin.Test.csproj" />
     <Project Path="Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj" />
-  </Folder>
-  <Folder Name="/Plugins/Flashbots/">
-    <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
-    <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
   </Folder>
   <Folder Name="/Plugins/Signer/">
     <Project Path="Nethermind.ExternalSigner.Plugin/Nethermind.ExternalSigner.Plugin.csproj" />
@@ -63,6 +63,7 @@
     <Project Path="Nethermind.Network.Discovery.Test/Nethermind.Network.Discovery.Test.csproj" />
     <Project Path="Nethermind.Network.Dns.Test/Nethermind.Network.Dns.Test.csproj" />
     <Project Path="Nethermind.Network.Enr.Test/Nethermind.Network.Enr.Test.csproj" />
+    <Project Path="Nethermind.Network.Optimum.Test\Nethermind.Network.Optimum.Test.csproj" Type="Classic C#" />
     <Project Path="Nethermind.Network.Test/Nethermind.Network.Test.csproj" />
     <Project Path="Nethermind.Optimism.Test/Nethermind.Optimism.Test.csproj" />
     <Project Path="Nethermind.Overseer.Test/Nethermind.Overseer.Test.csproj" />
