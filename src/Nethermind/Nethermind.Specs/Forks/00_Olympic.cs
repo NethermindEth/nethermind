@@ -17,6 +17,7 @@ namespace Nethermind.Specs.Forks
             Name = "Olympic";
             MaximumExtraDataSize = 32;
             MaxCodeSize = long.MaxValue;
+            MaxInitCodeSize = long.MaxValue;
             MinGasLimit = 5000;
             GasLimitBoundDivisor = 0x0400;
             BlockReward = UInt256.Parse("5000000000000000000");

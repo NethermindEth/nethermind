@@ -449,10 +449,10 @@ public class ChainSpecBasedSpecProviderTests
     private static void VerifyGnosisShanghaiSpecifics(IReleaseSpec preShanghaiSpec, IReleaseSpec postShanghaiSpec)
     {
         preShanghaiSpec.MaxCodeSize.Should().Be(long.MaxValue);
-        postShanghaiSpec.MaxCodeSize.Should().Be(24576L);
+        postShanghaiSpec.MaxCodeSize.Should().Be(Eip7907Constants.MaxCodeSize);
 
         preShanghaiSpec.MaxInitCodeSize.Should().Be(-2L); // doesn't have meaningful value before EIP3860
-        postShanghaiSpec.MaxInitCodeSize.Should().Be(2 * 24576L);
+        postShanghaiSpec.MaxInitCodeSize.Should().Be(Eip7907Constants.MaxInitCodeSize);
 
         preShanghaiSpec.LimitCodeSize.Should().Be(false);
         postShanghaiSpec.LimitCodeSize.Should().Be(true);
@@ -521,8 +521,8 @@ public class ChainSpecBasedSpecProviderTests
         MainnetSpecProvider mainnet = MainnetSpecProvider.Instance;
 
         CompareSpecs(mainnet, provider, forkActivation, CompareSpecsOptions.CheckDifficultyBomb);
-        provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxCodeSize.Should().Be(24576L);
-        provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxInitCodeSize.Should().Be(2 * 24576L);
+        provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxCodeSize.Should().Be(Eip7907Constants.MaxCodeSize);
+        provider.GetSpec((MainnetSpecProvider.SpuriousDragonBlockNumber, null)).MaxInitCodeSize.Should().Be(Eip7907Constants.MaxInitCodeSize);
 
         provider.GetSpec((ForkActivation)(long.MaxValue - 1)).IsEip2537Enabled.Should().BeFalse();
         Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(MainnetSpecProvider.LondonBlockNumber));

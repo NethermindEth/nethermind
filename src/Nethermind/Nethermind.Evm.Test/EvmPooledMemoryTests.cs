@@ -43,7 +43,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    private const int MaxCodeSize = 24576;
+    private const int MaxCodeSize = Eip7907Constants.MaxCodeSize;
 
     [TestCase(0, 0)]
     [TestCase(0, 32)]
