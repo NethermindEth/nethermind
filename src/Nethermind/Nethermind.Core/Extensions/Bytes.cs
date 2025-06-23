@@ -1063,15 +1063,13 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidOperationException()
         {
             throw new InvalidOperationException();
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowFormatException_IncorrectHexString()
         {
             throw new FormatException("Incorrect hex string");

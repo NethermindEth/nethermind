@@ -55,8 +55,7 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
 
             return this;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowNoAddress()
             {
                 throw new InvalidOperationException("No address known when adding index to the access list");

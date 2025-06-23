@@ -61,6 +61,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private bool _recoveryComplete = false;
     private int _queueCount;
+    private bool _disposed;
 
     private readonly ProcessingStats _stats;
 
@@ -100,9 +101,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
         _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         _options = options;
-
-        _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
-        _blockTree.NewHeadBlock += OnNewHeadBlock;
 
         _stats = new ProcessingStats(stateReader, _logger);
         _loopCancellationSource = new CancellationTokenSource();
@@ -179,13 +177,34 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public void Start()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_processorTask is not null) ThrowAlreadyStarted();
+
+        _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
+        _blockTree.NewHeadBlock += OnNewHeadBlock;
+
         _loopCancellationSource ??= new CancellationTokenSource();
         _recoveryTask = RunRecovery();
         _processorTask = RunProcessing();
+
+        if (_logger.IsInfo) _logger.Info($"{nameof(BlockchainProcessor)} started.");
+
+        [StackTraceHidden, DoesNotReturn]
+        static void ThrowAlreadyStarted() => throw new InvalidOperationException($"{nameof(BlockchainProcessor)} already started");
     }
 
     public async Task StopAsync(bool processRemainingBlocks = false)
     {
+        if (_disposed) return;
+        _disposed = true;
+
+        bool isStarted = _processorTask is not null;
+        if (isStarted)
+        {
+            _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
+            _blockTree.NewHeadBlock -= OnNewHeadBlock;
+        }
+
         _recoveryComplete = true;
         if (processRemainingBlocks)
         {
@@ -201,7 +220,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         await Task.WhenAll(_recoveryTask ?? Task.CompletedTask, _processorTask ?? Task.CompletedTask);
-        if (_logger.IsInfo) _logger.Info("Blockchain Processor shutdown complete.. please wait for all components to close");
+        if (isStarted && _logger.IsInfo) _logger.Info($"{nameof(BlockchainProcessor)} shutdown complete.");
     }
 
     private async Task RunRecovery()
@@ -592,8 +611,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         void TraceProcessingBlocks(ProcessingBranch processingBranch, ArrayPoolList<Block> blocksToProcess)
             => _logger.Trace($"Processing {blocksToProcess.Count} blocks from state root {processingBranch.Root}");
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowOrphanedBlock(Block firstBlock)
             => throw new InvalidBlockException(firstBlock, $"Rejected a block that is orphaned: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
 
@@ -734,8 +752,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         void TraceStateRootLookup(Hash256 stateRoot)
             => _logger.Trace($"State root lookup: {stateRoot}");
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowMaxBranchSizeReached()
             => throw new InvalidOperationException($"Maximum size of branch reached ({MaxBranchSize}). This is unexpected.");
     }
@@ -778,24 +795,21 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         void LogUnknownParentBlock(Block suggestedBlock)
             => _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with unknown parent");
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         void ThrowUnknownTotalDifficulty(Block suggestedBlock)
         {
             if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without total difficulty");
             throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         void ThrowUnknownBlockHash(Block suggestedBlock)
         {
             if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without calculated hash");
             throw new InvalidOperationException("Block hash should be known at this stage if running in a validating mode");
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         void ThrowUnknownUncleHash(Block suggestedBlock, int i)
         {
             if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with null uncle hash ar {i}");
@@ -805,8 +819,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public async ValueTask DisposeAsync()
     {
-        _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
-        _blockTree.NewHeadBlock -= OnNewHeadBlock;
         await StopAsync(processRemainingBlocks: false);
     }
 

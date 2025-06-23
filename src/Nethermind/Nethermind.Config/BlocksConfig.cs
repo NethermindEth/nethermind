@@ -14,9 +14,9 @@ namespace Nethermind.Config
     public class BlocksConfig : IBlocksConfig
     {
         public const int MaxBlockSizeKilobytes = 10240;
-        public const int MaxCLWrapperKilobytes = 2560;
+        public const int MaxCLWrapperKilobytes = 2048;
         public const int SafetyMarginKilobytes = 256;
-        // 7424
+        // 7936
         public const int DefaultMaxTxKilobytes = MaxBlockSizeKilobytes - MaxCLWrapperKilobytes - SafetyMarginKilobytes;
         private const string _clientExtraData = "Nethermind";
         public static string DefaultExtraData = _clientExtraData;

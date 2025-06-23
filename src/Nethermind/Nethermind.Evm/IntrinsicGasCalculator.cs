@@ -64,8 +64,7 @@ public static class IntrinsicGasCalculator
 
         return 0;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidDataException(IReleaseSpec releaseSpec)
         {
             throw new InvalidDataException($"Transaction with an access list received within the context of {releaseSpec.Name}. EIP-2930 is not enabled.");
@@ -88,8 +87,7 @@ public static class IntrinsicGasCalculator
 
         return 0;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidDataException(IReleaseSpec releaseSpec)
         {
             throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. EIP-7702 is not enabled.");

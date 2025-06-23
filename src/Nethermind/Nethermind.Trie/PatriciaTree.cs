@@ -264,8 +264,7 @@ namespace Nethermind.Trie
                 if (_logger.IsTrace) TraceSkipInlineNode(node);
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowInvalidExtension() => throw new InvalidOperationException("An attempt to store an extension without a child.");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
@@ -467,8 +466,7 @@ namespace Nethermind.Trie
                 _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.Span.ToHexString(withZeroX: true)}")}");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowNonConcurrentWrites()
             {
                 throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
@@ -570,8 +568,7 @@ namespace Nethermind.Trie
                 ThrowDecodingError(node, in path, rlpException);
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowDecodingError(TrieNode node, in TreePath path, RlpException rlpException)
             {
                 var exception = new TrieNodeException($"Error when decoding node {node.Keccak}", path, node.Keccak ?? Keccak.Zero, rlpException);
@@ -605,8 +602,7 @@ namespace Nethermind.Trie
                 _logger.Trace($"Traversing {node} to {(traverseContext.IsReadValue ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static SpanSource TraverseInvalid(TrieNode node)
             {
                 switch (node.NodeType)
@@ -620,22 +616,19 @@ namespace Nethermind.Trie
                 }
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static SpanSource TraverseBranch(TrieNode node)
             {
                 throw new InvalidOperationException($"Branch node {node.Keccak} should already be handled");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static SpanSource TraverseUnknown(TrieNode node)
             {
                 throw new InvalidOperationException($"Cannot traverse unresolved node {node.Keccak}");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static SpanSource ThrowNotSupported(TrieNode node)
             {
                 throw new NotSupportedException($"Unknown node type {node.NodeType}");
@@ -864,23 +857,19 @@ namespace Nethermind.Trie
 
             RootRef = nextNode;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowTrieExceptionLeftCannotBeParent(TrieNode node, TrieNode nextNode)
                 => throw new TrieException($"{nameof(NodeType.Leaf)} {node} cannot be a parent of {nextNode}");
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowTrieExceptionCorruption()
                 => throw new TrieException("Before updating branch should have had at least two non-empty children");
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowInvalidNodeType(TrieNode node)
                 => throw new InvalidOperationException($"Unknown node type {node.NodeType}");
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowInvalidNullNode(TrieNode node)
                 => throw new InvalidOperationException($"An attempt to set a null node as a child of the {node}");
         }
@@ -1350,33 +1339,28 @@ namespace Nethermind.Trie
 
             return stackedNodes.Pop();
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void Throw() => throw new InvalidOperationException($"Nothing on {nameof(_nodeStack)}");
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowReadOnlyTrieException() => throw new TrieException("Commits are not allowed on this trie.");
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(TrieNode originalNode)
         {
             throw new InvalidDataException(
                 $"Extension {originalNode.Keccak} has no child.");
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowMissingChildException(TrieNode node)
         {
             throw new TrieException(
                 $"Found an {nameof(NodeType.Extension)} {node.Keccak} that is missing a child.");
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowMissingPrefixException()
         {
             throw new InvalidDataException("An attempt to visit a node without a prefix path.");
