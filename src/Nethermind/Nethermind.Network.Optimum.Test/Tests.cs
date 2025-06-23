@@ -21,13 +21,12 @@ public class Tests
     public async Task GatewaySubscribeToTopic()
     {
         using var httpClient = new HttpClient();
-        var options = new GrpcGatewayClientOptions
+        var client = new GrpcGatewayClient(httpClient, new GrpcGatewayClientOptions
         {
             ClientId = "nethermind-optimum-test-client",
             RestEndpoint = new Uri("http://localhost:8081/api/subscribe"),
             GrpcEndpoint = new Uri("http://localhost:50051")
-        };
-        var client = new GrpcGatewayClient(httpClient, options);
+        });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
@@ -35,7 +34,7 @@ public class Tests
         int receivedCount = 0;
         try
         {
-            await foreach (var message in messages)
+            await foreach (var _ in messages)
             {
                 receivedCount++;
             }
