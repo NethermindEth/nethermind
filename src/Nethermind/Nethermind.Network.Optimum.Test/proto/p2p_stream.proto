@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package proto;
+
+option csharp_namespace = "GetOptimum.Gateway.Proto";
+
+// CommandStream establish a stream connection to send and receive commands
+// between the Optimum Gateway and the p2p node
+service CommandStream {
+  rpc ListenCommands(stream Request) returns (stream Response) {}
+  rpc Health(Void) returns (HealthResponse) {}
+  rpc ListTopics(Void) returns (TopicList) {}
+}
+
+message Void {}
+
+message HealthResponse {
+  bool status = 1;
+  string nodeMode = 2;
+  float memoryUsed = 3;
+  float cpuUsed = 4;
+  float diskUsed = 5;
+}
+
+enum ResponseType {
+  Unknown = 0;
+  Message = 1;
+  MessageTraceOptimumP2P = 2;
+  MessageTraceGossipSub = 3;
+}
+
+message Request {
+  int32 command = 1;
+  bytes data = 2;
+  string topic = 3;
+}
+
+message Response {
+  ResponseType command = 1;
+  bytes data = 2;
+  bytes metadata = 3;
+}
+
+message TopicList {
+  repeated string topics = 1;
+}

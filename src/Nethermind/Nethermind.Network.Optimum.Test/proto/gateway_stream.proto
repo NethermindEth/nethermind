@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package proto;
+
+option csharp_namespace = "GetOptimum.Gateway.Proto";
+
+// GatewayStream establishes a stream connection to send and receive messages
+// between the Optimum Gateway and the clients.
+service GatewayStream {
+  rpc ClientStream(stream GatewayMessage) returns (stream GatewayMessage);
+}
+
+// GatewayMessage represents a message sent between the Optimum Gateway and clients.
+message GatewayMessage {
+  string client_id = 1;
+  bytes message = 2;
+  string topic = 3;
+  string message_id = 4;
+  string type = 5;
+}
