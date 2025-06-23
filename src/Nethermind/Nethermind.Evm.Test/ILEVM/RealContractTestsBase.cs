@@ -49,7 +49,7 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
         {
             _config = new VMConfig
             {
-                IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
+                IlEvmEnabledMode = ILMode.AOT_MODE,
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
                 IlEvmContractsPerDllCount = 1,
@@ -81,7 +81,7 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
     {
         if (UseIlEvm && forceAnalysis)
         {
-            ForceRunAnalysis(tx.To, ILMode.DYNAMIC_AOT_MODE);
+            ForceRunAnalysis(tx.To, ILMode.AOT_MODE);
         }
 
         var result = _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
@@ -99,9 +99,9 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
             return;
         }
 
-        if (mode.HasFlag(ILMode.DYNAMIC_AOT_MODE))
+        if (mode.HasFlag(ILMode.AOT_MODE))
         {
-            IlAnalyzer.Analyse(codeinfo, ILMode.DYNAMIC_AOT_MODE, _config, NullLogger.Instance);
+            IlAnalyzer.Analyse(codeinfo, ILMode.AOT_MODE, _config, NullLogger.Instance);
         }
 
         codeinfo.IlInfo.AnalysisPhase.Should().Be(AnalysisPhase.Completed);
@@ -124,7 +124,7 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
         TestState.InsertCode(ContractAddress, Keccak.MaxValue.ValueHash256, ByteCode, SpecProvider.GenesisSpec);
         var codeinfo = CodeInfoRepository.GetCachedCodeInfo(TestState, ContractAddress, Prague.Instance, out _);
 
-        IlAnalyzer.Analyse(codeinfo, ILMode.DYNAMIC_AOT_MODE, _config, NullLogger.Instance);
+        IlAnalyzer.Analyse(codeinfo, ILMode.AOT_MODE, _config, NullLogger.Instance);
 
         codeinfo.IlInfo.AnalysisPhase.Should().Be(AnalysisPhase.Completed);
 

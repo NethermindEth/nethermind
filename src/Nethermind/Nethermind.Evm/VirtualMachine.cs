@@ -694,7 +694,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 _state.IncrementNonce(env.ExecutingAccount);
             }
 
-            if (typeof(IsPrecompiling) == typeof(TOptimizing) && _vmConfig.IlEvmEnabledMode is ILMode.DYNAMIC_AOT_MODE)
+            if (typeof(IsPrecompiling) == typeof(TOptimizing) && _vmConfig.IlEvmEnabledMode is ILMode.AOT_MODE)
             {
 #if ILVM_TESTING
                 if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed && vmState.Env.CodeInfo.Codehash is not null && vmState.Env.CodeInfo.MachineCode.Length < 24.KB())

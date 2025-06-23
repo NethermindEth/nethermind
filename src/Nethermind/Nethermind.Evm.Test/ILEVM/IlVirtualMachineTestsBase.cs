@@ -51,7 +51,7 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
         {
             _config = new VMConfig
             {
-                IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
+                IlEvmEnabledMode = ILMode.AOT_MODE,
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
                 IlEvmContractsPerDllCount = 1,
@@ -109,7 +109,7 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
     {
         if (UseIlEvm && forceAnalysis)
         {
-            ForceRunAnalysis(tx.To, ILMode.DYNAMIC_AOT_MODE);
+            ForceRunAnalysis(tx.To, ILMode.AOT_MODE);
         }
         Execute(fork ?? MainnetSpecProvider.PragueActivation, tx);
     }
@@ -144,9 +144,9 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
     {
         var codeinfo = CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance, out _);
 
-        if (mode.HasFlag(ILMode.DYNAMIC_AOT_MODE))
+        if (mode.HasFlag(ILMode.AOT_MODE))
         {
-            IlAnalyzer.Analyse(codeinfo, ILMode.DYNAMIC_AOT_MODE, _config, NullLogger.Instance);
+            IlAnalyzer.Analyse(codeinfo, ILMode.AOT_MODE, _config, NullLogger.Instance);
         }
 
         codeinfo.IlInfo.AnalysisPhase = AnalysisPhase.Completed;

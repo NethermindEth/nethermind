@@ -205,7 +205,7 @@ public class SyntheticTest(bool useIlEvm, string benchmarkName, ulong number, ul
 
         IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
         {
-            IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
+            IlEvmEnabledMode = ILMode.AOT_MODE,
             IlEvmAnalysisThreshold = 256,
             IlEvmAnalysisQueueMaxSize = 256,
             IlEvmPersistPrecompiledContractsOnDisk = false,
@@ -244,7 +244,7 @@ public class SyntheticTest(bool useIlEvm, string benchmarkName, ulong number, ul
 
         IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
         {
-            IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
+            IlEvmEnabledMode = ILMode.AOT_MODE,
             IlEvmAnalysisThreshold = 1,
             IlEvmAnalysisQueueMaxSize = 1,
             IlEvmContractsPerDllCount = 1,
@@ -256,7 +256,7 @@ public class SyntheticTest(bool useIlEvm, string benchmarkName, ulong number, ul
 
         var address = enhancedChain.InsertCode(bytecode);
 
-        enhancedChain.ForceRunAnalysis(address, ILMode.DYNAMIC_AOT_MODE);
+        enhancedChain.ForceRunAnalysis(address, ILMode.AOT_MODE);
 
         var assemblyPath = Path.Combine(path, fileName);
 

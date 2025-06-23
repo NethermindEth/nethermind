@@ -1833,7 +1833,7 @@ namespace Nethermind.Evm.Test.ILEVM
             IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
             {
                 IsILEvmEnabled = true,
-                IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
+                IlEvmEnabledMode = ILMode.AOT_MODE,
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
             }, Prague.Instance);
@@ -1888,7 +1888,7 @@ namespace Nethermind.Evm.Test.ILEVM
 
             IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
             {
-                IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
+                IlEvmEnabledMode = ILMode.AOT_MODE,
                 IlEvmAnalysisThreshold = 256,
                 IlEvmAnalysisQueueMaxSize = 256,
                 IlEvmPersistPrecompiledContractsOnDisk = false,
@@ -1919,7 +1919,7 @@ namespace Nethermind.Evm.Test.ILEVM
                         .Done;
                     var callAddress = standardChain.InsertCode(returningCode);
                     enhancedChain.InsertCode(returningCode);
-                    enhancedChain.ForceRunAnalysis(callAddress, ILMode.DYNAMIC_AOT_MODE);
+                    enhancedChain.ForceRunAnalysis(callAddress, ILMode.AOT_MODE);
 
                     var callCode =
                         Prepare.EvmCode
@@ -1959,7 +1959,7 @@ namespace Nethermind.Evm.Test.ILEVM
 
             IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
             {
-                IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
+                IlEvmEnabledMode = ILMode.AOT_MODE,
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
                 IlEvmContractsPerDllCount = 1,
@@ -1971,7 +1971,7 @@ namespace Nethermind.Evm.Test.ILEVM
 
             var address = enhancedChain.InsertCode(testcase.bytecode);
 
-            enhancedChain.ForceRunAnalysis(address, ILMode.DYNAMIC_AOT_MODE);
+            enhancedChain.ForceRunAnalysis(address, ILMode.AOT_MODE);
 
             var assemblyPath = Path.Combine(path, fileName);
 
@@ -1997,7 +1997,7 @@ namespace Nethermind.Evm.Test.ILEVM
         {
             IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
             {
-                IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
+                IlEvmEnabledMode = ILMode.AOT_MODE,
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
                 IlEvmContractsPerDllCount = 1,
@@ -2005,7 +2005,7 @@ namespace Nethermind.Evm.Test.ILEVM
 
             var address = enhancedChain.InsertCode(testcase.bytecode);
 
-            enhancedChain.ForceRunAnalysis(address, ILMode.DYNAMIC_AOT_MODE);
+            enhancedChain.ForceRunAnalysis(address, ILMode.AOT_MODE);
 
             var hashcode = Keccak.Compute(testcase.bytecode);
 
@@ -2042,7 +2042,7 @@ namespace Nethermind.Evm.Test.ILEVM
 
             IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
             {
-                IlEvmEnabledMode = ILMode.DYNAMIC_AOT_MODE,
+                IlEvmEnabledMode = ILMode.AOT_MODE,
                 IlEvmAnalysisThreshold = 1,
                 IlEvmAnalysisQueueMaxSize = 1,
                 IlEvmPersistPrecompiledContractsOnDisk = false,

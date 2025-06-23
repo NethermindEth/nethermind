@@ -133,7 +133,7 @@ public static class IlAnalyzer
     {
         switch (mode)
         {
-            case ILMode.DYNAMIC_AOT_MODE:
+            case ILMode.AOT_MODE:
                 if (AotContractsRepository.TryGetIledCode(codeInfo.Codehash.Value, out ILEmittedMethod? contractDelegate))
                 {
                     codeInfo.IlInfo.PrecompiledContract = contractDelegate;

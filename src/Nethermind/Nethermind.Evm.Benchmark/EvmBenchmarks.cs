@@ -83,7 +83,7 @@ namespace Nethermind.Evm.Benchmark
 
             vmConfig.IsILEvmEnabled = typeof(TIsOptimizing) != typeof(VirtualMachine.NotOptimizing);
             vmConfig.IlEvmEnabledMode = typeof(TIsOptimizing) == typeof(VirtualMachine.IsPrecompiling)
-                ? ILMode.DYNAMIC_AOT_MODE : ILMode.NO_ILVM;
+                ? ILMode.AOT_MODE : ILMode.NO_ILVM;
 
             vmConfig.IlEvmAnalysisThreshold = 1;
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
@@ -287,14 +287,15 @@ namespace Nethermind.Evm.Benchmark
 
                 string benchName = $"Fib With args {new UInt256(argBytes)}";
 
-                switch (mode)
+
+                if ((mode & ILMode.NO_ILVM) == ILMode.NO_ILVM)
                 {
-                    case ILMode.NO_ILVM:
-                        yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + benchName, bytecode);
-                        break;
-                    case ILMode.DYNAMIC_AOT_MODE:
-                        yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + benchName, bytecode);
-                        break;
+                    yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + benchName, bytecode);
+                }
+
+                if ((mode & ILMode.AOT_MODE) == ILMode.AOT_MODE)
+                {
+                    yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + benchName, bytecode);
                 }
             }
 
@@ -308,27 +309,29 @@ namespace Nethermind.Evm.Benchmark
                 string benchName = $"Prim With args {new UInt256(argBytes)}";
                 var bytecode = isPrimeBytecode(argBytes);
 
-                switch (mode)
+                if ((mode & ILMode.NO_ILVM) == ILMode.NO_ILVM)
                 {
-                    case ILMode.NO_ILVM:
-                        yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + benchName, bytecode);
-                        break;
-                    case ILMode.DYNAMIC_AOT_MODE:
-                        yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + benchName, bytecode);
-                        break;
+                    yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + benchName, bytecode);
+                }
+
+                if ((mode & ILMode.AOT_MODE) == ILMode.AOT_MODE)
+                {
+                    yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + benchName, bytecode);
                 }
             }
 
             string mtbenchName = $"empty bytecode [Stop]";
             var mtbytecode = emptyBytecode();
-            switch (mode)
+
+
+            if ((mode & ILMode.NO_ILVM) == ILMode.NO_ILVM)
             {
-                case ILMode.NO_ILVM:
-                    yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + mtbenchName, mtbytecode);
-                    break;
-                case ILMode.DYNAMIC_AOT_MODE:
-                    yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + mtbenchName, mtbytecode);
-                    break;
+                yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + mtbenchName, mtbytecode);
+            }
+
+            if ((mode & ILMode.AOT_MODE) == ILMode.AOT_MODE)
+            {
+                yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + mtbenchName, mtbytecode);
             }
         }
 
@@ -366,9 +369,9 @@ namespace Nethermind.Evm.Benchmark
             switch (mode)
             {
                 case ILMode.NO_ILVM:
-                    yield return new LocalSetup<NotOptimizing>("ILEVM::0::std::" + BenchmarkName, bytecode);
+                    yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + BenchmarkName, bytecode);
                     break;
-                case ILMode.DYNAMIC_AOT_MODE:
+                case ILMode.AOT_MODE:
                     yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + BenchmarkName, bytecode);
                     break;
             }

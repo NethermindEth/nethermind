@@ -2,7 +2,7 @@
   "profiles": {
     "Nethermind.Benchmark.Runner": {
       "commandName": "Project",
-      "commandLineArgs": "-m ilevm -c 2"
+      "commandLineArgs": "-m evm -c 3"
     }
   }
 }
