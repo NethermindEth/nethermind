@@ -64,7 +64,6 @@ namespace Nethermind.Db.Test
             if (!Directory.Exists(_dbPath))
                 return;
 
-
             try
             {
                 Directory.Delete(_dbPath, true);
@@ -205,7 +204,7 @@ namespace Nethermind.Db.Test
             await using var logIndexStorage = CreateLogIndexStorage();
 
             await SetReceiptsAsync(logIndexStorage, _testData.Batches);
-            logIndexStorage.Compact();
+            logIndexStorage.Compact(true);
 
             BlockReceipts[] reorgBlocks = _testData.Batches.SelectMany(b => b).TakeLast(reorgDepth).ToArray();
             foreach (BlockReceipts block in reorgBlocks)
@@ -243,7 +242,7 @@ namespace Nethermind.Db.Test
                     await logIndexStorage.ReorgFrom(block);
 
                 if (compactAfter)
-                    logIndexStorage.Compact();
+                    logIndexStorage.Compact(true);
 
                 await logIndexStorage.SetReceiptsAsync(addedBlocks, false);
             }
@@ -270,7 +269,7 @@ namespace Nethermind.Db.Test
                     await logIndexStorage.ReorgFrom(block);
 
                 if (compactBetween)
-                    logIndexStorage.Compact();
+                    logIndexStorage.Compact(true);
             }
 
             VerifyReceipts(logIndexStorage, _testData, excludedBlocks: testBlocks.TakeLast(reorgDepths.Max()).ToArray());
@@ -465,8 +464,6 @@ namespace Nethermind.Db.Test
                 SetReceiptsStats stats = await logIndexStorage.SetReceiptsAsync(batch, isBackwardsSync);
                 totalStats.Combine(stats);
             }
-
-            //totalStats.Combine(logIndexStorage.Compact());
 
             // Log statistics
             await TestContext.Out.WriteLineAsync($"{nameof(LogIndexStorage.SetReceiptsAsync)}[{count}] in {Stopwatch.GetElapsedTime(timestamp)}:" +

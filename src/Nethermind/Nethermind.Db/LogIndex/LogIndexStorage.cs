@@ -1,7 +1,6 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
@@ -10,7 +9,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Threading.Tasks.Dataflow;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -32,10 +30,8 @@ namespace Nethermind.Db
         private readonly IDb _addressDb;
         private readonly IDb _topicsDb;
         private readonly ILogger _logger;
-        private readonly int _ioParallelism;
 
         private const int BlockNumSize = sizeof(int);
-        public const int MinLengthToCompress = 128 * BlockNumSize;
 
         // Special RocksDB key postfix - any ordered prefix seeking will start on it.
         private static readonly byte[] BackwardMergeKey = Enumerable.Repeat((byte)0, BackwardMergeKeyLength).ToArray();
@@ -48,19 +44,13 @@ namespace Nethermind.Db
         private readonly int _compactionDistance;
         private readonly int _maxReorgDepth;
         private readonly MergeOperator _mergeOperator;
-
-        // TODO: get rid of static fields
-        // A lot of duplicates in case of regular Channel, TODO: find a better way to guarantee uniqueness
-        private readonly ConcurrentDictionary<byte[], bool> _compressQueue = new(Bytes.EqualityComparer);
-        private void EnqueueCompress(byte[] dbKey) => _compressQueue.TryAdd(dbKey, true);
+        private readonly Compressor _compressor;
 
         // TODO: ensure class is singleton
         // TODO: take parameters from log-index/chain config
         public LogIndexStorage(IDbFactory dbFactory, ILogger logger,
             int ioParallelism, int compactionDistance, int maxReorgDepth = 64)
         {
-            if (ioParallelism < 1) throw new ArgumentException("IO parallelism degree must be a positive value.", nameof(ioParallelism));
-            _ioParallelism = ioParallelism;
 
             if (compactionDistance < 1) throw new ArgumentException("Compaction distance must be a positive value.", nameof(compactionDistance));
             _compactionDistance = compactionDistance;
@@ -69,12 +59,11 @@ namespace Nethermind.Db
             _maxReorgDepth = maxReorgDepth;
 
             _logger = logger;
-
+            _compressor = new(this, logger, ioParallelism);
             _columnsDb = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
             {
-                MergeOperator = _mergeOperator = new(this)
+                MergeOperator = _mergeOperator = new(_compressor)
             });
-
             _addressDb = _columnsDb.GetColumnDb(LogIndexColumns.Addresses);
             _topicsDb = _columnsDb.GetColumnDb(LogIndexColumns.Topics);
         }
@@ -96,6 +85,9 @@ namespace Nethermind.Db
 
             try
             {
+                // TODO: consider not waiting for compression queue to finish
+                await _compressor.StopAsync();
+
                 // TODO: check if needed
                 _addressDb.Flush();
                 _topicsDb.Flush();
@@ -110,9 +102,6 @@ namespace Nethermind.Db
 
         ValueTask IAsyncDisposable.DisposeAsync()
         {
-            _compressQueue.Clear();
-
-            // TODO: dispose ColumnsDB?
             _setReceiptsSemaphore.Dispose();
             _columnsDb.Dispose();
             _addressDb.Dispose();
@@ -404,28 +393,29 @@ namespace Nethermind.Db
             }
         }
 
-        public SetReceiptsStats Compact()
+        public SetReceiptsStats Compact(bool waitForCompression)
         {
             var stats = new SetReceiptsStats();
-            Compact(stats);
+            Compact(stats, waitForCompression);
             return stats;
         }
 
-        public SetReceiptsStats Recompact(int maxUncompressedLength = MinLengthToCompress)
+        public SetReceiptsStats Recompact(int minLengthToCompress = -1)
         {
-            var stats = new SetReceiptsStats();
+            if (minLengthToCompress < 0)
+                minLengthToCompress = Compressor.MinLengthToCompress;
+
+          var stats = new SetReceiptsStats();
 
             var timestamp = Stopwatch.GetTimestamp();
-            var addressCount = QueueLargeKeysCompression(_addressDb, maxUncompressedLength);
+            var addressCount = QueueLargeKeysCompression(_addressDb, minLengthToCompress);
             stats.QueueingAddressCompression.Include(Stopwatch.GetElapsedTime(timestamp));
 
             timestamp = Stopwatch.GetTimestamp();
-            var topicCount = QueueLargeKeysCompression(_topicsDb, maxUncompressedLength);
+            var topicCount = QueueLargeKeysCompression(_topicsDb, minLengthToCompress);
             stats.QueueingTopicCompression.Include(Stopwatch.GetElapsedTime(timestamp));
 
             _logger.Info($"Queued keys for compaction: {addressCount:N0} address, {topicCount:N0} topic");
-
-            CompressPostMerge(stats.PostMergeProcessing);
 
             timestamp = Stopwatch.GetTimestamp();
             _addressDb.Flush();
@@ -440,16 +430,16 @@ namespace Nethermind.Db
             return stats;
         }
 
-        private int QueueLargeKeysCompression(IDb db, int maxUncompressedLength)
+        private int QueueLargeKeysCompression(IDb db, int minLengthToCompress)
         {
             var counter = 0;
 
             using var addressIterator = db.GetIterator();
             foreach (var (key, value) in Enumerate(addressIterator))
             {
-                if (IsMergeKey(key) && value.Length > maxUncompressedLength)
+                if (IsMergeKey(key) && value.Length >= minLengthToCompress)
                 {
-                    EnqueueCompress(key);
+                    _compressor.Enqueue(key);
                     counter++;
                 }
             }
@@ -493,7 +483,7 @@ namespace Nethermind.Db
                     _lastCompactionAt ??= batch[0].BlockNumber;
                     if (Math.Abs(batch[^1].BlockNumber - _lastCompactionAt.Value) >= _compactionDistance)
                     {
-                        Compact(stats);
+                        Compact(stats, false);
                         _lastCompactionAt = batch[^1].BlockNumber;
                     }
                 }
@@ -523,12 +513,13 @@ namespace Nethermind.Db
             }
 
             stats.Combine(_mergeOperator.GetAndResetStats());
+            stats.PostMergeProcessing.Combine(_compressor.GetAndResetStats());
             return stats;
         }
 
-        private void Compact(SetReceiptsStats stats)
+        private void Compact(SetReceiptsStats stats, bool waitForCompression)
         {
-            // TODO: log as Debug
+            // TODO: log as Debug!
             _logger.Warn("Log index flushing starting");
             var timestamp = Stopwatch.GetTimestamp();
             _addressDb.Flush();
@@ -544,9 +535,8 @@ namespace Nethermind.Db
             stats.CompactingDbs.Include(Stopwatch.GetElapsedTime(timestamp));
             _logger.Warn("Log index compaction completed");
 
-            _logger.Warn("Log index post-merge processing starting");
-            CompressPostMerge(stats.PostMergeProcessing);
-            _logger.Warn("Log index post-merge processing completed");
+            if (waitForCompression)
+                _compressor.WaitUntilEmpty();
         }
 
         // TODO: optimize allocations
@@ -660,59 +650,6 @@ namespace Nethermind.Db
         // used for data validation, TODO: introduce custom exception type
         // TODO: include key value when available
         private static Exception ValidationException(string message) => new InvalidOperationException(message);
-
-        // TODO: optimize allocations
-        private void CompressPostMerge(PostMergeProcessingStats stats)
-        {
-            var execTimestamp = Stopwatch.GetTimestamp();
-
-            var block = new ActionBlock<byte[]>(dbKey =>
-            {
-                IDb db = GetDbByKeyLength(dbKey.Length, out var prefixLength);
-
-                var timestamp = Stopwatch.GetTimestamp();
-                Span<byte> dbValue = db.Get(dbKey) ?? throw ValidationException("Empty value in the post-merge compression queue.");
-                stats.GettingValue.Include(Stopwatch.GetElapsedTime(timestamp));
-
-                // Do not compress blocks that can be reorged, as compressed data is immutable
-                if (!UseBackwardSyncFor(dbKey))
-                    dbValue = RemoveReorgableBlocks(dbValue);
-
-                if (dbValue.Length < MinLengthToCompress)
-                    return; // Check back later
-
-                _compressQueue.TryRemove(dbKey, out _);
-
-                var firstBlock = ReadValBlockNum(dbValue);
-                var truncateBlock = ReadValLastBlockNum(dbValue);
-                ReverseBlocksIfNeeded(dbValue);
-
-                var dbKeyComp = new byte[prefixLength + BlockNumSize];
-                dbKey.AsSpan(..prefixLength).CopyTo(dbKeyComp);
-                SetKeyBlockNum(dbKeyComp, firstBlock);
-
-                timestamp = Stopwatch.GetTimestamp();
-                dbValue = CompressDbValue(dbValue);
-                stats.CompressingValue.Include(Stopwatch.GetElapsedTime(timestamp));
-
-                // Put compressed value at a new key and clear the uncompressed one
-                timestamp = Stopwatch.GetTimestamp();
-                db.PutSpan(dbKeyComp, dbValue);
-                db.Merge(dbKey, MergeOps.Create(MergeOp.TruncateOp, truncateBlock));
-                stats.PuttingValues.Include(Stopwatch.GetElapsedTime(timestamp));
-
-                if (db == _addressDb) Interlocked.Increment(ref stats.CompressedAddressKeys);
-                else if (db == _topicsDb) Interlocked.Increment(ref stats.CompressedTopicKeys);
-            }, new() { MaxDegreeOfParallelism = _ioParallelism });
-
-            foreach (var dbKey in _compressQueue.Keys)
-                block.Post(dbKey);
-
-            block.Complete();
-            block.Completion.Wait(); // TODO: await?
-
-            stats.Execution.Include(Stopwatch.GetElapsedTime(execTimestamp));
-        }
 
         public static int ReadCompressionMarker(ReadOnlySpan<byte> source) => -BinaryPrimitives.ReadInt32LittleEndian(source);
         public static void WriteCompressionMarker(Span<byte> source, int len) => BinaryPrimitives.WriteInt32LittleEndian(source, -len);

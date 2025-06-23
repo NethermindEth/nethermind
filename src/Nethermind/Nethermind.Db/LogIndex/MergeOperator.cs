@@ -12,9 +12,10 @@ public partial class LogIndexStorage
 {
     // TODO: check if success=false + paranoid_checks=true is better than throwing exception
     // TODO: tests for MergeOperator specifically?
-    private class MergeOperator(LogIndexStorage storage) : IMergeOperator
+    private class MergeOperator(Compressor compressor) : IMergeOperator
     {
         private SetReceiptsStats _stats = new();
+        public SetReceiptsStats GetAndResetStats() => Interlocked.Exchange(ref _stats, new());
 
         public string Name => $"{nameof(LogIndexStorage)}.{nameof(MergeOperator)}";
 
@@ -23,11 +24,6 @@ public partial class LogIndexStorage
 
         public ArrayPoolList<byte>? PartialMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator) =>
             Merge(key, enumerator, isPartial: true);
-
-        public SetReceiptsStats GetAndResetStats()
-        {
-            return Interlocked.Exchange(ref _stats, new());
-        }
 
         // Validate we are merging non-intersecting segments - to prevent data corruption
         // TODO: remove as it's just a time-consuming validation?
@@ -98,8 +94,7 @@ public partial class LogIndexStorage
                 if (result.Count % BlockNumSize != 0)
                     throw ValidationException("Invalid data length post-merge.");
 
-                if (result.Count >= MinLengthToCompress)
-                    storage.EnqueueCompress(key.ToArray());
+                compressor.TryEnqueue(key, result.Count);
 
                 return result;
             }

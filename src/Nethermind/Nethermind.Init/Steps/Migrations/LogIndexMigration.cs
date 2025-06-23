@@ -225,11 +225,6 @@ namespace Nethermind.Init.Steps.Migrations
                 var migrateTask = Task.Run(() => MigrateBlocks(_blocksChannel.Reader, token), token);
                 await Task.WhenAll(iterateTask, migrateTask);
 
-                if (!token.IsCancellationRequested)
-                {
-                    _logIndexStorage.Compact();
-                }
-
                 // await Task.CompletedTask;
                 // var stats = _logIndexStorage.CompressAndCompact(LogIndexStorage.MaxUncompressedLength / 4);
                 // _logger.Info($"LogIndexMigration" +
