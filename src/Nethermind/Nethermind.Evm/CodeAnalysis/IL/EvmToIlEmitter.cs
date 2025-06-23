@@ -1918,11 +1918,10 @@ internal static class OpcodeEmitters
         Label endofOpcode = method.DefineLabel(locals.GetLabelName());
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        method.StoreLocal(locals.wordRef256A);
+        method.EmitCheck(nameof(Word.IsZero));
+        method.BranchIfTrue(pushZeroLabel);
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 2);
-        method.StoreLocal(locals.wordRef256B);
-
-        method.EmitCheck(nameof(Word.IsOneOrZero), locals.wordRef256B);
+        method.EmitCheck(nameof(Word.IsOneOrZero));
         method.BranchIfTrue(pushZeroLabel);
 
         EmitBinaryUInt256Method(method, locals, (locals.stackHeadRef, locals.stackHeadIdx, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0)), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);

@@ -62,7 +62,7 @@ public struct Word
                               _ulong0 == ulong.MaxValue;
 
     public bool IsP255 => (_ulong3 | _ulong1 | _ulong2) == 0 && (_ulong0 == 0x0000000000000001);
-    public bool IsOneOrZero => (_ulong1 | _ulong2 | _ulong3) == 0 && ((_ulong0 << 1) == 0);
+    public bool IsOneOrZero => (_ulong1 | _ulong2 | _ulong3) == 0 && ((_ulong0 | 0x0100000000000000) == 0x0100000000000000);
     public bool IsShort => (_ulong1 | _ulong2 | _ulong3) == 0 && ((_ulong0 << 16) == 0);
 
     public void ToZero()

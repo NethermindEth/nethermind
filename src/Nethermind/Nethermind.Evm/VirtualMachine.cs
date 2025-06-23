@@ -857,8 +857,6 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             Instruction instruction = (Instruction)code[programCounter];
 
-            Console.WriteLine("Std :: Executing opcode {0} at PC {1} with gas {3} and stack head index {2}", instruction, programCounter, stack.Head, gasAvailable);
-
             if (isCancelable && _txTracer.IsCancelled)
             {
                 ThrowOperationCanceledException();
