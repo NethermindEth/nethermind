@@ -14,7 +14,6 @@ public class Osaka : Prague
     public Osaka()
     {
         Name = "Osaka";
-        MaxCodeSize = Eip7907Constants.MaxCodeSizeEip7907;
         IsEip7594Enabled = true;
         IsEip7823Enabled = true;
         IsEip7825Enabled = true;
@@ -22,6 +21,7 @@ public class Osaka : Prague
         IsEip7918Enabled = true;
         IsEip7939Enabled = true;
         IsEip7951Enabled = true;
+        IsEip7907Enabled = true;
         Released = false;
     }
 
