@@ -56,7 +56,7 @@ public static class RpcTest
     {
         var moduleProvider = new TestRpcModuleProvider<T>(module);
 
-        moduleProvider.Register(new SingletonModulePool<T>(new TestSingletonFactory<T>(module), true));
+        moduleProvider.Register(new SingletonModulePool<T>(new TestSingletonFactory<T>(module), true, true));
         IJsonRpcService service = new JsonRpcService(moduleProvider, LimboLogs.Instance, new JsonRpcConfig());
         return service;
     }
