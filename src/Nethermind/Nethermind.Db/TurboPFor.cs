@@ -6,6 +6,9 @@ using System;
 
 namespace Nethermind.Db
 {
+    // https://github.com/brettwooldridge/TurboPFor#function-syntax
+    // https://github.com/brettwooldridge/TurboPFor/blob/master/java/jic.java
+    // https://github.com/brettwooldridge/TurboPFor/blob/master/vp4.h
     // TODO: move to separate Nuget package
     public static class TurboPFor
     {
@@ -74,9 +77,9 @@ namespace Nethermind.Db
         [DllImport(LibraryName)]
         public extern unsafe static int p4nd1dec32(byte[] @in, int n, int[] @out);
         [DllImport(LibraryName)]
-        public extern unsafe static int p4nd1enc128v32(int[] @in, int n, byte[] @out);
+        public extern unsafe static int p4nd1enc128v32(int* @in, int n, byte* @out);
         [DllImport(LibraryName)]
-        public extern unsafe static int p4nd1dec128v32(byte[] @in, int n, int[] @out);
+        public extern unsafe static int p4nd1dec128v32(byte* @in, int n, int* @out);
         [DllImport(LibraryName)]
         public extern unsafe static int p4nd1enc256v32(int* @in, int n, byte* @out);
         [DllImport(LibraryName)]
@@ -121,8 +124,10 @@ namespace Nethermind.Db
         public extern unsafe static int p4d1dec32(byte[] @in, int n, int[] @out, int start);
         [DllImport(LibraryName)]
         public extern unsafe static int p4d1dec128v32(byte[] @in, int n, int[] @out, int start);
-        [DllImport(LibraryName)]
-        public extern unsafe static int p4d1dec256v32(byte[] @in, int n, int[] @out, int start);
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public extern unsafe static byte* p4d1enc256v32(int* @in, int n, byte* @out, int start);
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public extern unsafe static byte* p4d1dec256v32(byte* @in, int n, int* @out, int start);
 
         //********** bitpack scalar
         // High level API
