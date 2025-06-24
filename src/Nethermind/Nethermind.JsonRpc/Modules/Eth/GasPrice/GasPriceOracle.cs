@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -61,6 +62,11 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             return gasPriceEstimate!;
         }
 
+        public virtual ValueTask<UInt256> GetGasPriceEstimateAsync()
+        {
+            return ValueTask.FromResult(GetGasPriceEstimate());
+        }
+
         internal IEnumerable<UInt256> GetSortedGasPricesFromRecentBlocks(long blockNumber) =>
             GetGasPricesFromRecentBlocks(blockNumber, BlockLimit,
             static (transaction, eip1559Enabled, baseFee) => transaction.CalculateEffectiveGasPrice(eip1559Enabled, baseFee));
@@ -87,6 +93,11 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
             _maxPriorityFeePerGasEstimation.Set(headBlockHash, gasPriceEstimate);
             return gasPriceEstimate!;
+        }
+
+        public virtual ValueTask<UInt256> GetMaxPriorityGasFeeEstimateAsync()
+        {
+            return ValueTask.FromResult(GetMaxPriorityGasFeeEstimate());
         }
 
         private UInt256 GetMinimumGasPrice(in UInt256 baseFeePerGas) => (_minGasPrice + baseFeePerGas) * _defaultMinGasPriceMultiplier / 100ul;

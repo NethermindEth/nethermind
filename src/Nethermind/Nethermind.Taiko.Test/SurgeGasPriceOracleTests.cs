@@ -121,13 +121,13 @@ public class SurgeGasPriceOracleTests
         // Mock Stats2 returned by getStats2() call to have 2 batches (numBatches=2)
         var stats2Response = "0x" + CreatePaddedHex(2) + CreatePaddedHex(0, 192);
         _l1RpcClient.Post<string>("eth_call", Arg.Is<object>(o =>
-            o.ToString()!.Contains("0x26baca1c")), "latest")
+            o.ToString()!.ToLowerInvariant().Contains("0x26baca1c")), "latest")
             .Returns(stats2Response);
 
         // Mock Batch returned by getBatch(1) call to have lastBlockId=1
         var batchResponse = "0x" + CreatePaddedHex(0) + CreatePaddedHex(1) + CreatePaddedHex(0, 576);
         _l1RpcClient.Post<string>("eth_call", Arg.Is<object>(o =>
-            o.ToString()!.Contains("0x888775d9")), "latest")
+            o.ToString()!.ToLowerInvariant().Contains("0x888775d9")), "latest")
             .Returns(batchResponse);
 
         // Mock block finder to return block with gas usage
@@ -217,6 +217,7 @@ public class SurgeGasPriceOracleTests
                 .TestObject);
 
         // Create a gas price oracle with the live client
+        _surgeConfig.TaikoInboxAddress = "0x06a9Ab27c7e2255df1815E6CC0168d7755Feb19a";
         var liveGasPriceOracle = new SurgeGasPriceOracle(
             _blockFinder,
             _logManager,

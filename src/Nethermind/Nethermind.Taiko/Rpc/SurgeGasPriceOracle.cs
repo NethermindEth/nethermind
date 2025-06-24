@@ -13,17 +13,24 @@ using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Taiko.Config;
+using Nethermind.Abi;
 
 namespace Nethermind.Taiko.Rpc;
 
 public class SurgeGasPriceOracle : GasPriceOracle
 {
-    private static readonly string _className = nameof(SurgeGasPriceOracle);
+    private const string ClassName = nameof(SurgeGasPriceOracle);
+    private const int BlobSize = (4 * 31+3) * 1024 - 4;
+
+    // ABI signatures and encoded function selectors for TaikoInbox
+    private static readonly AbiSignature GetStats2Signature = new("getStats2");
+    private static readonly AbiSignature GetBatchSignature = new("getBatch", AbiType.UInt64);
+    private static readonly string GetStats2HexData = "0x" + Convert.ToHexString(
+        AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetStats2Signature));
+
     private readonly IJsonRpcClient _l1RpcClient;
     private readonly ISurgeConfig _surgeConfig;
     private readonly GasUsageRingBuffer _gasUsageBuffer;
-
-    private const int BlobSize = 128 * 1024;
 
     public SurgeGasPriceOracle(
         IBlockFinder blockFinder,
@@ -42,25 +49,30 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
     public override UInt256 GetGasPriceEstimate()
     {
+        return GetGasPriceEstimateAsync().GetAwaiter().GetResult();
+    }
+
+    public override async ValueTask<UInt256> GetGasPriceEstimateAsync()
+    {
         Block? headBlock = _blockFinder.Head;
         if (headBlock is null)
         {
-            if (_logger.IsTrace) _logger.Trace($"[{_className}] No head block available, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] No head block available, using fallback gas price");
             return FallbackGasPrice();
         }
 
         Hash256 headBlockHash = headBlock.Hash!;
         if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price))
         {
-            if (_logger.IsTrace) _logger.Trace($"[{_className}] Using cached gas price estimate: {price}");
+            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Using cached gas price estimate: {price}");
             return price!.Value;
         }
 
         // Get the fee history from the L1 client with RPC
-        L1FeeHistoryResults? feeHistory = GetL1FeeHistory().GetAwaiter().GetResult();
+        L1FeeHistoryResults? feeHistory = await GetL1FeeHistory();
         if (feeHistory == null || feeHistory.BaseFeePerGas.Length == 0)
         {
-            if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to get fee history, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Failed to get fee history, using fallback gas price");
             return FallbackGasPrice();
         }
 
@@ -76,24 +88,24 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         UInt256 proofPostingCost = _surgeConfig.ProofPostingGas * UInt256.Max(l1BaseFee, l1AverageBaseFee);
 
-        UInt256 averageGasUsage = GetAverageGasUsageAcrossBatches();
+        UInt256 averageGasUsage = await GetAverageGasUsageAcrossBatches();
         if (averageGasUsage == UInt256.Zero)
         {
-            if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to calculate average gas usage, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Failed to calculate average gas usage, using fallback gas price");
             return FallbackGasPrice();
         }
 
         UInt256 gasPriceEstimate = (minProposingCost + proofPostingCost + _surgeConfig.ProvingCostPerL2Batch) / averageGasUsage;
         _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
 
-        if (_logger.IsTrace) _logger.Trace($"[{_className}] Calculated new gas price estimate: {gasPriceEstimate}, " +
+        if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Calculated new gas price estimate: {gasPriceEstimate}, " +
             $"L1 Base Fee: {l1BaseFee}, L1 Blob Base Fee: {l1BlobBaseFee}, L1 Average Base Fee: {l1AverageBaseFee}, " +
             $"Average Gas Usage: {averageGasUsage}");
 
         return gasPriceEstimate;
     }
 
-    private async Task<L1FeeHistoryResults?> GetL1FeeHistory()
+    private async ValueTask<L1FeeHistoryResults?> GetL1FeeHistory()
     {
         try
         {
@@ -104,7 +116,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
         }
         catch (Exception ex)
         {
-            if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to get fee history: {ex.Message}");
+            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Failed to get fee history: {ex.Message}");
             return null;
         }
     }
@@ -113,26 +125,28 @@ public class SurgeGasPriceOracle : GasPriceOracle
     /// Get the average gas usage across L2GasUsageWindowSize batches.
     /// It uses the TaikoInbox contract to get the total number of blocks in the latest proposed batch.
     /// </summary>
-    private UInt256 GetAverageGasUsageAcrossBatches()
+    private async ValueTask<UInt256> GetAverageGasUsageAcrossBatches()
     {
         // Get the current batch information
-        ulong? numBatches = GetNumBatches();
+        ValueTask<ulong?> numBatchesTask = GetNumBatches();
+        ulong? numBatches = await numBatchesTask;
         if (numBatches is null or <= 1)
         {
-            if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to get numBatches, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Failed to get numBatches, using fallback gas price");
             return UInt256.Zero;
         }
 
         // Get the latest proposed batch
-        ulong? currentBatchLastBlockId = GetLastBlockId(numBatches.Value - 1);
+        ValueTask<ulong?> currentBatchLastBlockIdTask = GetLastBlockId(numBatches.Value - 1);
+        ulong? currentBatchLastBlockId = await currentBatchLastBlockIdTask;
         if (currentBatchLastBlockId == null)
         {
-            if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to get current batch lastBlockId, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Failed to get current batch lastBlockId, using fallback gas price");
             return UInt256.Zero;
         }
 
         // Get the previous batch to find the total number of blocks in the latest proposed batch
-        ulong? previousBatchLastBlockId = numBatches > 2 ? GetLastBlockId(numBatches.Value - 2) : 0;
+        ulong? previousBatchLastBlockId = numBatches > 2 ? await GetLastBlockId(numBatches.Value - 2) : 0;
         ulong startBlockId = (previousBatchLastBlockId ?? 0) + 1;
         ulong endBlockId = currentBatchLastBlockId.Value;
 
@@ -155,49 +169,46 @@ public class SurgeGasPriceOracle : GasPriceOracle
     /// <summary>
     /// Get the number of batches from the TaikoInbox contract's getStats2() function.
     /// </summary>
-    private ulong? GetNumBatches()
+    private async ValueTask<ulong?> GetNumBatches()
     {
-        try
-        {
-            var response = _l1RpcClient.Post<string>("eth_call", new
-            {
-                to = _surgeConfig.TaikoInboxAddress,
-                data = "0x26baca1c" // getStats2() function selector
-            }, "latest").GetAwaiter().GetResult();
+        var response = await CallTaikoInboxFunction(GetStats2HexData);
 
-            // Extract the first 32 bytes (64 hex chars) after "0x" which contains NumBatches
-            if (string.IsNullOrEmpty(response) || response.Length < 66) return null;
-            return ulong.Parse(response[2..66], System.Globalization.NumberStyles.HexNumber);
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to get numBatches: {ex.Message}");
-            return null;
-        }
+        if (string.IsNullOrEmpty(response) || response.Length < 66) return null;
+
+        // Extract the first 32 bytes (64 hex chars) after "0x" which contains NumBatches
+        return ulong.Parse(response[2..66], System.Globalization.NumberStyles.HexNumber);
     }
 
     /// <summary>
     /// Get the last block id from the TaikoInbox contract's getBatch(uint64) function.
     /// </summary>
-    private ulong? GetLastBlockId(ulong batchId)
+    private async ValueTask<ulong?> GetLastBlockId(ulong batchId)
+    {
+        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetBatchSignature, batchId);
+        var response = await CallTaikoInboxFunction("0x" + Convert.ToHexString(encodedData));
+
+        if (string.IsNullOrEmpty(response) || response.Length < 130) return null;
+
+        // Extract the second 32 bytes (64 hex chars) after "0x" which contains LastBlockId
+        return ulong.Parse(response[66..130], System.Globalization.NumberStyles.HexNumber);
+    }
+
+    /// <summary>
+    /// Helper method to call TaikoInbox contract functions using ABI encoding.
+    /// </summary>
+    private async ValueTask<string?> CallTaikoInboxFunction(string data)
     {
         try
         {
-            // Convert batchId to hex string with padding to 64 characters
-            string batchIdHex = batchId.ToString("x64");
-            var response = _l1RpcClient.Post<string>("eth_call", new
+            return await _l1RpcClient.Post<string>("eth_call", new
             {
                 to = _surgeConfig.TaikoInboxAddress,
-                data = $"0x888775d9{batchIdHex}" // getBatch(uint64) function selector
-            }, "latest").GetAwaiter().GetResult();
-
-            // Extract the second 32 bytes (64 hex chars) after "0x" which contains LastBlockId
-            if (string.IsNullOrEmpty(response) || response.Length < 130) return null;
-            return ulong.Parse(response[66..130], System.Globalization.NumberStyles.HexNumber);
+                data
+            }, "latest");
         }
         catch (Exception ex)
         {
-            if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to get lastBlockId for batch {batchId}: {ex.Message}");
+            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Contract call to TaikoInbox failed: {ex.Message}");
             return null;
         }
     }
