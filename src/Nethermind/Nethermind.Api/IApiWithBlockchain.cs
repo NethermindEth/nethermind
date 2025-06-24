@@ -40,8 +40,6 @@ namespace Nethermind.Api
         IBlockValidator BlockValidator { get; }
 
         IEnode? Enode { get; set; }
-        IFilterStore? FilterStore { get; set; }
-        IFilterManager? FilterManager { get; set; }
 
         [SkipServiceCollection]
         IUnclesValidator? UnclesValidator { get; }

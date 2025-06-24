@@ -131,12 +131,7 @@ namespace Nethermind.Init.Steps
                 mainWorldState);
             _serviceStopper.AddStoppable(mainProcessingContext);
             setApi.BlockProcessingQueue = blockchainProcessor;
-
-            IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
-            IFilterStore filterStore = setApi.FilterStore = new FilterStore(getApi.TimerFactory, rpcConfig.FiltersTimeout);
-            setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
-            _api.DisposeStack.Push(filterStore);
 
             BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
                 mainBlockProcessor,

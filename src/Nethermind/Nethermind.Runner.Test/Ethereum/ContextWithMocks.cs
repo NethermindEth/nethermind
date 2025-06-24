@@ -117,8 +117,6 @@ namespace Nethermind.Runner.Test.Ethereum
             api.BlockProducer = Substitute.For<IBlockProducer>();
             api.EngineSigner = Substitute.For<ISigner>();
             api.FileSystem = Substitute.For<IFileSystem>();
-            api.FilterManager = Substitute.For<IFilterManager>();
-            api.FilterStore = Substitute.For<IFilterStore>();
             api.GrpcServer = Substitute.For<IGrpcServer>();
             api.KeyStore = Substitute.For<IKeyStore>();
             api.LogFinder = Substitute.For<ILogFinder>();

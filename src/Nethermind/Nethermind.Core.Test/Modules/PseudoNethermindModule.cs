@@ -64,10 +64,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             // Crypto
             .AddSingleton<ICryptoRandom>(new CryptoRandom())
 
-            .AddSingleton<IFilterStore, ITimerFactory, IJsonRpcConfig>((timerFactory, rpcConfig) => new FilterStore(timerFactory, rpcConfig.FiltersTimeout))
-
-            .AddSingleton<IFilterManager, IFilterStore, IMainProcessingContext, ITxPool, ILogManager>((store, processingContext, txPool, logManager) =>
-                    new FilterManager(store, processingContext.BlockProcessor, txPool, logManager))
             .AddSingleton<ISignerStore>(NullSigner.Instance)
             .AddSingleton<IKeyStore>(Substitute.For<IKeyStore>())
             .AddSingleton<IWallet, DevWallet>()

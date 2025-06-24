@@ -5,10 +5,12 @@ using System;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -29,6 +31,7 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.JsonRpc.Modules.Web3;
+using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
@@ -57,40 +60,42 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .RegisterSingletonJsonRpcModule<IRpcRpcModule, RpcRpcModule>()
 
             // Txpool rpc
-            .AddSingleton<ITxPoolInfoProvider, TxPoolInfoProvider>()
             .RegisterSingletonJsonRpcModule<ITxPoolRpcModule, TxPoolRpcModule>()
+                .AddSingleton<ITxPoolInfoProvider, TxPoolInfoProvider>()
 
             // Subscriptions
-            .AddSingleton<IReceiptMonitor, ReceiptCanonicalityMonitor>()
-            .AddSingleton<ISubscriptionFactory, SubscriptionFactory>()
-            .AddSingleton<ISubscriptionManager, SubscriptionManager>()
             .RegisterSingletonJsonRpcModule<ISubscribeRpcModule, SubscribeRpcModule>()
+                .AddSingleton<IReceiptMonitor, ReceiptCanonicalityMonitor>()
+                .AddSingleton<ISubscriptionFactory, SubscriptionFactory>()
+                .AddSingleton<ISubscriptionManager, SubscriptionManager>()
 
             // Admin
-            .AddSingleton<IAdminRpcModule>(CreateAdminRpcModule)
             .RegisterSingletonJsonRpcModule<IAdminRpcModule>()
+                .AddSingleton<IAdminRpcModule>(CreateAdminRpcModule)
 
-            // Eth
-            .AddSingleton<SimulateReadOnlyBlocksProcessingEnvFactory>()
-            .AddSingleton<IBlockchainBridgeFactory, BlockchainBridgeFactory>()
-            .AddScoped<IBlockchainBridge>((ctx) => ctx.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge())
-            .AddSingleton<IFeeHistoryOracle, FeeHistoryOracle>()
+            // Eth and its dependencies
             .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
+                .AddSingleton<IBlockchainBridgeFactory, BlockchainBridgeFactory>()
+                .AddScoped<IBlockchainBridge>((ctx) => ctx.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge())
+                    .AddSingleton<IFeeHistoryOracle, FeeHistoryOracle>()
+                    .AddSingleton<IFilterStore, ITimerFactory, IJsonRpcConfig>((timerFactory, rpcConfig) => new FilterStore(timerFactory, rpcConfig.FiltersTimeout))
+                    .AddSingleton<IFilterManager, IFilterStore, IMainProcessingContext, ITxPool, ILogManager>((store, processingContext, txPool, logManager) => new FilterManager(store, processingContext.BlockProcessor, txPool, logManager))
+                    .AddSingleton<SimulateReadOnlyBlocksProcessingEnvFactory>()
 
             // Proof
-            .AddScoped<IProofRpcModule, ProofRpcModule>()
             .RegisterBoundedJsonRpcModule<IProofRpcModule, ProofModuleFactory>(2, jsonRpcConfig.Timeout)
+                .AddScoped<IProofRpcModule, ProofRpcModule>()
 
             // Trace
-            .AddScoped<ITraceRpcModule, TraceRpcModule>()
             .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(2, jsonRpcConfig.Timeout)
+                .AddScoped<ITraceRpcModule, TraceRpcModule>()
 
             // Debug
-            .AddScoped<IGethStyleTracer, GethStyleTracer>()
-            .AddScoped<IReceiptsMigration, ReceiptMigration>()
-            .AddScoped<IDebugBridge, DebugBridge>()
-            .AddScoped<IDebugRpcModule, DebugRpcModule>()
             .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(Environment.ProcessorCount, jsonRpcConfig.Timeout)
+                .AddScoped<IDebugRpcModule, DebugRpcModule>()
+                .AddScoped<IDebugBridge, DebugBridge>()
+                .AddScoped<IGethStyleTracer, GethStyleTracer>()
+                .AddScoped<IReceiptsMigration, ReceiptMigration>()
             ;
     }
 
