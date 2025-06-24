@@ -8,7 +8,7 @@ namespace Nethermind.Taiko.TaikoSpec;
 public class TaikoOntakeReleaseSpec : Cancun, ITaikoReleaseSpec
 {
 
-    public TaikoOntakeReleaseSpec() : base()
+    public TaikoOntakeReleaseSpec()
     {
         IsOntakeEnabled = true;
         IsPacayaEnabled = false;
@@ -21,7 +21,7 @@ public class TaikoOntakeReleaseSpec : Cancun, ITaikoReleaseSpec
 public class TaikoPacayaReleaseSpec : TaikoOntakeReleaseSpec, ITaikoReleaseSpec
 {
 
-    public TaikoPacayaReleaseSpec() : base()
+    public TaikoPacayaReleaseSpec()
     {
         IsOntakeEnabled = true;
         IsPacayaEnabled = true;

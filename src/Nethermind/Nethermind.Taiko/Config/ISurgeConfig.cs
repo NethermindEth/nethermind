@@ -7,7 +7,7 @@ namespace Nethermind.Taiko.Config;
 
 public interface ISurgeConfig : IConfig
 {
-    [ConfigItem(Description = "The URL of the Taiko L1 execution node JSON-RPC API.", DefaultValue = "null")]
+    [ConfigItem(Description = "The URL of the L1 execution node JSON-RPC API.", DefaultValue = "null")]
     string? L1EthApiEndpoint { get; set; }
 
     [ConfigItem(Description = "L2 gas per L2 batch for gas price calculation.", DefaultValue = "1000000")]

@@ -50,30 +50,30 @@ public class SurgeGasPriceOracleTests
     }
 
     [Test]
-    public void GetGasPriceEstimate_WhenNoHeadBlock_ReturnsMinGasPrice()
+    public async ValueTask GetGasPriceEstimate_WhenNoHeadBlock_ReturnsMinGasPrice()
     {
         _blockFinder.Head.Returns((Block)null!);
 
-        UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
+        UInt256 gasPrice = await _gasPriceOracle.GetGasPriceEstimate();
 
         Assert.That(gasPrice, Is.EqualTo(MinGasPrice));
     }
 
     [Test]
-    public void GetGasPriceEstimate_WhenL1FeeHistoryFails_ReturnsMinGasPrice()
+    public async ValueTask GetGasPriceEstimate_WhenL1FeeHistoryFails_ReturnsMinGasPrice()
     {
         Block headBlock = Build.A.Block.WithNumber(1).WithGasUsed(1000000).TestObject;
         _blockFinder.Head.Returns(headBlock);
         _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", _surgeConfig.FeeHistoryBlockCount, BlockParameter.Latest, null)
             .Returns(Task.FromResult<L1FeeHistoryResults?>(null));
 
-        UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
+        UInt256 gasPrice = await _gasPriceOracle.GetGasPriceEstimate();
 
         Assert.That(gasPrice, Is.EqualTo(MinGasPrice));
     }
 
     [Test]
-    public void GetGasPriceEstimate_WithEmptyFeeHistory_ReturnsMinGasPrice()
+    public async ValueTask GetGasPriceEstimate_WithEmptyFeeHistory_ReturnsMinGasPrice()
     {
         Block headBlock = Build.A.Block.WithNumber(1).WithGasUsed(1000000).TestObject;
         _blockFinder.Head.Returns(headBlock);
@@ -87,13 +87,13 @@ public class SurgeGasPriceOracleTests
         _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", _surgeConfig.FeeHistoryBlockCount, BlockParameter.Latest, null)
             .Returns(Task.FromResult<L1FeeHistoryResults?>(feeHistory));
 
-        UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
+        UInt256 gasPrice = await _gasPriceOracle.GetGasPriceEstimate();
 
         Assert.That(gasPrice, Is.EqualTo(MinGasPrice));
     }
 
     [Test]
-    public void GetGasPriceEstimate_WithValidL1FeeHistory_CalculatesCorrectGasPrice()
+    public async ValueTask GetGasPriceEstimate_WithValidL1FeeHistory_CalculatesCorrectGasPrice()
     {
         Block headBlock = Build.A.Block.WithNumber(1).WithGasUsed(1000000).TestObject;
         _blockFinder.Head.Returns(headBlock);
@@ -134,13 +134,13 @@ public class SurgeGasPriceOracleTests
         _blockFinder.FindBlock(1, Arg.Any<Blockchain.BlockTreeLookupOptions>())
             .Returns(Build.A.Block.WithNumber(1).WithGasUsed(1000000).TestObject);
 
-        UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
+        UInt256 gasPrice = await _gasPriceOracle.GetGasPriceEstimate();
 
         Assert.That(gasPrice, Is.GreaterThan(MinGasPrice));
     }
 
     [Test]
-    public void GetGasPriceEstimate_WithZeroGasUsed_ReturnsMinGasPrice()
+    public async ValueTask GetGasPriceEstimate_WithZeroGasUsed_ReturnsMinGasPrice()
     {
         Block headBlock = Build.A.Block.WithNumber(1).WithGasUsed(0).TestObject;
         _blockFinder.Head.Returns(headBlock);
@@ -163,13 +163,13 @@ public class SurgeGasPriceOracleTests
         _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", _surgeConfig.FeeHistoryBlockCount, BlockParameter.Latest, null)
             .Returns(Task.FromResult<L1FeeHistoryResults?>(feeHistory));
 
-        UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
+        UInt256 gasPrice = await _gasPriceOracle.GetGasPriceEstimate();
 
         Assert.That(gasPrice, Is.EqualTo(MinGasPrice));
     }
 
     [Test]
-    public void GetGasPriceEstimate_WithCachedPrice_ReturnsCachedPrice()
+    public async ValueTask GetGasPriceEstimate_WithCachedPrice_ReturnsCachedPrice()
     {
         Block headBlock = Build.A.Block.WithNumber(1).WithGasUsed(1000000).TestObject;
         _blockFinder.Head.Returns(headBlock);
@@ -189,19 +189,19 @@ public class SurgeGasPriceOracleTests
         _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", _surgeConfig.FeeHistoryBlockCount, BlockParameter.Latest, null)
             .Returns(Task.FromResult<L1FeeHistoryResults?>(feeHistory));
 
-        UInt256 firstGasPrice = _gasPriceOracle.GetGasPriceEstimate();
+        UInt256 firstGasPrice = await _gasPriceOracle.GetGasPriceEstimate();
 
         // Change the fee history to ensure we're using cache
         feeHistory.BaseFeePerGas[0] = UInt256.Parse("40000000000");
 
         // Second call should use cached value
-        UInt256 secondGasPrice = _gasPriceOracle.GetGasPriceEstimate();
+        UInt256 secondGasPrice = await _gasPriceOracle.GetGasPriceEstimate();
 
         Assert.That(secondGasPrice, Is.EqualTo(firstGasPrice));
     }
 
     [Test]
-    public void GetGasPriceEstimate_WithLiveTaikoInboxContract_ReturnsValidGasPrice()
+    public async ValueTask GetGasPriceEstimate_WithLiveTaikoInboxContract_ReturnsValidGasPrice()
     {
         // Create a real RPC client for L1
         var l1RpcClient = new BasicJsonRpcClient(
@@ -230,7 +230,7 @@ public class SurgeGasPriceOracleTests
         _blockFinder.Head.Returns(headBlock);
 
         // Get the gas price estimate
-        UInt256 gasPrice = liveGasPriceOracle.GetGasPriceEstimate();
+        UInt256 gasPrice = await liveGasPriceOracle.GetGasPriceEstimate();
 
         // Verify the gas price is valid
         Assert.That(gasPrice, Is.GreaterThan(MinGasPrice));

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -40,7 +42,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
     private UInt256 FallbackGasPrice() => _gasPriceEstimation.LastPrice ?? _minGasPrice;
 
-    public override UInt256 GetGasPriceEstimate()
+    public override async ValueTask<UInt256> GetGasPriceEstimate()
     {
         Block? headBlock = _blockFinder.Head;
         if (headBlock is null)
@@ -57,7 +59,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
         }
 
         // Get the fee history from the L1 client with RPC
-        L1FeeHistoryResults? feeHistory = GetL1FeeHistory().GetAwaiter().GetResult();
+        L1FeeHistoryResults? feeHistory = await GetL1FeeHistory();
         if (feeHistory == null || feeHistory.BaseFeePerGas.Length == 0)
         {
             if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to get fee history, using fallback gas price");
@@ -76,8 +78,8 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         UInt256 proofPostingCost = _surgeConfig.ProofPostingGas * UInt256.Max(l1BaseFee, l1AverageBaseFee);
 
-        UInt256 averageGasUsage = GetAverageGasUsageAcrossBatches();
-        if (averageGasUsage == UInt256.Zero)
+        ulong averageGasUsage = await GetAverageGasUsageAcrossBatches();
+        if (averageGasUsage == 0)
         {
             if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to calculate average gas usage, using fallback gas price");
             return FallbackGasPrice();
@@ -113,61 +115,61 @@ public class SurgeGasPriceOracle : GasPriceOracle
     /// Get the average gas usage across L2GasUsageWindowSize batches.
     /// It uses the TaikoInbox contract to get the total number of blocks in the latest proposed batch.
     /// </summary>
-    private UInt256 GetAverageGasUsageAcrossBatches()
+    private async ValueTask<ulong> GetAverageGasUsageAcrossBatches()
     {
         // Get the current batch information
-        ulong? numBatches = GetNumBatches();
+        ulong? numBatches = await GetNumBatches();
         if (numBatches is null or <= 1)
         {
             if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to get numBatches, using fallback gas price");
-            return UInt256.Zero;
+            return 0;
         }
 
         // Get the latest proposed batch
-        ulong? currentBatchLastBlockId = GetLastBlockId(numBatches.Value - 1);
+        ulong? currentBatchLastBlockId = await GetLastBlockId(numBatches.Value - 1);
         if (currentBatchLastBlockId == null)
         {
             if (_logger.IsTrace) _logger.Trace($"[{_className}] Failed to get current batch lastBlockId, using fallback gas price");
-            return UInt256.Zero;
+            return 0;
         }
 
         // Get the previous batch to find the total number of blocks in the latest proposed batch
-        ulong? previousBatchLastBlockId = numBatches > 2 ? GetLastBlockId(numBatches.Value - 2) : 0;
+        ulong? previousBatchLastBlockId = numBatches > 2 ? await GetLastBlockId(numBatches.Value - 2) : 0;
         ulong startBlockId = (previousBatchLastBlockId ?? 0) + 1;
         ulong endBlockId = currentBatchLastBlockId.Value;
 
         // Calculate total gas used for the batch
-        UInt256 totalGasUsed = UInt256.Zero;
+        ulong totalGasUsed = 0;
         for (ulong blockId = startBlockId; blockId <= endBlockId; blockId++)
         {
-            Block? block = _blockFinder.FindBlock((long)blockId, Blockchain.BlockTreeLookupOptions.RequireCanonical);
+            Block? block = _blockFinder.FindBlock((long)blockId, BlockTreeLookupOptions.RequireCanonical);
             if (block != null)
             {
-                totalGasUsed += (UInt256)block.GasUsed;
+                totalGasUsed += (ulong)block.GasUsed;
             }
         }
 
         // Record the batch's gas usage and compute the average
-        _gasUsageBuffer.Add((ulong)totalGasUsed);
-        return _gasUsageBuffer.Average;
+        _gasUsageBuffer.Add(totalGasUsed);
+        return Math.Min(_gasUsageBuffer.Average, _surgeConfig.L2GasPerL2Batch);
     }
 
     /// <summary>
     /// Get the number of batches from the TaikoInbox contract's getStats2() function.
     /// </summary>
-    private ulong? GetNumBatches()
+    private async ValueTask<ulong?> GetNumBatches()
     {
         try
         {
-            var response = _l1RpcClient.Post<string>("eth_call", new
+            var response = await _l1RpcClient.Post<string>("eth_call", new
             {
                 to = _surgeConfig.TaikoInboxAddress,
                 data = "0x26baca1c" // getStats2() function selector
-            }, "latest").GetAwaiter().GetResult();
+            }, "latest");
 
             // Extract the first 32 bytes (64 hex chars) after "0x" which contains NumBatches
             if (string.IsNullOrEmpty(response) || response.Length < 66) return null;
-            return ulong.Parse(response[2..66], System.Globalization.NumberStyles.HexNumber);
+            return ulong.Parse(response[2..66], NumberStyles.HexNumber);
         }
         catch (Exception ex)
         {
@@ -179,21 +181,21 @@ public class SurgeGasPriceOracle : GasPriceOracle
     /// <summary>
     /// Get the last block id from the TaikoInbox contract's getBatch(uint64) function.
     /// </summary>
-    private ulong? GetLastBlockId(ulong batchId)
+    private async ValueTask<ulong?> GetLastBlockId(ulong batchId)
     {
         try
         {
             // Convert batchId to hex string with padding to 64 characters
             string batchIdHex = batchId.ToString("x64");
-            var response = _l1RpcClient.Post<string>("eth_call", new
+            var response = await _l1RpcClient.Post<string>("eth_call", new
             {
                 to = _surgeConfig.TaikoInboxAddress,
                 data = $"0x888775d9{batchIdHex}" // getBatch(uint64) function selector
-            }, "latest").GetAwaiter().GetResult();
+            }, "latest");
 
             // Extract the second 32 bytes (64 hex chars) after "0x" which contains LastBlockId
             if (string.IsNullOrEmpty(response) || response.Length < 130) return null;
-            return ulong.Parse(response[66..130], System.Globalization.NumberStyles.HexNumber);
+            return ulong.Parse(response[66..130], NumberStyles.HexNumber);
         }
         catch (Exception ex)
         {
@@ -207,20 +209,19 @@ public class SurgeGasPriceOracle : GasPriceOracle
     /// </summary>
     private sealed class GasUsageRingBuffer
     {
-        private readonly UInt256[] _buffer;
+        private readonly ulong[] _buffer;
         private int _index;
         private int _count;
-        private UInt256 _total;
+        private ulong _total;
 
-        public int Count => _count;
-        public UInt256 Average => _count == 0 ? UInt256.Zero : _total / (ulong)_count;
+        public ulong Average => _count == 0 ? 0 : _total / (ulong)_count;
 
         public GasUsageRingBuffer(int capacity)
         {
-            _buffer = new UInt256[capacity];
+            _buffer = new ulong[capacity];
             _index = 0;
             _count = 0;
-            _total = UInt256.Zero;
+            _total = 0;
         }
 
         public void Add(ulong gasUsed)
@@ -235,7 +236,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
                 _count++;
             }
 
-            _buffer[_index] = (UInt256)gasUsed;
+            _buffer[_index] = gasUsed;
             _total += _buffer[_index];
             _index = (_index + 1) % _buffer.Length;
         }

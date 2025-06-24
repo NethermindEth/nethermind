@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -61,7 +60,7 @@ public class TaikoExecutionPayload : ExecutionPayload
                 WithdrawalsRoot = WithdrawalsHash,
             };
 
-            return new BlockDecodingResult(new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), null));
+            return new BlockDecodingResult(new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>()));
         }
         return base.TryGetBlock(totalDifficulty);
     }
