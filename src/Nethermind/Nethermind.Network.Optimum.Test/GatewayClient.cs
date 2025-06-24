@@ -71,7 +71,7 @@ public sealed class GrpcGatewayClient(
 
         // NOTE: Required due to limitations of the C# compiler.
         // See: https://github.com/dotnet/csharplang/issues/8414
-        while (!token.IsCancellationRequested)
+        while (true)
         {
             GatewayMessage current;
             try
