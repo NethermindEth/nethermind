@@ -885,7 +885,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public TransactionResult Execute(Transaction transaction, BlockHeader header, ITxTracer txTracer)
         {
             IReleaseSpec spec = SpecProvider.GetSpec(header);
-            BlockExecutionContext blockExecutionContext = new(header, spec, 0);
+            BlockExecutionContext blockExecutionContext = new(header, spec);
             SetBlockExecutionContext(in blockExecutionContext);
             return Execute(transaction, txTracer);
         }
@@ -893,7 +893,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public TransactionResult CallAndRestore(Transaction transaction, BlockHeader header, ITxTracer txTracer)
         {
             IReleaseSpec spec = SpecProvider.GetSpec(header);
-            BlockExecutionContext blockExecutionContext = new(header, spec, 0);
+            BlockExecutionContext blockExecutionContext = new(header, spec);
             SetBlockExecutionContext(in blockExecutionContext);
             return CallAndRestore(transaction, txTracer);
         }

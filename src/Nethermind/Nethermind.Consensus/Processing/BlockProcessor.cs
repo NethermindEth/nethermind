@@ -319,7 +319,7 @@ public partial class BlockProcessor(
         blockHashStore.ApplyBlockhashStateChanges(header);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec, token);
+        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         _stateProvider.Commit(spec, commitRoots: false);
 
