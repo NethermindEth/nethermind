@@ -795,7 +795,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
         {
-            UInt256 fees = (UInt256)spentGas * premiumPerGas;
+            UInt256 fees = premiumPerGas * (ulong)spentGas;
 
             // n.b. destroyed accounts already set to zero balance
             bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
@@ -804,7 +804,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
             }
 
-            UInt256 eip1559Fees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : UInt256.Zero;
+            UInt256 eip1559Fees = !tx.IsFree() ? header.BaseFeePerGas * (ulong)spentGas : UInt256.Zero;
             UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
 
             if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
