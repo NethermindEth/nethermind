@@ -362,15 +362,17 @@ namespace Nethermind.Db
             try
             {
                 foreach (TxReceipt receipt in block.Receipts)
-                foreach (LogEntry log in receipt.Logs ?? [])
                 {
-                    ReadOnlySpan<byte> addressKey = CreateMergeDbKey(log.Address.Bytes, keyArray, isBackwardSync: false);
-                    addressBatch.Merge(addressKey, dbValue);
-
-                    foreach (Hash256 topic in log.Topics)
+                    foreach (LogEntry log in receipt.Logs ?? [])
                     {
-                        ReadOnlySpan<byte> topicKey = CreateMergeDbKey(topic.Bytes, keyArray, isBackwardSync: false);
-                        topicBatch.Merge(topicKey, dbValue);
+                        ReadOnlySpan<byte> addressKey = CreateMergeDbKey(log.Address.Bytes, keyArray, isBackwardSync: false);
+                        addressBatch.Merge(addressKey, dbValue);
+
+                        foreach (Hash256 topic in log.Topics)
+                        {
+                            ReadOnlySpan<byte> topicKey = CreateMergeDbKey(topic.Bytes, keyArray, isBackwardSync: false);
+                            topicBatch.Merge(topicKey, dbValue);
+                        }
                     }
                 }
 
@@ -405,7 +407,7 @@ namespace Nethermind.Db
             if (minLengthToCompress < 0)
                 minLengthToCompress = Compressor.MinLengthToCompress;
 
-          var stats = new SetReceiptsStats();
+            var stats = new SetReceiptsStats();
 
             var timestamp = Stopwatch.GetTimestamp();
             var addressCount = QueueLargeKeysCompression(_addressDb, minLengthToCompress);

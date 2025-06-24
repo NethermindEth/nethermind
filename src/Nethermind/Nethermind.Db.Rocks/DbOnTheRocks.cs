@@ -559,7 +559,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
         }
 
-        if (_settings.MergeOperator is {} mergeOperator)
+        if (_settings.MergeOperator is { } mergeOperator)
         {
             options.SetMergeOperator(new MergeOperatorAdapter(mergeOperator));
             _doNotGcOptions.Add(options);

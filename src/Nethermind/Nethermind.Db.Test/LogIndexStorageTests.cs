@@ -407,16 +407,20 @@ namespace Nethermind.Db.Test
             var excludedTopics = new Dictionary<Hash256, HashSet<int>>();
 
             foreach (var block in blocks)
-            foreach (var txReceipt in block.Receipts)
-            foreach (var log in txReceipt.Logs!)
             {
-                var addressMap = excludedAddresses.GetOrAdd(log.Address, _ => []);
-                addressMap.Add(block.BlockNumber);
-
-                foreach (var topic in log.Topics)
+                foreach (var txReceipt in block.Receipts)
                 {
-                    var topicMap = excludedTopics.GetOrAdd(topic, _ => []);
-                    topicMap.Add(block.BlockNumber);
+                    foreach (var log in txReceipt.Logs!)
+                    {
+                        var addressMap = excludedAddresses.GetOrAdd(log.Address, _ => []);
+                        addressMap.Add(block.BlockNumber);
+
+                        foreach (var topic in log.Topics)
+                        {
+                            var topicMap = excludedTopics.GetOrAdd(topic, _ => []);
+                            topicMap.Add(block.BlockNumber);
+                        }
+                    }
                 }
             }
 

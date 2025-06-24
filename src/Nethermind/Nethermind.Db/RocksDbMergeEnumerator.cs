@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -22,7 +22,7 @@ public readonly ref struct RocksDbMergeEnumerator(ReadOnlySpan<IntPtr> operandsL
     public RocksDbMergeEnumerator(
         Span<byte> existingValue, bool hasExistingValue,
         ReadOnlySpan<IntPtr> operandsList, ReadOnlySpan<long> operandsListLength
-    ): this(operandsList, operandsListLength)
+    ) : this(operandsList, operandsListLength)
     {
         ExistingValue = existingValue;
         HasExistingValue = hasExistingValue;
