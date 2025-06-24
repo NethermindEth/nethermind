@@ -221,7 +221,6 @@ public class SurgeGasPriceOracleTests
                 .TestObject);
 
         // Create a gas price oracle with the live client
-        _surgeConfig.TaikoInboxAddress = "0x06a9Ab27c7e2255df1815E6CC0168d7755Feb19a";
         var liveGasPriceOracle = new SurgeGasPriceOracle(
             _blockFinder,
             _logManager,
