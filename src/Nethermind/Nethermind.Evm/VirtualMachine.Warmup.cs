@@ -50,7 +50,6 @@ public unsafe partial class VirtualMachine
         vm.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
         vm.SetTxExecutionContext(new TxExecutionContext(addressOne, codeInfoRepository, null, 0));
 
-        ValueHash256 codeHash = ValueKeccak.Compute(bytecode);
         ExecutionEnvironment env = new(
             executingAccount: addressOne,
             codeSource: addressOne,

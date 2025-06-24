@@ -24,7 +24,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
             : codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
-    public ValueHash256 InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(state, code, codeOwner, spec);
 
     public void SetCodeOverwrite(

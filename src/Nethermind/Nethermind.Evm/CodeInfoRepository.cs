@@ -130,7 +130,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    public ValueHash256 InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
         // If the code is already in the cache, we don't need to create and add it again (and reanalyze it)
@@ -140,8 +140,6 @@ public class CodeInfoRepository : ICodeInfoRepository
             ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExtractHeader);
             _codeCache.Set(in codeHash, codeInfo);
         }
-
-        return codeHash;
     }
 
     public void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
