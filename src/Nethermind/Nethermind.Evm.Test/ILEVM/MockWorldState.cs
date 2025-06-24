@@ -59,7 +59,7 @@ public class MockWorldState : IWorldState
     Hash256 IReadOnlyStateProvider.StateRoot => throw new NotImplementedException();
 
 
-    public MockWorldState(UInt256 GetValue, UInt256 GetOriginalValue, WorldState inner)
+    public MockWorldState(UInt256 getValue, UInt256 getOriginalValue, WorldState inner)
     {
         _inner = inner;
         GetValue.ToBigEndian(_bytes);
