@@ -29,7 +29,6 @@ using Nethermind.Evm.Tracing.Debugger;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.Evm;
 
-using Word = Vector256<byte>;
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
@@ -76,7 +75,6 @@ public sealed unsafe partial class VirtualMachine(
     private IWorldState _worldState = null!;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
     private ITxTracer _txTracer = NullTxTracer.Instance;
-    private IReleaseSpec _spec;
 
     private ICodeInfoRepository _codeInfoRepository;
 
@@ -88,7 +86,7 @@ public sealed unsafe partial class VirtualMachine(
     private UInt256 _previousCallOutputDestination;
 
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
-    public IReleaseSpec Spec => _spec;
+    public IReleaseSpec Spec => BlockExecutionContext.Spec;
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
@@ -138,7 +136,7 @@ public sealed unsafe partial class VirtualMachine(
         _worldState = worldState;
 
         // Prepare the specification and opcode mapping based on the current block header.
-        IReleaseSpec spec = _spec = BlockExecutionContext.Spec;
+        IReleaseSpec spec = BlockExecutionContext.Spec;
         PrepareOpcodes<TTracingInst>(spec);
 
         // Initialize the code repository and set up the initial execution state.
@@ -377,7 +375,7 @@ public sealed unsafe partial class VirtualMachine(
 
         byte[] bytecodeResultArray = bytecodeResult.ToArray();
 
-        IReleaseSpec spec = _spec;
+        IReleaseSpec spec = BlockExecutionContext.Spec;
         // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
         bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
         long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, bytecodeResultArray?.Length ?? 0);
@@ -449,7 +447,7 @@ public sealed unsafe partial class VirtualMachine(
         // Get the address of the account that initiated the contract creation.
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 
-        IReleaseSpec spec = _spec;
+        IReleaseSpec spec = BlockExecutionContext.Spec;
         // Calculate the gas cost required to deposit the contract code using legacy cost rules.
         long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
 
@@ -873,7 +871,7 @@ public sealed unsafe partial class VirtualMachine(
     /// </param>
     private void TraceTransactionActionEnd(EvmState currentState, in CallResult callResult)
     {
-        IReleaseSpec spec = _spec;
+        IReleaseSpec spec = BlockExecutionContext.Spec;
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
         long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
 
@@ -933,7 +931,7 @@ public sealed unsafe partial class VirtualMachine(
         {
             if (_worldState.AccountExists(_parityTouchBugAccount.Address))
             {
-                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, _spec);
+                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Spec);
             }
 
             _parityTouchBugAccount.ShouldDelete = false;
@@ -964,10 +962,12 @@ public sealed unsafe partial class VirtualMachine(
         long gasAvailable = state.GasAvailable;
 
         IPrecompile precompile = ((PrecompileInfo)state.Env.CodeInfo).Precompile;
-        long baseGasCost = precompile.BaseGasCost(_spec);
-        long blobGasCost = precompile.DataGasCost(callData, _spec);
 
-        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, _spec);
+        IReleaseSpec spec = BlockExecutionContext.Spec;
+        long baseGasCost = precompile.BaseGasCost(spec);
+        long blobGasCost = precompile.DataGasCost(callData, spec);
+
+        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, spec);
 
         // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
         // An additional issue was found in Parity,
@@ -980,7 +980,7 @@ public sealed unsafe partial class VirtualMachine(
         if (state.Env.ExecutingAccount.Equals(_parityTouchBugAccount.Address)
             && !wasCreated
             && transferValue.IsZero
-            && _spec.ClearEmptyAccountWhenTouched)
+            && spec.ClearEmptyAccountWhenTouched)
         {
             _parityTouchBugAccount.ShouldDelete = true;
         }
@@ -994,7 +994,7 @@ public sealed unsafe partial class VirtualMachine(
 
         try
         {
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, _spec);
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
             CallResult callResult = new(output, precompileSuccess: success, fromVersion: 0, shouldRevert: !success);
             return callResult;
         }
@@ -1055,11 +1055,12 @@ public sealed unsafe partial class VirtualMachine(
         // If this is the first call frame (not a continuation), adjust account balances and nonces.
         if (!vmState.IsContinuation)
         {
+            IReleaseSpec spec = BlockExecutionContext.Spec;
             // Ensure the executing account has sufficient balance and exists in the world state.
-            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, _spec);
+            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
 
             // For contract creation calls, increment the nonce if the specification requires it.
-            if (vmState.ExecutionType.IsAnyCreate() && _spec.ClearEmptyAccountWhenTouched)
+            if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
             {
                 _worldState.IncrementNonce(env.ExecutingAccount);
             }

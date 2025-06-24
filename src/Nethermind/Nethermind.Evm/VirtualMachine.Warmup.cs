@@ -64,7 +64,6 @@ public unsafe partial class VirtualMachine
         {
             vm.EvmState = evmState;
             vm._worldState = state;
-            vm._spec = spec;
             vm._codeInfoRepository = codeInfoRepository;
             evmState.InitializeStacks();
 
