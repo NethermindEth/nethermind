@@ -8,6 +8,7 @@ public class PostMergeProcessingStats
     public ExecTimeStats GettingValue { get; set; } = new();
     public ExecTimeStats CompressingValue { get; set; } = new();
     public ExecTimeStats PuttingValues { get; set; } = new();
+    public int QueueLength { get; set; }
 
     public long CompressedAddressKeys;
     public long CompressedTopicKeys;

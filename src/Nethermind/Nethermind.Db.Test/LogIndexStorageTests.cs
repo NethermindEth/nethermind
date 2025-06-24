@@ -39,7 +39,7 @@ namespace Nethermind.Db.Test
         private string _dbPath = null!;
         private IDbFactory _dbFactory = null!;
 
-        private LogIndexStorage CreateLogIndexStorage(int compactionDistance = 262_144, int ioParallelism = 16, int maxReorgDepth = 64, IDbFactory? dbFactory = null)
+        private LogIndexStorage CreateLogIndexStorage(int compactionDistance = 262_144, int ioParallelism = 16, int maxReorgDepth = 32, IDbFactory? dbFactory = null)
         {
             return new(dbFactory ?? _dbFactory, _logger, ioParallelism, compactionDistance, maxReorgDepth);
         }
@@ -95,13 +95,17 @@ namespace Nethermind.Db.Test
         public async Task Set_Get_Test(
             [Values(100, 200, int.MaxValue)] int compactionDistance,
             [Values(1, 8, 16)] byte ioParallelism,
-            [Values] bool isBackwardsSync
+            [Values] bool isBackwardsSync,
+            [Values] bool compact
         )
         {
             await using var logIndexStorage = CreateLogIndexStorage(compactionDistance, ioParallelism);
 
             BlockReceipts[][] batches = isBackwardsSync ? Reverse(_testData.Batches) : _testData.Batches;
             await SetReceiptsAsync(logIndexStorage, batches, isBackwardsSync);
+
+            if (compact)
+                logIndexStorage.Compact(true);
 
             VerifyReceipts(logIndexStorage, _testData);
         }
@@ -485,6 +489,7 @@ namespace Nethermind.Db.Test
                 $"\n\t\tCompressing: {totalStats.PostMergeProcessing.CompressingValue}" +
                 $"\n\t\tPutting: {totalStats.PostMergeProcessing.PuttingValues}" +
                 $"\n\t\tCompressed keys: {totalStats.PostMergeProcessing.CompressedAddressKeys:N0} address, {totalStats.PostMergeProcessing.CompressedTopicKeys:N0} topic" +
+                $"\n\t\tIn queue: {totalStats.PostMergeProcessing.QueueLength:N0}" +
                 $"\n\tDB size: {LogIndexMigration.GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndex))}");
         }
 

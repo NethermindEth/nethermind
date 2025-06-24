@@ -396,7 +396,7 @@ namespace Nethermind.Db
         public SetReceiptsStats Compact(bool waitForCompression)
         {
             var stats = new SetReceiptsStats();
-            Compact(stats, waitForCompression);
+            Compact(stats, waitForCompression: waitForCompression);
             return stats;
         }
 
@@ -483,7 +483,7 @@ namespace Nethermind.Db
                     _lastCompactionAt ??= batch[0].BlockNumber;
                     if (Math.Abs(batch[^1].BlockNumber - _lastCompactionAt.Value) >= _compactionDistance)
                     {
-                        Compact(stats, false);
+                        Compact(stats);
                         _lastCompactionAt = batch[^1].BlockNumber;
                     }
                 }
@@ -517,26 +517,33 @@ namespace Nethermind.Db
             return stats;
         }
 
-        private void Compact(SetReceiptsStats stats, bool waitForCompression)
+        // TODO: log as Debug or not log at all!
+        private void Compact(SetReceiptsStats stats, bool flush = false, bool waitForCompression = false)
         {
-            // TODO: log as Debug!
-            _logger.Warn("Log index flushing starting");
-            var timestamp = Stopwatch.GetTimestamp();
-            _addressDb.Flush();
-            _topicsDb.Flush();
-            stats.FlushingDbs.Include(Stopwatch.GetElapsedTime(timestamp));
-            _logger.Warn("Log index flushing completed");
+            if (flush)
+            {
+                _logger.Warn("Log index flushing starting");
+                var timestamp = Stopwatch.GetTimestamp();
+                _addressDb.Flush();
+                _topicsDb.Flush();
+                stats.FlushingDbs.Include(Stopwatch.GetElapsedTime(timestamp));
+                _logger.Warn("Log index flushing completed");
+            }
 
-            // TODO: try keep writing during compaction
-            _logger.Warn("Log index compaction starting");
-            timestamp = Stopwatch.GetTimestamp();
-            _addressDb.Compact();
-            _topicsDb.Compact();
-            stats.CompactingDbs.Include(Stopwatch.GetElapsedTime(timestamp));
-            _logger.Warn("Log index compaction completed");
+            {
+                // TODO: try keep writing during compaction
+                _logger.Warn("Log index compaction starting");
+                var timestamp = Stopwatch.GetTimestamp();
+                _addressDb.Compact();
+                _topicsDb.Compact();
+                stats.CompactingDbs.Include(Stopwatch.GetElapsedTime(timestamp));
+                _logger.Warn("Log index compaction completed");
+            }
 
             if (waitForCompression)
+            {
                 _compressor.WaitUntilEmpty();
+            }
         }
 
         // TODO: optimize allocations
@@ -752,7 +759,7 @@ namespace Nethermind.Db
                 if (isBackward)
                 {
                     if (currentBlock > block)
-                        return i - BlockNumSize;
+                        return i + BlockNumSize;
                 }
                 else
                 {
