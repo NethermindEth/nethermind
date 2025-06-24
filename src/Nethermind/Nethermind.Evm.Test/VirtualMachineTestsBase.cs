@@ -47,10 +47,10 @@ public abstract class VirtualMachineTestsBase
     protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
     protected virtual ForkActivation Activation => (BlockNumber, Timestamp);
-    protected virtual long BlockNumber { get; } = MainnetSpecProvider.ByzantiumBlockNumber;
-    protected virtual ulong Timestamp => 0UL;
+    protected virtual long BlockNumber { get; private set; } = MainnetSpecProvider.ByzantiumBlockNumber;
+    protected virtual ulong Timestamp { get; private set; } = 0UL;
     protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
-    protected IReleaseSpec Spec { get; set; }
+    protected IReleaseSpec Spec => SpecProvider.GetSpec(Activation);
 
     protected virtual ILogManager GetLogManager()
     {
@@ -61,7 +61,6 @@ public abstract class VirtualMachineTestsBase
     public virtual void Setup()
     {
         ILogManager logManager = GetLogManager();
-        Spec = SpecProvider.GetSpec(Activation);
 
         _stateDb = new MemDb();
         IDbProvider dbProvider = TestMemDbProvider.Init();
@@ -252,7 +251,8 @@ public abstract class VirtualMachineTestsBase
             .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit, excessBlobGas);
-        Spec = SpecProvider.GetSpec(block.Header);
+        BlockNumber = block.Header.Number;
+        Timestamp = block.Header.Timestamp;
         return (block, transaction);
     }
 
