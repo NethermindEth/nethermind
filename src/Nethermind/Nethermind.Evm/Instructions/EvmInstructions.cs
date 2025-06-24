@@ -144,7 +144,12 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.MSTORE] = &InstructionMStore<TTracingInst>;
         lookup[(int)Instruction.MSTORE8] = &InstructionMStore8<TTracingInst>;
         lookup[(int)Instruction.SLOAD] = &InstructionSLoad<TTracingInst>;
-        lookup[(int)Instruction.SSTORE] = &InstructionSStore<TTracingInst>;
+        lookup[(int)Instruction.SSTORE] = spec.UseNetGasMetering ?
+            (spec.UseNetGasMeteringWithAStipendFix ?
+                &InstructionSStoreMetered<TTracingInst, OnFlag> :
+                &InstructionSStoreMetered<TTracingInst, OffFlag>
+            ) :
+            &InstructionSStoreUnmetered<TTracingInst>;
 
         // Jump instructions.
         lookup[(int)Instruction.JUMP] = &InstructionJump;
