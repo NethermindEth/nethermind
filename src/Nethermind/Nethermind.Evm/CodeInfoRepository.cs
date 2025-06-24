@@ -159,7 +159,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             // If the code is already in the cache, we don't need to create CodeInfo and add it again (and reanalyze it)
             && _codeCache.Get(in codeHash) is null)
         {
-            _codeCache.Set(codeHash, new CodeInfo(in codeHash,authorizedBuffer));
+            _codeCache.Set(codeHash, new CodeInfo(in codeHash, authorizedBuffer));
         }
     }
 

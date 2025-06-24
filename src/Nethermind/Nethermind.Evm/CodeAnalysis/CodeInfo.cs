@@ -9,10 +9,10 @@ namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed class CodeInfo(in ValueHash256 codeHash, ReadOnlyMemory<byte> code) : ICodeInfo, IThreadPoolWorkItem
 {
-    public CodeInfo(ReadOnlyMemory<byte> code) : this(ValueKeccak.Compute(code.Span), code) {}
+    public CodeInfo(ReadOnlyMemory<byte> code) : this(ValueKeccak.Compute(code.Span), code) { }
 
     private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
-    public static CodeInfo Empty { get; } = new CodeInfo(in Keccak.OfAnEmptyString.ValueHash256, ReadOnlyMemory<byte>.Empty);
+    public static CodeInfo Empty { get; } = new(in Keccak.OfAnEmptyString.ValueHash256, ReadOnlyMemory<byte>.Empty);
 
     private readonly ValueHash256 _codeHash = codeHash;
     public ref readonly ValueHash256 CodeHash => ref _codeHash;
