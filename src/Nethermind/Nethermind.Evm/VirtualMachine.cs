@@ -72,7 +72,7 @@ public sealed unsafe partial class VirtualMachine(
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly Stack<EvmState> _stateStack = new();
 
-    private IWorldState _worldState = null!;
+    private IWorldState _worldState;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
     private ITxTracer _txTracer = NullTxTracer.Instance;
 
@@ -86,7 +86,7 @@ public sealed unsafe partial class VirtualMachine(
     private UInt256 _previousCallOutputDestination;
 
     public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
-    public IReleaseSpec Spec => BlockExecutionContext.Spec;
+    public IReleaseSpec Spec => _blockExecutionContext.Spec;
     public ITxTracer TxTracer => _txTracer;
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
@@ -511,7 +511,7 @@ public sealed unsafe partial class VirtualMachine(
             callResult.Output,
             _currentState.Refund,
             _currentState.AccessTracker.DestroyList,
-            (IReadOnlyCollection<LogEntry>)_currentState.AccessTracker.Logs,
+            _currentState.AccessTracker.Logs,
             callResult.ShouldRevert,
             isTracerConnected: _txTracer.IsTracing,
             _logger);
