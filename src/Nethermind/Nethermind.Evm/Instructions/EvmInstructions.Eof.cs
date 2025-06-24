@@ -103,7 +103,7 @@ internal static partial class EvmInstructions
         }
 
         // Deduct the fixed gas cost and the memory cost based on the size (rounded up to 32-byte words).
-        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size, out bool outOfGas);
+        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * Div32Ceiling(in size, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
@@ -255,7 +255,7 @@ internal static partial class EvmInstructions
         }
 
         // Calculate memory expansion gas cost and deduct overall gas for data copy.
-        if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size, out bool outOfGas), ref gasAvailable)
+        if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * Div32Ceiling(in size, out bool outOfGas), ref gasAvailable)
             || outOfGas)
         {
             goto OutOfGas;
@@ -659,7 +659,7 @@ internal static partial class EvmInstructions
         }
 
         // 6. Deduct gas for keccak256 hashing of the init code.
-        long numberOfWordsInInitCode = EvmPooledMemory.Div32Ceiling((UInt256)initContainer.Length, out bool outOfGas);
+        long numberOfWordsInInitCode = Div32Ceiling((UInt256)initContainer.Length, out bool outOfGas);
         long hashCost = GasCostOf.Sha3Word * numberOfWordsInInitCode;
         if (outOfGas || !UpdateGas(hashCost, ref gasAvailable))
             goto OutOfGas;

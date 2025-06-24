@@ -639,18 +639,17 @@ namespace Nethermind.Evm.TransactionProcessing
                 goto Complete;
             }
 
-            ExecutionType executionType = tx.IsContractCreation ? (tx.IsEofContractCreation ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
+            ExecutionType executionType = tx.IsContractCreation ? ((spec.IsEofEnabled && tx.IsEofContractCreation) ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
 
             using (EvmState state = EvmState.RentTopLevel(gasAvailable, executionType, in env, in accessedItems, in snapshot))
             {
                 substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
-
                 gasAvailable = state.GasAvailable;
+            }
 
-                if (tracer.IsTracingAccess)
-                {
-                    tracer.ReportAccess(state.AccessTracker.AccessedAddresses, state.AccessTracker.AccessedStorageCells);
-                }
+            if (tracer.IsTracingAccess)
+            {
+                tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
             }
 
             if (substate.ShouldRevert || substate.IsError)
@@ -662,16 +661,16 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (tx.IsContractCreation)
                 {
-                    if (tx.IsLegacyContractCreation)
+                    if (!spec.IsEofEnabled || tx.IsLegacyContractCreation)
                     {
-                        if (!DeployLegacyContract(spec, env.ExecutingAccount, in substate, ref gasAvailable))
+                        if (!DeployLegacyContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
                         {
                             goto FailContractCreate;
                         }
                     }
                     else
                     {
-                        if (!DeployEofContract(spec, env.ExecutingAccount, in substate, ref gasAvailable))
+                        if (!DeployEofContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
                         {
                             goto FailContractCreate;
                         }
@@ -707,7 +706,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return statusCode;
         }
 
-        private bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, ref long unspentGas)
+        private bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref long unspentGas)
         {
             long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, substate.Output.Bytes.Length);
             if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
@@ -725,6 +724,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 // Copy the bytes so it's not live memory that will be used in another tx
                 byte[] code = substate.Output.Bytes.ToArray();
                 _codeInfoRepository.InsertCode(WorldState, code, codeOwner, spec);
+                if (code.Length > CodeSizeConstants.MaxCodeSizeEip170)
+                {
+                    accessedItems.WarmUpLargeContract(codeOwner);
+                }
 
                 unspentGas -= codeDepositGasCost;
             }
@@ -732,7 +735,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return true;
         }
 
-        private bool DeployEofContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, ref long unspentGas)
+        private bool DeployEofContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref long unspentGas)
         {
             // 1 - load deploy EOF subContainer at deploy_container_index in the container from which RETURNCODE is executed
             ReadOnlySpan<byte> auxExtraData = substate.Output.Bytes.Span;
@@ -775,6 +778,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 // 4 - set state[new_address].code to the updated deploy container
                 // push new_address onto the stack (already done before the ifs)
                 _codeInfoRepository.InsertCode(WorldState, bytecodeResult, codeOwner, spec);
+                if (bytecodeResult.Length > CodeSizeConstants.MaxCodeSizeEip170)
+                {
+                    accessedItems.WarmUpLargeContract(codeOwner);
+                }
                 unspentGas -= codeDepositGasCost;
             }
 

@@ -249,9 +249,9 @@ public struct EvmPooledMemory : IEvmMemory
 
         if (newSize > Size)
         {
-            long newActiveWords = Div32Ceiling(newSize, out outOfGas);
+            long newActiveWords = EvmInstructions.Div32Ceiling(newSize, out outOfGas);
             if (outOfGas) return 0;
-            long activeWords = Div32Ceiling(Size, out outOfGas);
+            long activeWords = EvmInstructions.Div32Ceiling(Size, out outOfGas);
             if (outOfGas) return 0;
 
             // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
@@ -303,44 +303,6 @@ public struct EvmPooledMemory : IEvmMemory
             _memory = null;
             ArrayPool<byte>.Shared.Return(memory);
         }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long Div32Ceiling(in UInt256 length, out bool outOfGas)
-    {
-        if (length.IsLargerThanULong())
-        {
-            outOfGas = true;
-            return 0;
-        }
-
-        ulong result = length.u0;
-        ulong rem = result & 31;
-        result >>= 5;
-        if (rem > 0)
-        {
-            result++;
-        }
-
-        if (result > uint.MaxValue)
-        {
-            outOfGas = true;
-            return 0;
-        }
-
-        outOfGas = false;
-        return (long)result;
-    }
-
-    public static long Div32Ceiling(in UInt256 length)
-    {
-        long result = Div32Ceiling(in length, out bool outOfGas);
-        if (outOfGas)
-        {
-            ThrowOutOfGasException();
-        }
-
-        return result;
     }
 
     private void UpdateSize(in UInt256 location, in UInt256 length, bool rentIfNeeded = true)
