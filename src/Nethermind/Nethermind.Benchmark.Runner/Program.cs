@@ -31,7 +31,6 @@ using BenchmarkDotNet.Columns;
 using Nethermind.Precompiles.Benchmark;
 using System.Threading.Tasks;
 using System.Threading;
-using Perfolizer.Horology;
 using BenchmarkDotNet.Toolchains.CsProj;
 
 namespace Nethermind.Benchmark.Runner
@@ -105,9 +104,6 @@ namespace Nethermind.Benchmark.Runner
                 case "ilevm":
                     RunEvmBenchmarks(options.Value);
                     break;
-                case "evm-ilevm":
-                    RunIlEvmSuite(options.Value);
-                    break;
                 case "weth-bench":
                     // spawn a new process to run the WETH benchmarks
                     RunWethBenchmarksInIsolation(options.Value);
@@ -115,19 +111,6 @@ namespace Nethermind.Benchmark.Runner
                 default:
                     throw new Exception("Invalid mode");
             }
-        }
-
-        private static void RunIlEvmSuite(Options value)
-        {
-            var summary = BenchmarkRunner.Run([
-                            typeof(Nethermind.Evm.Benchmark.Fib),
-                            typeof(Nethermind.Evm.Benchmark.Prime),
-                            typeof(Nethermind.Evm.Benchmark.Weth)
-                        ], new DashboardConfig(Job.VeryLongRun
-                                .WithPlatform(Platform.X64)
-                                .WithJit(Jit.RyuJit)
-                                .WithRuntime(CoreRuntime.Core90)
-                                ));
         }
 
         private static void RunWethBenchmarksInIsolation(Options value)
@@ -138,13 +121,12 @@ namespace Nethermind.Benchmark.Runner
 
             if (mode == (ILMode.NO_ILVM | ILMode.AOT_MODE))
             {
-                BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.WrapedEthBenchmarks), config);
-            }
-            else if (mode == ILMode.AOT_MODE)
+               BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.WrapedEthBenchmarks), config);
+            } else if (mode == ILMode.AOT_MODE)
             {
                 BenchmarkRunner.Run<WrapedEthBenchmarksSetup<VirtualMachine.IsPrecompiling>>(config);
             }
-            else if (mode == ILMode.NO_ILVM)
+            else if(mode == ILMode.NO_ILVM)
             {
                 BenchmarkRunner.Run<WrapedEthBenchmarksSetup<VirtualMachine.NotOptimizing>>(config);
             }
