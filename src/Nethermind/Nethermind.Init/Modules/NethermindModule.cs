@@ -7,6 +7,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
@@ -62,6 +63,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
             .Bind<IEcdsa, IEthereumEcdsa>()
 
+            .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
             .AddSingleton<IChainHeadInfoProvider, ChainHeadInfoProvider>()
             .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
             ;
