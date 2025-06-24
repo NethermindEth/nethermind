@@ -41,30 +41,25 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             SpecProvider = specProvider;
         }
 
-        public virtual UInt256 GetGasPriceEstimate()
+        public virtual ValueTask<UInt256> GetGasPriceEstimate()
         {
             Block? headBlock = _blockFinder.Head;
             if (headBlock is null)
             {
-                return FallbackGasPrice();
+                return ValueTask.FromResult(FallbackGasPrice());
             }
 
             Hash256 headBlockHash = headBlock.Hash!;
             if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price))
             {
-                return price!.Value;
+                return ValueTask.FromResult(price!.Value);
             }
 
             IEnumerable<UInt256> txGasPrices = GetSortedGasPricesFromRecentBlocks(headBlock.Number);
             UInt256 gasPriceEstimate = GetGasPriceAtPercentile(txGasPrices.ToList()) ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
             _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
-            return gasPriceEstimate!;
-        }
-
-        public virtual ValueTask<UInt256> GetGasPriceEstimateAsync()
-        {
-            return ValueTask.FromResult(GetGasPriceEstimate());
+            return ValueTask.FromResult(gasPriceEstimate!);
         }
 
         internal IEnumerable<UInt256> GetSortedGasPricesFromRecentBlocks(long blockNumber) =>
@@ -93,11 +88,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
             _maxPriorityFeePerGasEstimation.Set(headBlockHash, gasPriceEstimate);
             return gasPriceEstimate!;
-        }
-
-        public virtual ValueTask<UInt256> GetMaxPriorityGasFeeEstimateAsync()
-        {
-            return ValueTask.FromResult(GetMaxPriorityGasFeeEstimate());
         }
 
         private UInt256 GetMinimumGasPrice(in UInt256 baseFeePerGas) => (_minGasPrice + baseFeePerGas) * _defaultMinGasPriceMultiplier / 100ul;
