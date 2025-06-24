@@ -8,7 +8,6 @@ using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -28,12 +27,10 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
-using Nethermind.Facade.Simulate;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
-using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -48,7 +45,6 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
-using Nethermind.Trie;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Facade.Find;
 
@@ -122,7 +118,6 @@ namespace Nethermind.Api
         public IRewardCalculatorSource RewardCalculatorSource => Context.Resolve<IRewardCalculatorSource>();
         public IRlpxHost RlpxPeer => Context.Resolve<IRlpxHost>();
         public IRpcModuleProvider? RpcModuleProvider => Context.Resolve<IRpcModuleProvider>();
-        public IRpcAuthentication? RpcAuthentication { get; set; }
         public IJsonRpcLocalStats JsonRpcLocalStats => Context.Resolve<IJsonRpcLocalStats>();
         public ISealer Sealer => Context.Resolve<ISealer>();
         public string SealEngineType => ChainSpec.SealEngineType;
@@ -176,8 +171,6 @@ namespace Nethermind.Api
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public IProcessExitSource ProcessExit => _dependencies.ProcessExitSource;
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
-        public ISimulateTransactionProcessorFactory SimulateTransactionProcessorFactory =>
-            Context.Resolve<ISimulateTransactionProcessorFactory>();
         public ILifetimeScope Context => _dependencies.Context;
     }
 }

@@ -5,31 +5,27 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 
 namespace Nethermind.TxPool
 {
-    public class TxPoolInfoProvider : ITxPoolInfoProvider
+    public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxPool txPool) : ITxPoolInfoProvider
     {
-        private readonly IAccountStateProvider _stateReader;
-        private readonly ITxPool _txPool;
 
-        public TxPoolInfoProvider(IChainHeadInfoProvider accountStateProvider, ITxPool txPool)
-        {
-            _stateReader = accountStateProvider.ReadOnlyStateProvider;
-            _txPool = txPool;
-        }
+        [UseConstructorForDependencyInjection]
+        public TxPoolInfoProvider(IChainHeadInfoProvider chainHeadInfoProvider, ITxPool txPool): this(chainHeadInfoProvider.ReadOnlyStateProvider, txPool) {}
 
         public TxPoolInfo GetInfo()
         {
             // only std txs are picked here. Should we add blobs?
             // BTW this class should be rewritten or removed - a lot of unnecessary allocations
-            var groupedTransactions = _txPool.GetPendingTransactionsBySender();
+            var groupedTransactions = txPool.GetPendingTransactionsBySender();
             var pendingTransactions = new Dictionary<AddressAsKey, IDictionary<ulong, Transaction>>();
             var queuedTransactions = new Dictionary<AddressAsKey, IDictionary<ulong, Transaction>>();
             foreach (KeyValuePair<AddressAsKey, Transaction[]> group in groupedTransactions)
             {
                 Address address = group.Key;
-                var accountNonce = _stateReader.GetNonce(address);
+                var accountNonce = accountStateProvider.GetNonce(address);
                 var expectedNonce = accountNonce;
                 var pending = new Dictionary<ulong, Transaction>();
                 var queued = new Dictionary<ulong, Transaction>();
