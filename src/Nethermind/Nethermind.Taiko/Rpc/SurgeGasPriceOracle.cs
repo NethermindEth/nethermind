@@ -85,7 +85,8 @@ public class SurgeGasPriceOracle : GasPriceOracle
             return FallbackGasPrice();
         }
 
-        UInt256 gasPriceEstimate = (minProposingCost + proofPostingCost + _surgeConfig.ProvingCostPerL2Batch) / averageGasUsage;
+        UInt256 gasPriceEstimate = (minProposingCost + proofPostingCost + _surgeConfig.ProvingCostPerL2Batch) /
+                                   Math.Max(averageGasUsage, _surgeConfig.L2GasPerL2Batch);
         _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
 
         if (_logger.IsTrace) _logger.Trace($"[{_className}] Calculated new gas price estimate: {gasPriceEstimate}, " +
@@ -151,7 +152,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         // Record the batch's gas usage and compute the average
         _gasUsageBuffer.Add(totalGasUsed);
-        return Math.Min(_gasUsageBuffer.Average, _surgeConfig.L2GasPerL2Batch);
+        return _gasUsageBuffer.Average;
     }
 
     /// <summary>
