@@ -204,6 +204,7 @@ public class SurgeGasPriceOracleTests
     }
 
     [Test]
+    [Explicit("This test requires interacting with a live TaikoInbox contract")]
     public async ValueTask GetGasPriceEstimate_WithLiveTaikoInboxContract_ReturnsValidGasPrice()
     {
         // Create a real RPC client for L1
