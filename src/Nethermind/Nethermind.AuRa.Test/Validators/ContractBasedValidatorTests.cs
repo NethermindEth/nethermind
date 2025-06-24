@@ -634,7 +634,7 @@ public class ContractBasedValidatorTests
 
         _transactionProcessor.When(x => x.CallAndRestore(
                 Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
-                Arg.Any<BlockExecutionContext>(),
+                Arg.Any<BlockHeader>(),
                 Arg.Is<ITxTracer>(t => t is CallOutputTracer)))
             .Do(args =>
                 args.Arg<ITxTracer>().MarkAsSuccess(
