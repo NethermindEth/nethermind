@@ -149,8 +149,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
         public bool Return(IOverridableWorldScope obj)
         {
-            obj.WorldState.Reset();
-            obj.WorldState.ResetOverrides();
+            obj.ResetOverrides();
             return true;
         }
     }

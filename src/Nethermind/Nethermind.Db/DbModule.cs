@@ -11,7 +11,8 @@ public class DbModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
-        builder.AddSingleton(this);
+        builder
+            .AddScoped<IReadOnlyDbProvider, IDbProvider>((dbProvider) => dbProvider.AsReadOnly(false));
 
         // TODO: Have hooks that automatically get these
         string[] dbNames = [

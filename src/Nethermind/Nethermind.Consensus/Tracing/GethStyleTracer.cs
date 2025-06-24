@@ -159,8 +159,8 @@ public class GethStyleTracer(
                 throw new InvalidOperationException("Cannot trace blocks with invalid parents");
         }
 
+        using var _ = _env.BuildAndOverride(block.Header, options.StateOverrides);
         var tracer = new GethLikeBlockFileTracer(block, options, _fileSystem);
-
         _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
@@ -176,8 +176,8 @@ public class GethStyleTracer(
                         .FirstOrDefault(b => b.Hash == blockHash)
                     ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
 
+        using var _ = _env.BuildAndOverride(block.Header, options.StateOverrides);
         var tracer = new GethLikeBlockFileTracer(block, options, _fileSystem);
-
         _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;

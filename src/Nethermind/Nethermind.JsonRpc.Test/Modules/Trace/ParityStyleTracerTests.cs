@@ -77,7 +77,7 @@ public class ParityStyleTracerTests
             specProvider,
             Always.Valid,
             new MergeRpcRewardCalculator(NoBlockRewards.Instance, _poSSwitcher),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
@@ -94,8 +94,9 @@ public class ParityStyleTracerTests
         _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);
 
         IOverridableTxProcessorSource txProcessingSource = Substitute.For<IOverridableTxProcessorSource>();
-        _tracer = new Tracer(new ReadOnlyTxProcessingScope(transactionProcessor, stateProvider, stateProvider.StateRoot), _processor, _processor);
-        _traceRpcModule = new(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig, _stateReader, txProcessingSource, Substitute.For<IBlockchainBridge>(), new BlocksConfig().SecondsPerSlot);
+        _tracer = new Tracer(stateProvider, _processor, _processor);
+        var env = new TracerEnv(_tracer, txProcessingSource);
+        _traceRpcModule = new(NullReceiptStorage.Instance, env, _blockTree, _jsonRpcConfig, _stateReader, Substitute.For<IBlockchainBridge>(), new BlocksConfig());
     }
 
     [TearDown]

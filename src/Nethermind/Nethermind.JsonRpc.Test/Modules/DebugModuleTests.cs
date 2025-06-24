@@ -50,7 +50,7 @@ public class DebugModuleTests
             jsonRpcConfig,
             specProvider,
             blockchainBridge,
-            new BlocksConfig().SecondsPerSlot,
+            new BlocksConfig(),
             blockFinder
         );
     }
