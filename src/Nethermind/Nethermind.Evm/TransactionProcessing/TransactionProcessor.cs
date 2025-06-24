@@ -724,7 +724,11 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 // Copy the bytes so it's not live memory that will be used in another tx
                 byte[] code = substate.Output.Bytes.ToArray();
-                _codeInfoRepository.InsertCode(WorldState, code, codeOwner, spec);
+                ValueHash256 codeHash = _codeInfoRepository.InsertCode(WorldState, code, codeOwner, spec);
+                if (code.Length > Eip7907Constants.MaxCodeSize)
+                {
+                    VirtualMachine.EvmState.AccessTracker.WarmUp(in codeHash);
+                }
 
                 unspentGas -= codeDepositGasCost;
             }
@@ -774,7 +778,11 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 // 4 - set state[new_address].code to the updated deploy container
                 // push new_address onto the stack (already done before the ifs)
-                _codeInfoRepository.InsertCode(WorldState, bytecodeResult, codeOwner, spec);
+                ValueHash256 codeHash = _codeInfoRepository.InsertCode(WorldState, bytecodeResult, codeOwner, spec);
+                if (bytecodeResult.Length > Eip7907Constants.MaxCodeSize)
+                {
+                    VirtualMachine.EvmState.AccessTracker.WarmUp(in codeHash);
+                }
                 unspentGas -= codeDepositGasCost;
             }
 

@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
@@ -176,6 +177,14 @@ internal static partial class EvmInstructions
             !UpdateGas(gasExtra, ref gasAvailable))
             goto OutOfGas;
 
+        // Retrieve code information for the call and schedule background analysis if needed.
+        ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec);
+
+        // If contract is large, charge for access
+        if (spec.IsEip7907Enabled &&
+            !ChargeForLargeContractAccess(codeInfo, vm, ref gasAvailable))
+            goto OutOfGas;
+
         // Apply the 63/64 gas rule if enabled.
         if (spec.Use63Over64Rule)
         {
@@ -232,8 +241,6 @@ internal static partial class EvmInstructions
         // Subtract the transfer value from the caller's balance.
         state.SubtractFromBalance(caller, in transferValue, spec);
 
-        // Retrieve code information for the call and schedule background analysis if needed.
-        ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec);
         // Fast-path for calls to externally owned accounts (non-contracts)
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
@@ -294,6 +301,23 @@ internal static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     OutOfGas:
         return EvmExceptionType.OutOfGas;
+    }
+
+    private static bool ChargeForLargeContractAccess(ICodeInfo codeInfo, VirtualMachine vm, ref long gasAvailable)
+    {
+        uint excessContractSize = (uint)Math.Max(0, codeInfo.MachineCode.Length - Eip7907Constants.MaxCodeSize);
+        if (excessContractSize > 0)
+        {
+            ref readonly StackAccessTracker accessTracer = ref vm.EvmState.AccessTracker;
+            ref readonly ValueHash256 codeHash = ref codeInfo.CodeHash;
+            if (accessTracer.WarmUp(in codeHash))
+            {
+                long largeContractCost = GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(excessContractSize, out bool outOfGas);
+                if (outOfGas || !UpdateGas(largeContractCost, ref gasAvailable)) return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>

@@ -41,6 +41,8 @@ public class SimulateVirtualMachine(IVirtualMachine virtualMachine) : IVirtualMa
 
     public ref readonly TxExecutionContext TxExecutionContext => ref virtualMachine.TxExecutionContext;
 
+    public EvmState EvmState => virtualMachine.EvmState;
+
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         => virtualMachine.SetBlockExecutionContext(blockExecutionContext);
 

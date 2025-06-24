@@ -314,7 +314,12 @@ public struct EvmPooledMemory : IEvmMemory
             return 0;
         }
 
-        ulong result = length.u0;
+        return Div32Ceiling(length.u0, out outOfGas);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static long Div32Ceiling(ulong result, out bool outOfGas)
+    {
         ulong rem = result & 31;
         result >>= 5;
         if (rem > 0)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -28,6 +29,7 @@ public interface ICodeInfo
     /// This is the primary code section from which the EVM executes instructions.
     /// </summary>
     ReadOnlyMemory<byte> MachineCode { get; }
+    ref readonly ValueHash256 CodeHash { get; }
 
     /// <summary>
     /// Indicates whether this code represents a precompiled contract.

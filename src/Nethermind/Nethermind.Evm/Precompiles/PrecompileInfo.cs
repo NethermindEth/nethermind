@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
@@ -13,4 +14,6 @@ public sealed class PrecompileInfo(IPrecompile precompile) : ICodeInfo
 
     public bool IsPrecompile => true;
     public bool IsEmpty => false;
+
+    public ref readonly ValueHash256 CodeHash => ref ValueKeccak.OfAnEmptyString;
 }

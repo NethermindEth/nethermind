@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.EvmObjectFormat;
 
@@ -10,15 +11,18 @@ namespace Nethermind.Evm.CodeAnalysis;
 
 public static class CodeInfoFactory
 {
-    public static ICodeInfo CreateCodeInfo(ReadOnlyMemory<byte> code, IReleaseSpec spec, ValidationStrategy validationRules = ValidationStrategy.ExtractHeader)
+    public static EofCodeInfo CreateCodeInfo(ReadOnlyMemory<byte> code, IReleaseSpec spec, ValidationStrategy validationRules)
+        => (EofCodeInfo)CreateCodeInfo(ValueKeccak.Compute(code.Span), code, spec, validationRules);
+
+    public static ICodeInfo CreateCodeInfo(in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, ValidationStrategy validationRules = ValidationStrategy.ExtractHeader)
     {
         if (spec.IsEofEnabled
             && code.Span.StartsWith(EofValidator.MAGIC)
             && EofValidator.IsValidEof(code, validationRules, out EofContainer? container))
         {
-            return new EofCodeInfo(container.Value);
+            return new EofCodeInfo(in codeHash, container.Value);
         }
-        CodeInfo codeInfo = new(code);
+        CodeInfo codeInfo = new(in codeHash, code);
         codeInfo.AnalyzeInBackgroundIfRequired();
         return codeInfo;
     }
@@ -32,14 +36,14 @@ public static class CodeInfoFactory
             {
                 int containerSize = eofContainer.Value.Header.DataSection.EndOffset;
                 extraCallData = data[containerSize..];
-                codeInfo = new EofCodeInfo(eofContainer.Value);
+                codeInfo = new EofCodeInfo(in ValueKeccak.OfAnEmptyString, eofContainer.Value);
                 return true;
             }
             codeInfo = null;
             return false;
         }
 
-        CodeInfo legacyCodeInfo = new(data);
+        CodeInfo legacyCodeInfo = new(in ValueKeccak.OfAnEmptyString, data);
         legacyCodeInfo.AnalyzeInBackgroundIfRequired();
         codeInfo = legacyCodeInfo;
         return true;

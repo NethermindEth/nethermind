@@ -11,10 +11,11 @@ namespace Nethermind.State
 {
     public static class WorldStateExtensions
     {
-        public static void InsertCode(this IWorldState worldState, Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public static ValueHash256 InsertCode(this IWorldState worldState, Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
             worldState.InsertCode(address, codeHash, code, spec, isGenesis);
+            return codeHash;
         }
 
         public static string DumpState(this IWorldState stateProvider)

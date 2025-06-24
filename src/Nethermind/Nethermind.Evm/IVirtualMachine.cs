@@ -14,6 +14,7 @@ namespace Nethermind.Evm
             where TTracingInst : struct, IFlag;
         ref readonly BlockExecutionContext BlockExecutionContext { get; }
         ref readonly TxExecutionContext TxExecutionContext { get; }
+        public EvmState EvmState { get; }
         void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
         void SetTxExecutionContext(in TxExecutionContext txExecutionContext);
     }

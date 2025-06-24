@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 
@@ -43,6 +44,9 @@ public struct StackAccessTracker : IDisposable
     {
         _trackingState.AccessedStorageCells.Add(storageCell);
     }
+
+    public readonly bool WarmUp(in ValueHash256 codeHash)
+        => _trackingState.LargeContractList.Add(codeHash);
 
     public readonly void WarmUp(AccessList? accessList)
     {
@@ -108,6 +112,7 @@ public struct StackAccessTracker : IDisposable
         public JournalCollection<LogEntry> Logs { get; } = new();
         public JournalSet<Address> DestroyList { get; } = new();
         public HashSet<AddressAsKey> CreateList { get; } = new();
+        public HashSet<ValueHash256> LargeContractList { get; } = new();
 
         private void Clear()
         {
@@ -116,6 +121,7 @@ public struct StackAccessTracker : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
+            LargeContractList.Clear();
         }
     }
 }

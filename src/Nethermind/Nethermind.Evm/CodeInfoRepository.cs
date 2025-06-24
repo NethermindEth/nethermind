@@ -113,7 +113,7 @@ public class CodeInfoRepository : ICodeInfoRepository
                 MissingCode(in codeHash);
             }
 
-            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec, ValidationStrategy.ExtractHeader);
+            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(in codeHash, code, vmSpec, ValidationStrategy.ExtractHeader);
             _codeCache.Set(in codeHash, cachedCodeInfo);
         }
         else
@@ -130,16 +130,18 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    public ValueHash256 InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
         // If the code is already in the cache, we don't need to create and add it again (and reanalyze it)
         if (state.InsertCode(codeOwner, in codeHash, code, spec) &&
             _codeCache.Get(in codeHash) is null)
         {
-            ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExtractHeader);
+            ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(in codeHash, code, spec, ValidationStrategy.ExtractHeader);
             _codeCache.Set(in codeHash, codeInfo);
         }
+
+        return codeHash;
     }
 
     public void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
@@ -157,7 +159,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             // If the code is already in the cache, we don't need to create CodeInfo and add it again (and reanalyze it)
             && _codeCache.Get(in codeHash) is null)
         {
-            _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
+            _codeCache.Set(codeHash, new CodeInfo(in codeHash,authorizedBuffer));
         }
     }
 

@@ -3,8 +3,9 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using Nethermind.Core.Specs;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm;
@@ -156,10 +157,16 @@ internal static partial class EvmInstructions
             if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result))
                 goto OutOfGas;
 
+            ICodeInfo codeInfo = vm.CodeInfoRepository
+                .GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _);
+
+            // If contract is large, charge for access
+            if (spec.IsEip7907Enabled &&
+                !ChargeForLargeContractAccess(codeInfo, vm, ref gasAvailable))
+                goto OutOfGas;
+
             // Get the external code from the repository.
-            ReadOnlySpan<byte> externalCode = vm.CodeInfoRepository
-                .GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _)
-                .MachineCode.Span;
+            ReadOnlySpan<byte> externalCode = codeInfo.MachineCode.Span;
 
             // If EOF is enabled and the code is an EOF contract, use a predefined magic value.
             if (spec.IsEofEnabled && EofValidator.IsEof(externalCode, out _))
