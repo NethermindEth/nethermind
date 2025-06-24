@@ -4,7 +4,6 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
