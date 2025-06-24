@@ -220,7 +220,7 @@ public sealed unsafe partial class VirtualMachine(
                     {
                         TraceTransactionActionEnd(_currentState, spec, callResult);
                     }
-                    TransactionSubstate substate =  PrepareTopLevelSubstate(in callResult);
+                    TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
                     _currentState = null;
                     return substate;
                 }
