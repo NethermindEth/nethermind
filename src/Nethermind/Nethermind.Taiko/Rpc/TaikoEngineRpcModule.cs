@@ -118,7 +118,15 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         IEnumerable<Transaction> allTxs = pendingTxs.SelectMany(txs => txs.Value).Where(tx => !tx.SupportsBlobs && tx.CanPayBaseFee(baseFee));
 
-        Transaction[] txQueue = [.. minTip is 0 ? allTxs : allTxs.Where(tx => tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas) && premiumPerGas >= minTip)];
+        IEnumerable<Transaction> filteredTx =
+            allTxs.Where(tx => (tx.Supports1559 ? tx.MaxFeePerGas : tx.GasPrice) >= baseFee);
+
+        if (minTip is not 0)
+        {
+            filteredTx = filteredTx.Where(tx => tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas) && premiumPerGas >= minTip);
+        }
+
+        Transaction[] txQueue = filteredTx.ToArray();
 
         BlockHeader? head = blockFinder.Head?.Header;
 
