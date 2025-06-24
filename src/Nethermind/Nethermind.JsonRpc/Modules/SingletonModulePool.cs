@@ -15,12 +15,18 @@ namespace Nethermind.JsonRpc.Modules
         public SingletonModulePool(T module, bool allowExclusive = true)
             : this(new SingletonFactory<T>(module), allowExclusive) { }
 
-        public SingletonModulePool(IRpcModuleFactory<T> factory, bool allowExclusive = true)
+        public SingletonModulePool(IRpcModuleFactory<T> factory, bool allowExclusive = true, bool allowContextAwareRpc = false)
         {
             Factory = factory;
             _onlyInstance = factory.Create();
             _onlyInstanceAsTask = Task.FromResult(_onlyInstance);
             _allowExclusive = allowExclusive;
+
+            if (_onlyInstance is IContextAwareRpcModule && !allowContextAwareRpc)
+            {
+                throw new InvalidOperationException(
+                    $"{_onlyInstance} implement {nameof(IContextAwareRpcModule)} which is not safe to share and should not use singleton module pool.");
+            }
         }
 
         public Task<T> GetModule(bool canBeShared)
