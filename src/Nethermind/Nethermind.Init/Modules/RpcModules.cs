@@ -102,7 +102,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
     private IAdminRpcModule CreateAdminRpcModule(IComponentContext ctx)
     {
-        return new AdminRpcModule (
+        return new AdminRpcModule(
             ctx.Resolve<IBlockTree>(),
             ctx.Resolve<INetworkConfig>(),
             ctx.Resolve<IPeerPool>(),

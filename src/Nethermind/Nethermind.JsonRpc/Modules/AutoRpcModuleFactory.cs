@@ -11,7 +11,7 @@ namespace Nethermind.JsonRpc.Modules;
 /// </summary>
 /// <param name="rootScope"></param>
 /// <typeparam name="T"></typeparam>
-public class AutoRpcModuleFactory<T>(ILifetimeScope rootScope): IRpcModuleFactory<T> where T : IRpcModule
+public class AutoRpcModuleFactory<T>(ILifetimeScope rootScope) : IRpcModuleFactory<T> where T : IRpcModule
 {
     public T Create()
     {

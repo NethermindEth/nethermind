@@ -8,7 +8,7 @@ using Autofac.Core.Activators.Reflection;
 
 namespace Nethermind.Core.Container;
 
-public class NethermindConstructorFinder: IConstructorFinder
+public class NethermindConstructorFinder : IConstructorFinder
 {
     private NethermindConstructorFinder()
     {

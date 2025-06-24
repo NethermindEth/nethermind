@@ -13,7 +13,7 @@ namespace Nethermind.TxPool
     {
 
         [UseConstructorForDependencyInjection]
-        public TxPoolInfoProvider(IChainHeadInfoProvider chainHeadInfoProvider, ITxPool txPool): this(chainHeadInfoProvider.ReadOnlyStateProvider, txPool) {}
+        public TxPoolInfoProvider(IChainHeadInfoProvider chainHeadInfoProvider, ITxPool txPool) : this(chainHeadInfoProvider.ReadOnlyStateProvider, txPool) { }
 
         public TxPoolInfo GetInfo()
         {

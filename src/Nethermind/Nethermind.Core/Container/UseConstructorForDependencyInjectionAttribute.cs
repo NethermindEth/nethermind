@@ -8,6 +8,6 @@ namespace Nethermind.Core.Container;
 /// <summary>
 /// Mark a constructor to be used by nethermind DI. Apply when any of the constructor have this attribute.
 /// </summary>
-public class UseConstructorForDependencyInjectionAttribute: Attribute
+public class UseConstructorForDependencyInjectionAttribute : Attribute
 {
 }
