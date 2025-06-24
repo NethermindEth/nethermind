@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Modules;
 
-public class LazyModulePool<T>(Lazy<IRpcModulePool<T>> lazyBasePool): IRpcModulePool<T> where T : IRpcModule
+public class LazyModulePool<T>(Lazy<IRpcModulePool<T>> lazyBasePool) : IRpcModulePool<T> where T : IRpcModule
 {
     private IRpcModulePool<T> BasePool => lazyBasePool.Value;
 

@@ -180,7 +180,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [RpcModule(ModuleType.Eth)]
-        private interface ITestRpcModule: IRpcModule
+        private interface ITestRpcModule : IRpcModule
         {
 
         }
@@ -190,7 +190,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             internal bool WasRequested = false;
         }
 
-        private class TestRpcModule: ITestRpcModule
+        private class TestRpcModule : ITestRpcModule
         {
             public TestRpcModule(TestRpcModuleDependencies dependencies)
             {
