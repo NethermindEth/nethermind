@@ -76,13 +76,13 @@ public static class StateOverridesExtensions
     {
         if (accountOverride.Code is not null)
         {
-            ValueHash256 codeHash = stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
+            stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
 
             overridableCodeInfoRepository.SetCodeOverwrite(
                 stateProvider,
                 currentSpec,
                 address,
-                new CodeInfo(in codeHash, accountOverride.Code),
+                new CodeInfo(accountOverride.Code),
                 accountOverride.MovePrecompileToAddress);
         }
     }

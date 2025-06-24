@@ -3,19 +3,13 @@
 
 using System;
 using System.Threading;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class CodeInfo(in ValueHash256 codeHash, ReadOnlyMemory<byte> code) : ICodeInfo, IThreadPoolWorkItem
+public sealed class CodeInfo(ReadOnlyMemory<byte> code) : ICodeInfo, IThreadPoolWorkItem
 {
-    public CodeInfo(ReadOnlyMemory<byte> code) : this(ValueKeccak.Compute(code.Span), code) { }
-
     private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
-    public static CodeInfo Empty { get; } = new(in Keccak.OfAnEmptyString.ValueHash256, ReadOnlyMemory<byte>.Empty);
-
-    private readonly ValueHash256 _codeHash = codeHash;
-    public ref readonly ValueHash256 CodeHash => ref _codeHash;
+    public static CodeInfo Empty { get; } = new(ReadOnlyMemory<byte>.Empty);
     public ReadOnlyMemory<byte> MachineCode { get; } = code;
 
     private readonly JumpDestinationAnalyzer _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);

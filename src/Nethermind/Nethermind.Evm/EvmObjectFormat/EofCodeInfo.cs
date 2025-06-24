@@ -7,10 +7,8 @@ using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class EofCodeInfo(in ValueHash256 codeHash, in EofContainer container) : ICodeInfo
+public sealed class EofCodeInfo(in EofContainer container) : ICodeInfo
 {
-    private readonly ValueHash256 _codeHash = codeHash;
-    public ref readonly ValueHash256 CodeHash => ref _codeHash;
     public EofContainer EofContainer { get; private set; } = container;
     public ReadOnlyMemory<byte> MachineCode => EofContainer.Container;
     public int Version => EofContainer.Header.Version;

@@ -11,18 +11,15 @@ namespace Nethermind.Evm.CodeAnalysis;
 
 public static class CodeInfoFactory
 {
-    public static EofCodeInfo CreateCodeInfo(ReadOnlyMemory<byte> code, IReleaseSpec spec, ValidationStrategy validationRules)
-        => (EofCodeInfo)CreateCodeInfo(ValueKeccak.Compute(code.Span), code, spec, validationRules);
-
-    public static ICodeInfo CreateCodeInfo(in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, ValidationStrategy validationRules = ValidationStrategy.ExtractHeader)
+    public static ICodeInfo CreateCodeInfo(ReadOnlyMemory<byte> code, IReleaseSpec spec, ValidationStrategy validationRules = ValidationStrategy.ExtractHeader)
     {
         if (spec.IsEofEnabled
             && code.Span.StartsWith(EofValidator.MAGIC)
             && EofValidator.IsValidEof(code, validationRules, out EofContainer? container))
         {
-            return new EofCodeInfo(in codeHash, container.Value);
+            return new EofCodeInfo(container.Value);
         }
-        CodeInfo codeInfo = new(in codeHash, code);
+        CodeInfo codeInfo = new(code);
         codeInfo.AnalyzeInBackgroundIfRequired();
         return codeInfo;
     }
@@ -36,14 +33,14 @@ public static class CodeInfoFactory
             {
                 int containerSize = eofContainer.Value.Header.DataSection.EndOffset;
                 extraCallData = data[containerSize..];
-                codeInfo = new EofCodeInfo(in ValueKeccak.OfAnEmptyString, eofContainer.Value);
+                codeInfo = new EofCodeInfo(eofContainer.Value);
                 return true;
             }
             codeInfo = null;
             return false;
         }
 
-        CodeInfo legacyCodeInfo = new(in ValueKeccak.OfAnEmptyString, data);
+        CodeInfo legacyCodeInfo = new(data);
         legacyCodeInfo.AnalyzeInBackgroundIfRequired();
         codeInfo = legacyCodeInfo;
         return true;

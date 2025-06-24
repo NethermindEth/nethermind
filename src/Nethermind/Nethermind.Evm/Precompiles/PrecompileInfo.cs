@@ -14,6 +14,4 @@ public sealed class PrecompileInfo(IPrecompile precompile) : ICodeInfo
 
     public bool IsPrecompile => true;
     public bool IsEmpty => false;
-
-    public ref readonly ValueHash256 CodeHash => ref ValueKeccak.OfAnEmptyString;
 }

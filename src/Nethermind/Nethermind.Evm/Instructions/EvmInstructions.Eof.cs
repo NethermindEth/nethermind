@@ -725,7 +725,7 @@ internal static partial class EvmInstructions
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
         // Create new code info for the init code.
-        EofCodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, ValidationStrategy.ExtractHeader);
+        ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, ValidationStrategy.ExtractHeader);
 
         // 8. Prepare the callData from the caller’s memory slice.
         ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(dataOffset, dataSize);
@@ -783,7 +783,7 @@ internal static partial class EvmInstructions
         byte sectionIdx = codeInfo.CodeSection.Span[programCounter++];
         // Retrieve the deployment code using the container section offset.
         ReadOnlyMemory<byte> deployCode = codeInfo.ContainerSection[(Range)codeInfo.ContainerSectionOffset(sectionIdx)];
-        EofCodeInfo deployCodeInfo = CodeInfoFactory.CreateCodeInfo(deployCode, spec, ValidationStrategy.ExtractHeader);
+        EofCodeInfo deployCodeInfo = (EofCodeInfo)CodeInfoFactory.CreateCodeInfo(deployCode, spec, ValidationStrategy.ExtractHeader);
 
         // Pop memory offset and size for the return data.
         stack.PopUInt256(out UInt256 a);

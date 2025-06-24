@@ -113,7 +113,7 @@ public class CodeInfoRepository : ICodeInfoRepository
                 MissingCode(in codeHash);
             }
 
-            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(in codeHash, code, vmSpec, ValidationStrategy.ExtractHeader);
+            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec, ValidationStrategy.ExtractHeader);
             _codeCache.Set(in codeHash, cachedCodeInfo);
         }
         else
@@ -137,7 +137,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         if (state.InsertCode(codeOwner, in codeHash, code, spec) &&
             _codeCache.Get(in codeHash) is null)
         {
-            ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(in codeHash, code, spec, ValidationStrategy.ExtractHeader);
+            ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExtractHeader);
             _codeCache.Set(in codeHash, codeInfo);
         }
 
@@ -159,7 +159,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             // If the code is already in the cache, we don't need to create CodeInfo and add it again (and reanalyze it)
             && _codeCache.Get(in codeHash) is null)
         {
-            _codeCache.Set(codeHash, new CodeInfo(in codeHash, authorizedBuffer));
+            _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
         }
     }
 

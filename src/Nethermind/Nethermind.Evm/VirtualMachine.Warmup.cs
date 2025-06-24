@@ -55,7 +55,7 @@ public unsafe partial class VirtualMachine
             executingAccount: addressOne,
             codeSource: addressOne,
             caller: addressOne,
-            codeInfo: new CodeInfo(in codeHash, bytecode),
+            codeInfo: new CodeInfo(bytecode),
             value: 0,
             transferValue: 0,
             inputData: default,

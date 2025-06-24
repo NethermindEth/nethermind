@@ -29,7 +29,6 @@ public interface ICodeInfo
     /// This is the primary code section from which the EVM executes instructions.
     /// </summary>
     ReadOnlyMemory<byte> MachineCode { get; }
-    ref readonly ValueHash256 CodeHash { get; }
 
     /// <summary>
     /// Indicates whether this code represents a precompiled contract.
