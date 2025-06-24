@@ -21,10 +21,10 @@ public static class IContainerBuilderExtensions
         return builder
             .AddSingleton<RpcModuleInfo>((ctx) =>
             {
+                Lazy<T> instance = ctx.Resolve<Lazy<T>>();
                 return new RpcModuleInfo(typeof(T), new LazyModulePool<T>(new Lazy<IRpcModulePool<T>>(() =>
                 {
-                    T instance = ctx.Resolve<T>();
-                    return new SingletonModulePool<T>(instance, true);
+                    return new SingletonModulePool<T>(instance.Value, true);
                 })));
             });
     }
@@ -41,10 +41,10 @@ public static class IContainerBuilderExtensions
             .AddSingleton<IRpcModuleFactory<T>, TFactory>()
             .AddSingleton<RpcModuleInfo>((ctx) =>
             {
+                Lazy<IRpcModuleFactory<T>> factory = ctx.Resolve<Lazy<IRpcModuleFactory<T>>>();
                 return new RpcModuleInfo(typeof(T), new LazyModulePool<T>(new Lazy<IRpcModulePool<T>>(() =>
                 {
-                    IRpcModuleFactory<T> factory = ctx.Resolve<IRpcModuleFactory<T>>();
-                    return new BoundedModulePool<T>(factory, maxCount, timeout);
+                    return new BoundedModulePool<T>(factory.Value, maxCount, timeout);
                 })));
             });
     }
