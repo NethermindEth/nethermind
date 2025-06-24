@@ -7,6 +7,7 @@ namespace Nethermind.JsonRpc.Modules
 {
     public interface IRpcModulePool
     {
+        void Preload() {}
     }
 
     public interface IRpcModulePool<T> : IRpcModulePool where T : IRpcModule

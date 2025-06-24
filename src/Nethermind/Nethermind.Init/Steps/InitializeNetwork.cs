@@ -58,6 +58,7 @@ public class InitializeNetwork : IStep
     private readonly INodeStatsManager _nodeStatsManager;
     private readonly ISynchronizer _synchronizer;
     private readonly ISyncPeerPool _syncPeerPool;
+    private readonly IForkInfo _forkInfo;
     private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly INetworkStorage _peerStorage;
     private readonly IDiscoveryApp _discoveryApp;
@@ -78,6 +79,7 @@ public class InitializeNetwork : IStep
         NodeSourceToDiscV4Feeder enrDiscoveryAppFeeder,
         IDiscoveryApp discoveryApp,
         Lazy<IPeerPool> peerPool, // Require IRlpxPeer to be created first, hence, lazy.
+        IForkInfo forkInfo,
         [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
@@ -92,6 +94,7 @@ public class InitializeNetwork : IStep
         _enrDiscoveryAppFeeder = enrDiscoveryAppFeeder;
         _discoveryApp = discoveryApp;
         _peerPool = peerPool;
+        _forkInfo = forkInfo;
         _peerStorage = peerStorage;
         _networkConfig = networkConfig;
         _syncConfig = syncConfig;
@@ -268,12 +271,11 @@ public class InitializeNetwork : IStep
         await _api.TrustedNodesManager.InitAsync();
 
         ISyncServer syncServer = _api.SyncServer!;
-        ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
 
         ProtocolValidator protocolValidator = new(
             _nodeStatsManager!,
             _api.BlockTree,
-            forkInfo,
+            _forkInfo,
             _api.PeerManager!,
             _networkConfig,
             _api.LogManager);
@@ -291,7 +293,7 @@ public class InitializeNetwork : IStep
             _nodeStatsManager,
             protocolValidator,
             _peerStorage,
-            forkInfo,
+            _forkInfo,
             _api.GossipPolicy,
             _api.WorldStateManager!,
             _api.LogManager,

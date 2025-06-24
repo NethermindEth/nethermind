@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Core;
 
@@ -20,8 +21,11 @@ public static class IContainerBuilderExtensions
         return builder
             .AddSingleton<RpcModuleInfo>((ctx) =>
             {
-                T instance = ctx.Resolve<T>();
-                return new RpcModuleInfo(typeof(T), new SingletonModulePool<T>(instance, true));
+                return new RpcModuleInfo(typeof(T), new LazyModulePool<T>(new Lazy<IRpcModulePool<T>>(() =>
+                {
+                    T instance = ctx.Resolve<T>();
+                    return new SingletonModulePool<T>(instance, true);
+                })));
             });
     }
 
@@ -37,8 +41,11 @@ public static class IContainerBuilderExtensions
             .AddSingleton<IRpcModuleFactory<T>, TFactory>()
             .AddSingleton<RpcModuleInfo>((ctx) =>
             {
-                IRpcModuleFactory<T> factory = ctx.Resolve<IRpcModuleFactory<T>>();
-                return new RpcModuleInfo(typeof(T), new BoundedModulePool<T>(factory, maxCount, timeout));
+                return new RpcModuleInfo(typeof(T), new LazyModulePool<T>(new Lazy<IRpcModulePool<T>>(() =>
+                {
+                    IRpcModuleFactory<T> factory = ctx.Resolve<IRpcModuleFactory<T>>();
+                    return new BoundedModulePool<T>(factory, maxCount, timeout);
+                })));
             });
     }
 }

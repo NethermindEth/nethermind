@@ -94,7 +94,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _transactionPool,
                 _pooledTxsRequestor,
                 _gossipPolicy,
-                new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+                new ForkInfo(_specProvider, _syncManager),
                 LimboLogs.Instance);
             _handler.Init();
         }
@@ -324,7 +324,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _transactionPool,
                 new PooledTxsRequestor(_transactionPool, new TxPoolConfig(), _specProvider),
                 _gossipPolicy,
-                new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+                new ForkInfo(_specProvider, _syncManager),
                 LimboLogs.Instance);
 
             using ArrayPoolList<Hash256> hashes = new(numberOfTransactions);
