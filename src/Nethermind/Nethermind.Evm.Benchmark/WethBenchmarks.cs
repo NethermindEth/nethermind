@@ -27,6 +27,7 @@ using System.Text;
 using System.Threading.Tasks;
 using static Nethermind.Evm.VirtualMachine;
 using BenchmarkDotNet.Loggers;
+using Nethermind.Evm.Test.ILEVM;
 
 namespace Nethermind.Evm.Benchmark
 {
@@ -63,7 +64,7 @@ namespace Nethermind.Evm.Benchmark
         private ITransactionProcessor _transactionProcessor;
         private ISpecProvider _specProvider = MainnetSpecProvider.Instance;
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
-        private WorldState _stateProvider;
+        private IWorldState _stateProvider;
         private Nethermind.Logging.ILogger _logger;
         private EthereumEcdsa _ethereumEcdsa;
         private VMConfig vmConfig;
@@ -93,7 +94,8 @@ namespace Nethermind.Evm.Benchmark
             vmConfig.IlEvmAnalysisThreshold = 1;
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(Logging.NullLogger.Instance));
             IKeyValueStore codeDb = new MemDb();
-            _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(Logging.NullLogger.Instance));
+
+            _stateProvider = new MockWorldState(1000, 0, new WorldState(trieStore, codeDb, new OneLoggerLogManager(Logging.NullLogger.Instance)));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
 
