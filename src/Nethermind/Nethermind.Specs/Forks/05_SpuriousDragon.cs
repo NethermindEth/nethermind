@@ -14,7 +14,7 @@ namespace Nethermind.Specs.Forks
         protected SpuriousDragon()
         {
             Name = "Spurious Dragon";
-            MaxCodeSize = Eip7907Constants.MaxCodeSize;
+            MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
             IsEip155Enabled = true;
             IsEip158Enabled = true;
             IsEip160Enabled = true;

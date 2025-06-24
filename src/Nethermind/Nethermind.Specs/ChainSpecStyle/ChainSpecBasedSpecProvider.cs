@@ -276,7 +276,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7907Enabled = (chainSpec.Parameters.Eip7907TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             if (releaseSpec.IsEip7907Enabled)
             {
-                releaseSpec.MaxCodeSize = Eip7907Constants.MaxCodeSizeEip7907;
+                releaseSpec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7907;
             }
 
             bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock;
