@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Ethentials.GmpBindings;
+using Nethermind.GmpBindings;
 using Nethermind.Int256;
 using System;
 using System.Numerics;
@@ -104,7 +104,7 @@ namespace Nethermind.Evm.Precompiles
             if (baseLength == 0 && modulusLength == 0)
                 return (Bytes.Empty, true);
 
-            using mpz_t modulusInt = new();
+            using var modulusInt = mpz_t.Create();
 
             fixed (byte* modulusData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength))
             {
@@ -115,9 +115,9 @@ namespace Nethermind.Evm.Precompiles
             if (Gmp.mpz_sgn(modulusInt) == 0)
                 return (new byte[modulusLength], true);
 
-            using mpz_t baseInt = new();
-            using mpz_t expInt = new();
-            using mpz_t powmResult = new();
+            using var baseInt = mpz_t.Create();
+            using var expInt = mpz_t.Create();
+            using var powmResult = mpz_t.Create();
 
             fixed (byte* baseData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength))
             fixed (byte* expData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength))
@@ -136,7 +136,7 @@ namespace Nethermind.Evm.Precompiles
             byte[] result = new byte[modulusLength];
 
             fixed (byte* ptr = result)
-                Gmp.mpz_export((nint)(ptr + offset), 0, 1, 1, 1, 0, powmResult);
+                Gmp.mpz_export((nint)(ptr + offset), out _, 1, 1, 1, 0, powmResult);
 
             return (result, true);
         }
