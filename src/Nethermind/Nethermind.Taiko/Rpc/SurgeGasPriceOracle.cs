@@ -22,7 +22,7 @@ namespace Nethermind.Taiko.Rpc;
 public class SurgeGasPriceOracle : GasPriceOracle
 {
     private const string ClassName = nameof(SurgeGasPriceOracle);
-    private const int BlobSize = (4 * 31+3) * 1024 - 4;
+    private const int BlobSize = (4 * 31 + 3) * 1024 - 4;
 
     // ABI signatures and encoded function selectors for TaikoInbox
     private static readonly AbiSignature GetStats2Signature = new("getStats2");
