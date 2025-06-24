@@ -38,7 +38,10 @@ public class SurgeGasPriceOracleTests
         _logManager = LimboLogs.Instance;
         _specProvider = Substitute.For<ISpecProvider>();
         _l1RpcClient = Substitute.For<IJsonRpcClient>();
-        _surgeConfig = new SurgeConfig();
+        _surgeConfig = new SurgeConfig
+        {
+            TaikoInboxAddress = "0x06a9Ab27c7e2255df1815E6CC0168d7755Feb19a"
+        };
 
         _gasPriceOracle = new SurgeGasPriceOracle(
             _blockFinder,

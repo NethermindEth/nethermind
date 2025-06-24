@@ -31,6 +31,6 @@ public interface ISurgeConfig : IConfig
     [ConfigItem(Description = "Number of recent L2 batches to consider for computing the moving average of gas usage.", DefaultValue = "20")]
     int L2GasUsageWindowSize { get; set; }
 
-    [ConfigItem(Description = "The address of the TaikoInbox contract.", DefaultValue = "0x06a9Ab27c7e2255df1815E6CC0168d7755Feb19a")]
-    string TaikoInboxAddress { get; set; }
+    [ConfigItem(Description = "The address of the TaikoInbox contract.", DefaultValue = "null")]
+    string? TaikoInboxAddress { get; set; }
 }

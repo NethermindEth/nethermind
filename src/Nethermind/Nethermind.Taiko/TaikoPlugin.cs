@@ -306,6 +306,11 @@ public class TaikoModule : Module
                     throw new ArgumentException("L1EthApiEndpoint must be provided in the Surge configuration to compute the gas price");
                 }
 
+                if (string.IsNullOrEmpty(surgeConfig.TaikoInboxAddress))
+                {
+                    throw new ArgumentException("TaikoInboxAddress must be provided in the Surge configuration to compute the gas price");
+                }
+
                 var l1RpcClient = new BasicJsonRpcClient(
                     new Uri(surgeConfig.L1EthApiEndpoint),
                     ctx.Resolve<IJsonSerializer>(),

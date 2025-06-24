@@ -13,5 +13,5 @@ public class SurgeConfig : ISurgeConfig
     public ulong ProofPostingGas { get; set; } = 750_000;
     public int FeeHistoryBlockCount { get; set; } = 200;
     public int L2GasUsageWindowSize { get; set; } = 20;
-    public string TaikoInboxAddress { get; set; } = "0x06a9Ab27c7e2255df1815E6CC0168d7755Feb19a";
+    public string? TaikoInboxAddress { get; set; }
 }
