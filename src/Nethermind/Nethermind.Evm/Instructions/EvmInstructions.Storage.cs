@@ -407,10 +407,7 @@ internal static partial class EvmInstructions
         // Report storage changes for tracing if enabled.
         if (TTracingInst.IsActive)
         {
-            ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
-            byte[] storageBytes = new byte[32]; // Allocated on the heap to avoid stack allocation.
-            storageCell.Index.ToBigEndian(storageBytes);
-            vm.TxTracer.ReportStorageChange(storageBytes, valueToStore);
+            TraceSstore(vm, newIsZero, in storageCell, bytes);
         }
 
         if (vm.TxTracer.IsTracingStorage)
@@ -570,10 +567,7 @@ internal static partial class EvmInstructions
         // Report storage changes for tracing if enabled.
         if (TTracingInst.IsActive)
         {
-            ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
-            byte[] storageBytes = new byte[32]; // Allocated on the heap to avoid stack allocation.
-            storageCell.Index.ToBigEndian(storageBytes);
-            vm.TxTracer.ReportStorageChange(storageBytes, valueToStore);
+            TraceSstore(vm, newIsZero, in storageCell, bytes);
         }
 
         if (vm.TxTracer.IsTracingStorage)
@@ -589,6 +583,15 @@ internal static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceSstore(VirtualMachine vm, bool newIsZero, in StorageCell storageCell, ReadOnlySpan<byte> bytes)
+    {
+        ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
+        byte[] storageBytes = new byte[32]; // Allocated on the heap to avoid stack allocation.
+        storageCell.Index.ToBigEndian(storageBytes);
+        vm.TxTracer.ReportStorageChange(storageBytes, valueToStore);
     }
 
     /// <summary>
