@@ -117,7 +117,6 @@ namespace Nethermind.Api
         public IMessageSerializationService MessageSerializationService => Context.Resolve<IMessageSerializationService>();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IPeerManager? PeerManager => Context.Resolve<IPeerManager>();
-        public IPeerPool? PeerPool => Context.Resolve<IPeerPool>();
         public IProtocolsManager? ProtocolsManager { get; set; }
         public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
@@ -166,7 +165,6 @@ namespace Nethermind.Api
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
-        public ISubscriptionFactory SubscriptionFactory => Context.Resolve<ISubscriptionFactory>();
         public IProtectedPrivateKey? NodeKey { get; set; }
 
         /// <summary>

@@ -27,7 +27,6 @@ namespace Nethermind.Api
         IMessageSerializationService MessageSerializationService { get; }
         IGossipPolicy GossipPolicy { get; set; }
         IPeerManager? PeerManager { get; }
-        IPeerPool? PeerPool { get; }
         IProtocolsManager? ProtocolsManager { get; set; }
         IProtocolValidator? ProtocolValidator { get; set; }
         IList<IPublisher> Publishers { get; }
@@ -43,7 +42,6 @@ namespace Nethermind.Api
         ISyncPeerPool? SyncPeerPool { get; }
         ISyncServer? SyncServer { get; }
         IWebSocketsManager WebSocketsManager { get; set; }
-        ISubscriptionFactory SubscriptionFactory { get; }
 
         [SkipServiceCollection]
         IEngineRequestsTracker EngineRequestsTracker { get; }
