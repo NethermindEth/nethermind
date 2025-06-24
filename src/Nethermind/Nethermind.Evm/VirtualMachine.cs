@@ -138,7 +138,8 @@ public sealed unsafe partial class VirtualMachine(
         _worldState = worldState;
 
         // Prepare the specification and opcode mapping based on the current block header.
-        IReleaseSpec spec = PrepareSpecAndOpcodes<TTracingInst>(BlockExecutionContext.Header);
+        IReleaseSpec spec = _spec = BlockExecutionContext.Spec;
+        PrepareOpcodes<TTracingInst>(spec);
 
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
@@ -218,7 +219,7 @@ public sealed unsafe partial class VirtualMachine(
                 {
                     if (_txTracer.IsTracingActions)
                     {
-                        TraceTransactionActionEnd(_currentState, spec, callResult);
+                        TraceTransactionActionEnd(_currentState, callResult);
                     }
                     TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
                     _currentState = null;
@@ -249,7 +250,6 @@ public sealed unsafe partial class VirtualMachine(
                                     in callResult,
                                     previousState,
                                     gasAvailableForCodeDeposit,
-                                    spec,
                                     ref previousStateSucceeded);
                             }
                             else if (previousState.ExecutionType.IsAnyCreateEof())
@@ -258,7 +258,6 @@ public sealed unsafe partial class VirtualMachine(
                                     in callResult,
                                     previousState,
                                     gasAvailableForCodeDeposit,
-                                    spec,
                                     ref previousStateSucceeded);
                             }
                         }
@@ -338,7 +337,7 @@ public sealed unsafe partial class VirtualMachine(
         return previousCallOutput;
     }
 
-    private void HandleEofCreate(in CallResult callResult, EvmState previousState, long gasAvailableForCodeDeposit, IReleaseSpec spec, ref bool previousStateSucceeded)
+    private void HandleEofCreate(in CallResult callResult, EvmState previousState, long gasAvailableForCodeDeposit, ref bool previousStateSucceeded)
     {
         Address callCodeOwner = previousState.Env.ExecutingAccount;
         // ReturnCode was called with a container index and auxdata
@@ -378,6 +377,7 @@ public sealed unsafe partial class VirtualMachine(
 
         byte[] bytecodeResultArray = bytecodeResult.ToArray();
 
+        IReleaseSpec spec = _spec;
         // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
         bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
         long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, bytecodeResultArray?.Length ?? 0);
@@ -441,7 +441,6 @@ public sealed unsafe partial class VirtualMachine(
         in CallResult callResult,
         EvmState previousState,
         long gasAvailableForCodeDeposit,
-        IReleaseSpec spec,
         ref bool previousStateSucceeded)
     {
         // Cache whether transaction tracing is enabled to avoid multiple property lookups.
@@ -450,6 +449,7 @@ public sealed unsafe partial class VirtualMachine(
         // Get the address of the account that initiated the contract creation.
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 
+        IReleaseSpec spec = _spec;
         // Calculate the gas cost required to deposit the contract code using legacy cost rules.
         long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
 
@@ -817,25 +817,19 @@ public sealed unsafe partial class VirtualMachine(
     }
 
     /// <summary>
-    /// Prepares the release specification and opcode methods to be used during EVM execution,
-    /// based on the provided block header and the tracing instructions flag.
+    /// Prepares the opcode methods to be used during EVM execution,
+    /// based on the provided release specification.
     /// </summary>
     /// <typeparam name="TTracingInst">
     /// A value type implementing <see cref="IFlag"/> that indicates whether tracing-specific opcodes
     /// should be used.
     /// </typeparam>
-    /// <param name="header">
-    /// The block header containing the block number and timestamp, which are used to select the appropriate release specification.
+    /// <param name="spec">
+    /// The release specification, which is used to prepare the appropriate opcodes.
     /// </param>
-    /// <returns>
-    /// The prepared <see cref="IReleaseSpec"/> instance, with its associated opcode methods cached for execution.
-    /// </returns>
-    private IReleaseSpec PrepareSpecAndOpcodes<TTracingInst>(BlockHeader header)
+    private void PrepareOpcodes<TTracingInst>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
     {
-        // Retrieve the release specification based on the block's number and timestamp.
-        IReleaseSpec spec = _specProvider.GetSpec(header.Number, header.Timestamp);
-
         // Check if tracing instructions are inactive.
         if (!TTracingInst.IsActive)
         {
@@ -861,9 +855,6 @@ public sealed unsafe partial class VirtualMachine(
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
             _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= EvmInstructions.GenerateOpCodes<TTracingInst>(spec));
         }
-
-        // Store the spec in field for future access and return it.
-        return (_spec = spec);
     }
 
     /// <summary>
@@ -880,8 +871,9 @@ public sealed unsafe partial class VirtualMachine(
     /// <param name="callResult">
     /// The result of the executed call, including output bytes, exception and revert flags, and additional metadata.
     /// </param>
-    private void TraceTransactionActionEnd(EvmState currentState, IReleaseSpec spec, in CallResult callResult)
+    private void TraceTransactionActionEnd(EvmState currentState, in CallResult callResult)
     {
+        IReleaseSpec spec = _spec;
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
         long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
 

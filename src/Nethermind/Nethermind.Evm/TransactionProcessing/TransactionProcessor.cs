@@ -139,7 +139,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-            IReleaseSpec spec = GetSpec(tx, header);
+            IReleaseSpec spec = VirtualMachine.BlockExecutionContext.Spec;
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
@@ -311,7 +311,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        protected virtual IReleaseSpec GetSpec(Transaction tx, BlockHeader header) => SpecProvider.GetSpec(header);
+        protected virtual IReleaseSpec GetSpec(BlockHeader header) => SpecProvider.GetSpec(header);
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
@@ -881,6 +881,22 @@ namespace Nethermind.Evm.TransactionProcessing
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
+
+        public TransactionResult Execute(Transaction transaction, BlockHeader header, ITxTracer txTracer)
+        {
+            IReleaseSpec spec = SpecProvider.GetSpec(header);
+            BlockExecutionContext blockExecutionContext = new(header, spec, 0);
+            SetBlockExecutionContext(in blockExecutionContext);
+            return Execute(transaction, txTracer);
+        }
+
+        public TransactionResult CallAndRestore(Transaction transaction, BlockHeader header, ITxTracer txTracer)
+        {
+            IReleaseSpec spec = SpecProvider.GetSpec(header);
+            BlockExecutionContext blockExecutionContext = new(header, spec, 0);
+            SetBlockExecutionContext(in blockExecutionContext);
+            return CallAndRestore(transaction, txTracer);
+        }
     }
 
     public readonly struct TransactionResult(string? error) : IEquatable<TransactionResult>
