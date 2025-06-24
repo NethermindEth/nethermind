@@ -726,7 +726,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 ValueHash256 codeHash = _codeInfoRepository.InsertCode(WorldState, code, codeOwner, spec);
                 if (code.Length > Eip7907Constants.MaxCodeSize)
                 {
-                    accessedItems.WarmUp(in codeHash);
+                    accessedItems.WarmUpLargeContract(codeOwner);
                 }
 
                 unspentGas -= codeDepositGasCost;
@@ -780,7 +780,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 ValueHash256 codeHash = _codeInfoRepository.InsertCode(WorldState, bytecodeResult, codeOwner, spec);
                 if (bytecodeResult.Length > Eip7907Constants.MaxCodeSize)
                 {
-                    accessedItems.WarmUp(in codeHash);
+                    accessedItems.WarmUpLargeContract(codeOwner);
                 }
                 unspentGas -= codeDepositGasCost;
             }

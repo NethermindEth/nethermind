@@ -161,9 +161,12 @@ internal static partial class EvmInstructions
                 .GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _);
 
             // If contract is large, charge for access
-            if (spec.IsEip7907Enabled &&
-                !ChargeForLargeContractAccess(codeInfo, vm, ref gasAvailable))
-                goto OutOfGas;
+            if (spec.IsEip7907Enabled)
+            {
+                uint excessContractSize = (uint)Math.Max(0, codeInfo.MachineCode.Length - Eip7907Constants.MaxCodeSize);
+                if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, address, in vm.EvmState.AccessTracker, ref gasAvailable))
+                    goto OutOfGas;
+            }
 
             // Get the external code from the repository.
             ReadOnlySpan<byte> externalCode = codeInfo.MachineCode.Span;

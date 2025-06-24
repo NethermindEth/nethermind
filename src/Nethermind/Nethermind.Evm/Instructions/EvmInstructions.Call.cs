@@ -181,10 +181,12 @@ internal static partial class EvmInstructions
         ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec);
 
         // If contract is large, charge for access
-        if (spec.IsEip7907Enabled &&
-            !ChargeForLargeContractAccess(codeInfo, vm, ref gasAvailable))
-            goto OutOfGas;
-
+        if (spec.IsEip7907Enabled)
+        {
+            uint excessContractSize = (uint)Math.Max(0, codeInfo.MachineCode.Length - Eip7907Constants.MaxCodeSize);
+            if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, codeSource, in vm.EvmState.AccessTracker, ref gasAvailable))
+                goto OutOfGas;
+        }
         // Apply the 63/64 gas rule if enabled.
         if (spec.Use63Over64Rule)
         {
@@ -303,18 +305,12 @@ internal static partial class EvmInstructions
         return EvmExceptionType.OutOfGas;
     }
 
-    private static bool ChargeForLargeContractAccess(ICodeInfo codeInfo, VirtualMachine vm, ref long gasAvailable)
+    private static bool ChargeForLargeContractAccess(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref long gasAvailable)
     {
-        uint excessContractSize = (uint)Math.Max(0, codeInfo.MachineCode.Length - Eip7907Constants.MaxCodeSize);
-        if (excessContractSize > 0)
+        if (accessTracer.WarmUpLargeContract(codeAddress))
         {
-            ref readonly StackAccessTracker accessTracer = ref vm.EvmState.AccessTracker;
-            ref readonly ValueHash256 codeHash = ref codeInfo.CodeHash;
-            if (accessTracer.WarmUp(in codeHash))
-            {
-                long largeContractCost = GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(excessContractSize, out bool outOfGas);
-                if (outOfGas || !UpdateGas(largeContractCost, ref gasAvailable)) return false;
-            }
+            long largeContractCost = GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(excessContractSize, out bool outOfGas);
+            if (outOfGas || !UpdateGas(largeContractCost, ref gasAvailable)) return false;
         }
 
         return true;
