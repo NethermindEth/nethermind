@@ -64,14 +64,15 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                 .AddSingleton<ITxPoolInfoProvider, TxPoolInfoProvider>()
 
             // Subscriptions
-            .RegisterSingletonJsonRpcModule<ISubscribeRpcModule, SubscribeRpcModule>()
+            .RegisterBoundedJsonRpcModule<ISubscribeRpcModule, AutoRpcModuleFactory<ISubscribeRpcModule>>(2, jsonRpcConfig.Timeout)
+                .AddScoped<ISubscribeRpcModule, SubscribeRpcModule>()
                 .AddSingleton<IReceiptMonitor, ReceiptCanonicalityMonitor>()
                 .AddSingleton<ISubscriptionFactory, SubscriptionFactory>()
                 .AddSingleton<ISubscriptionManager, SubscriptionManager>()
 
             // Admin
-            .RegisterSingletonJsonRpcModule<IAdminRpcModule>()
-                .AddSingleton<IAdminRpcModule>(CreateAdminRpcModule)
+            .RegisterBoundedJsonRpcModule<IAdminRpcModule, AutoRpcModuleFactory<IAdminRpcModule>>(2, jsonRpcConfig.Timeout)
+                .AddScoped<IAdminRpcModule>(CreateAdminRpcModule)
 
             // Eth and its dependencies
             .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
