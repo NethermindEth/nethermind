@@ -296,7 +296,7 @@ internal static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
 
         // Calculate additional gas cost based on the length (using a division rounding-up method) and deduct the total cost.
-        gasAvailable -= GasCostOf.VeryLow + GasCostOf.VeryLow * EvmPooledMemory.Div32Ceiling(c, out bool outOfGas);
+        gasAvailable -= GasCostOf.VeryLow + GasCostOf.VeryLow * Div32Ceiling(c, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
 
         EvmState vmState = vm.EvmState;

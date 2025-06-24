@@ -35,7 +35,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         _refreshTimer.Elapsed += TimerOnElapsed;
         _refreshTimer.AutoReset = false;
         _syncPeerPool = syncPeerPool;
-        _logger = logManager.GetClassLogger(GetType());
+        _logger = logManager.GetClassLogger<PeerRefresher>();
     }
 
     public void RefreshPeers(Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash)

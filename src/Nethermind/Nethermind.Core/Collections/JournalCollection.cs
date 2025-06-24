@@ -31,8 +31,7 @@ namespace Nethermind.Core.Collections
             CollectionsMarshal.SetCount(_list, snapshot + 1);
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private void ThrowInvalidRestore(int snapshot)
             => throw new InvalidOperationException($"{nameof(JournalCollection<T>)} tried to restore snapshot {snapshot} beyond current position {Count}");
 

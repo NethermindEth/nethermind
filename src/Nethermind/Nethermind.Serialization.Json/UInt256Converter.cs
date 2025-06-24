@@ -185,8 +185,7 @@ public class UInt256Converter : JsonConverter<UInt256>
             addQuotations: false);
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowJsonException()
     {
         throw new JsonException();

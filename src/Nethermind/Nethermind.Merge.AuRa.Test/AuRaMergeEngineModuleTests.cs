@@ -4,10 +4,8 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -19,6 +17,7 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -28,6 +27,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Merge.AuRa.Contracts;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -90,7 +90,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     [TestCase(
         "0xa66ec67b117f57388da53271f00c22a68e6c297b564f67c5904e6f2662881875",
         "0xe168b70ac8a6f7d90734010030801fbb2dcce03a657155c4024b36ba8d1e3926"
-        )]
+    )]
     [Parallelizable(ParallelScope.None)]
     [Obsolete]
     public override Task forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http(string blockHash, string parentHash)
@@ -130,11 +130,15 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                     // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
                     // as normally, test blockchain don't use INethermindApi at all. Note: This test does not
                     // seems to use aura block processor which means a lot of aura things is not available here.
-                    .AddModule(new AuraModule(ChainSpec))
-                    .AddModule(new AuraMergeModule())
+                    .AddModule(new AuRaModule(ChainSpec))
+                    .AddModule(new AuRaMergeModule())
                     .AddSingleton<NethermindApi.Dependencies>()
                     .AddSingleton<IReportingValidator>(NullReportingValidator.Instance)
                     .AddSingleton<ISealer>(NullSealEngine.Instance) // Test not originally made with aura sealer
+
+                    .AddScoped<WithdrawalContractFactory>()
+                    .AddScoped<IWithdrawalContract, WithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))
+                    .AddScoped<IWithdrawalProcessor, AuraWithdrawalProcessor>()
 
                     .AddDecorator<AuRaNethermindApi>((ctx, api) =>
                     {
@@ -166,26 +170,17 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         {
             _api = Container.Resolve<AuRaNethermindApi>();
 
-            WithdrawalContractFactory withdrawalContractFactory = new(Container.Resolve<ChainSpec>().EngineChainSpecParametersProvider
-                .GetChainSpecParameters<AuRaChainSpecEngineParameters>(), Container.Resolve<IAbiEncoder>());
-            WithdrawalProcessor = new AuraWithdrawalProcessor(
-                withdrawalContractFactory.Create(TxProcessor),
-                LogManager
-            );
-
-            IBlockProcessor processor = new BlockProcessor(
-                SpecProvider,
+            IBlockProcessor processor = _api.Context.Resolve<IAuRaBlockProcessorFactory>().Create(
                 BlockValidator,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), state),
                 state,
                 ReceiptStorage,
                 new BeaconBlockRootHandler(TxProcessor, state),
-                new BlockhashStore(SpecProvider, state),
-                LogManager,
-                WithdrawalProcessor,
+                TxProcessor,
                 ExecutionRequestsProcessorOverride ?? new ExecutionRequestsProcessor(TxProcessor),
-                CreateBlockCachePreWarmer());
+                null,
+                preWarmer: CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }

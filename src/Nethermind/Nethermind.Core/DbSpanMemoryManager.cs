@@ -57,8 +57,7 @@ public unsafe sealed class DbSpanMemoryManager : MemoryManager<byte>
     {
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowDisposed()
     {
         throw new ObjectDisposedException(nameof(DbSpanMemoryManager));
