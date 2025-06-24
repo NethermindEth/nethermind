@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Benchmark
 
             vmConfig.IsILEvmEnabled = typeof(TIsOptimizing) != typeof(VirtualMachine.NotOptimizing);
             vmConfig.IlEvmEnabledMode = typeof(TIsOptimizing) == typeof(VirtualMachine.IsPrecompiling)
-                ? ILMode.DYNAMIC_AOT_MODE : ILMode.NO_ILVM;
+                ? ILMode.AOT_MODE : ILMode.NO_ILVM;
 
             vmConfig.IlEvmAnalysisThreshold = 1;
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(Logging.NullLogger.Instance));

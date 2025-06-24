@@ -15,10 +15,8 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 
 public enum ILMode
 {
-    NO_ILVM = 0b00000000,
+    NO_ILVM  = 0b00000001,
     AOT_MODE = 0b00000010,
-    DYNAMIC_AOT_MODE = AOT_MODE | 0,
-    STATIC_AOT_MODE = AOT_MODE | 1,
 }
 
 public enum AnalysisPhase
@@ -44,5 +42,5 @@ internal class IlInfo
     public AnalysisPhase AnalysisPhase = AnalysisPhase.NotStarted;
 
     // assumes small number of ILed
-    public ILEmittedEntryPoint? PrecompiledContract { get; set; }
+    public ILEmittedMethod? PrecompiledContract { get; set; }
 }

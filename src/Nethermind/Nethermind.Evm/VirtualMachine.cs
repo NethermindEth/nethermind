@@ -34,6 +34,7 @@ using Nethermind.Evm.Tracing.Debugger;
 
 namespace Nethermind.Evm;
 using Int256;
+using Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle;
 using Nethermind.Evm.Config;
 using Sigil;
 using System.Diagnostics;
@@ -693,7 +694,7 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 _state.IncrementNonce(env.ExecutingAccount);
             }
 
-            if (typeof(IsPrecompiling) == typeof(TOptimizing) && _vmConfig.IlEvmEnabledMode is ILMode.DYNAMIC_AOT_MODE)
+            if (typeof(IsPrecompiling) == typeof(TOptimizing) && _vmConfig.IlEvmEnabledMode is ILMode.AOT_MODE)
             {
 #if ILVM_TESTING
                 if (vmState.Env.CodeInfo.IlInfo.IsNotProcessed && vmState.Env.CodeInfo.Codehash is not null && vmState.Env.CodeInfo.MachineCode.Length < 24.KB())
@@ -755,21 +756,25 @@ public sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
                 var codeAsSpan = env.CodeInfo.MachineCode.Span;
                 ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
 
+                ILChunkExecutionArguments chunkArguments = new(
+                    ref MemoryMarshal.GetReference(codeAsSpan),
+                    ref gasAvailable,
+                    ref programCounter,
+                    ref stack.Head,
+                    ref Add(ref As<byte, Word>(ref MemoryMarshal.GetReference(stack.Bytes)), stack.Head),
+                    spec, _specProvider,
+                    _blockhashProvider,
+                    vmState.Env.TxExecutionContext.CodeInfoRepository,
+                    vmState,
+                    _state,
+                    _returnDataBuffer,
+                    _txTracer,
+                    _logger
+                );
+
                 if (env.CodeInfo.IlInfo.PrecompiledContract(
-                        in MemoryMarshal.GetReference(codeAsSpan),
-                        spec, _specProvider,
-                        _blockhashProvider,
-                        vmState.Env.TxExecutionContext.CodeInfoRepository,
-                        vmState,
-                        _state,
-                        _returnDataBuffer,
-                        ref gasAvailable,
-                        ref programCounter,
-                        ref stack.Head,
-                        ref Add(ref As<byte, Word>(ref MemoryMarshal.GetReference(stack.Bytes)), stack.Head),
-                        _txTracer,
-                        _logger,
-                        ref chunkExecutionState)
+                    ref chunkArguments,
+                    ref chunkExecutionState)
                    )
                 {
                     UpdateCurrentState(vmState, ++programCounter, gasAvailable, stack.Head - 1);

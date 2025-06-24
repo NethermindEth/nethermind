@@ -305,8 +305,8 @@ namespace Nethermind.Init.Steps
                             if (netherminAotAttr is null) continue;
 
                             ValueHash256 codeHash = new ValueHash256(type.Name);
-                            var method = type.GetMethod(nameof(ILEmittedEntryPoint), BindingFlags.Public | BindingFlags.Static);
-                            ILEmittedEntryPoint? precompiledContract = (ILEmittedEntryPoint)Delegate.CreateDelegate(typeof(ILEmittedEntryPoint), method!);
+                            var method = type.GetMethod(nameof(ILEmittedMethod), BindingFlags.Public | BindingFlags.Static);
+                            ILEmittedMethod? precompiledContract = (ILEmittedMethod)Delegate.CreateDelegate(typeof(ILEmittedMethod), method!);
                             AotContractsRepository.AddIledCode(codeHash, precompiledContract!);
                         }
                     }

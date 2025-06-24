@@ -44,14 +44,14 @@ public static class ReleaseSpecEmit
         }
     }
 
-    public static void EmitAmortizedStaticEnvCheck<T>(this Emit<T> method, IEnvirementLoader envirementLoader, SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
+    public static void EmitAmortizedStaticEnvCheck<T>(this Emit<T> method, EnvirementLoader envirementLoader, SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
     {
         envirementLoader.LoadVmState(method, locals, false);
         method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
         method.BranchIfTrue(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StaticCallViolation));
     }
 
-    public static void EmitAmortizedOpcodeCheck<T>(this Emit<T> method, IEnvirementLoader envirementLoader,  SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
+    public static void EmitAmortizedOpcodeCheck<T>(this Emit<T> method, EnvirementLoader envirementLoader,  SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
     {
         // can be made better to save more memory using vectorized (think BitVectors)
         Label alreadyCheckedLabel = method.DefineLabel(locals.GetLabelName());
@@ -102,15 +102,17 @@ public static class StackEmit
         il.Add();
     }
 
-    public static void StackSetHead<T>(this Emit<T> il, Local stackHeadRef, int offset)
+    public static void StackSetHead<T>(this Emit<T> il, EnvirementLoader envLoader, Locals<T> locals, int offset)
     {
         if (offset == 0) return;
 
-        il.LoadLocal(stackHeadRef);
+        envLoader.LoadArguments(il, locals, true);
+        il.Duplicate();
+        il.LoadField(EnvirementLoader.REF_STACKHEADREF_FIELD);
         il.LoadConstant(offset * Word.Size);
         il.Convert<nint>();
         il.Call(UnsafeEmit.GetAddBytesOffsetRef<Word>());
-        il.StoreLocal(stackHeadRef);
+        il.StoreField(EnvirementLoader.REF_STACKHEADREF_FIELD);
     }
 
     public static void LoadItemFromSpan<T, U>(this Emit<T> il, Local idx, bool isReadOnly, Local? local = null)
@@ -545,21 +547,21 @@ public static class UnsafeEmit
 
 static class EmitIlChunkStateExtensions
 {
-    public static void EmitIsStoping<T>(this Emit<T> method, IEnvirementLoader loader, Locals<T> locals, Label goto_label)
+    public static void EmitIsStoping<T>(this Emit<T> method, EnvirementLoader loader, Locals<T> locals, Label goto_label)
     {
         loader.LoadResult(method, locals, true);
         method.Call(GetPropertyInfo<ILChunkExecutionState>(nameof(ILChunkExecutionState.ShouldAbort), false, out _));
         method.BranchIfTrue(goto_label);
     }
 
-    public static void EmitIsHalting<T>(this Emit<T> method, IEnvirementLoader loader, Locals<T> locals, Label goto_label)
+    public static void EmitIsHalting<T>(this Emit<T> method, EnvirementLoader loader, Locals<T> locals, Label goto_label)
     {
         loader.LoadResult(method, locals, true);
         method.Call(GetPropertyInfo<ILChunkExecutionState>(nameof(ILChunkExecutionState.ShouldHalt), false, out _));
         method.BranchIfTrue(goto_label);
     }
 
-    public static void EmitIsJumping<T>(this Emit<T> method, IEnvirementLoader loader, Locals<T> locals, Label goto_label)
+    public static void EmitIsJumping<T>(this Emit<T> method, EnvirementLoader loader, Locals<T> locals, Label goto_label)
     {
         loader.LoadResult(method, locals, true);
         method.Call(GetPropertyInfo<ILChunkExecutionState>(nameof(ILChunkExecutionState.ShouldJump), false, out _));
@@ -573,27 +575,18 @@ static class EmitIlChunkStateExtensions
 /// </summary>
 static class EmitExtensions
 {
-    public static void UpdateStackHeadAndPushRerSegmentMode<T>(Emit<T> method, Local stackHeadRef, Local stackHeadIdx, SubSegmentMetadata stackMetadata)
+    public static void UpdateStackHeadAndPushRerSegmentMode<T>(Emit<T> method, EnvirementLoader envLoader, Locals<T> locals, SubSegmentMetadata stackMetadata)
     {
         if (stackMetadata.LeftOutStack != 0)
         {
-            method.StackSetHead(stackHeadRef, stackMetadata.LeftOutStack);
-            method.LoadLocal(stackHeadIdx);
+            method.StackSetHead(envLoader, locals, stackMetadata.LeftOutStack);
+            envLoader.LoadStackHead(method, locals, true);
+            method.Duplicate();
+            method.LoadIndirect<int>();
             method.LoadConstant(stackMetadata.LeftOutStack);
             method.Add();
-            method.StoreLocal(stackHeadIdx);
+            method.StoreIndirect<int>();
         }
-    }
-
-    public static void UpdateStackHeadIdxAndPushRefOpcodeMode<T>(Emit<T> method, Local stackHeadRef, Local stackHeadIdx, OpcodeMetadata opMetadata)
-    {
-        var delta = opMetadata.StackBehaviorPush - opMetadata.StackBehaviorPop;
-        method.LoadLocal(stackHeadIdx);
-        method.LoadConstant(delta);
-        method.Add();
-        method.StoreLocal(stackHeadIdx);
-
-        method.StackSetHead(stackHeadRef, delta);
     }
 
     public static MethodInfo ConvertionImplicit<TFrom, TTo>() => ConvertionImplicit(typeof(TFrom), typeof(TTo));

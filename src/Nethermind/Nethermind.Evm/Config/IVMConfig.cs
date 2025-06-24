@@ -22,7 +22,7 @@ namespace Nethermind.Evm.Config;
 public interface IVMConfig : IConfig
 {
     [ConfigItem(
-        Description = "Set IL-EVM Activated Mode : 0- Il-evm is turned off 1- Pattern mode, 2- Precompilation mode",
+        Description = "Set IL-EVM Activated Mode : 1- Il-evm is turned off 2- Precompilation mode",
         DefaultValue = "0")]
     public ILMode IlEvmEnabledMode { get; set; }
 

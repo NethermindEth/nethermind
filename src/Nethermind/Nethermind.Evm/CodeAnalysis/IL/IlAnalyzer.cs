@@ -133,8 +133,8 @@ public static class IlAnalyzer
     {
         switch (mode)
         {
-            case ILMode.DYNAMIC_AOT_MODE:
-                if (AotContractsRepository.TryGetIledCode(codeInfo.Codehash.Value, out ILEmittedEntryPoint? contractDelegate))
+            case ILMode.AOT_MODE:
+                if (AotContractsRepository.TryGetIledCode(codeInfo.Codehash.Value, out ILEmittedMethod? contractDelegate))
                 {
                     codeInfo.IlInfo.PrecompiledContract = contractDelegate;
                     Metrics.IncrementIlvmAotCacheTouched();
@@ -163,7 +163,7 @@ public static class IlAnalyzer
     internal static bool TryCompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig vmConfig)
     {
         Metrics.IncrementIlvmCurrentlyCompiling();
-        if (Precompiler.TryCompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig, SimpleConsoleLogManager.Instance.GetLogger("IlvmLogger"), out ILEmittedEntryPoint? contractDelegate))
+        if (Precompiler.TryCompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig, SimpleConsoleLogManager.Instance.GetLogger("IlvmLogger"), out ILEmittedMethod? contractDelegate))
         {
             AotContractsRepository.AddIledCode(codeInfo.Codehash.Value, contractDelegate);
             codeInfo.IlInfo.PrecompiledContract = contractDelegate;
