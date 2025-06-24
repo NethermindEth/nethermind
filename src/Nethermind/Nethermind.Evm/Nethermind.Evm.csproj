@@ -12,6 +12,7 @@
     <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Ethentials.GmpBindings" />
     <PackageReference Include="Microsoft.ClearScript.V8.Native.linux-arm64" />
     <PackageReference Include="Microsoft.ClearScript.V8.Native.linux-x64" />
     <PackageReference Include="Microsoft.ClearScript.V8.Native.osx-arm64" />
@@ -20,7 +21,6 @@
     <PackageReference Include="Nethermind.Crypto.Pairings" />
     <PackageReference Include="Nethermind.Crypto.Bls" />
     <PackageReference Include="Nethermind.Crypto.SecP256r1" />
-    <PackageReference Include="Nethermind.GmpBindings" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Data\JSTracers\*.js">
