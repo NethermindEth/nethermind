@@ -27,7 +27,9 @@ namespace Nethermind.Serialization.Json
             double value,
             JsonSerializerOptions options)
         {
-            writer.WriteRawValue(value.ToString("0.0#########", CultureInfo.InvariantCulture), skipInputValidation: true);
+            // For eth_feeHistory compatibility: serialize 0.0 as 0 (integer) to match geth behavior
+            string formatted = value == 0.0 ? "0" : value.ToString("0.0#########", CultureInfo.InvariantCulture);
+            writer.WriteRawValue(formatted, skipInputValidation: true);
         }
     }
 
@@ -74,7 +76,9 @@ namespace Nethermind.Serialization.Json
             writer.WriteStartArray();
             foreach (double value in values)
             {
-                writer.WriteRawValue(value.ToString("0.0#########", CultureInfo.InvariantCulture), skipInputValidation: true);
+                // For eth_feeHistory compatibility: serialize 0.0 as 0 (integer) to match geth behavior
+                string formatted = value == 0.0 ? "0" : value.ToString("0.0#########", CultureInfo.InvariantCulture);
+                writer.WriteRawValue(formatted, skipInputValidation: true);
             }
             writer.WriteEndArray();
         }

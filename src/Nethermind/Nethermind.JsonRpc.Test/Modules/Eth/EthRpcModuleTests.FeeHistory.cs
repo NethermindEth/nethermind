@@ -26,10 +26,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public partial class EthRpcModuleTests
 {
-    [TestCase(1, "latest", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x2da282a8\",\"0x27ee3253\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0],\"blobGasUsedRatio\":[0.0],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
-    [TestCase(1, "pending", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x2da282a8\",\"0x27ee3253\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0],\"blobGasUsedRatio\":[0.0],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
-    [TestCase(2, "0x01", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x3b9aca00\",\"0x342770c0\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0,0.0],\"blobGasUsedRatio\":[0.0,0.0],\"oldestBlock\":\"0x0\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"],[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
-    [TestCase(2, "earliest", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x3b9aca00\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0],\"blobGasUsedRatio\":[0.0],\"oldestBlock\":\"0x0\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
+    [TestCase(1, "latest", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x2da282a8\",\"0x27ee3253\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0],\"blobGasUsedRatio\":[0],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
+    [TestCase(1, "pending", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x2da282a8\",\"0x27ee3253\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0],\"blobGasUsedRatio\":[0],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
+    [TestCase(2, "0x01", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x3b9aca00\",\"0x342770c0\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\",\"0x0\"],\"gasUsedRatio\":[0,0],\"blobGasUsedRatio\":[0,0],\"oldestBlock\":\"0x0\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"],[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
+    [TestCase(2, "earliest", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x3b9aca00\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0],\"blobGasUsedRatio\":[0],\"oldestBlock\":\"0x0\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
     public async Task Eth_feeHistory(long blockCount, string blockParameter, string expected)
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
@@ -76,13 +76,13 @@ public partial class EthRpcModuleTests
             yield return new TestCaseData(new ulong?[] { null, null }, new ulong?[] { null, null })
             {
                 TestName = "Pre-cancun blocks",
-                ExpectedResult = (new UInt256?[] { 0, 0, 0 }, new double?[] { 0.0, 0.0 })
+                ExpectedResult = (new UInt256?[] { 0, 0, 0 }, new double?[] { 0, 0 })
             };
 
             yield return new TestCaseData(new ulong?[] { null, null, 0 }, new ulong?[] { null, null, 0 })
             {
                 TestName = "Empty blocks",
-                ExpectedResult = (new UInt256?[] { 0, 0, 1, 1 }, new double?[] { 0.0, 0.0, 0.0 })
+                ExpectedResult = (new UInt256?[] { 0, 0, 1, 1 }, new double?[] { 0, 0, 0 })
             };
 
             yield return new TestCaseData(
@@ -102,14 +102,14 @@ public partial class EthRpcModuleTests
                 TestName = "Different values",
                 ExpectedResult = (
                     new UInt256?[] { 1, 1, 1, 1, 1, 2, 2 },
-                    new double?[] { 0.0, 0.33333333333333331, 1.0, 1.0, 1.0, 1.0 }
+                    new double?[] { 0, 0.33333333333333331, 1.0, 1.0, 1.0, 1.0 }
                     )
             };
 
             yield return new TestCaseData(new ulong?[] { 49152, 1 }, new ulong?[] { 0, 49152 })
             {
                 TestName = "Blocks with arbitary values",
-                ExpectedResult = (new UInt256?[] { 1, 1, 1 }, new double?[] { 0.0, 0.0625 })
+                ExpectedResult = (new UInt256?[] { 1, 1, 1 }, new double?[] { 0, 0.0625 })
             };
         }
     }
