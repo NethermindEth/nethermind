@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Ethentials.GmpBindings;
+using Nethermind.GmpBindings;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -171,7 +171,7 @@ namespace Nethermind.Evm.Precompiles
             var offset = modulusLength - powmResultLen;
 
             fixed (byte* ptr = result)
-                Gmp.mpz_export((nint)(ptr + offset), 0, 1, 1, 1, 0, powmResult);
+                Gmp.mpz_export((nint)(ptr + offset), out _, 1, 1, 1, 0, powmResult);
 
             return (result, true);
         }
