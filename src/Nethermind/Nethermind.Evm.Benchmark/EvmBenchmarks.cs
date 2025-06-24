@@ -69,7 +69,7 @@ namespace Nethermind.Evm.Benchmark
         private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
         private EvmState _evmState;
-        private WorldState _stateProvider;
+        private IWorldState _stateProvider;
         private ILogger _logger;
         private byte[] bytecode;
         private VMConfig vmConfig;
@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Benchmark
             vmConfig.IlEvmAnalysisThreshold = 1;
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
             IKeyValueStore codeDb = new MemDb();
-            _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
+            _stateProvider = new MockWorldState(1000, 0, new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance)));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
 
@@ -143,9 +143,9 @@ namespace Nethermind.Evm.Benchmark
                 inputData: default
             );
 
-            if(vmConfig.IsILEvmEnabled)
+            if (vmConfig.IsILEvmEnabled)
             {
-                if(driverCodeInfo.IlInfo.IsNotProcessed)
+                if (driverCodeInfo.IlInfo.IsNotProcessed)
                 {
                     IlAnalyzer.Analyse(driverCodeInfo, vmConfig.IlEvmEnabledMode, vmConfig, NullLogger.Instance);
                 }
