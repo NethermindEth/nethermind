@@ -15,7 +15,6 @@ public class Osaka : Prague
     {
         Name = "Osaka";
         MaxCodeSize = Eip7907Constants.MaxCodeSizeEip7907;
-        MaxInitCodeSize = Eip7907Constants.MaxInitCodeSizeEip7907;
         IsEip7594Enabled = true;
         IsEip7823Enabled = true;
         IsEip7825Enabled = true;

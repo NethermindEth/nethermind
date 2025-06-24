@@ -14,7 +14,6 @@ namespace Nethermind.Specs
         public long MaximumExtraDataSize { get; set; }
         public long MaxCodeSize { get; set; }
         public long MinGasLimit { get; set; }
-        public long MaxInitCodeSize { get; set; }
         public long GasLimitBoundDivisor { get; set; }
         public UInt256 BlockReward { get; set; }
         public long DifficultyBombDelay { get; set; }
