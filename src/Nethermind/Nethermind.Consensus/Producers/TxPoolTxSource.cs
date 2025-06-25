@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.Producers
             Func<Transaction, bool> filter = (tx) => _txFilterPipeline.Execute(tx, parent, spec);
 
             IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, filter, gasLimit);
-            IEnumerable<(Transaction tx, long blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, filter, (int)spec.MaxBlobCount).ToArray();
+            IEnumerable<(Transaction tx, long blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, filter, (int)spec.MaxBlobCount);
             if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int checkedTransactions = 0;

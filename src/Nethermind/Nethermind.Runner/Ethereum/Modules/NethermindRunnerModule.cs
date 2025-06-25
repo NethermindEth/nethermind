@@ -80,11 +80,6 @@ public class NethermindRunnerModule(
 
         foreach (var plugin in plugins)
         {
-            foreach (var stepInfo in plugin.GetSteps())
-            {
-                builder.AddStep(stepInfo);
-            }
-
             if (plugin.Module is not null)
             {
                 builder.AddModule(plugin.Module);

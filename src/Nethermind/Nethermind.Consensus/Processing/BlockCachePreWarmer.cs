@@ -250,7 +250,11 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
 
         private void WarmupAddresses(ParallelOptions parallelOptions, Block block)
         {
-            if (parallelOptions.CancellationToken.IsCancellationRequested) return;
+            if (parallelOptions.CancellationToken.IsCancellationRequested)
+            {
+                SystemTxAccessLists.Dispose();
+                return;
+            }
 
             ObjectPool<IReadOnlyTxProcessorSource> envPool = PreWarmer._envPool;
             try
