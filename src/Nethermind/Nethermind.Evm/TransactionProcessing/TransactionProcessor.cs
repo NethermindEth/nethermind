@@ -169,7 +169,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new();
 
-            int delegationRefunds = ProcessDelegations(tx, spec, accessTracker);
+            int delegationRefunds = (!spec.IsEip7702Enabled || !tx.HasAuthorizationList) ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment env))) return result;
@@ -231,35 +231,34 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         private int ProcessDelegations(Transaction tx, IReleaseSpec spec, in StackAccessTracker accessTracker)
         {
-            int refunds = 0;
-            if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
-            {
-                foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
-                {
-                    Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple));
+            Debug.Assert(spec.IsEip7702Enabled && tx.HasAuthorizationList);
 
-                    if (!IsValidForExecution(authTuple, accessTracker, out string? error))
+            int refunds = 0;
+            foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
+            {
+                Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple));
+
+                if (!IsValidForExecution(authTuple, accessTracker, out string? error))
+                {
+                    if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
+                }
+                else
+                {
+                    if (!WorldState.AccountExists(authority))
                     {
-                        if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
+                        WorldState.CreateAccount(authority, 0, 1);
                     }
                     else
                     {
-                        if (!WorldState.AccountExists(authority))
-                        {
-                            WorldState.CreateAccount(authority, 0, 1);
-                        }
-                        else
-                        {
-                            refunds++;
-                            WorldState.IncrementNonce(authority);
-                        }
-
-                        _codeInfoRepository.SetDelegation(WorldState, authTuple.CodeAddress, authority, spec);
+                        refunds++;
+                        WorldState.IncrementNonce(authority);
                     }
-                }
 
+                    _codeInfoRepository.SetDelegation(WorldState, authTuple.CodeAddress, authority, spec);
+                }
             }
 
             return refunds;
