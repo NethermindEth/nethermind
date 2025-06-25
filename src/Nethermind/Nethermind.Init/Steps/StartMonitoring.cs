@@ -18,7 +18,7 @@ using Type = System.Type;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitDatabase))]
+[RunnerStepDependencies(typeof(InitializeBlockTree))]
 public class StartMonitoring(
     IEthSyncingInfo ethSyncingInfo,
     IDbProvider dbProvider,
