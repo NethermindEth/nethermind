@@ -90,11 +90,10 @@ namespace Nethermind.Init.Steps
                 }
             }
 
-            // ——— Log out the full step graph in DOT format ———
-            if (_logger.IsInfo)
+            if (_logger.IsDebug)
             {
                 string dot = BuildStepDependencyTree(stepInfoMap);
-                _logger.Info("Ethereum steps dependency graph:\n" + dot);
+                _logger.Debug("Ethereum steps dependency graph:\n" + dot);
             }
 
             List<Task> allRequiredSteps = new();
@@ -233,18 +232,12 @@ namespace Nethermind.Init.Steps
                 deduplicatedDependency[node] = depsMap[node].Where((d) => !childOnlyAllCombinedDeps.Contains(d)).ToList();
             }
 
-            sorted.Reverse();
-
-            // Determine maximum depth across all nodes
-            int maxDepth = depth.Values.Any() ? depth.Values.Max() : 0;
-
             // Build the indented output using reversed indentation
             var sb = new System.Text.StringBuilder();
             foreach (var node in sorted)
             {
                 int lvl = depth[node];
-                int reverseLevel = maxDepth - lvl;
-                sb.Append(new string(' ', reverseLevel * 4));
+                sb.Append(new string(' ', lvl * 2));
                 var deps = deduplicatedDependency[node];
                 if (dependentsMap[node].Count == 0)
                 {
