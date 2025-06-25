@@ -321,7 +321,7 @@ namespace Nethermind.Blockchain.Test
             receiptsTracer.StartNewBlockTrace(blockToProduce);
 
             txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
-            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer, spec);
+            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer);
             blockToProduce.Transactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
         }
 
@@ -354,7 +354,8 @@ namespace Nethermind.Blockchain.Test
             BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, mempoolLength / 1.KiB() - 1);
             BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, txPicker, LimboLogs.Instance);
 
-            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, new(), spec);
+            txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, new());
 
             Assert.That(blockToProduce.TxByteLength, Is.EqualTo(payloadLength));
         }

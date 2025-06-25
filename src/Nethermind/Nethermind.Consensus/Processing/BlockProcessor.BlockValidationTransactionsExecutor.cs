@@ -28,14 +28,18 @@ namespace Nethermind.Consensus.Processing
         {
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
+            private IReleaseSpec _spec;
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-                => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+            {
+                _spec = blockExecutionContext.Spec;
+                transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+            }
 
-            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token)
+            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
             {
                 Metrics.ResetBlockStats();
 
-                EnhanceBlockExecutionContext(block);
+                EnhanceBlockExecutionContext(block, _spec);
 
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
@@ -46,7 +50,7 @@ namespace Nethermind.Consensus.Processing
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
-            protected virtual void EnhanceBlockExecutionContext(Block block) { }
+            protected virtual void EnhanceBlockExecutionContext(Block block, IReleaseSpec spec) { }
 
             protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {

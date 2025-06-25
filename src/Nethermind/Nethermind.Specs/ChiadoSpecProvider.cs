@@ -20,7 +20,7 @@ public class ChiadoSpecProvider : ISpecProvider
 
     private ChiadoSpecProvider() { }
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation) => forkActivation.BlockNumber switch
+    IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => forkActivation.BlockNumber switch
     {
         _ => forkActivation.Timestamp switch
         {

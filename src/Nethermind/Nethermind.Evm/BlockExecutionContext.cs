@@ -10,13 +10,14 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public readonly struct BlockExecutionContext(BlockHeader blockHeader, in UInt256 blobBaseFee)
+public readonly struct BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec, in UInt256 blobBaseFee)
 {
     public readonly BlockHeader Header = blockHeader;
     public readonly Address Coinbase = blockHeader.GasBeneficiary ?? Address.Zero;
     public readonly ulong Number = (ulong)blockHeader.Number;
     public readonly ulong GasLimit = (ulong)blockHeader.GasLimit;
     public readonly ValueHash256 BlobBaseFee = blobBaseFee.ToValueHash();
+    public readonly IReleaseSpec Spec = spec;
 
     // Use the random value if post-merge; otherwise, use block difficulty.
     public readonly ValueHash256 PrevRandao = blockHeader.IsPostMerge
@@ -25,7 +26,7 @@ public readonly struct BlockExecutionContext(BlockHeader blockHeader, in UInt256
 
     public readonly bool IsGenesis = blockHeader.IsGenesis;
 
-    public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec) : this(blockHeader, GetBlobBaseFee(blockHeader, spec))
+    public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec) : this(blockHeader, spec, GetBlobBaseFee(blockHeader, spec))
     {
     }
 

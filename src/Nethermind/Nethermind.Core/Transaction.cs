@@ -42,10 +42,11 @@ namespace Nethermind.Core
         // Field indicating if this transaction is exempt from the L2 gas limit.
         public bool IsOPSystemTransaction { get; set; }
 
+        private UInt256 _gasPrice;
         public UInt256 Nonce { get; set; }
-        public UInt256 GasPrice { get; set; }
+        public UInt256 GasPrice { get => _gasPrice; set => _gasPrice = value; }
         public UInt256? GasBottleneck { get; set; }
-        public UInt256 MaxPriorityFeePerGas => GasPrice;
+        public ref readonly UInt256 MaxPriorityFeePerGas => ref _gasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
         public UInt256 MaxFeePerGas => Supports1559 ? DecodedMaxFeePerGas : GasPrice;
         public bool SupportsAccessList => Type.SupportsAccessList();

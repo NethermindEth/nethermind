@@ -23,7 +23,7 @@ namespace Nethermind.Core.Test
 
         public IReleaseSpec GenesisSpec => specProvider.GenesisSpec;
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) => specProvider.GetSpec(forkActivation);
+        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => specProvider.GetSpec(forkActivation);
 
         public long? DaoBlockNumber => specProvider.DaoBlockNumber;
 
@@ -34,6 +34,6 @@ namespace Nethermind.Core.Test
 
         public ForkActivation[] TransitionActivations => specProvider.TransitionActivations;
 
-        public IReleaseSpec GetCurrentHeadSpec() => GetSpec((fixedBlock, timestamp));
+        public IReleaseSpec GetCurrentHeadSpec() => specProvider.GetSpec((fixedBlock, timestamp));
     }
 }

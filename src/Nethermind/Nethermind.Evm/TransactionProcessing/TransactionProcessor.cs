@@ -139,7 +139,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-            IReleaseSpec spec = GetSpec(tx, header);
+            IReleaseSpec spec = GetSpec(header);
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
@@ -169,7 +169,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new();
 
-            int delegationRefunds = ProcessDelegations(tx, spec, accessTracker);
+            int delegationRefunds = (!spec.IsEip7702Enabled || !tx.HasAuthorizationList) ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment env))) return result;
@@ -231,35 +231,34 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         private int ProcessDelegations(Transaction tx, IReleaseSpec spec, in StackAccessTracker accessTracker)
         {
-            int refunds = 0;
-            if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
-            {
-                foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
-                {
-                    Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple));
+            Debug.Assert(spec.IsEip7702Enabled && tx.HasAuthorizationList);
 
-                    if (!IsValidForExecution(authTuple, accessTracker, out string? error))
+            int refunds = 0;
+            foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
+            {
+                Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple));
+
+                if (!IsValidForExecution(authTuple, accessTracker, out string? error))
+                {
+                    if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
+                }
+                else
+                {
+                    if (!WorldState.AccountExists(authority))
                     {
-                        if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
+                        WorldState.CreateAccount(authority, 0, 1);
                     }
                     else
                     {
-                        if (!WorldState.AccountExists(authority))
-                        {
-                            WorldState.CreateAccount(authority, 0, 1);
-                        }
-                        else
-                        {
-                            refunds++;
-                            WorldState.IncrementNonce(authority);
-                        }
-
-                        _codeInfoRepository.SetDelegation(WorldState, authTuple.CodeAddress, authority, spec);
+                        refunds++;
+                        WorldState.IncrementNonce(authority);
                     }
-                }
 
+                    _codeInfoRepository.SetDelegation(WorldState, authTuple.CodeAddress, authority, spec);
+                }
             }
 
             return refunds;
@@ -311,7 +310,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        protected virtual IReleaseSpec GetSpec(Transaction tx, BlockHeader header) => SpecProvider.GetSpec(header);
+        protected virtual IReleaseSpec GetSpec(BlockHeader header) => VirtualMachine.BlockExecutionContext.Spec;
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
@@ -795,7 +794,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
         {
-            UInt256 fees = (UInt256)spentGas * premiumPerGas;
+            UInt256 fees = premiumPerGas * (ulong)spentGas;
 
             // n.b. destroyed accounts already set to zero balance
             bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
@@ -804,7 +803,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
             }
 
-            UInt256 eip1559Fees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : UInt256.Zero;
+            UInt256 eip1559Fees = !tx.IsFree() ? header.BaseFeePerGas * (ulong)spentGas : UInt256.Zero;
             UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
 
             if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
@@ -881,6 +880,22 @@ namespace Nethermind.Evm.TransactionProcessing
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
+
+        public TransactionResult Execute(Transaction transaction, BlockHeader header, ITxTracer txTracer)
+        {
+            IReleaseSpec spec = SpecProvider.GetSpec(header);
+            BlockExecutionContext blockExecutionContext = new(header, spec);
+            SetBlockExecutionContext(in blockExecutionContext);
+            return Execute(transaction, txTracer);
+        }
+
+        public TransactionResult CallAndRestore(Transaction transaction, BlockHeader header, ITxTracer txTracer)
+        {
+            IReleaseSpec spec = SpecProvider.GetSpec(header);
+            BlockExecutionContext blockExecutionContext = new(header, spec);
+            SetBlockExecutionContext(in blockExecutionContext);
+            return CallAndRestore(transaction, txTracer);
+        }
     }
 
     public readonly struct TransactionResult(string? error) : IEquatable<TransactionResult>

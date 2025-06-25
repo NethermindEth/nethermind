@@ -3,13 +3,17 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 
 namespace Ethereum.Test.Base
 {
     public class TestBlockhashProvider : IBlockhashProvider
     {
-        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
+        public Hash256 GetBlockhash(BlockHeader currentBlock, long number)
+            => GetBlockhash(currentBlock, number, null);
+
+        public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec)
         {
             if (number != 0)
                 return Keccak.Zero;
