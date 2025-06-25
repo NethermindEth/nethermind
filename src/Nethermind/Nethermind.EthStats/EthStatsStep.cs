@@ -26,7 +26,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.EthStats;
 
-[RunnerStepDependencies(typeof(StartBlockProcessor))]
+[RunnerStepDependencies(typeof(InitializeBlockchain))]
 public class EthStatsStep(
     ISpecProvider specProvider,
     ITxPool txPool,
