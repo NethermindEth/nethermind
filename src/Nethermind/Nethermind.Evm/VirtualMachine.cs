@@ -107,8 +107,7 @@ public sealed unsafe partial class VirtualMachine(
     /// </summary>
     public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
 
-    private EvmState _vmState;
-    public EvmState EvmState { get => _vmState; private set => _vmState = value; }
+    public EvmState EvmState { get => _currentState; private set => _currentState = value; }
     public int SectionIndex { get; set; }
 
     /// <summary>
@@ -184,7 +183,6 @@ public sealed unsafe partial class VirtualMachine(
                     if (_currentState.Env.CodeInfo is not null)
                     {
                         callResult = ExecuteCall<TTracingInst>(
-                            _currentState,
                             _previousCallResult,
                             previousCallOutput,
                             _previousCallOutputDestination);
@@ -207,6 +205,7 @@ public sealed unsafe partial class VirtualMachine(
                         TransactionSubstate substate = HandleException(in callResult, ref previousCallOutput, out bool terminate);
                         if (terminate)
                         {
+                            _currentState = null;
                             return substate;
                         }
                         // Continue execution if the exception did not immediately finalize the transaction.
@@ -221,7 +220,9 @@ public sealed unsafe partial class VirtualMachine(
                     {
                         TraceTransactionActionEnd(_currentState, spec, callResult);
                     }
-                    return PrepareTopLevelSubstate(in callResult);
+                    TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
+                    _currentState = null;
+                    return substate;
                 }
 
                 // For nested call frames, merge the results and restore the previous execution state.
@@ -295,6 +296,7 @@ public sealed unsafe partial class VirtualMachine(
             TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, ref previousCallOutput, out bool shouldExit);
             if (shouldExit)
             {
+                _currentState = null;
                 return failSubstate;
             }
         }
@@ -1049,12 +1051,12 @@ public sealed unsafe partial class VirtualMachine(
     /// </remarks>
     [SkipLocalsInit]
     private CallResult ExecuteCall<TTracingInst>(
-        EvmState vmState,
         ReadOnlyMemory<byte>? previousCallResult,
         ZeroPaddedSpan previousCallOutput,
         scoped in UInt256 previousCallOutputDestination)
         where TTracingInst : struct, IFlag
     {
+        EvmState vmState = _currentState;
         // Obtain a reference to the execution environment for convenience.
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
@@ -1118,9 +1120,6 @@ public sealed unsafe partial class VirtualMachine(
             // Save the previous call's output into the VM state's memory.
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
-
-        // Update the global EVM state with the current state.
-        EvmState = vmState;
 
         // Dispatch the bytecode interpreter.
         // The second generic parameter is selected based on whether the transaction tracer is cancelable:
@@ -1204,7 +1203,7 @@ public sealed unsafe partial class VirtualMachine(
             {
 #if DEBUG
                 // Allow the debugger to inspect and possibly pause execution for debugging purposes.
-                debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+                debugger?.TryWait(ref _currentState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
                 // Fetch the current instruction from the code section.
                 Instruction instruction = Unsafe.Add(ref code, programCounter);
@@ -1278,7 +1277,7 @@ public sealed unsafe partial class VirtualMachine(
     DataReturn:
 #if DEBUG
         // Allow debugging before processing the return data.
-        debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+        debugger?.TryWait(ref _currentState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
         // Process the return data based on its runtime type.
         if (ReturnData is EvmState state)

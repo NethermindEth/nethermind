@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -31,6 +32,7 @@ namespace Nethermind.Blockchain
         {
         }
 
+        [UseConstructorForDependencyInjection]
         public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, ICodeInfoRepository codeInfoRepository)
         {
             SpecProvider = specProvider;

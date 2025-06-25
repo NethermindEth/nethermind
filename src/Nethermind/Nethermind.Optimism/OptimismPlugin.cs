@@ -41,6 +41,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Simulate;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
 
@@ -64,12 +65,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     private OptimismCL? _cl;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
-
-    public IEnumerable<StepInfo> GetSteps()
-    {
-        yield return typeof(InitializeBlockchainOptimism);
-        yield return typeof(RegisterOptimismRpcModules);
-    }
 
     #region IConsensusPlugin
 
@@ -241,7 +236,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         _api.RpcModuleProvider.RegisterSingle(opEngine);
 
         StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
-        StepDependencyException.ThrowIfNull(_api.OptimismEthRpcModule);
         StepDependencyException.ThrowIfNull(_api.IpResolver);
 
         IOptimismConfig config = _api.Config<IOptimismConfig>();
@@ -268,7 +262,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             IL1ConfigValidator l1ConfigValidator = new L1ConfigValidator(ethApi, _api.LogManager);
 
             ISystemConfigDeriver systemConfigDeriver = new SystemConfigDeriver(clParameters.SystemConfigProxy);
-            IL2Api l2Api = new L2Api(_api.OptimismEthRpcModule, opEngine, systemConfigDeriver, _api.LogManager);
+            IL2Api l2Api = new L2Api(_api.Context.Resolve<IRpcModuleFactory<IOptimismEthRpcModule>>().Create(), opEngine, systemConfigDeriver, _api.LogManager);
             IExecutionEngineManager executionEngineManager = new ExecutionEngineManager(l2Api, _api.LogManager);
 
             _cl = new OptimismCL(
@@ -345,6 +339,9 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
 
+            // Step override
+            .AddStep(typeof(InitializeBlockchainOptimism))
+
             // Validators
             .AddSingleton<IBlockValidator, OptimismBlockValidator>()
             .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
@@ -363,8 +360,13 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddSingleton<ISimulateTransactionProcessorFactory, SimulateOptimismTransactionProcessorFactory>()
 
+            // Rpcs
             .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>
                 new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))
+
+            .AddSingleton<OptimismEthModuleFactory>()
+                .Bind<IRpcModuleFactory<IOptimismEthRpcModule>, OptimismEthModuleFactory>()
+                .Bind<IRpcModuleFactory<IEthRpcModule>, OptimismEthModuleFactory>()
             ;
 
     }

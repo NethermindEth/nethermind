@@ -41,15 +41,6 @@ public class TestBlockProcessingModule : Module
                 PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
                 return new CodeInfoRepository(preBlockCaches?.PrecompileCache);
             })
-            .AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
-            {
-                ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
-                IBlockTree blockTree = ctx.Resolve<IBlockTree>();
-                IStateReader stateReader = ctx.Resolve<IStateReader>();
-                // need this to be the right one.
-                ICodeInfoRepository codeInfoRepository = ctx.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
-                return new ChainHeadInfoProvider(specProvider, blockTree, stateReader, codeInfoRepository);
-            })
 
             .AddSingleton<ITxPool, TxPool.TxPool>()
             .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
