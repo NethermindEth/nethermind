@@ -22,12 +22,12 @@ public sealed class GrpcOptimumNodeClient(
     Uri grpcEndpoint
 ) : IOptimumNodeClient
 {
-    private static class ListenCommandsRequestType
+    internal static class ListenCommandsRequestType
     {
-        public const int Unknown = 0;
-        public const int PublishData = 1;
-        public const int SubscribeToTopic = 2;
-        public const int UnsubscribeToTopic = 3;
+        internal const int Unknown = 0;
+        internal const int PublishData = 1;
+        internal const int SubscribeToTopic = 2;
+        internal const int UnsubscribeToTopic = 3;
     }
 
     public async IAsyncEnumerable<OptimumNodeMessage> SubscribeToTopic(
