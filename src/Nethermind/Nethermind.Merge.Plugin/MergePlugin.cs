@@ -371,8 +371,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
     public bool MustInitialize { get => true; }
 
-    public virtual IEnumerable<StepInfo> GetSteps() => [];
-
     public virtual IModule Module => new MergePluginModule();
 }
 
