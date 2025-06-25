@@ -531,12 +531,8 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
-        // Duplicate the nth element from the top; if it fails, signal a stack underflow.
-        if (!stack.Dup<TTracingInst>(TOpCount.Count)) goto StackUnderflow;
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+
+        return stack.Dup<TTracingInst>(TOpCount.Count);
     }
 
     /// <summary>

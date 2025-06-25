@@ -524,11 +524,11 @@ internal static partial class EvmInstructions
         // Read the immediate operand.
         int imm = codeInfo.CodeSection.Span[programCounter];
         // Duplicate the (imm+1)th stack element.
-        stack.Dup<TTracingInst>(imm + 1);
+        EvmExceptionType result = stack.Dup<TTracingInst>(imm + 1);
 
         programCounter += 1;
 
-        return EvmExceptionType.None;
+        return result;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
