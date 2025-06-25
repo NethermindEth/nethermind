@@ -386,7 +386,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     [Test]
     public void Or_0_0()
     {
-        TestAllTracerWithOutput receipt = Execute(
+        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.ByzantiumBlockNumber, null),
             (byte)Instruction.PUSH1,
             0,
             (byte)Instruction.PUSH1,
