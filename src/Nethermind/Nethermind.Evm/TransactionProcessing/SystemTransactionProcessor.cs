@@ -43,8 +43,7 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
             : opts);
     }
 
-
-    protected override IReleaseSpec GetSpec(BlockHeader header) => new SystemTransactionReleaseSpec(base.GetSpec(header), _isAura, header.IsGenesis);
+    protected override IReleaseSpec GetSpec(BlockHeader header) => SystemTransactionReleaseSpec.GetReleaseSpec(base.GetSpec(header), _isAura, header.IsGenesis);
 
     protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired, bool validate) => TransactionResult.Ok;
 
