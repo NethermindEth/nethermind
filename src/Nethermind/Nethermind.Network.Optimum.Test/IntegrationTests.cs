@@ -71,7 +71,7 @@ public class IntegrationTests
     // However, this has some drawbacks:
     // - The Gateway does not implement a mechanism to unsubscribe from a topic, so the same gRPC stream will continue sending messages from topic we might no longer be interested in.
     // - The Node implements a mechanism to unsubscribe from a topic, but managing topic from our side implies managing subscriptions. It can be done, but the implementation is more complex and potentially more fragile.
-    //      For example, the gRPC library is not thread safe, that is, we cannot read/write to the same gRPC stream from multiple threads.
+    //      For example, the gRPC library is not thread safe (https://learn.microsoft.com/en-us/aspnet/core/grpc/services?view=aspnetcore-9.0#multi-threading-with-grpc-streaming-methods), that is, we cannot read/write to the same gRPC stream from multiple threads.
     //
     // TODO: Ask how many topics are we interested in.
     // If the number is relatively low we can use multiple connections, otherwise we need to multiplex.
