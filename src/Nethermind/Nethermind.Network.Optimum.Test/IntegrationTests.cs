@@ -21,7 +21,7 @@ public class IntegrationTests
     public async Task GatewaySubscribeToTopic()
     {
         using var httpClient = new HttpClient();
-        var client = new GrpcGatewayClient(httpClient, new GrpcGatewayClientOptions
+        var client = new GrpcOptimumGatewayClient(httpClient, new GrpcOptimumGatewayClientOptions
         {
             ClientId = "nethermind-optimum-test-client",
             RestEndpoint = new Uri("http://localhost:8081/api/subscribe"),

@@ -13,24 +13,24 @@ using Grpc.Net.Client;
 
 namespace Nethermind.Network.Optimum.Test;
 
-public interface IGatewayClient
+public interface IOptimumGatewayClient
 {
-    IAsyncEnumerable<GatewayMessage> SubscribeToTopic(string topic, double threshold, CancellationToken cancellation = default);
+    IAsyncEnumerable<OptimumGatewayMessage> SubscribeToTopic(string topic, double threshold, CancellationToken cancellation = default);
 }
 
-public sealed record GrpcGatewayClientOptions
+public sealed record GrpcOptimumGatewayClientOptions
 {
     public required string ClientId { get; init; }
     public required Uri RestEndpoint { get; init; }
     public required Uri GrpcEndpoint { get; init; }
 }
 
-public sealed class GrpcGatewayClient(
+public sealed class GrpcOptimumGatewayClient(
     HttpClient httpClient,
-    GrpcGatewayClientOptions options
-) : IGatewayClient
+    GrpcOptimumGatewayClientOptions options
+) : IOptimumGatewayClient
 {
-    public async IAsyncEnumerable<GatewayMessage> SubscribeToTopic(
+    public async IAsyncEnumerable<OptimumGatewayMessage> SubscribeToTopic(
         string topic,
         double threshold,
         [EnumeratorCancellation] CancellationToken token = default)
@@ -67,13 +67,13 @@ public sealed class GrpcGatewayClient(
 
         using var call = client.ClientStream(cancellationToken: token);
 
-        await call.RequestStream.WriteAsync(new GatewayMessage { ClientId = options.ClientId }, token);
+        await call.RequestStream.WriteAsync(new OptimumGatewayMessage { ClientId = options.ClientId }, token);
 
         // NOTE: Required due to limitations of the C# compiler.
         // See: https://github.com/dotnet/csharplang/issues/8414
         while (true)
         {
-            GatewayMessage current;
+            OptimumGatewayMessage current;
             try
             {
                 await call.ResponseStream.MoveNext(token).ConfigureAwait(false);

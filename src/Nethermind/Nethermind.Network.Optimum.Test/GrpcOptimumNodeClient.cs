@@ -13,15 +13,15 @@ using Grpc.Net.Client;
 
 namespace Nethermind.Network.Optimum.Test;
 
-public sealed class GrpcOptimumNodeClient
+public interface IOptimumNodeClient
 {
-    private readonly Uri _grpcEndpoint;
+    IAsyncEnumerable<OptimumNodeMessage> SubscribeToTopic(string topic, CancellationToken cancellation = default);
+}
 
-    public GrpcOptimumNodeClient(Uri grpcEndpoint)
-    {
-        _grpcEndpoint = grpcEndpoint;
-    }
-
+public sealed class GrpcOptimumNodeClient(
+    Uri grpcEndpoint
+) : IOptimumNodeClient
+{
     private static class ListenCommandsRequestType
     {
         public const int Unknown = 0;
@@ -34,7 +34,7 @@ public sealed class GrpcOptimumNodeClient
         string topic,
         [EnumeratorCancellation] CancellationToken token = default)
     {
-        using var channel = GrpcChannel.ForAddress(_grpcEndpoint, new GrpcChannelOptions
+        using var channel = GrpcChannel.ForAddress(grpcEndpoint, new GrpcChannelOptions
         {
             Credentials = ChannelCredentials.Insecure,
             MaxReceiveMessageSize = int.MaxValue,
