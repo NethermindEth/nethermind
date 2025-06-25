@@ -93,7 +93,7 @@ namespace Nethermind.Init.Steps
             if (_logger.IsDebug)
             {
                 string dot = BuildStepDependencyTree(stepInfoMap);
-                _logger.Debug("Ethereum steps dependency graph:\n" + dot);
+                _logger.Debug("Ethereum steps dependency tree:\n" + dot);
             }
 
             List<Task> allRequiredSteps = new();
@@ -194,14 +194,14 @@ namespace Nethermind.Init.Steps
 
             // Kahn's algorithm to compute topological order
             var inDegree = depsMap.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
-            var queue = new Queue<string>(inDegree.Where(kv => kv.Value == 0).Select(kv => kv.Key));
+            var queue = new Queue<string>(inDegree.Where(kv => kv.Value == 0).Select(kv => kv.Key).OrderBy((c) => dependentsMap[c].Count));
             var sorted = new List<string>();
             var degree = new Dictionary<string, int>(inDegree);
             while (queue.Count > 0)
             {
                 var n = queue.Dequeue();
                 sorted.Add(n);
-                foreach (var dependent in dependentsMap[n])
+                foreach (var dependent in dependentsMap[n].OrderBy((c) => dependentsMap[c].Count))
                 {
                     degree[dependent]--;
                     if (degree[dependent] == 0)
