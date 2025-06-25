@@ -35,7 +35,7 @@ namespace Nethermind.Analytics
     }
 }
 
-public class AnalyticsModule: Module
+public class AnalyticsModule : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
 
