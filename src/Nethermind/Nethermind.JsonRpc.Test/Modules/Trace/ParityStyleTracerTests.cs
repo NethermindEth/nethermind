@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
@@ -84,7 +85,9 @@ public class ParityStyleTracerTests
         _blockTree!.SuggestBlock(block).Should().Be(AddBlockResult.Added);
         _poSSwitcher!.IsPostMerge(Arg.Any<BlockHeader>()).Returns(isPostMerge);
 
-        ParityTxTraceFromStore[] result = _traceRpcModule.trace_block(new BlockParameter(block.Number)).Data.ToArray();
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> rpcResult = _traceRpcModule.trace_block(new BlockParameter(block.Number));
+        rpcResult.Result.Should().Be(Result.Success);
+        ParityTxTraceFromStore[] result = rpcResult.Data.ToArray();
         if (isPostMerge)
         {
             result.Length.Should().Be(1);
