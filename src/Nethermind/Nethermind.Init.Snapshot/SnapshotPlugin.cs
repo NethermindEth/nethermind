@@ -1,7 +1,8 @@
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
-using Nethermind.Init.Steps;
 
 namespace Nethermind.Init.Snapshot;
 
@@ -17,11 +18,11 @@ public class SnapshotPlugin(ISnapshotConfig snapshotConfig) : INethermindPlugin
     public Task Init(INethermindApi api) => Task.CompletedTask;
     public Task InitNetworkProtocol() => Task.CompletedTask;
     public Task InitRpcModules() => Task.CompletedTask;
-
-    public IEnumerable<StepInfo> GetSteps()
-    {
-        yield return typeof(InitDatabaseSnapshot);
-    }
-
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public IModule Module => new SnapshotPluginModule();
+}
+
+public class SnapshotPluginModule : Module
+{
+    protected override void Load(ContainerBuilder builder) => builder.AddStep(typeof(InitDatabaseSnapshot));
 }

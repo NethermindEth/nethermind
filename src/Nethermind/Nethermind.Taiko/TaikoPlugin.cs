@@ -220,12 +220,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     public bool MustInitialize => true;
 
-    // IInitializationPlugin
-    public IEnumerable<StepInfo> GetSteps()
-    {
-        yield return typeof(InitializeBlockchainTaiko);
-    }
-
     // IConsensusPlugin
 
     public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _)
@@ -258,6 +252,9 @@ public class TaikoModule : Module
             .AddSingleton<ISpecProvider, TaikoChainSpecBasedSpecProvider>()
             .Map<TaikoChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<TaikoChainSpecEngineParameters>())
+
+            // Steps override
+            .AddStep(typeof(InitializeBlockchainTaiko))
 
             // L1 origin store
             .AddSingleton<IRlpStreamDecoder<L1Origin>, L1OriginDecoder>()
