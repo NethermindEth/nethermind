@@ -139,7 +139,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-            IReleaseSpec spec = VirtualMachine.BlockExecutionContext.Spec;
+            IReleaseSpec spec = GetSpec(header);
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
@@ -311,7 +311,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        protected virtual IReleaseSpec GetSpec(BlockHeader header) => SpecProvider.GetSpec(header);
+        protected virtual IReleaseSpec GetSpec(BlockHeader header) => VirtualMachine.BlockExecutionContext.Spec;
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
