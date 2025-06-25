@@ -31,12 +31,6 @@ namespace Nethermind.Analytics
 
         public string Author => "Nethermind";
 
-        public Task Init(INethermindApi api) => Task.CompletedTask;
-
-        public Task InitNetworkProtocol() => Task.CompletedTask;
-
-        public Task InitRpcModules() => Task.CompletedTask;
-
         public IModule Module => new AnalyticsModule();
     }
 }
