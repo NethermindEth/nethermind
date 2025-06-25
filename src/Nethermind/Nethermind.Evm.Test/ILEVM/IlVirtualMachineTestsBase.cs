@@ -111,7 +111,7 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
         {
             ForceRunAnalysis(tx.To, ILMode.AOT_MODE);
         }
-        Execute(fork ?? MainnetSpecProvider.PragueActivation, tx);
+        Execute(fork ?? MainnetSpecProvider.PragueActivation, tx, tracer);
     }
     public Address InsertCode(byte[] bytecode)
     {

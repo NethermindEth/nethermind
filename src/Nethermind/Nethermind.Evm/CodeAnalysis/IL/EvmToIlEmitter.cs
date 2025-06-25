@@ -381,8 +381,8 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.uint256A); // position
         method.LoadLocalAddress(locals.uint256B); // length
         method.Call(
-            typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(
-                nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)
+            typeof(VirtualMachineDependencies).GetMethod(
+                nameof(VirtualMachineDependencies.UpdateMemoryCost)
             )
         );
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
@@ -667,7 +667,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.uint256B);
-        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         envLoader.LoadResult(method, locals, true);
@@ -745,7 +745,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.uint256C);
-        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         envLoader.LoadReturnDataBuffer(method, locals, false);
@@ -823,7 +823,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.uint256C);
-        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         envLoader.LoadMachineCode(method, locals, true);
@@ -919,7 +919,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.uint256B);
-        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         envLoader.LoadMemory(method, locals, true);
@@ -968,7 +968,7 @@ internal static class OpcodeEmitters
         method.StoreLocal(locals.uint256R);
         method.LoadLocalAddress(locals.uint256R);
         method.LoadLocalAddress(locals.uint256C);
-        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         envLoader.LoadMemory(method, locals, true);
@@ -997,7 +997,7 @@ internal static class OpcodeEmitters
         method.StoreLocal(locals.uint256B);
 
         method.LoadLocalAddress(locals.uint256B);
-        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         envLoader.LoadMemory(method, locals, true);
@@ -1030,7 +1030,7 @@ internal static class OpcodeEmitters
         method.Call(ConvertionExplicit<UInt256, int>());
         method.StoreLocal(locals.uint256C);
         method.LoadLocalAddress(locals.uint256C);
-        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         envLoader.LoadMemory(method, locals, true);
@@ -1058,7 +1058,7 @@ internal static class OpcodeEmitters
         method.Call(ConvertionExplicit<UInt256, int>());
         method.StoreLocal(locals.uint256C);
         method.LoadLocalAddress(locals.uint256C);
-        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         envLoader.LoadMemory(method, locals, true);
@@ -1181,7 +1181,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.uint256C);
-        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         envLoader.LoadCalldata(method, locals, false);
@@ -1603,10 +1603,9 @@ internal static class OpcodeEmitters
         envLoader.LoadVmState(method, locals, false);
 
         method.LoadLocalAddress(locals.storageCell);
-        method.LoadConstant((int)VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.StorageAccessType.SLOAD);
+        method.LoadConstant((int)VirtualMachineDependencies.StorageAccessType.SLOAD);
         envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, false);
-        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.Public));
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.Public));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         envLoader.LoadWorldState(method, locals, false);
@@ -1641,9 +1640,8 @@ internal static class OpcodeEmitters
         method.LoadConstant(false);
         envLoader.LoadWorldState(method, locals, false);
         envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, false);
         method.LoadConstant(true);
-        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeAccountAccessGas)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
@@ -1702,9 +1700,8 @@ internal static class OpcodeEmitters
         method.LoadConstant(false);
         envLoader.LoadWorldState(method, locals, false);
         envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, false);
         method.LoadConstant(true);
-        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeAccountAccessGas)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         method.LoadLocalAddress(locals.uint256C);
@@ -1716,7 +1713,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.uint256C);
-        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.UpdateMemoryCost)));
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         envLoader.LoadCodeInfoRepository(method, locals, false);
@@ -1768,9 +1765,8 @@ internal static class OpcodeEmitters
         method.LoadConstant(false);
         envLoader.LoadWorldState(method, locals, false);
         envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, false);
         method.LoadConstant(true);
-        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeAccountAccessGas)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         Label pushZeroLabel = method.DefineLabel(locals.GetLabelName());
@@ -1837,9 +1833,8 @@ internal static class OpcodeEmitters
         method.LoadConstant(false);
         envLoader.LoadWorldState(method, locals, false);
         envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, false);
         method.LoadConstant(true);
-        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.ChargeAccountAccessGas)));
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeAccountAccessGas)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
@@ -2100,14 +2095,12 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localReadonOnlySpan);
         envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, false);
 
 
-        MethodInfo nonTracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
-                    .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionSStore), BindingFlags.Static | BindingFlags.Public)
-                    .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
+        MethodInfo SStoreMethod = typeof(VirtualMachineDependencies)
+                    .GetMethod(nameof(VirtualMachineDependencies.InstructionSStore), BindingFlags.Static | BindingFlags.Public);
 
-        method.Call(nonTracingSStoreMethod);
+        method.Call(SStoreMethod);
 
         endOfOpcode = method.DefineLabel(locals.GetLabelName());
         method.Duplicate();
@@ -2133,8 +2126,8 @@ internal static class OpcodeEmitters
     internal static void EmitSelfDestructInstruction<TDelegateType>(
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
-        MethodInfo selfDestructNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
-            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
+        MethodInfo selfDestruct = typeof(VirtualMachineDependencies)
+            .GetMethod(nameof(VirtualMachineDependencies.InstructionSelfDestruct), BindingFlags.Static | BindingFlags.Public);
 
         Label skipGasDeduction = method.DefineLabel(locals.GetLabelName());
         Label happyPath = method.DefineLabel(locals.GetLabelName());
@@ -2159,8 +2152,7 @@ internal static class OpcodeEmitters
         method.Call(Word.GetAddress);
         method.LoadLocalAddress(locals.gasAvailable);
         envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, false);
-        method.Call(selfDestructNotTracing);
+        method.Call(selfDestruct);
 
         method.StoreLocal(locals.uint32A);
         method.LoadLocal(locals.uint32A);
@@ -2187,9 +2179,8 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label happyPath;
-        MethodInfo callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
-            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionCall), BindingFlags.Static | BindingFlags.Public)
-            .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
+        MethodInfo callMethod = typeof(VirtualMachineDependencies)
+            .GetMethod(nameof(VirtualMachineDependencies.InstructionCall), BindingFlags.Static | BindingFlags.Public);
         using Local toPushToStack = method.DeclareLocal(typeof(UInt256?), locals.GetLocalName());
         using Local newStateToExe = method.DeclareLocal<object>(locals.GetLocalName());
         Label hasNoItemsToPush = method.DefineLabel(locals.GetLabelName());
@@ -2201,8 +2192,6 @@ internal static class OpcodeEmitters
         envLoader.LoadWorldState(method, locals, false);
         method.LoadLocalAddress(locals.gasAvailable);
         envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, false);
-        envLoader.LoadLogger(method, locals, false);
 
         method.LoadConstant((int)op);
 
@@ -2251,7 +2240,7 @@ internal static class OpcodeEmitters
 
         method.LoadLocalAddress(newStateToExe);
 
-        method.Call(callMethodNotTracing);
+        method.Call(callMethod);
          
         method.StoreLocal(locals.uint32A);
         method.LoadLocal(locals.uint32A);
@@ -2305,9 +2294,8 @@ internal static class OpcodeEmitters
     internal static void EmitCreateInstructions<TDelegateType>(
         Emit<TDelegateType> method, CodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
-        MethodInfo callMethodNotTracing = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>)
-            .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.IsPrecompiling>.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
-            .MakeGenericMethod(typeof(VirtualMachine.NotTracing));
+        MethodInfo callMethod = typeof(VirtualMachineDependencies)
+            .GetMethod(nameof(VirtualMachineDependencies.InstructionCreate), BindingFlags.Static | BindingFlags.Public);
 
         using Local toPushToStack = method.DeclareLocal(typeof(UInt256?), locals.GetLocalName());
         using Local newStateToExe = method.DeclareLocal<object>(locals.GetLocalName());
@@ -2318,8 +2306,6 @@ internal static class OpcodeEmitters
         envLoader.LoadWorldState(method, locals, false);
         method.LoadLocalAddress(locals.gasAvailable);
         envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, false);
-        envLoader.LoadLogger(method, locals, false);
 
         method.LoadConstant((int)op);
 
@@ -2356,7 +2342,7 @@ internal static class OpcodeEmitters
 
         method.LoadLocalAddress(newStateToExe);
 
-        method.Call(callMethodNotTracing);
+        method.Call(callMethod);
 
         method.StoreLocal(locals.uint32A);
 

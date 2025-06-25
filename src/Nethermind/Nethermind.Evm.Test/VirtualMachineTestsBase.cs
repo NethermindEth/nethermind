@@ -131,6 +131,13 @@ public class VirtualMachineTestsBase
         _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
         return tracer;
     }
+    protected ITxTracer Execute<T>(ForkActivation activation, Transaction tx, T tracer)
+        where T : ITxTracer
+    {
+        (Block block, _) = PrepareTx(activation, 100000, null);
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+        return tracer;
+    }
 
     protected TestAllTracerWithOutput Execute(params byte[] code)
     {
@@ -144,7 +151,8 @@ public class VirtualMachineTestsBase
     protected virtual TestAllTracerWithOutput CreateTracer() => new();
 
 
-    protected T ExecuteBlock<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : IBlockTracer
+    protected T ExecuteBlock<T>(T tracer, byte[] code, ForkActivation? forkActivation = null)
+        where T : IBlockTracer
     {
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
         tracer.StartNewBlockTrace(block);
