@@ -4,11 +4,12 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Db;
+using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
@@ -17,33 +18,32 @@ using Type = System.Type;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeNetwork))]
-public class StartMonitoring : IStep
+[RunnerStepDependencies(typeof(InitDatabase))]
+public class StartMonitoring(
+    IEthSyncingInfo ethSyncingInfo,
+    IDbProvider dbProvider,
+    IPruningConfig pruningConfig,
+    ISyncConfig syncConfig,
+    IServiceStopper serviceStopper,
+    ILogManager logManager,
+    IMetricsConfig metricsConfig
+) : IStep
 {
-    private readonly IApiWithNetwork _api;
-    private readonly ILogger _logger;
-    private readonly IMetricsConfig _metricsConfig;
-
-    public StartMonitoring(INethermindApi api)
-    {
-        _api = api;
-        _logger = _api.LogManager.GetClassLogger();
-        _metricsConfig = _api.Config<IMetricsConfig>();
-    }
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public async Task Execute(CancellationToken cancellationToken)
     {
         // hacky
-        if (!string.IsNullOrEmpty(_metricsConfig.NodeName))
+        if (!string.IsNullOrEmpty(metricsConfig.NodeName))
         {
-            _api.LogManager.SetGlobalVariable("nodeName", _metricsConfig.NodeName);
+            logManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
         }
 
         MetricsController? controller = null;
-        if (_metricsConfig.Enabled || _metricsConfig.CountersEnabled)
+        if (metricsConfig.Enabled || metricsConfig.CountersEnabled)
         {
             PrepareProductInfoMetrics();
-            controller = new(_metricsConfig);
+            controller = new(metricsConfig);
 
             IEnumerable<Type> metrics = TypeDiscovery.FindNethermindBasedTypes(nameof(Metrics));
             foreach (Type metric in metrics)
@@ -52,9 +52,9 @@ public class StartMonitoring : IStep
             }
         }
 
-        if (_metricsConfig.Enabled)
+        if (metricsConfig.Enabled)
         {
-            IMonitoringService monitoringService = new MonitoringService(controller, _metricsConfig, _api.LogManager);
+            MonitoringService monitoringService = new MonitoringService(controller, metricsConfig, logManager);
 
             SetupMetrics(monitoringService);
 
@@ -64,7 +64,7 @@ public class StartMonitoring : IStep
                     _logger.Error("Error during starting a monitoring.", x.Exception);
             }, cancellationToken);
 
-            _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => monitoringService.StopAsync())); // do not await
+            serviceStopper.AddStoppable(monitoringService);
         }
         else
         {
@@ -74,7 +74,7 @@ public class StartMonitoring : IStep
 
         if (_logger.IsInfo)
         {
-            _logger.Info(_metricsConfig.CountersEnabled
+            _logger.Info(metricsConfig.CountersEnabled
                 ? "System.Diagnostics.Metrics enabled and will be collectable with dotnet-counters"
                 : "System.Diagnostics.Metrics disabled");
         }
@@ -82,16 +82,10 @@ public class StartMonitoring : IStep
 
     private void SetupMetrics(IMonitoringService monitoringService)
     {
-        if (_metricsConfig.EnableDbSizeMetrics)
+        if (metricsConfig.EnableDbSizeMetrics)
         {
             monitoringService.AddMetricsUpdateAction(() =>
             {
-                IDbProvider? dbProvider = _api.DbProvider;
-                if (dbProvider is null)
-                {
-                    return;
-                }
-
                 foreach (KeyValuePair<string, IDbMeta> kv in dbProvider.GetAllDbMeta())
                 {
                     // Note: At the moment, the metric for a columns db is combined across column.
@@ -108,15 +102,12 @@ public class StartMonitoring : IStep
 
         monitoringService.AddMetricsUpdateAction(() =>
         {
-            Synchronization.Metrics.SyncTime = (long?)_api.EthSyncingInfo?.UpdateAndGetSyncTime().TotalSeconds ?? 0;
+            Synchronization.Metrics.SyncTime = (long?)ethSyncingInfo?.UpdateAndGetSyncTime().TotalSeconds ?? 0;
         });
     }
 
     private void PrepareProductInfoMetrics()
     {
-        IPruningConfig pruningConfig = _api.Config<IPruningConfig>();
-        IMetricsConfig metricsConfig = _api.Config<IMetricsConfig>();
-        ISyncConfig syncConfig = _api.Config<ISyncConfig>();
         ProductInfo.Instance = metricsConfig.NodeName;
 
         if (syncConfig.SnapSync)
