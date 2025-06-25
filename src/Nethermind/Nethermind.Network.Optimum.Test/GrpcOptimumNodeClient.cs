@@ -43,7 +43,6 @@ public sealed class GrpcOptimumNodeClient(
             {
                 EnableMultipleHttp2Connections = true,
                 KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
-                // TODO: For now we'll make this constants. Consider making them part of `GrpcGatewayClientOptions`
                 KeepAlivePingDelay = TimeSpan.FromMinutes(2),
                 KeepAlivePingTimeout = TimeSpan.FromSeconds(20),
             }
