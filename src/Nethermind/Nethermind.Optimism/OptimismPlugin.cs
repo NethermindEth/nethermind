@@ -66,11 +66,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
     private OptimismCL? _cl;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
-    public IEnumerable<StepInfo> GetSteps()
-    {
-        yield return typeof(InitializeBlockchainOptimism);
-    }
-
     #region IConsensusPlugin
 
     public string SealEngineType => Core.SealEngineType.Optimism;
@@ -343,6 +338,9 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
+
+            // Step override
+            .AddStep(typeof(InitializeBlockchainOptimism))
 
             // Validators
             .AddSingleton<IBlockValidator, OptimismBlockValidator>()
