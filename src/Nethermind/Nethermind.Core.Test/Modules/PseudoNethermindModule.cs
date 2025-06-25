@@ -69,6 +69,9 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<IWallet, DevWallet>()
             .AddSingleton<ITxSender>(Substitute.For<ITxSender>())
 
+            // Rpc
+            .AddSingleton<IJsonRpcService, JsonRpcService>()
+
             ;
 
 

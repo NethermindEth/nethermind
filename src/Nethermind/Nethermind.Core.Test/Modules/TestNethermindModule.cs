@@ -24,6 +24,10 @@ public class TestNethermindModule(IConfigProvider configProvider) : Module
     {
     }
 
+    public TestNethermindModule(params IConfig[] configs) : this(new ConfigProvider(configs))
+    {
+    }
+
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
@@ -31,7 +35,7 @@ public class TestNethermindModule(IConfigProvider configProvider) : Module
         LongDisposeTracker.Configure(builder);
 
         builder
-            .AddModule(new PseudoNethermindModule(new ChainSpec(), configProvider, LimboLogs.Instance))
+            .AddModule(new PseudoNethermindModule(new ChainSpec() { Parameters = new ChainParameters() }, configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance));
     }

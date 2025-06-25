@@ -15,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -332,7 +333,9 @@ public class ForkInfoTests
             specProvider = new ChainSpecBasedSpecProvider(spec);
         }
 
-        ForkInfo forkInfo = new(specProvider, KnownHashes.MainnetGenesis);
+        ISyncServer syncServer = Substitute.For<ISyncServer>();
+        syncServer.Genesis.Returns(Build.A.BlockHeader.WithHash(KnownHashes.MainnetGenesis).TestObject);
+        ForkInfo forkInfo = new(specProvider, syncServer);
 
         forkInfo.ValidateForkId(new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(hash)), next), head.Header).Should().Be(result);
     }
@@ -375,7 +378,9 @@ public class ForkInfoTests
     {
         uint expectedForkHash = Bytes.ReadEthUInt32(Bytes.FromHexString(forkHashHex));
 
-        ForkId forkId = new ForkInfo(specProvider, genesisHash).GetForkId(head, headTimestamp);
+        ISyncServer syncServer = Substitute.For<ISyncServer>();
+        syncServer.Genesis.Returns(Build.A.BlockHeader.WithHash(genesisHash).TestObject);
+        ForkId forkId = new ForkInfo(specProvider, syncServer).GetForkId(head, headTimestamp);
         uint forkHash = forkId.ForkHash;
         forkHash.Should().Be(expectedForkHash);
 
