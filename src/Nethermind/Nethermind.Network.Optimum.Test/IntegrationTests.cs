@@ -10,7 +10,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Optimum.Test;
 
-public class Tests
+public class IntegrationTests
 {
     [SetUp]
     public void Setup()
