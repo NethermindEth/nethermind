@@ -6,6 +6,8 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Grpc.Core;
+using Grpc.Net.Client;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Optimum.Test;
@@ -20,13 +22,26 @@ public class IntegrationTests
     [Test]
     public async Task GatewaySubscribeToTopic()
     {
-        using var httpClient = new HttpClient();
-        var client = new GrpcOptimumGatewayClient(httpClient, new GrpcOptimumGatewayClientOptions
+        using var httpClient = new HttpClient() { BaseAddress = new Uri("http://localhost:8081") };
+        using var grpcChannel = GrpcChannel.ForAddress(new Uri("http://localhost:50051"), new GrpcChannelOptions
         {
-            ClientId = "nethermind-optimum-test-client",
-            RestEndpoint = new Uri("http://localhost:8081/api/subscribe"),
-            GrpcEndpoint = new Uri("http://localhost:50051")
+            Credentials = ChannelCredentials.Insecure,
+            MaxReceiveMessageSize = int.MaxValue,
+            MaxSendMessageSize = int.MaxValue,
+            HttpHandler = new SocketsHttpHandler
+            {
+                EnableMultipleHttp2Connections = true,
+                KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
+                // TODO: For now we'll make this constants.
+                KeepAlivePingDelay = TimeSpan.FromMinutes(2),
+                KeepAlivePingTimeout = TimeSpan.FromSeconds(20),
+            }
         });
+
+        var client = new GrpcOptimumGatewayClient(
+            clientId: "nethermind-optimum-test-client",
+            httpClient,
+            grpcChannel);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
@@ -47,7 +62,22 @@ public class IntegrationTests
     [Test]
     public async Task NodeSubscribeToTopic()
     {
-        var client = new GrpcOptimumNodeClient(new Uri("http://localhost:33221"));
+        using var grpcChannel = GrpcChannel.ForAddress(new Uri("http://localhost:33221"), new GrpcChannelOptions
+        {
+            Credentials = ChannelCredentials.Insecure,
+            MaxReceiveMessageSize = int.MaxValue,
+            MaxSendMessageSize = int.MaxValue,
+            HttpHandler = new SocketsHttpHandler
+            {
+                EnableMultipleHttp2Connections = true,
+                KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
+                // TODO: For now we'll make this constants.
+                KeepAlivePingDelay = TimeSpan.FromMinutes(2),
+                KeepAlivePingTimeout = TimeSpan.FromSeconds(20),
+            }
+        });
+
+        var client = new GrpcOptimumNodeClient(grpcChannel);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 

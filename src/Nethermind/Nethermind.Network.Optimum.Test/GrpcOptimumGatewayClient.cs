@@ -18,16 +18,10 @@ public interface IOptimumGatewayClient
     IAsyncEnumerable<OptimumGatewayMessage> SubscribeToTopic(string topic, double threshold, CancellationToken cancellation = default);
 }
 
-public sealed record GrpcOptimumGatewayClientOptions
-{
-    public required string ClientId { get; init; }
-    public required Uri RestEndpoint { get; init; }
-    public required Uri GrpcEndpoint { get; init; }
-}
-
 public sealed class GrpcOptimumGatewayClient(
+    string clientId,
     HttpClient httpClient,
-    GrpcOptimumGatewayClientOptions options
+    GrpcChannel grpcChannel
 ) : IOptimumGatewayClient
 {
     public async IAsyncEnumerable<OptimumGatewayMessage> SubscribeToTopic(
@@ -37,37 +31,23 @@ public sealed class GrpcOptimumGatewayClient(
     {
         var subscribeRequest = new
         {
-            client_id = options.ClientId,
+            client_id = clientId,
             topic,
             threshold
         };
         var subscribeResponse = await httpClient.SendAsync(new HttpRequestMessage
         {
             Method = HttpMethod.Post,
-            RequestUri = options.RestEndpoint,
+            RequestUri = new Uri("api/subscribe", UriKind.Relative),
             Content = JsonContent.Create(subscribeRequest)
         }, token);
         subscribeResponse.EnsureSuccessStatusCode();
 
-        using var channel = GrpcChannel.ForAddress(options.GrpcEndpoint, new GrpcChannelOptions
-        {
-            Credentials = ChannelCredentials.Insecure,
-            MaxReceiveMessageSize = int.MaxValue,
-            MaxSendMessageSize = int.MaxValue,
-            HttpHandler = new SocketsHttpHandler
-            {
-                EnableMultipleHttp2Connections = true,
-                KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
-                // TODO: For now we'll make this constants. Consider making them part of `GrpcGatewayClientOptions`
-                KeepAlivePingDelay = TimeSpan.FromMinutes(2),
-                KeepAlivePingTimeout = TimeSpan.FromSeconds(20),
-            }
-        });
-        var client = new GatewayStream.GatewayStreamClient(channel);
+        var client = new GatewayStream.GatewayStreamClient(grpcChannel);
 
         using var call = client.ClientStream(cancellationToken: token);
 
-        await call.RequestStream.WriteAsync(new OptimumGatewayMessage { ClientId = options.ClientId }, token);
+        await call.RequestStream.WriteAsync(new OptimumGatewayMessage { ClientId = clientId }, token);
 
         // NOTE: Required due to limitations of the C# compiler.
         // See: https://github.com/dotnet/csharplang/issues/8414

@@ -19,7 +19,7 @@ public interface IOptimumNodeClient
 }
 
 public sealed class GrpcOptimumNodeClient(
-    Uri grpcEndpoint
+    GrpcChannel grpcChannel
 ) : IOptimumNodeClient
 {
     internal static class ListenCommandsRequestType
@@ -34,20 +34,7 @@ public sealed class GrpcOptimumNodeClient(
         string topic,
         [EnumeratorCancellation] CancellationToken token = default)
     {
-        using var channel = GrpcChannel.ForAddress(grpcEndpoint, new GrpcChannelOptions
-        {
-            Credentials = ChannelCredentials.Insecure,
-            MaxReceiveMessageSize = int.MaxValue,
-            MaxSendMessageSize = int.MaxValue,
-            HttpHandler = new SocketsHttpHandler
-            {
-                EnableMultipleHttp2Connections = true,
-                KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
-                KeepAlivePingDelay = TimeSpan.FromMinutes(2),
-                KeepAlivePingTimeout = TimeSpan.FromSeconds(20),
-            }
-        });
-        var client = new CommandStream.CommandStreamClient(channel);
+        var client = new CommandStream.CommandStreamClient(grpcChannel);
 
         using var commands = client.ListenCommands(cancellationToken: token);
 
@@ -86,6 +73,5 @@ public sealed class GrpcOptimumNodeClient(
         }
 
         // TODO: We never send a `UnsubscribeToTopic` command to the Node
-        // Discuss if this can be removed from the API and instead leverage gRPC to deal with that
     }
 }
