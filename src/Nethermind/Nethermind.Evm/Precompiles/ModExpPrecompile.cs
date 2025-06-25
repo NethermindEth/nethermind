@@ -135,7 +135,7 @@ namespace Nethermind.Evm.Precompiles
                 return (Bytes.Empty, true);
             }
 
-            using mpz_t modulusInt = default;
+            using mpz_t modulusInt = mpz_t.Create();
 
             fixed (byte* ptr = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength))
             {
@@ -148,9 +148,9 @@ namespace Nethermind.Evm.Precompiles
                 return (new byte[modulusLength], true);
             }
 
-            using mpz_t baseInt = default;
-            using mpz_t expInt = default;
-            using mpz_t powmResult = default;
+            using mpz_t baseInt = mpz_t.Create();
+            using mpz_t expInt = mpz_t.Create();
+            using mpz_t powmResult = mpz_t.Create();
 
             fixed (byte* ptr = inputData.Span.SliceWithZeroPaddingEmptyOnError(96, baseLength))
             {
@@ -171,7 +171,7 @@ namespace Nethermind.Evm.Precompiles
             var offset = modulusLength - powmResultLen;
 
             fixed (byte* ptr = result)
-                Gmp.mpz_export((nint)(ptr + offset), out _, 1, 1, 1, 0, powmResult);
+                Gmp.mpz_export((nint)(ptr + offset), nint.Zero, 1, 1, 1, nuint.Zero, powmResult);
 
             return (result, true);
         }
