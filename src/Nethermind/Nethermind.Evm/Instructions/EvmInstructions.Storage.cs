@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using static Nethermind.Evm.VirtualMachine;
+using static Nethermind.Evm.VirtualMachineBase;
 
 namespace Nethermind.Evm;
 using Int256;
@@ -45,7 +45,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the result of the operation.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionTLoad<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         // Increment the opcode metric for TLOAD.
@@ -94,7 +94,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or failure.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTStore(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionTStore(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         // Increment the opcode metric for TSTORE.
         Metrics.TstoreOpcode++;
@@ -151,7 +151,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMStore<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
@@ -196,7 +196,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore8<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMStore8<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
@@ -241,7 +241,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMLoad<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
@@ -286,7 +286,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMCopy<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMCopy<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         // Increment the opcode metric for MCOPY.
@@ -607,7 +607,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter (unused in this instruction).</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the result of the operation.</returns>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    internal static EvmExceptionType InstructionSLoad<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
@@ -655,7 +655,7 @@ internal static partial class EvmInstructions
     /// zero-padding if necessary.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCallDataLoad<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionCallDataLoad<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;

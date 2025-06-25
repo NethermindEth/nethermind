@@ -21,15 +21,15 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Evm;
 
-using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
+using unsafe OpCode = delegate*<VirtualMachineBase, ref EvmStack, ref long, ref int, EvmExceptionType>;
 
-public unsafe partial class VirtualMachine
+public unsafe partial class VirtualMachineBase
 {
     public static void WarmUpEvmInstructions()
     {
         IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
-        VirtualMachine vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
+        VirtualMachineBase vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
 
         IKeyValueStoreWithBatching db = new MemDb();
@@ -154,7 +154,7 @@ public unsafe partial class VirtualMachine
         codeToDeploy.Add((byte)Instruction.POP);
     }
 
-    private static void RunOpCodes<TTracingInst>(VirtualMachine vm, WorldState state, EvmState evmState, IReleaseSpec spec)
+    private static void RunOpCodes<TTracingInst>(VirtualMachineBase vm, WorldState state, EvmState evmState, IReleaseSpec spec)
         where TTracingInst : struct, IFlag
     {
         const int WarmUpIterations = 40;

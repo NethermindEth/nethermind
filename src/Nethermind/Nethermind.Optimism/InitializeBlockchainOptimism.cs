@@ -38,7 +38,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         api.Context.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(api.MainProcessingContext!.BlockchainProcessor);
     }
 
-    protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
+    protected override ITransactionProcessor CreateTransactionProcessor(ICodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
     {
         if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
         if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));

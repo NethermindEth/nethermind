@@ -33,6 +33,8 @@ using Nethermind.JsonRpc;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using System.Collections.Concurrent;
+using static Nethermind.State.PreBlockCaches;
 
 namespace Nethermind.Init.Steps
 {
@@ -70,7 +72,7 @@ namespace Nethermind.Init.Steps
             IStateReader stateReader = setApi.StateReader!;
             IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
             PreBlockCaches? preBlockCaches = (mainWorldState as IPreBlockCaches)?.Caches;
-            CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
+            ICodeInfoRepository codeInfoRepository = CreateCodeInfoRepository(preBlockCaches?.PrecompileCache);
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider!, getApi.BlockTree!, stateReader, codeInfoRepository);
 
@@ -82,7 +84,7 @@ namespace Nethermind.Init.Steps
                 new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
             VirtualMachine.WarmUpEvmInstructions();
-            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
+            IVirtualMachine virtualMachine = CreateVirtualMachine(mainWorldState);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
@@ -159,7 +161,12 @@ namespace Nethermind.Init.Steps
             return Task.CompletedTask;
         }
 
-        protected virtual ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
+        protected virtual ICodeInfoRepository CreateCodeInfoRepository(
+            ConcurrentDictionary<PrecompileCacheKey, (byte[], bool)>? precompileCache
+        )
+            => new CodeInfoRepository(precompileCache);
+
+        protected virtual ITransactionProcessor CreateTransactionProcessor(ICodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
@@ -171,7 +178,7 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
         }
 
-        protected VirtualMachine CreateVirtualMachine(CodeInfoRepository codeInfoRepository, IWorldState worldState)
+        protected virtual IVirtualMachine CreateVirtualMachine(IWorldState worldState)
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
