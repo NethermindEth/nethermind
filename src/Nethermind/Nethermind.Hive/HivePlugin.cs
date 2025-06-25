@@ -22,12 +22,6 @@ public class HivePlugin(IHiveConfig hiveConfig) : INethermindPlugin
 
     public string Author => "Nethermind";
 
-    public Task Init(INethermindApi api) => Task.CompletedTask;
-
-    public Task InitNetworkProtocol() => Task.CompletedTask;
-
-    public Task InitRpcModules() => Task.CompletedTask;
-
     public bool Enabled => hiveConfig.Enabled;
 
     public IModule Module => new HiveModule();
