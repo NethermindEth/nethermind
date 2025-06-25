@@ -60,6 +60,7 @@ public class StandardBlockProducerRunner(IBlockProductionTrigger trigger, IBlock
 
     public virtual Task StopAsync()
     {
+        if (!_isRunning) return Task.CompletedTask;
         _producerCancellationToken?.Cancel();
         _isRunning = false;
         trigger.TriggerBlockProduction -= OnTriggerBlockProduction;
