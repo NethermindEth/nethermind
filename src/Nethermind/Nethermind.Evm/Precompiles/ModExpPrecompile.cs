@@ -171,7 +171,7 @@ namespace Nethermind.Evm.Precompiles
             var offset = modulusLength - powmResultLen;
 
             fixed (byte* ptr = result)
-                Gmp.mpz_export((nint)(ptr + offset), nint.Zero, 1, 1, 1, nuint.Zero, powmResult);
+                Gmp.mpz_export((nint)(ptr + offset), out _, 1, 1, 1, nuint.Zero, powmResult);
 
             return (result, true);
         }
