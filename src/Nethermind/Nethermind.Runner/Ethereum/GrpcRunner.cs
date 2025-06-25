@@ -4,13 +4,14 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Grpc;
 using Nethermind.Logging;
 using Nethermind.Network;
 
 namespace Nethermind.Runner.Ethereum
 {
-    public class GrpcRunner
+    public class GrpcRunner: IStoppableService
     {
         private readonly NethermindService.NethermindServiceBase _service;
         private readonly IGrpcConfig _config;
