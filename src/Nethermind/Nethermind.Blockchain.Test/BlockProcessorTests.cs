@@ -1,37 +1,39 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Test.Validators;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Specs;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
-using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
-using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
-using NSubstitute;
-using NUnit.Framework;
-using System.Security;
-using Nethermind.Core.Extensions;
-using Nethermind.JsonRpc.Test.Modules;
-using System.Threading.Tasks;
-using System.Threading;
 using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.State;
+using Nethermind.TxPool;
+using NSubstitute;
+using NUnit.Framework;
+using System;
+using System.Collections.Generic;
+using System.Security;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -46,7 +48,7 @@ public class BlockProcessorTests
         BlockProcessor processor = new BlockProcessor(HoleskySpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
@@ -76,7 +78,7 @@ public class BlockProcessorTests
             HoleskySpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             new RewardCalculator(MainnetSpecProvider.Instance),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
@@ -130,5 +132,29 @@ public class BlockProcessorTests
         ((BlockTree)testRpc.BlockTree).AddBranch(branchLength, (int)testRpc.BlockTree.BestKnownNumber);
         (await suggestedBlockResetEvent.WaitAsync(TestBlockchain.DefaultTimeout * 10)).Should().BeTrue();
         Assert.That((int)testRpc.BlockTree.BestKnownNumber, Is.EqualTo(branchLength - 1));
+    }
+
+
+    [Test]
+    public void BlockProductionTransactionPicker_validates_block_length_using_proper_tx_form()
+    {
+        IReleaseSpec spec = Osaka.Instance;
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
+
+        Transaction transactionWithNetworkForm = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(1, true, spec)
+            .SignedAndResolved()
+            .TestObject;
+
+        BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, transactionWithNetworkForm.GetLength(true) / 1.KiB() - 1);
+        BlockToProduce newBlock = new(Build.A.BlockHeader.WithExcessBlobGas(0).TestObject);
+        WorldStateStab stateProvider = new();
+
+        Transaction? addedTransaction = null;
+        txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;
+
+        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), stateProvider);
+
+        Assert.That(addedTransaction, Is.EqualTo(transactionWithNetworkForm));
     }
 }

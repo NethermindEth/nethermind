@@ -29,8 +29,8 @@ namespace Nethermind.Network.Test.P2P
                 {
                     EquivalencyAssertionOptions<T>? excluded = options.Excluding(c => c.Name == "RlpLength");
                     return (additionallyExcluding is not null ? additionallyExcluding(excluded) : excluded)
-                        .Using<Memory<byte>>((context => context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray())))
-                        .WhenTypeIs<Memory<byte>>();
+                        .Using<ReadOnlyMemory<byte>>((context => context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray())))
+                        .WhenTypeIs<ReadOnlyMemory<byte>>();
                 });
 
                 Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -68,5 +69,26 @@ public class Eip7918Tests : VirtualMachineTestsBase
 
         // target above floor
         yield return (spec.GetTargetBlobGasPerBlock() + 1, 0, 1, 1);
+
+        // boundary cases
+        ulong excessBlobGas = 1000;
+        BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
+        UInt256 targetCost = Eip4844Constants.GasPerBlob * feePerBlobGas;
+        UInt256 baseFeePerGas = targetCost / Eip7918Constants.BlobBaseCost;
+
+        // at boundary so floor not applied
+        yield return (
+            excessBlobGas,
+            (int)spec.TargetBlobCount,
+            (ulong)baseFeePerGas,
+            excessBlobGas);
+
+        // below floor
+        ulong expectedExcessBlobGas = excessBlobGas + (targetBlobGasPerBlock * (spec.MaxBlobCount - spec.TargetBlobCount) / spec.MaxBlobCount);
+        yield return (
+            excessBlobGas,
+            (int)spec.TargetBlobCount,
+            (ulong)baseFeePerGas + 100,
+            expectedExcessBlobGas);
     }
 }

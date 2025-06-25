@@ -26,7 +26,7 @@ internal class TransactionProcessorEip4844Tests
 {
     private ISpecProvider _specProvider = null!;
     private IEthereumEcdsa _ethereumEcdsa = null!;
-    private TransactionProcessor _transactionProcessor = null!;
+    private ITransactionProcessor _transactionProcessor = null!;
     private IWorldState _stateProvider = null!;
 
     [SetUp]

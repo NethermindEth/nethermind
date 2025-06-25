@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Force.Crc32;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -16,18 +17,23 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Network
 {
-    public class ForkInfo : IForkInfo
+    public class ForkInfo(ISpecProvider specProvider, ISyncServer syncServer) : IForkInfo
     {
-        private Dictionary<uint, (ForkActivation Activation, ForkId Id)> DictForks { get; }
-        private (ForkActivation Activation, ForkId Id)[] Forks { get; }
-        private readonly bool _hasTimestampFork;
+        private Lock _initLock = new Lock();
+        private bool _wasInitialized = false;
+        private Dictionary<uint, (ForkActivation Activation, ForkId Id)> DictForks { get; set; }
+        private (ForkActivation Activation, ForkId Id)[] Forks { get; set; }
+        private bool _hasTimestampFork;
 
-        public ForkInfo(ISpecProvider specProvider, ISyncServer syncServer) : this(specProvider, syncServer.Genesis.Hash)
+        private void EnsureInitialized()
         {
-        }
+            using var _ = _initLock.EnterScope();
 
-        public ForkInfo(ISpecProvider specProvider, Hash256 genesisHash)
-        {
+            if (_wasInitialized) return;
+            _wasInitialized = true;
+
+            Hash256 genesisHash = syncServer.Genesis!.Hash;
+
             _hasTimestampFork = specProvider.TimestampFork != ISpecProvider.TimestampForkNever;
             ForkActivation[] transitionActivations = specProvider.TransitionActivations;
             DictForks = new();
@@ -69,6 +75,8 @@ namespace Nethermind.Network
 
         public ForkId GetForkId(long headNumber, ulong headTimestamp)
         {
+            EnsureInitialized();
+
             return Forks.TryGetSearchedItem(
                 new ForkActivation(headNumber, headTimestamp),
                 CompareTransitionOnActivation, out (ForkActivation Activation, ForkId Id) fork)
@@ -92,6 +100,8 @@ namespace Nethermind.Network
             // We support block forks up to 1,4 bln blocks
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             static bool IsTimestamp(ulong next) => next >= MainnetSpecProvider.GenesisBlockTimestamp;
+
+            EnsureInitialized();
 
             if (head is null) return ValidationResult.Valid;
             if (!DictForks.TryGetValue(peerId.ForkHash, out (ForkActivation Activation, ForkId Id) found))

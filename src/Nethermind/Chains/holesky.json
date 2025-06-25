@@ -64,7 +64,7 @@
     "blobSchedule": [
       {
         "name": "prague",
-        "timestamp": "0x67BCEAC0",
+        "timestamp": "0x67bceac0",
         "target": 6,
         "max": 9,
         "baseFeeUpdateFraction": "0x4c6964"

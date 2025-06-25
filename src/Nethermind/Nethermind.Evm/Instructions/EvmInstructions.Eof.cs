@@ -11,6 +11,7 @@ using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
+
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
@@ -102,7 +103,7 @@ internal static partial class EvmInstructions
         }
 
         // Deduct the fixed gas cost and the memory cost based on the size (rounded up to 32-byte words).
-        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size, out bool outOfGas);
+        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * Div32Ceiling(in size, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
@@ -254,7 +255,7 @@ internal static partial class EvmInstructions
         }
 
         // Calculate memory expansion gas cost and deduct overall gas for data copy.
-        if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size, out bool outOfGas), ref gasAvailable)
+        if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * Div32Ceiling(in size, out bool outOfGas), ref gasAvailable)
             || outOfGas)
         {
             goto OutOfGas;
@@ -658,7 +659,7 @@ internal static partial class EvmInstructions
         }
 
         // 6. Deduct gas for keccak256 hashing of the init code.
-        long numberOfWordsInInitCode = EvmPooledMemory.Div32Ceiling((UInt256)initContainer.Length, out bool outOfGas);
+        long numberOfWordsInInitCode = Div32Ceiling((UInt256)initContainer.Length, out bool outOfGas);
         long hashCost = GasCostOf.Sha3Word * numberOfWordsInInitCode;
         if (outOfGas || !UpdateGas(hashCost, ref gasAvailable))
             goto OutOfGas;
@@ -673,9 +674,6 @@ internal static partial class EvmInstructions
             stack.PushZero<TTracingInst>();
             return EvmExceptionType.None;
         }
-
-        // 8. Prepare the callData from the caller’s memory slice.
-        Span<byte> callData = vm.EvmState.Memory.LoadSpan(dataOffset, dataSize);
 
         // 9. Determine gas available for the new contract execution, applying the 63/64 rule if enabled.
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
@@ -729,30 +727,30 @@ internal static partial class EvmInstructions
         // Create new code info for the init code.
         ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(initContainer.ToArray(), spec, ValidationStrategy.ExtractHeader);
 
+        // 8. Prepare the callData from the caller’s memory slice.
+        ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(dataOffset, dataSize);
+
         // Set up the execution environment for the new contract.
-        ExecutionEnvironment callEnv = new
-        (
-            txExecutionContext: in env.TxExecutionContext,
-            callDepth: env.CallDepth + 1,
-            caller: env.ExecutingAccount,
-            executingAccount: contractAddress,
-            codeSource: null,
+        ExecutionEnvironment callEnv = new(
             codeInfo: codeInfo,
-            inputData: callData.ToArray(),
-            transferValue: value,
-            value: value
-        );
+            executingAccount: contractAddress,
+            caller: env.ExecutingAccount,
+            codeSource: null,
+            callDepth: env.CallDepth + 1,
+            transferValue: in value,
+            value: in value,
+            inputData: in callData);
+
         vm.ReturnData = EvmState.RentFrame(
-            callGas,
+            gasAvailable: callGas,
             outputDestination: 0,
             outputLength: 0,
             executionType: currentContext,
             isStatic: vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: accountExists,
-            in snapshot,
             env: in callEnv,
-            in vm.EvmState.AccessTracker
-        );
+            stateForAccessLists: in vm.EvmState.AccessTracker,
+            snapshot: in snapshot);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -987,29 +985,26 @@ internal static partial class EvmInstructions
         state.SubtractFromBalance(caller, transferValue, spec);
 
         // Set up the new execution environment for the call.
-        ExecutionEnvironment callEnv = new
-        (
-            txExecutionContext: in env.TxExecutionContext,
-            callDepth: env.CallDepth + 1,
+        ExecutionEnvironment callEnv = new(
+            codeInfo: targetCodeInfo,
+            executingAccount: target,
             caller: caller,
             codeSource: codeSource,
-            executingAccount: target,
-            transferValue: transferValue,
-            value: callValue,
-            inputData: callData,
-            codeInfo: targetCodeInfo
-        );
+            callDepth: env.CallDepth + 1,
+            transferValue: in transferValue,
+            value: in callValue,
+            inputData: in callData);
+
         vm.ReturnData = EvmState.RentFrame(
-            callGas,
+            gasAvailable: callGas,
             outputDestination: 0,
             outputLength: 0,
-            TOpEofCall.ExecutionType,
+            executionType: TOpEofCall.ExecutionType,
             isStatic: TOpEofCall.IsStatic || vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: false,
-            in snapshot,
             env: in callEnv,
-            in vm.EvmState.AccessTracker
-        );
+            stateForAccessLists: in vm.EvmState.AccessTracker,
+            snapshot: in snapshot);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

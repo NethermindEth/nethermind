@@ -100,11 +100,8 @@ internal static partial class EvmInstructions
         // Increment global call metrics.
         Metrics.IncrementCalls();
 
-        IReleaseSpec spec = vm.Spec;
         // Clear previous return data.
         vm.ReturnData = null;
-        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
-        IWorldState state = vm.WorldState;
 
         // Pop the gas limit for the call.
         if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;
@@ -115,6 +112,7 @@ internal static partial class EvmInstructions
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!ChargeAccountAccessGasWithDelegation(ref gasAvailable, vm, codeSource)) goto OutOfGas;
 
+        ref readonly ExecutionEnvironment env = ref vm.EvmState.Env;
         // Determine the call value based on the call type.
         UInt256 callValue;
         if (typeof(TOpCall) == typeof(OpStaticCall))
@@ -134,13 +132,6 @@ internal static partial class EvmInstructions
 
         // For non-delegate calls, the transfer value is the call value.
         UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
-        // Pop additional parameters: data offset, data length, output offset, and output length.
-        if (!stack.PopUInt256(out UInt256 dataOffset) ||
-            !stack.PopUInt256(out UInt256 dataLength) ||
-            !stack.PopUInt256(out UInt256 outputOffset) ||
-            !stack.PopUInt256(out UInt256 outputLength))
-            goto StackUnderflow;
-
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
         if (vm.EvmState.IsStatic && !transferValue.IsZero && typeof(TOpCall) != typeof(OpCallCode))
             return EvmExceptionType.StaticCallViolation;
@@ -159,6 +150,8 @@ internal static partial class EvmInstructions
             gasExtra += GasCostOf.CallValue;
         }
 
+        IReleaseSpec spec = vm.Spec;
+        IWorldState state = vm.WorldState;
         // Charge additional gas if the target account is new or considered empty.
         if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target))
         {
@@ -168,6 +161,13 @@ internal static partial class EvmInstructions
         {
             gasExtra += GasCostOf.NewAccount;
         }
+
+        // Pop additional parameters: data offset, data length, output offset, and output length.
+        if (!stack.PopUInt256(out UInt256 dataOffset) ||
+            !stack.PopUInt256(out UInt256 dataLength) ||
+            !stack.PopUInt256(out UInt256 outputOffset) ||
+            !stack.PopUInt256(out UInt256 outputLength))
+            goto StackUnderflow;
 
         // Update gas: call cost, memory expansion for input and output, and extra gas.
         if (!UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
@@ -179,6 +179,13 @@ internal static partial class EvmInstructions
         // Retrieve code information for the call and schedule background analysis if needed.
         ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(state, codeSource, spec);
 
+        // If contract is large, charge for access
+        if (spec.IsEip7907Enabled)
+        {
+            uint excessContractSize = (uint)Math.Max(0, codeInfo.MachineCode.Length - CodeSizeConstants.MaxCodeSizeEip170);
+            if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, codeSource, in vm.EvmState.AccessTracker, ref gasAvailable))
+                goto OutOfGas;
+        }
         // Apply the 63/64 gas rule if enabled.
         if (spec.Use63Over64Rule)
         {
@@ -233,7 +240,7 @@ internal static partial class EvmInstructions
         // Take a snapshot of the state for potential rollback.
         Snapshot snapshot = state.TakeSnapshot();
         // Subtract the transfer value from the caller's balance.
-        state.SubtractFromBalance(caller, transferValue, spec);
+        state.SubtractFromBalance(caller, in transferValue, spec);
 
         // Fast-path for calls to externally owned accounts (non-contracts)
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
@@ -247,18 +254,15 @@ internal static partial class EvmInstructions
         // Load call data from memory.
         ReadOnlyMemory<byte> callData = vm.EvmState.Memory.Load(in dataOffset, dataLength);
         // Construct the execution environment for the call.
-        ExecutionEnvironment callEnv = new
-        (
-            txExecutionContext: in env.TxExecutionContext,
-            callDepth: env.CallDepth + 1,
+        ExecutionEnvironment callEnv = new(
+            codeInfo: codeInfo,
+            executingAccount: target,
             caller: caller,
             codeSource: codeSource,
-            executingAccount: target,
-            transferValue: transferValue,
-            value: callValue,
-            inputData: callData,
-            codeInfo: codeInfo
-        );
+            callDepth: env.CallDepth + 1,
+            transferValue: in transferValue,
+            value: in callValue,
+            inputData: in callData);
 
         // Normalize output offset if output length is zero.
         if (outputLength == 0)
@@ -269,15 +273,15 @@ internal static partial class EvmInstructions
 
         // Rent a new call frame for executing the call.
         vm.ReturnData = EvmState.RentFrame(
-            gasLimitUl,
-            outputOffset.ToLong(),
-            outputLength.ToLong(),
-            TOpCall.ExecutionType,
-            TOpCall.IsStatic || vm.EvmState.IsStatic,
+            gasAvailable: gasLimitUl,
+            outputDestination: outputOffset.ToLong(),
+            outputLength: outputLength.ToLong(),
+            executionType: TOpCall.ExecutionType,
+            isStatic: TOpCall.IsStatic || vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: false,
-            snapshot: snapshot,
-            env: callEnv,
-            stateForAccessLists: vm.EvmState.AccessTracker);
+            env: in callEnv,
+            stateForAccessLists: in vm.EvmState.AccessTracker,
+            snapshot: in snapshot);
 
         return EvmExceptionType.None;
 
@@ -298,6 +302,17 @@ internal static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     OutOfGas:
         return EvmExceptionType.OutOfGas;
+    }
+
+    private static bool ChargeForLargeContractAccess(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref long gasAvailable)
+    {
+        if (accessTracer.WarmUpLargeContract(codeAddress))
+        {
+            long largeContractCost = GasCostOf.InitCodeWord * Div32Ceiling(excessContractSize, out bool outOfGas);
+            if (outOfGas || !UpdateGas(largeContractCost, ref gasAvailable)) return false;
+        }
+
+        return true;
     }
 
     /// <summary>

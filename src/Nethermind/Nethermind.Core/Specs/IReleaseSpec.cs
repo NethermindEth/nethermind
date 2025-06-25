@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -337,7 +337,8 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// Secp256r1 precompile
         /// </summary>
-        bool IsRip7212Enabled { get; }
+        /// <remarks>Previously known as RIP-7212</remarks>
+        bool IsEip7951Enabled { get; }
 
         /// OP Granite
         bool IsOpGraniteEnabled { get; }
@@ -374,6 +375,7 @@ namespace Nethermind.Core.Specs
         /// </summary>
         public ulong TargetBlobCount { get; }
         public ulong MaxBlobCount { get; }
+        public ulong MaxBlobsPerTx { get; }
         public UInt256 BlobBaseFeeUpdateFraction { get; }
 
         public ulong WithdrawalTimestamp { get; }
@@ -488,5 +490,17 @@ namespace Nethermind.Core.Specs
         public Array? EvmInstructionsTraced { get; set; }
 
         public ProofVersion BlobProofVersion => IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
+
+        /// <summary>
+        /// EIP-7939 - CLZ - Count leading zeros instruction
+        /// </summary>
+        public bool IsEip7939Enabled { get; }
+
+        public bool CLZEnabled => IsEip7939Enabled;
+
+        /// <summary>
+        /// EIP-7907: Meter Contract Code Size And Increase Limit
+        /// </summary>
+        public bool IsEip7907Enabled { get; }
     }
 }

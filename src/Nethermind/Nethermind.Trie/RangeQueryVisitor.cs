@@ -196,7 +196,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     {
     }
 
-    private void CollectNode(in TreePath path, CappedArray<byte> value)
+    private void CollectNode(in TreePath path, SpanSource value)
     {
         int encodedSize = _valueCollector.Collect(path.Path, value);
         _currentBytesCount += encodedSize;
@@ -209,6 +209,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public interface ILeafValueCollector
     {
-        int Collect(in ValueHash256 path, CappedArray<byte> value);
+        int Collect(in ValueHash256 path, SpanSource value);
     }
 }

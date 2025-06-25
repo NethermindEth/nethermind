@@ -91,7 +91,7 @@ public class ExecutionProcessorTests
 
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
 
-        _transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<CallOutputTracer>())
+        _transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<CallOutputTracer>())
             .Returns(ci =>
             {
                 Transaction transaction = ci.Arg<Transaction>();
@@ -142,7 +142,8 @@ public class ExecutionProcessorTests
                 CreateLogEntry(TestItem.ExecutionRequestA.RequestDataParts)
             ).TestObject
         ];
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, new BlockExecutionContext(block.Header, _spec), txReceipts, _spec);
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
 
         Assert.That(block.Header.RequestsHash, Is.Null);
     }
@@ -160,7 +161,8 @@ public class ExecutionProcessorTests
                 CreateLogEntry(TestItem.ExecutionRequestC.RequestDataParts)
             ).TestObject
         ];
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, new BlockExecutionContext(block.Header, _spec), txReceipts, _spec);
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
 
         Assert.That(block.Header.RequestsHash, Is.EqualTo(
            CalculateHash(_executionDepositRequests, _executionWithdrawalRequests, _executionConsolidationRequests)

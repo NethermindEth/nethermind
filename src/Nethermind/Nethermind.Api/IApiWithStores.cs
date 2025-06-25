@@ -27,8 +27,7 @@ namespace Nethermind.Api
         [SkipServiceCollection]
         IProtectedPrivateKey? NodeKey { get; set; }
         IReceiptStorage? ReceiptStorage { get; set; }
-        IReceiptFinder? ReceiptFinder { get; set; }
-        IReceiptMonitor? ReceiptMonitor { get; set; }
+        IReceiptFinder ReceiptFinder { get; }
         IWallet? Wallet { get; set; }
         IBadBlockStore? BadBlocksStore { get; set; }
     }

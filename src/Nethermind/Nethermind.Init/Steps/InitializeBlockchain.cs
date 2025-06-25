@@ -78,12 +78,8 @@ namespace Nethermind.Init.Steps
 
             ITxPool txPool = _api.TxPool = CreateTxPool(chainHeadInfoProvider);
 
-            ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.ReceiptStorage, _api.LogManager);
-            getApi.DisposeStack.Push(receiptCanonicalityMonitor);
-            _api.ReceiptMonitor = receiptCanonicalityMonitor;
-
             _api.BlockPreprocessor.AddFirst(
-                new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
+                new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
             VirtualMachine.WarmUpEvmInstructions();
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
@@ -99,7 +95,6 @@ namespace Nethermind.Init.Steps
             setApi.NonceManager = nonceManager;
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
 
-            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.ReadOnlyStateProvider, txPool);
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
                 ? new(
                     _api.ReadOnlyTxProcessingEnvFactory,
@@ -136,12 +131,7 @@ namespace Nethermind.Init.Steps
                 mainWorldState);
             _serviceStopper.AddStoppable(mainProcessingContext);
             setApi.BlockProcessingQueue = blockchainProcessor;
-
-            IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
-            IFilterStore filterStore = setApi.FilterStore = new FilterStore(getApi.TimerFactory, rpcConfig.FiltersTimeout);
-            setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
-            _api.DisposeStack.Push(filterStore);
 
             BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
                 mainBlockProcessor,
@@ -234,7 +224,7 @@ namespace Nethermind.Init.Steps
             return new BlockProcessor(_api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(transactionProcessor),
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
                 worldState,
                 _api.ReceiptStorage!,
                 new BeaconBlockRootHandler(transactionProcessor, worldState),

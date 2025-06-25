@@ -2,18 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
-public class HealingStorageTree : StorageTree
+public sealed class HealingStorageTree : StorageTree
 {
     private readonly INodeStorage _nodeStorage;
     private readonly Address _address;

@@ -19,6 +19,7 @@ namespace Nethermind.Evm;
 /// </summary>
 internal static partial class EvmInstructions
 {
+    private static readonly ReadOnlyMemory<byte> _emptyMemory = default;
     /// <summary>
     /// Interface for CREATE opcode types.
     /// Implementations must specify the <see cref="ExecutionType"/> to distinguish between CREATE and CREATE2.
@@ -118,9 +119,9 @@ internal static partial class EvmInstructions
         // Calculate the gas cost for the creation, including fixed cost and per-word cost for init code.
         // Also include an extra cost for CREATE2 if applicable.
         long gasCost = GasCostOf.Create +
-                       (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
+                       (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
                        (typeof(TOpCreate) == typeof(OpCreate2)
-                           ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in initCodeLength, out outOfGas)
+                           ? GasCostOf.Sha3Word * Div32Ceiling(in initCodeLength, out outOfGas)
                            : 0);
 
         // Check gas sufficiency: if outOfGas flag was set during gas division or if gas update fails.
@@ -199,7 +200,7 @@ internal static partial class EvmInstructions
         state.IncrementNonce(env.ExecutingAccount);
 
         // Analyze and compile the initialization code.
-        CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo codeinfo, out _);
+        CodeInfoFactory.CreateInitCodeInfo(initCode.ToArray(), spec, out ICodeInfo? codeInfo, out _);
 
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();
@@ -225,31 +226,27 @@ internal static partial class EvmInstructions
 
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.
-        ExecutionEnvironment callEnv = new
-        (
-            txExecutionContext: in env.TxExecutionContext,
-            callDepth: env.CallDepth + 1,
-            caller: env.ExecutingAccount,
+        ExecutionEnvironment callEnv = new(
+            codeInfo: codeInfo,
             executingAccount: contractAddress,
+            caller: env.ExecutingAccount,
             codeSource: null,
-            codeInfo: codeinfo,
-            inputData: default,
-            transferValue: value,
-            value: value
-        );
+            callDepth: env.CallDepth + 1,
+            transferValue: in value,
+            value: in value,
+            inputData: in _emptyMemory);
 
         // Rent a new frame to run the initialization code in the new execution environment.
         vm.ReturnData = EvmState.RentFrame(
-            callGas,
+            gasAvailable: callGas,
             outputDestination: 0,
             outputLength: 0,
-            TOpCreate.ExecutionType,
+            executionType: TOpCreate.ExecutionType,
             isStatic: vm.EvmState.IsStatic,
             isCreateOnPreExistingAccount: accountExists,
-            in snapshot,
             env: in callEnv,
-            in vm.EvmState.AccessTracker
-        );
+            stateForAccessLists: in vm.EvmState.AccessTracker,
+            snapshot: in snapshot);
     None:
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
