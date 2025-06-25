@@ -4,12 +4,11 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
-using Nethermind.Init.Steps;
 using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeNetwork))]
+    [RunnerStepDependencies]
     public class StartGrpc(GrpcRunner grpcRunner, ILogManager logManager) : IStep
     {
         public async Task Execute(CancellationToken cancellationToken)

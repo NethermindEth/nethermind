@@ -26,7 +26,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.EthStats;
 
-[RunnerStepDependencies(typeof(InitializeNetwork))]
+[RunnerStepDependencies(typeof(StartBlockProcessor))]
 public class EthStatsStep(
     ISpecProvider specProvider,
     ITxPool txPool,
