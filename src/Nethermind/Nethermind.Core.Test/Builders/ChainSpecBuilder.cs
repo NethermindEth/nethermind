@@ -7,7 +7,7 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Core.Test.Builders;
 
-public class ChainSpecBuilder: BuilderBase<ChainSpec>
+public class ChainSpecBuilder : BuilderBase<ChainSpec>
 {
     private Dictionary<Address, ChainSpecAllocation> _allocations = new();
 
