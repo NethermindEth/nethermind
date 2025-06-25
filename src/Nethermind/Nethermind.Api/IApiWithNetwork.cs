@@ -9,7 +9,6 @@ using Nethermind.Network;
 using Nethermind.Network.Rlpx;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Sockets;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Api
