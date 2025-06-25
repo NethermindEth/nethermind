@@ -145,56 +145,56 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
                 block.Transactions.Length,
                 parallelOptions,
                 blockState.InitThreadState,
-                static (i, state) =>
+            static (i, state) =>
+            {
+                Transaction? tx = null;
+                try
                 {
-                    Transaction? tx = null;
-                    try
+                    // If the transaction has already been processed or being processed, exit early
+                    if (state.Block.TransactionProcessed > i) return state;
+
+                    tx = state.Block.Transactions[i];
+
+                    Address senderAddress = tx.SenderAddress!;
+                    IWorldState worldState = state.Scope.WorldState;
+                    if (!worldState.AccountExists(senderAddress))
                     {
-                        // If the transaction has already been processed or being processed, exit early
-                        if (state.Block.TransactionProcessed > i) return state;
-
-                        tx = state.Block.Transactions[i];
-
-                        Address senderAddress = tx.SenderAddress!;
-                        IWorldState worldState = state.Scope.WorldState;
-                        if (!worldState.AccountExists(senderAddress))
-                        {
-                            worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
-                        }
-
-                        UInt256 nonceDelta = UInt256.Zero;
-                        for (int prev = 0; prev < i; prev++)
-                        {
-                            if (senderAddress == state.Block.Transactions[prev].SenderAddress)
-                            {
-                                nonceDelta++;
-                            }
-                        }
-
-                        if (!nonceDelta.IsZero)
-                        {
-                            worldState.IncrementNonce(senderAddress, nonceDelta);
-                        }
-
-                        if (state.Spec.UseTxAccessLists)
-                        {
-                            worldState.WarmUp(tx.AccessList); // eip-2930
-                        }
-                        TransactionResult result = state.Scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
-                        if (state.Logger.IsTrace) state.Logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
-                    }
-                    catch (Exception ex) when (ex is EvmException or OverflowException)
-                    {
-                        // Ignore, regular tx processing exceptions
-                    }
-                    catch (Exception ex)
-                    {
-                        if (state.Logger.IsDebug) state.Logger.Error($"DEBUG/ERROR Error pre-warming cache {tx?.Hash}", ex);
+                        worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
                     }
 
-                    return state;
-                },
-                BlockStateSource.FinallyAction);
+                    UInt256 nonceDelta = UInt256.Zero;
+                    for (int prev = 0; prev < i; prev++)
+                    {
+                        if (senderAddress == state.Block.Transactions[prev].SenderAddress)
+                        {
+                            nonceDelta++;
+                        }
+                    }
+
+                    if (!nonceDelta.IsZero)
+                    {
+                        worldState.IncrementNonce(senderAddress, nonceDelta);
+                    }
+
+                    if (state.Spec.UseTxAccessLists)
+                    {
+                        worldState.WarmUp(tx.AccessList); // eip-2930
+                    }
+                    TransactionResult result = state.Scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+                    if (state.Logger.IsTrace) state.Logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
+                }
+                catch (Exception ex) when (ex is EvmException or OverflowException)
+                {
+                    // Ignore, regular tx processing exceptions
+                }
+                catch (Exception ex)
+                {
+                    if (state.Logger.IsDebug) state.Logger.Error($"DEBUG/ERROR Error pre-warming cache {tx?.Hash}", ex);
+                }
+
+                return state;
+            },
+            BlockStateSource.FinallyAction);
         }
         catch (OperationCanceledException)
         {
@@ -252,7 +252,7 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
         {
             if (parallelOptions.CancellationToken.IsCancellationRequested)
             {
-                SystemTxAccessLists?.Dispose();
+                SystemTxAccessLists.Dispose();
                 return;
             }
 
@@ -285,31 +285,31 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
                     block.Transactions.Length,
                     parallelOptions,
                     baseState.InitThreadState,
-                    static (i, state) =>
+                static (i, state) =>
+                {
+                    Transaction tx = state.Block.Transactions[i];
+                    Address? sender = tx.SenderAddress;
+
+                    try
                     {
-                        Transaction tx = state.Block.Transactions[i];
-                        Address? sender = tx.SenderAddress;
-
-                        try
+                        if (sender is not null)
                         {
-                            if (sender is not null)
-                            {
-                                state.Scope.WorldState.WarmUp(sender);
-                            }
-
-                            Address to = tx.To;
-                            if (to is not null)
-                            {
-                                state.Scope.WorldState.WarmUp(to);
-                            }
-                        }
-                        catch (MissingTrieNodeException)
-                        {
+                            state.Scope.WorldState.WarmUp(sender);
                         }
 
-                        return state;
-                    },
-                    AddressWarmingState.FinallyAction);
+                        Address to = tx.To;
+                        if (to is not null)
+                        {
+                            state.Scope.WorldState.WarmUp(to);
+                        }
+                    }
+                    catch (MissingTrieNodeException)
+                    {
+                    }
+
+                    return state;
+                },
+                AddressWarmingState.FinallyAction);
             }
             catch (OperationCanceledException)
             {
@@ -397,3 +397,4 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
         }
     }
 }
+
