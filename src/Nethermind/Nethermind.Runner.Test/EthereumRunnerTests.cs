@@ -47,6 +47,7 @@ using Nethermind.Flashbots;
 using Nethermind.HealthChecks;
 using Nethermind.Hive;
 using Nethermind.Init.Steps;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -438,6 +439,11 @@ public class EthereumRunnerTests
                     initConfig.DiagnosticMode = DiagnosticMode.MemDb;
                     initConfig.InRunnerTest = true;
                     return initConfig;
+                });
+                builder.AddDecorator<IJsonRpcConfig>((ctx, jsonRpcConfig) =>
+                {
+                    jsonRpcConfig.PreloadRpcModules = true; // So that rpc is resolved early so that we know if something is wrong in test
+                    return jsonRpcConfig;
                 });
             }
         }
