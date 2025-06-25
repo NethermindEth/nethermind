@@ -138,12 +138,11 @@ namespace Nethermind.EthStats.Integrations
 
         private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
         {
-            if (_connected)
-            {
-                if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
-                SendStatsAsync();
-                SendPendingAsync(_txPool.GetPendingTransactionsCount() + _txPool.GetPendingBlobTransactionsCount());
-            }
+            if (!_connected)
+                return;
+            if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
+            _ = SendStatsAsync();
+            SendPendingAsync(_txPool.GetPendingTransactionsCount() + _txPool.GetPendingBlobTransactionsCount());
         }
 
         private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -216,9 +215,9 @@ namespace Nethermind.EthStats.Integrations
             => _sender.SendAsync(_websocketClient!, new PendingMessage(new PendingStats(pending)));
 
         // ReSharper disable once UnusedMethodReturnValue.Local
-        private Task SendStatsAsync()
+        private async Task SendStatsAsync()
         {
-            UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
+            UInt256 gasPrice = await _gasPriceOracle.GetGasPriceEstimate();
             if (gasPrice > long.MaxValue)
             {
                 // EthStats doesn't work with UInt256, long should be enough
@@ -226,7 +225,7 @@ namespace Nethermind.EthStats.Integrations
                 gasPrice = long.MaxValue;
             }
 
-            return _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, _ethSyncingInfo.IsSyncing(), _isMining, 0,
+            await _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, _ethSyncingInfo.IsSyncing(), _isMining, 0,
                 _peerManager.ActivePeers.Count, (long)gasPrice, 100)));
         }
     }
