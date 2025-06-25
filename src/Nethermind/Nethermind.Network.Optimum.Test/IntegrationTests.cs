@@ -14,6 +14,22 @@ namespace Nethermind.Network.Optimum.Test;
 
 public class IntegrationTests
 {
+    // NOTE: These are sane defaults to use across all gRPC channels.
+    private static readonly GrpcChannelOptions _grpcChannelOptions = new GrpcChannelOptions
+    {
+        Credentials = ChannelCredentials.Insecure,
+        MaxReceiveMessageSize = int.MaxValue,
+        MaxSendMessageSize = int.MaxValue,
+        HttpHandler = new SocketsHttpHandler
+        {
+            EnableMultipleHttp2Connections = true,
+            KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
+            // TODO: For now we'll make this constants.
+            KeepAlivePingDelay = TimeSpan.FromMinutes(2),
+            KeepAlivePingTimeout = TimeSpan.FromSeconds(20),
+        }
+    };
+
     [SetUp]
     public void Setup()
     {
@@ -23,20 +39,7 @@ public class IntegrationTests
     public async Task GatewaySubscribeToTopic()
     {
         using var httpClient = new HttpClient() { BaseAddress = new Uri("http://localhost:8081") };
-        using var grpcChannel = GrpcChannel.ForAddress(new Uri("http://localhost:50051"), new GrpcChannelOptions
-        {
-            Credentials = ChannelCredentials.Insecure,
-            MaxReceiveMessageSize = int.MaxValue,
-            MaxSendMessageSize = int.MaxValue,
-            HttpHandler = new SocketsHttpHandler
-            {
-                EnableMultipleHttp2Connections = true,
-                KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
-                // TODO: For now we'll make this constants.
-                KeepAlivePingDelay = TimeSpan.FromMinutes(2),
-                KeepAlivePingTimeout = TimeSpan.FromSeconds(20),
-            }
-        });
+        using var grpcChannel = GrpcChannel.ForAddress(new Uri("http://localhost:50051"), _grpcChannelOptions);
 
         var client = new GrpcOptimumGatewayClient(
             clientId: "nethermind-optimum-test-client",
@@ -62,20 +65,7 @@ public class IntegrationTests
     [Test]
     public async Task NodeSubscribeToTopic()
     {
-        using var grpcChannel = GrpcChannel.ForAddress(new Uri("http://localhost:33221"), new GrpcChannelOptions
-        {
-            Credentials = ChannelCredentials.Insecure,
-            MaxReceiveMessageSize = int.MaxValue,
-            MaxSendMessageSize = int.MaxValue,
-            HttpHandler = new SocketsHttpHandler
-            {
-                EnableMultipleHttp2Connections = true,
-                KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
-                // TODO: For now we'll make this constants.
-                KeepAlivePingDelay = TimeSpan.FromMinutes(2),
-                KeepAlivePingTimeout = TimeSpan.FromSeconds(20),
-            }
-        });
+        using var grpcChannel = GrpcChannel.ForAddress(new Uri("http://localhost:33221"), _grpcChannelOptions);
 
         var client = new GrpcOptimumNodeClient(grpcChannel);
 
