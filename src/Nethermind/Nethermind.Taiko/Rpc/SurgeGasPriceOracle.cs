@@ -94,13 +94,17 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         UInt256 gasPriceEstimate = (minProposingCost + proofPostingCost + _surgeConfig.ProvingCostPerL2Batch) /
                                    Math.Max(averageGasUsage, _surgeConfig.L2GasPerL2Batch);
-        _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
+        UInt256 adjustedGasPriceEstimate = gasPriceEstimate * 100 / (UInt256)_surgeConfig.SharingPercentage;
+        _gasPriceEstimation.Set(headBlockHash, adjustedGasPriceEstimate);
 
-        if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Calculated new gas price estimate: {gasPriceEstimate}, " +
-            $"L1 Base Fee: {l1BaseFee}, L1 Blob Base Fee: {l1BlobBaseFee}, L1 Average Base Fee: {l1AverageBaseFee}, " +
-            $"Average Gas Usage: {averageGasUsage}");
+        if (_logger.IsTrace)
+        {
+            _logger.Trace($"[{ClassName}] Calculated new gas price estimate: {adjustedGasPriceEstimate}, " +
+                          $"L1 Base Fee: {l1BaseFee}, L1 Blob Base Fee: {l1BlobBaseFee}, L1 Average Base Fee: {l1AverageBaseFee}, " +
+                          $"Average Gas Usage: {averageGasUsage}, Adjusted with a sharing percentage of {_surgeConfig.SharingPercentage}");
+        }
 
-        return gasPriceEstimate;
+        return adjustedGasPriceEstimate;
     }
 
     private async ValueTask<L1FeeHistoryResults?> GetL1FeeHistory()
