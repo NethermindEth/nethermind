@@ -535,14 +535,14 @@ namespace Nethermind.Blockchain.Test
 
             BlocksConfig blocksConfig = new() { MinGasPrice = testCase.MinGasPriceForMining };
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
-                .WithMinGasPriceFilter(blocksConfig, specProvider)
-                .WithBaseFeeFilter(specProvider)
+                .WithMinGasPriceFilter(blocksConfig)
+                .WithBaseFeeFilter()
                 .Build;
 
             SetAccountStates(testCase.MissingAddresses);
 
             TxPoolTxSource poolTxSource = new(transactionPool, specProvider,
-                transactionComparerProvider, LimboLogs.Instance, txFilterPipeline);
+                transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, blocksConfig);
 
             BlockHeaderBuilder parentHeader = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithBaseFee(testCase.BaseFee);
             if (spec.IsEip4844Enabled)

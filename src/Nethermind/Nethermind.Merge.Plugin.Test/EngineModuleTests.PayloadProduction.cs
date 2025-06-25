@@ -1,14 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Threading;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -16,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -32,6 +25,15 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -677,5 +679,84 @@ public partial class EngineModuleTests
             chain.LogManager,
             timePerSlot,
             improvementDelay: delay);
+    }
+
+    [TestCaseSource(nameof(OsakaTransitionInvalidatedTransactionsTestCaseSource))]
+    public async Task Lightweight_transaction_validation_is_applied_on_new_head(Transaction tx, IReleaseSpec initialSpec, IReleaseSpec nextBlockSpec, bool isForked)
+    {
+        using MergeTestBlockchain chain = CreateBaseBlockchain();
+        chain.GenesisBlockBuilder = Build.A.Block.Genesis.Genesis.WithTimestamp(1UL).WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap * 2);
+        await chain.Build(new TestSpecProvider(initialSpec) { SpecToReturn = isForked ? nextBlockSpec : initialSpec });
+
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Hash256 blockX = chain.BlockTree.HeadHash;
+        await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
+
+        AcceptTxResult initiallyAccepted = chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
+        Assert.That(initiallyAccepted, Is.EqualTo(AcceptTxResult.Accepted));
+
+        PostMergeBlockProducer blockProducer = chain.PostMergeBlockProducer!;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chain.BlockTree.Head!.Header.Timestamp + 1,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = [TestItem.WithdrawalA_1Eth]
+        };
+
+        Block? emptyBlock = await blockProducer.BuildBlock(chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes);
+
+        Assert.That(emptyBlock, Is.Not.Null);
+        Assert.That(emptyBlock.Transactions, Has.Length.EqualTo(isForked ? 0 : 1));
+    }
+
+    public static IEnumerable<TestCaseData> OsakaTransitionInvalidatedTransactionsTestCaseSource
+    {
+        get
+        {
+            ReleaseSpecDecorator osakaWithSmallerBlobCap = new(Osaka.Instance) { MaxBlobsPerTx = 1 };
+            ReleaseSpecDecorator osakaWithNoTxGasCap = new(Osaka.Instance) { IsEip7825Enabled = false };
+
+            foreach (bool isForked in new[] { false, true })
+            {
+                string nameSuffix = isForked ? ", when forked" : ", same fork";
+                yield return new TestCaseData(
+                   Build.A.Transaction
+                   .WithMaxFeePerGas(10000000000)
+                   .WithMaxPriorityFeePerGas(10000000000)
+                   .WithShardBlobTxTypeAndFields(1)
+                   .SignedAndResolved(TestItem.PrivateKeyA)
+                   .TestObject,
+                   Prague.Instance,
+                   Osaka.Instance,
+                   isForked
+                   )
+                { TestName = "Proof version is old" + nameSuffix };
+
+                yield return new TestCaseData(
+                    Build.A.Transaction
+                    .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+                    .WithMaxFeePerGas(10000000000)
+                    .WithMaxPriorityFeePerGas(10000000000)
+                    .WithShardBlobTxTypeAndFields(1, spec: Osaka.Instance)
+                    .SignedAndResolved(TestItem.PrivateKeyA)
+                    .TestObject,
+                    osakaWithNoTxGasCap,
+                    Osaka.Instance,
+                    isForked)
+                { TestName = "Gas limit exceeds gas cap" + nameSuffix };
+
+                yield return new TestCaseData(Build.A.Transaction
+                    .WithMaxFeePerGas(10000000000)
+                    .WithMaxPriorityFeePerGas(10000000000)
+                    .WithShardBlobTxTypeAndFields(2, spec: Osaka.Instance)
+                    .SignedAndResolved(TestItem.PrivateKeyA)
+                    .TestObject,
+                    Osaka.Instance,
+                    osakaWithSmallerBlobCap,
+                    isForked)
+                { TestName = "Blob count higher than lowered" + nameSuffix };
+            }
+        }
     }
 }
