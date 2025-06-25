@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -32,42 +33,30 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
         IProtocolsManager protocolsManager,
-        ulong secondsPerSlot)
+        IBlocksConfig blocksConfig)
         : ModuleFactoryBase<IEthRpcModule>
     {
+        private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
         private readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
-        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-        private readonly IBlockchainBridgeFactory _blockchainBridgeFactory = blockchainBridgeFactory ?? throw new ArgumentNullException(nameof(blockchainBridgeFactory));
-        private readonly ITxPool _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-        private readonly ITxSender _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
-        private readonly IWallet _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-        private readonly IJsonRpcConfig _rpcConfig = config ?? throw new ArgumentNullException(nameof(config));
-        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-        private readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
-        private readonly IEthSyncingInfo _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
-        private readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
-        private readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
 
         public override IEthRpcModule Create()
         {
             return new EthRpcModule(
-                _rpcConfig,
-                _blockchainBridgeFactory.CreateBlockchainBridge(),
+                config,
+                blockchainBridgeFactory.CreateBlockchainBridge(),
                 _blockTree,
-                _receiptStorage,
-                _stateReader,
-                _txPool,
-                _txSender,
-                _wallet,
-                _logManager,
-                _specProvider,
-                _gasPriceOracle,
-                _ethSyncingInfo,
-                _feeHistoryOracle,
+                receiptStorage,
+                stateReader,
+                txPool,
+                txSender,
+                wallet,
+                logManager,
+                specProvider,
+                gasPriceOracle,
+                ethSyncingInfo,
+                feeHistoryOracle,
                 protocolsManager,
-                secondsPerSlot);
+                _secondsPerSlot);
         }
     }
 }

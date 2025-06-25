@@ -9,8 +9,7 @@ namespace Nethermind.Evm.CodeAnalysis;
 public sealed class CodeInfo(ReadOnlyMemory<byte> code) : ICodeInfo, IThreadPoolWorkItem
 {
     private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
-    public static CodeInfo Empty { get; } = new CodeInfo(ReadOnlyMemory<byte>.Empty);
-
+    public static CodeInfo Empty { get; } = new(ReadOnlyMemory<byte>.Empty);
     public ReadOnlyMemory<byte> MachineCode { get; } = code;
 
     private readonly JumpDestinationAnalyzer _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);

@@ -58,6 +58,7 @@ namespace Nethermind.JsonRpc.Modules
             foreach (var rpcModuleInfo in rpcModules)
             {
                 RegisterNonGeneric(rpcModuleInfo.ModuleType, rpcModuleInfo.Pool);
+                if (jsonRpcConfig.PreloadRpcModules) rpcModuleInfo.Pool.Preload();
             }
         }
 

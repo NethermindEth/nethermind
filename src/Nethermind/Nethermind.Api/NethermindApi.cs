@@ -8,7 +8,6 @@ using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -28,12 +27,10 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
-using Nethermind.Facade.Simulate;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
-using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -48,7 +45,6 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
-using Nethermind.Trie;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Facade.Find;
 
@@ -99,8 +95,6 @@ namespace Nethermind.Api
         public IEnode? Enode { get; set; }
         public IEthereumEcdsa EthereumEcdsa => Context.Resolve<IEthereumEcdsa>();
         public IFileSystem FileSystem { get; set; } = new FileSystem();
-        public IFilterStore? FilterStore { get; set; }
-        public IFilterManager? FilterManager { get; set; }
         public IUnclesValidator? UnclesValidator => Context.Resolve<IUnclesValidator>();
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator => Context.Resolve<IHeaderValidator>();
@@ -117,17 +111,14 @@ namespace Nethermind.Api
         public IMessageSerializationService MessageSerializationService => Context.Resolve<IMessageSerializationService>();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IPeerManager? PeerManager => Context.Resolve<IPeerManager>();
-        public IPeerPool? PeerPool => Context.Resolve<IPeerPool>();
         public IProtocolsManager? ProtocolsManager { get; set; }
         public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
         public IReceiptFinder ReceiptFinder => Context.Resolve<IReceiptFinder>();
-        public IReceiptMonitor? ReceiptMonitor { get; set; }
         public IRewardCalculatorSource RewardCalculatorSource => Context.Resolve<IRewardCalculatorSource>();
         public IRlpxHost RlpxPeer => Context.Resolve<IRlpxHost>();
         public IRpcModuleProvider? RpcModuleProvider => Context.Resolve<IRpcModuleProvider>();
-        public IRpcAuthentication? RpcAuthentication { get; set; }
-        public IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
+        public IJsonRpcLocalStats JsonRpcLocalStats => Context.Resolve<IJsonRpcLocalStats>();
         public ISealer Sealer => Context.Resolve<ISealer>();
         public string SealEngineType => ChainSpec.SealEngineType;
         public ISealValidator SealValidator => Context.Resolve<ISealValidator>();
@@ -150,7 +141,6 @@ namespace Nethermind.Api
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
-        public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
         public IBlockFinalizationManager? FinalizationManager { get; set; }
@@ -168,7 +158,6 @@ namespace Nethermind.Api
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
-        public ISubscriptionFactory? SubscriptionFactory { get; set; }
         public IProtectedPrivateKey? NodeKey { get; set; }
 
         /// <summary>
@@ -182,8 +171,6 @@ namespace Nethermind.Api
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public IProcessExitSource ProcessExit => _dependencies.ProcessExitSource;
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
-        public ISimulateTransactionProcessorFactory SimulateTransactionProcessorFactory =>
-            Context.Resolve<ISimulateTransactionProcessorFactory>();
         public ILifetimeScope Context => _dependencies.Context;
     }
 }
