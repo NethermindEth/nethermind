@@ -5,7 +5,6 @@ using System;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Core;
@@ -27,7 +26,7 @@ public class HivePlugin(IHiveConfig hiveConfig) : INethermindPlugin
     public IModule Module => new HiveModule();
 }
 
-public class HiveModule: Module
+public class HiveModule : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
         .AddSingleton<HiveRunner>()

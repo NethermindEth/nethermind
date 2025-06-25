@@ -19,7 +19,7 @@ using Nethermind.TxPool;
 /// <param name="webSocketsManager"></param>
 /// <param name="analyticsConfig"></param>
 /// <param name="publishers"></param>
-[RunnerStepDependencies(typeof(InitializeNetwork))]
+[RunnerStepDependencies(typeof(InitializeBlockchain))]
 public class AnalyticsSteps(
     ITxPool txPool,
     AnalyticsWebSocketsModule webSocketsModule,

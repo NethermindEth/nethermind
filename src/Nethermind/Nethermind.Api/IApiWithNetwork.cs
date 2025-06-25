@@ -35,7 +35,6 @@ namespace Nethermind.Api
         ISyncModeSelector SyncModeSelector { get; }
         ISyncPeerPool? SyncPeerPool { get; }
         ISyncServer? SyncServer { get; }
-        IWebSocketsManager WebSocketsManager { get; set; }
 
         [SkipServiceCollection]
         IEngineRequestsTracker EngineRequestsTracker { get; }

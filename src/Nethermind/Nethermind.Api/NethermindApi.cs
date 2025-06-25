@@ -155,7 +155,6 @@ namespace Nethermind.Api
         public IWallet? Wallet { get; set; }
         public IBadBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
-        public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
         public IProtectedPrivateKey? NodeKey { get; set; }
 
