@@ -340,7 +340,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSStoreUnmetered<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    internal static EvmExceptionType InstructionSStoreUnmetered<TTracingInst>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
         // Increment the SSTORE opcode metric.
@@ -440,7 +440,7 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSStoreMetered<TTracingInst, TUseNetGasStipendFix>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    internal static EvmExceptionType InstructionSStoreMetered<TTracingInst, TUseNetGasStipendFix>(VirtualMachineBase vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
         where TUseNetGasStipendFix : struct, IFlag
     {
@@ -586,7 +586,7 @@ internal static partial class EvmInstructions
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void TraceSstore(VirtualMachine vm, bool newIsZero, in StorageCell storageCell, ReadOnlySpan<byte> bytes)
+    private static void TraceSstore(VirtualMachineBase vm, bool newIsZero, in StorageCell storageCell, ReadOnlySpan<byte> bytes)
     {
         ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
         byte[] storageBytes = new byte[32]; // Allocated on the heap to avoid stack allocation.
