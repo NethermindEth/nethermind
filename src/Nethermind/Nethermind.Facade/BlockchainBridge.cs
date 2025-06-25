@@ -152,21 +152,10 @@ namespace Nethermind.Facade
             using IOverridableTxProcessingScope scope = _processingEnv.BuildAndOverride(header, stateOverride);
 
             CallOutputTracer callOutputTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(scope, header, tx, false,
-                callOutputTracer.WithCancellation(cancellationToken));
+            TransactionResult tryCallResult = TryCallAndRestore(scope, header, tx, false, callOutputTracer.WithCancellation(cancellationToken));
 
             string? error = ConstructError(tryCallResult, callOutputTracer.Error);
-            if (error == "wrong transaction nonce")
-            {
-                return new CallOutput
-                {
-                    Error = "execution reverted",  
-                    GasSpent = callOutputTracer.GasSpent,
-                    OutputData = [],     
-                    InputError = false            
-                };
-            }
-            
+
             return new CallOutput
             {
                 Error = error,
@@ -434,14 +423,7 @@ namespace Nethermind.Facade
                 { Success: false, Error: not null } => txResult.Error,
                 _ => null
             };
-            
-            // Special case for 'wrong transaction nonce'
-            if (error == "wrong transaction nonce")
-            {
-                return "wrong transaction nonce";
-            }
-
-            return error is null ? null : error.StartsWith("0x") ? $"{error}" : "0x";
+            return error;
         }
     }
 
