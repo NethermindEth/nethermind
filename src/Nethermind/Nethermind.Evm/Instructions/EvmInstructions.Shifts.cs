@@ -8,7 +8,7 @@ using static System.Runtime.CompilerServices.Unsafe;
 namespace Nethermind.Evm;
 using Int256;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Interface for shift operations.
@@ -43,7 +43,7 @@ internal static partial class EvmInstructions
     /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>
-    /// <see cref="EvmExceptionType.None"/> if the operation completes successfully; 
+    /// <see cref="EvmExceptionType.None"/> if the operation completes successfully;
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if there are insufficient stack elements.
     /// </returns>
     [SkipLocalsInit]

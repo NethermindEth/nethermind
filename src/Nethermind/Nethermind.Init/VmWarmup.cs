@@ -3,10 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -15,17 +18,19 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Evm;
+namespace Nethermind.Init;
 
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 
-// TODO
-public unsafe partial class VirtualMachine
+public unsafe class VmWarmup
 {
     public static void WarmUpEvmInstructions()
     {
-        /*IReleaseSpec spec = Fork.GetLatest();
+        IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
         VirtualMachine vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
@@ -60,9 +65,15 @@ public unsafe partial class VirtualMachine
 
         using (var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, in env, new StackAccessTracker(), state.TakeSnapshot()))
         {
-            vm.EvmState = evmState;
-            vm._worldState = state;
-            vm._codeInfoRepository = codeInfoRepository;
+            FieldInfo evmStateField =
+                typeof(VirtualMachine).GetField(nameof(VirtualMachine.EvmState), BindingFlags.NonPublic | BindingFlags.Instance) ?? throw new ArgumentNullException();
+            FieldInfo worldStateField =
+                typeof(VirtualMachine).GetField("_worldState", BindingFlags.NonPublic | BindingFlags.Instance) ?? throw new ArgumentNullException();
+            FieldInfo codeInfoRepositoryField =
+                typeof(VirtualMachine).GetField("_codeInfoRepository", BindingFlags.NonPublic | BindingFlags.Instance) ??  throw new ArgumentNullException();
+            evmStateField.SetValue(vm, evmState);
+            worldStateField.SetValue(vm, state);
+            codeInfoRepositoryField.SetValue(vm, codeInfoRepository);
             evmState.InitializeStacks();
 
             RunOpCodes<OnFlag>(vm, state, evmState, spec);
@@ -72,7 +83,7 @@ public unsafe partial class VirtualMachine
         TransactionProcessor processor = new(MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
         processor.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
 
-        RunTransactions(processor, state, spec);*/
+        RunTransactions(processor, state, spec);
     }
 
     private static void RunTransactions(TransactionProcessor processor, IWorldState state, IReleaseSpec spec)
@@ -158,7 +169,9 @@ public unsafe partial class VirtualMachine
 
         OpCode[] opcodes = EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
-        vm._txTracer = txTracer;
+        FieldInfo txTracerField =
+            typeof(VirtualMachine).GetField("_txTracer", BindingFlags.NonPublic | BindingFlags.Instance) ?? throw new ArgumentNullException();
+        txTracerField.SetValue(vm, txTracer);
         EvmStack stack = new(0, txTracer, evmState.DataStack);
         long gas = long.MaxValue;
         int pc = 0;
@@ -195,9 +208,9 @@ public unsafe partial class VirtualMachine
         public Hash256 GetBlockhash(BlockHeader currentBlock, long number)
             => GetBlockhash(currentBlock, number, specProvider.GetSpec(currentBlock));
 
-        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
+        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec)
         {
-            return Keccak.Compute(spec.IsBlockHashInStateAvailable
+            return Keccak.Compute(spec!.IsBlockHashInStateAvailable
                 ? (Eip2935Constants.RingBufferSize + number).ToString()
                 : (number).ToString());
         }
