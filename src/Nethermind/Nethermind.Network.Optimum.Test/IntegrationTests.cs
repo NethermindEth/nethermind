@@ -87,7 +87,7 @@ public class IntegrationTests
     }
 
     [Test]
-    public async Task NodeSendToTopic()
+    public async Task NodePublishToTopic()
     {
         using var grpcChannel = GrpcChannel.ForAddress(new Uri("http://localhost:33221"), _grpcChannelOptions);
 
@@ -96,14 +96,14 @@ public class IntegrationTests
         for (int i = 0; i < 10; i++)
         {
             byte[] data = Encoding.UTF8.GetBytes($"msg = {Guid.NewGuid()}");
-            await client.SendToTopicAsync(topic: "test", data, CancellationToken.None);
+            await client.PublishToTopicAsync(topic: "test", data, CancellationToken.None);
         }
 
         await Task.CompletedTask;
     }
 
     [Test]
-    public async Task NodeSendAndListenToTopic()
+    public async Task NodePublishAndSubscribeToTopic()
     {
         using var grpcChannel = GrpcChannel.ForAddress(new Uri("http://localhost:33221"), _grpcChannelOptions);
 
@@ -111,12 +111,12 @@ public class IntegrationTests
         var topic = "test";
         var messageCount = 10;
 
-        var sender = Task.Run(async () =>
+        var publisher = Task.Run(async () =>
         {
             for (int i = 0; i < messageCount; i++)
             {
                 byte[] data = Encoding.UTF8.GetBytes($"msg = {Guid.NewGuid()}");
-                await client.SendToTopicAsync(topic, data, CancellationToken.None);
+                await client.PublishToTopicAsync(topic, data, CancellationToken.None);
             }
         });
 
@@ -137,7 +137,7 @@ public class IntegrationTests
             return receivedCount;
         });
 
-        await Task.WhenAll(sender, subscriber);
+        await Task.WhenAll(publisher, subscriber);
 
         var receivedCount = subscriber.Result;
         receivedCount.Should().Be(messageCount);
