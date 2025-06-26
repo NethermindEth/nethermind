@@ -250,8 +250,6 @@ public abstract partial class BaseEngineModuleTests
     {
         public IMergeConfig MergeConfig { get; set; }
 
-        public PostMergeBlockProducer? PostMergeBlockProducer { get; set; }
-
         public IPayloadPreparationService? PayloadPreparationService { get; set; }
         public StoringBlockImprovementContextFactory? StoringBlockImprovementContextFactory { get; set; }
 
@@ -347,8 +345,8 @@ public abstract partial class BaseEngineModuleTests
 
             BlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
-            PostMergeBlockProducer = postMergeBlockProducer;
-            BlockImprovementContextFactory ??= new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
+            BlockProducer = postMergeBlockProducer;
+            BlockImprovementContextFactory ??= new BlockImprovementContextFactory(BlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
             PayloadPreparationService ??= new PayloadPreparationService(
                 postMergeBlockProducer,
                 BlockImprovementContextFactory,
