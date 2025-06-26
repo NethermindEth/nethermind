@@ -71,7 +71,7 @@ public class MergeModule(ITxPoolConfig txPoolConfig, IMergeConfig mergeConfig, I
             {
                 ILifetimeScope ctx = producerContext.LifetimeScope;
                 return new PayloadPreparationService(
-                    ctx.Resolve<PostMergeBlockProducer>(),
+                    ctx.Resolve<IBlockProducer>(),
                     ctx.Resolve<IBlockImprovementContextFactory>(),
                     ctx.Resolve<ITimerFactory>(),
                     ctx.Resolve<ILogManager>(),
