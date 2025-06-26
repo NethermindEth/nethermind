@@ -96,7 +96,17 @@ public class OverridableEnvTests
             throw new System.NotImplementedException();
         }
 
+        public TransactionResult Execute(Transaction transaction, BlockHeader header, ITxTracer txTracer)
+        {
+            throw new System.NotImplementedException();
+        }
+
         public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public TransactionResult CallAndRestore(Transaction transaction, BlockHeader header, ITxTracer txTracer)
         {
             throw new System.NotImplementedException();
         }

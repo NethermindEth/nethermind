@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -16,17 +15,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Specs;
-using Nethermind.State;
-using NUnit.Framework;
-using Nethermind.Evm.TransactionProcessing;
-using NSubstitute;
-using Nethermind.Facade;
-using Nethermind.Config;
-using Nethermind.Consensus.ExecutionRequests;
-using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Test;
-using Nethermind.Evm.OverridableEnv;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Core.Test.Modules;
