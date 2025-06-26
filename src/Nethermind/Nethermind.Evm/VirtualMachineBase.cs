@@ -108,8 +108,7 @@ public unsafe partial class VirtualMachineBase(
     /// </summary>
     public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
 
-    private EvmState _vmState;
-    public EvmState EvmState { get => _vmState; private set => _vmState = value; }
+    public EvmState EvmState { get => _currentState; private set => _currentState = value; }
     public int SectionIndex { get; set; }
 
     /// <summary>
@@ -185,7 +184,6 @@ public unsafe partial class VirtualMachineBase(
                     if (_currentState.Env.CodeInfo is not null)
                     {
                         callResult = ExecuteCall<TTracingInst>(
-                            _currentState,
                             _previousCallResult,
                             previousCallOutput,
                             _previousCallOutputDestination);
@@ -205,9 +203,10 @@ public unsafe partial class VirtualMachineBase(
                     // Handle exceptions raised during the call execution.
                     if (callResult.IsException)
                     {
-                        TransactionSubstate? substate = HandleException(in callResult, ref previousCallOutput);
-                        if (substate is not null)
+                        TransactionSubstate substate = HandleException(in callResult, ref previousCallOutput, out bool terminate);
+                        if (terminate)
                         {
+                            _currentState = null;
                             return substate;
                         }
                         // Continue execution if the exception did not immediately finalize the transaction.
@@ -222,7 +221,9 @@ public unsafe partial class VirtualMachineBase(
                     {
                         TraceTransactionActionEnd(_currentState, spec, callResult);
                     }
-                    return PrepareTopLevelSubstate(in callResult);
+                    TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
+                    _currentState = null;
+                    return substate;
                 }
 
                 // For nested call frames, merge the results and restore the previous execution state.
@@ -293,9 +294,10 @@ public unsafe partial class VirtualMachineBase(
 
         // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
-            TransactionSubstate? failSubstate = HandleFailure<TTracingInst>(failure, ref previousCallOutput);
-            if (failSubstate is not null)
+            TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, ref previousCallOutput, out bool shouldExit);
+            if (shouldExit)
             {
+                _currentState = null;
                 return failSubstate;
             }
         }
@@ -506,7 +508,7 @@ public unsafe partial class VirtualMachineBase(
         }
     }
 
-    private TransactionSubstate PrepareTopLevelSubstate(in CallResult callResult)
+    private TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
     {
         return new TransactionSubstate(
             callResult.Output,
@@ -585,7 +587,7 @@ public unsafe partial class VirtualMachineBase(
     /// A <see cref="TransactionSubstate"/> if the failure occurs in the top-level call; otherwise, <c>null</c>
     /// to indicate that execution should continue with the parent call frame.
     /// </returns>
-    private TransactionSubstate? HandleFailure<TTracingInst>(Exception failure, ref ZeroPaddedSpan previousCallOutput)
+    private TransactionSubstate HandleFailure<TTracingInst>(Exception failure, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
         where TTracingInst : struct, IFlag
     {
         // Log the exception if trace logging is enabled.
@@ -625,6 +627,7 @@ public unsafe partial class VirtualMachineBase(
         {
             // For an OverflowException, force the error type to a generic Other error.
             EvmExceptionType finalErrorType = failure is OverflowException ? EvmExceptionType.Other : errorType;
+            shouldExit = true;
             return new TransactionSubstate(finalErrorType, txTracer.IsTracing);
         }
 
@@ -644,7 +647,8 @@ public unsafe partial class VirtualMachineBase(
         _currentState = _stateStack.Pop();
         _currentState.IsContinuation = true;
 
-        return null;
+        shouldExit = false;
+        return default;
     }
 
     /// <summary>
@@ -690,7 +694,7 @@ public unsafe partial class VirtualMachineBase(
     /// A <see cref="TransactionSubstate"/> instance if the failure occurred in a top-level call,
     /// otherwise <c>null</c> to indicate that execution should continue in the parent frame.
     /// </returns>
-    private TransactionSubstate? HandleException(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+    private TransactionSubstate HandleException(scoped in CallResult callResult, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
     {
         // Cache the tracer to minimize repeated field accesses.
         ITxTracer txTracer = _txTracer;
@@ -710,6 +714,7 @@ public unsafe partial class VirtualMachineBase(
         // If this is the top-level call, return a final transaction substate encapsulating the error.
         if (_currentState.IsTopLevel)
         {
+            shouldExit = true;
             return new TransactionSubstate(callResult.ExceptionType, txTracer.IsTracing);
         }
 
@@ -729,11 +734,12 @@ public unsafe partial class VirtualMachineBase(
         _currentState.IsContinuation = true;
 
         // Return null to indicate that the failure was handled and execution should continue in the parent frame.
-        return null;
+        shouldExit = false;
+        return default;
     }
 
     /// <summary>
-    /// Executes a precompiled contract operation based on the current execution state. 
+    /// Executes a precompiled contract operation based on the current execution state.
     /// If tracing is enabled, reports the precompile action. It then runs the precompile operation,
     /// checks for failure conditions, and adjusts the execution state accordingly.
     /// </summary>
@@ -1046,12 +1052,12 @@ public unsafe partial class VirtualMachineBase(
     /// </remarks>
     [SkipLocalsInit]
     private CallResult ExecuteCall<TTracingInst>(
-        EvmState vmState,
         ReadOnlyMemory<byte>? previousCallResult,
         ZeroPaddedSpan previousCallOutput,
         scoped in UInt256 previousCallOutputDestination)
         where TTracingInst : struct, IFlag
     {
+        EvmState vmState = _currentState;
         // Obtain a reference to the execution environment for convenience.
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
@@ -1115,9 +1121,6 @@ public unsafe partial class VirtualMachineBase(
             // Save the previous call's output into the VM state's memory.
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
-
-        // Update the global EVM state with the current state.
-        EvmState = vmState;
 
         // Dispatch the bytecode interpreter.
         // The second generic parameter is selected based on whether the transaction tracer is cancelable:
@@ -1201,7 +1204,7 @@ public unsafe partial class VirtualMachineBase(
             {
 #if DEBUG
                 // Allow the debugger to inspect and possibly pause execution for debugging purposes.
-                debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+                debugger?.TryWait(ref _currentState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
                 // Fetch the current instruction from the code section.
                 Instruction instruction = Unsafe.Add(ref code, programCounter);
@@ -1275,7 +1278,7 @@ public unsafe partial class VirtualMachineBase(
     DataReturn:
 #if DEBUG
         // Allow debugging before processing the return data.
-        debugger?.TryWait(ref _vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+        debugger?.TryWait(ref _currentState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
         // Process the return data based on its runtime type.
         if (ReturnData is EvmState state)

@@ -32,6 +32,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
@@ -276,7 +277,7 @@ public abstract partial class BaseEngineModuleTests
 
         public BeaconSync? BeaconSync { get; set; }
 
-        public IWithdrawalProcessor? WithdrawalProcessor { get; set; }
+        public IWithdrawalProcessor WithdrawalProcessor => ((MainBlockProcessingContext)MainProcessingContext).LifetimeScope.Resolve<IWithdrawalProcessor>();
 
         public ISyncPeerPool SyncPeerPool { get; set; }
 
@@ -321,6 +322,7 @@ public abstract partial class BaseEngineModuleTests
 
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)
+                .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
                 .AddModule(new MergeModule(configProvider));
 
         protected override IBlockProducer CreateTestBlockProducer()
@@ -362,13 +364,11 @@ public abstract partial class BaseEngineModuleTests
 
         protected override IBlockProcessor CreateBlockProcessor(IWorldState worldState)
         {
-            WithdrawalProcessor = new WithdrawalProcessor(worldState, LogManager);
-
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), worldState),
                 worldState,
                 ReceiptStorage,
                 new BeaconBlockRootHandler(TxProcessor, worldState),

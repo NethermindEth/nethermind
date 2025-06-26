@@ -8,7 +8,6 @@ namespace Nethermind.Logging
 {
     public interface ILogManager
     {
-        ILogger GetClassLogger(Type type);
         ILogger GetClassLogger<T>();
         ILogger GetClassLogger([CallerFilePath] string filePath = "");
         ILogger GetLogger(string loggerName);

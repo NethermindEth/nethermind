@@ -2,84 +2,83 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus;
+using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+using Nethermind.Core;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
-public class TraceModuleFactory(
-    IWorldStateManager worldStateManager,
-    IBlockTree blockTree,
-    IJsonRpcConfig jsonRpcConfig,
-    IBlockchainBridge blockchainBridge,
-    ulong secondsPerSlot,
-    IBlockPreprocessorStep recoveryStep,
-    IRewardCalculatorSource rewardCalculatorSource,
-    IReceiptStorage receiptFinder,
-    ISpecProvider specProvider,
-    IPoSSwitcher poSSwitcher,
-    ILogManager logManager) : ModuleFactoryBase<ITraceRpcModule>
+public class TraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : ModuleFactoryBase<ITraceRpcModule>
 {
-    protected readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
-    protected readonly IJsonRpcConfig _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
-    private readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
-    protected readonly ulong _secondsPerSlot = secondsPerSlot;
-    protected readonly IReceiptStorage _receiptStorage = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-    protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    protected readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-    protected readonly IBlockPreprocessorStep _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-    protected readonly IRewardCalculatorSource _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
-    protected readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+    protected virtual ContainerBuilder ConfigureCommonBlockProcessing<T>(ContainerBuilder builder) where T : ITransactionProcessorAdapter
+    {
+        return builder
 
-    protected virtual OverridableTxProcessingEnv CreateTxProcessingEnv(IOverridableWorldScope worldScope) => new(worldScope, _blockTree, _specProvider, _logManager);
+                // More or less standard except for configurable `ITransactionProcessorAdapter`.
+                // Note: Not overriding `IReceiptStorage` to null.
+                .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
+                .AddScoped<ITransactionProcessorAdapter, T>() // T can be trace or execute
+                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+                .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+                .AddScoped<IBlockValidator>(Always.Valid) // Why?
 
-    protected virtual ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IOverridableWorldScope worldScope, IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new(
-                scope,
-                Always.Valid,
-                _recoveryStep,
-                rewardCalculator,
-                _receiptStorage,
-                _specProvider,
-                _blockTree,
-                worldScope.GlobalStateReader,
-                _logManager,
-                transactionsExecutor);
-
-    protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateRpcBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
-        => new RpcBlockTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
-
-    protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
-        => new BlockProcessor.BlockValidationTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
+                .AddDecorator<IRewardCalculator, MergeRpcRewardCalculator>() // TODO: Check, what if this is pre merge?
+            ;
+    }
 
     public override ITraceRpcModule Create()
     {
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
-        OverridableTxProcessingEnv txProcessingEnv = CreateTxProcessingEnv(overridableScope);
-        OverridableTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+        IOverridableCodeInfoRepository codeInfoRepository = new OverridableCodeInfoRepository(codeInfoRepositoryFunc());
 
-        IRewardCalculator rewardCalculator =
-            new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(scope.TransactionProcessor),
-                _poSSwitcher);
+        // Note: The processing block has no concern with override's and scoping. As far as its concern, a standard
+        // world state and code info repository is used.
+        ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
+            ConfigureCommonBlockProcessing<TraceTransactionProcessorAdapter>(builder)
+                .AddScoped<ICodeInfoRepository>(codeInfoRepository)
+                .AddScoped<IWorldState>(overridableScope.WorldState));
+        ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
+            ConfigureCommonBlockProcessing<ExecuteTransactionProcessorAdapter>(builder)
+                .AddScoped<ICodeInfoRepository>(codeInfoRepository)
+                .AddScoped<IWorldState>(overridableScope.WorldState));
 
-        IBlockProcessor.IBlockTransactionsExecutor rpcBlockTransactionsExecutor = CreateRpcBlockTransactionsExecutor(scope);
-        IBlockProcessor.IBlockTransactionsExecutor executeBlockTransactionsExecutor = CreateBlockTransactionsExecutor(scope);
+        ILifetimeScope tracerLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
+        {
+            builder
+                .AddScoped<IOverridableWorldScope>(overridableScope)
+                .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository)
 
-        ReadOnlyChainProcessingEnv traceProcessingEnv = CreateChainProcessingEnv(overridableScope, rpcBlockTransactionsExecutor, scope, rewardCalculator);
-        ReadOnlyChainProcessingEnv executeProcessingEnv = CreateChainProcessingEnv(overridableScope, executeBlockTransactionsExecutor, scope, rewardCalculator);
+                .AddScoped<IWorldState>(overridableScope.WorldState)
+                .AddScoped<ICodeInfoRepository>(codeInfoRepository)
 
-        Tracer tracer = new(scope, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor, traceOptions: ProcessingOptions.TraceTransactions);
+                .AddScoped<IOverridableTxProcessorSource, OverridableTxProcessingEnv>()
+                .AddScoped<ITracerEnv, IOverridableTxProcessorSource>((scope) => new TracerEnv(new Tracer(
+                        overridableScope.WorldState,
+                        rpcProcessingScope.Resolve<IBlockchainProcessor>(),
+                        validationProcessingScope.Resolve<IBlockchainProcessor>(),
+                        traceOptions: ProcessingOptions.TraceTransactions),
+                    scope))
+                ;
+        });
 
-        return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, txProcessingEnv, _blockchainBridge, _secondsPerSlot);
+        // Note: Only `ITracerEnv` is exposed. This is because the tracer must be run in a well defined block processing scope
+        // otherwise, it risk memory leak.
+        ILifetimeScope rpcLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
+        {
+            builder.AddScoped<ITracerEnv>(tracerLifetimeScope.Resolve<ITracerEnv>());
+        });
+
+        tracerLifetimeScope.Disposer.AddInstanceForAsyncDisposal(rpcProcessingScope);
+        tracerLifetimeScope.Disposer.AddInstanceForAsyncDisposal(validationProcessingScope);
+        rpcLifetimeScope.Disposer.AddInstanceForAsyncDisposal(tracerLifetimeScope);
+        rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(rpcLifetimeScope);
+
+        return rpcLifetimeScope.Resolve<ITraceRpcModule>();
     }
 }

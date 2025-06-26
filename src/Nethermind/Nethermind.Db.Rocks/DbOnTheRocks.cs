@@ -696,8 +696,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             Native.Instance.rocksdb_pinnableslice_destroy(handle);
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static unsafe void ThrowRocksDbException(nint errPtr)
         {
             throw new RocksDbException(errPtr);
@@ -923,8 +922,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             throw;
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static unsafe void ThrowRocksDbException(nint errPtr)
         {
             throw new RocksDbException(errPtr);

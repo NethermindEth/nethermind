@@ -123,8 +123,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         return cachedCodeInfo;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void MissingCode(in ValueHash256 codeHash)
         {
             throw new DataException($"Code {codeHash} missing in the state");

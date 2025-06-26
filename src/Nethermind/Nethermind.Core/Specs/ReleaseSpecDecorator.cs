@@ -85,7 +85,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
     public bool IsEip7702Enabled => spec.IsEip7702Enabled;
     public bool IsEip7823Enabled => spec.IsEip7823Enabled;
-    public virtual bool IsRip7212Enabled => spec.IsRip7212Enabled;
+    public virtual bool IsEip7951Enabled => spec.IsEip7951Enabled;
     public virtual bool IsOpGraniteEnabled => spec.IsOpGraniteEnabled;
     public virtual bool IsOpHoloceneEnabled => spec.IsOpHoloceneEnabled;
     public virtual bool IsOpIsthmusEnabled => spec.IsOpIsthmusEnabled;
@@ -147,4 +147,5 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
     public bool IsEip7939Enabled => spec.IsEip7939Enabled;
+    public bool IsEip7907Enabled => spec.IsEip7907Enabled;
 }

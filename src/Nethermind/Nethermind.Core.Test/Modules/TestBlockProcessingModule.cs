@@ -5,18 +5,14 @@ using System.Collections.Generic;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm;
@@ -45,29 +41,9 @@ public class TestBlockProcessingModule : Module
                 PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
                 return new CodeInfoRepository(preBlockCaches?.PrecompileCache);
             })
-            .AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
-            {
-                ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
-                IBlockTree blockTree = ctx.Resolve<IBlockTree>();
-                IStateReader stateReader = ctx.Resolve<IStateReader>();
-                // need this to be the right one.
-                ICodeInfoRepository codeInfoRepository = ctx.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
-                return new ChainHeadInfoProvider(specProvider, blockTree, stateReader, codeInfoRepository);
-            })
 
             .AddSingleton<ITxPool, TxPool.TxPool>()
             .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
-
-            // These are common between processing and production and worldstate-ful, so they should be scoped instead
-            // of singleton.
-            .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
-            .AddScoped<IBlockProcessor, BlockProcessor>()
-            .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardCalculatorSource, txProcessor) => rewardCalculatorSource.Get(txProcessor))
-            .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
-            .AddScoped<IBlockhashStore, BlockhashStore>()
-            .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
-            .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
-            .AddScoped<BlockchainProcessor>()
 
             // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
             // in a `MainBlockProcessingContext`.
@@ -113,8 +89,8 @@ public class TestBlockProcessingModule : Module
                 // These are main block processing specific
                 .AddScoped<ICodeInfoRepository>(mainCodeInfoRepository)
                 .AddScoped(mainWorldState)
-                .AddScoped<IBlockProcessor.IBlockTransactionsExecutor,
-                    BlockProcessor.BlockValidationTransactionsExecutor>()
+                .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
+                .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 .AddScoped(new BlockchainProcessor.Options
                 {
                     StoreReceiptsByDefault = receiptConfig.StoreReceipts,

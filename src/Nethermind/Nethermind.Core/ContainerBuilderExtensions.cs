@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Autofac;
@@ -10,6 +9,7 @@ using Autofac.Builder;
 using Autofac.Core;
 using Autofac.Core.Resolving.Pipeline;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Container;
 
 namespace Nethermind.Core;
 
@@ -24,7 +24,7 @@ public static class ContainerBuilderExtensions
     {
         builder.RegisterType<T>()
             .As<T>()
-            .WithAttributeFiltering()
+            .CommonNethermindConfig()
             .SingleInstance();
 
         return builder;
@@ -145,7 +145,7 @@ public static class ContainerBuilderExtensions
         builder.RegisterType<TImpl>()
             .As<T>()
             .AsSelf()
-            .WithAttributeFiltering()
+            .CommonNethermindConfig()
             .SingleInstance();
 
         return builder;
@@ -175,7 +175,7 @@ public static class ContainerBuilderExtensions
         builder.RegisterType<T>()
             .As<T>()
             .AsSelf()
-            .WithAttributeFiltering()
+            .CommonNethermindConfig()
             .InstancePerLifetimeScope();
 
         return builder;
@@ -258,11 +258,23 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddScoped<T, TImpl>(this ContainerBuilder builder) where TImpl : notnull where T : notnull
+    public static ContainerBuilder AddScoped<T, TImpl>(this ContainerBuilder builder) where TImpl : T where T : notnull
     {
         builder.RegisterType<TImpl>()
-            .As<T>()
-            .WithAttributeFiltering()
+            .As<TImpl>()
+            .CommonNethermindConfig()
+            .InstancePerLifetimeScope();
+
+        builder.Bind<T, TImpl>();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddKeyedScoped<T, TImpl>(this ContainerBuilder builder, object key) where TImpl : notnull where T : notnull
+    {
+        builder.RegisterType<TImpl>()
+            .Keyed<T>(key)
+            .CommonNethermindConfig()
             .InstancePerLifetimeScope();
 
         return builder;
@@ -276,7 +288,7 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder Add<T>(this ContainerBuilder builder) where T : class
     {
         builder.RegisterType<T>()
-            .WithAttributeFiltering()
+            .CommonNethermindConfig()
             .As<T>();
 
         return builder;
@@ -293,7 +305,7 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder Add<T, TImpl>(this ContainerBuilder builder) where T : class where TImpl : notnull
     {
         builder.RegisterType<TImpl>()
-            .WithAttributeFiltering()
+            .CommonNethermindConfig()
             .As<T>();
 
         return builder;
@@ -303,7 +315,7 @@ public static class ContainerBuilderExtensions
     {
         IRegistrationBuilder<T, ConcreteReflectionActivatorData, SingleRegistrationStyle> adv = builder
             .RegisterType<T>()
-            .WithAttributeFiltering();
+            .CommonNethermindConfig();
 
         configurer(adv);
 
@@ -423,6 +435,16 @@ public static class ContainerBuilderExtensions
 
         return builder;
     }
+
+    private static IRegistrationBuilder<TLimit, TReflectionActivatorData, TRegistrationStyle> CommonNethermindConfig<TLimit, TReflectionActivatorData, TRegistrationStyle>(
+        this IRegistrationBuilder<TLimit, TReflectionActivatorData, TRegistrationStyle> builder
+    ) where TReflectionActivatorData : ReflectionActivatorData
+    {
+        return builder
+            .WithAttributeFiltering()
+            .FindConstructorsWith(NethermindConstructorFinder.Instance);
+    }
+
 }
 
 /// <summary>
