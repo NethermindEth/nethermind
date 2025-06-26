@@ -85,12 +85,14 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
         throw new EmptyBlockProductionException("Setting state for processing block failed");
     }
 
-    protected override void AmendHeader(BlockHeader blockHeader, BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+    protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
     {
-        base.AmendHeader(blockHeader, parent);
+        BlockHeader blockHeader = base.PrepareBlockHeader(parent, payloadAttributes);
 
         blockHeader.ExtraData = [];
         blockHeader.RequestsHash = _specHelper.IsIsthmus(blockHeader) ? PostIsthmusRequestHash : null;
+
+        return blockHeader;
     }
 
     /// <summary>

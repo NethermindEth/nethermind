@@ -247,7 +247,7 @@ namespace Nethermind.Consensus.Producers
             return header;
         }
 
-        protected virtual Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 

@@ -60,6 +60,10 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                     {
                         return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
                     }
+                    else
+                    {
+                        throw new EmptyBlockProductionException($"Setting state for processing block failed: couldn't set state to stateRoot {parent.StateRoot}");
+                    }
                 }
                 finally
                 {
@@ -79,23 +83,11 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             return new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }
 
-        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
-        {
-            Block block = base.PrepareBlock(parent, payloadAttributes);
-            AmendHeader(block.Header, parent);
-            return block;
-        }
-
         protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             BlockHeader blockHeader = base.PrepareBlockHeader(parent, payloadAttributes);
-            AmendHeader(blockHeader, parent, payloadAttributes);
-            return blockHeader;
-        }
 
-        // TODO: this seems to me that it should be done in the Eth2 seal engine?
-        protected virtual void AmendHeader(BlockHeader blockHeader, BlockHeader parent, PayloadAttributes? payloadAttributes = null)
-        {
+            // TODO: this seems to me that it should be done in the Eth2 seal engine?
             blockHeader.ExtraData = _blocksConfig.GetExtraDataBytes();
             blockHeader.IsPostMerge = true;
             IReleaseSpec spec = _specProvider.GetSpec(blockHeader);
@@ -105,6 +97,8 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 blockHeader.BlobGasUsed = 0;
                 blockHeader.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }
+
+            return blockHeader;
         }
     }
 }
