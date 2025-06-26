@@ -156,7 +156,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         OptimismPayloadPreparationService payloadPreparationService = new(
             _api.SpecProvider,
-            (PostMergeBlockProducer)_api.BlockProducer,
+            _api.BlockProducer,
             improvementContextFactory,
             _api.TimerFactory,
             _api.LogManager,
