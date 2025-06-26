@@ -24,5 +24,7 @@ public interface IBlockProducer
     {
         EmptyBlock = 1,
         DontSeal = 2,
+
+        PrepareEmptyBlock = EmptyBlock | DontSeal,
     }
 }

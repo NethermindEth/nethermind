@@ -249,7 +249,7 @@ namespace Nethermind.Consensus.Producers
             return header;
         }
 
-        protected Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = 0)
+        protected virtual BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = 0)
         {
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 

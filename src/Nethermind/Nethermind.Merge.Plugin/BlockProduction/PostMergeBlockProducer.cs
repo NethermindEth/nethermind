@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -9,7 +8,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -47,41 +45,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         }
 
         public bool SupportsBlobs => TxSource.SupportsBlobs;
-
-        public virtual Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
-        {
-            Block block = CreateEmptyBlock(parent, payloadAttributes);
-
-            if (_producingBlockLock.Wait(BlockProductionTimeoutMs))
-            {
-                try
-                {
-                    if (TrySetState(parent.StateRoot))
-                    {
-                        return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
-                    }
-                    else
-                    {
-                        throw new EmptyBlockProductionException($"Setting state for processing block failed: couldn't set state to stateRoot {parent.StateRoot}");
-                    }
-                }
-                finally
-                {
-                    _producingBlockLock.Release();
-                }
-            }
-
-            throw new EmptyBlockProductionException("Setting state for processing block failed");
-        }
-
-        protected virtual Block CreateEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
-        {
-            BlockHeader blockHeader = PrepareBlockHeader(parent, payloadAttributes);
-            blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-            blockHeader.TxRoot = Keccak.EmptyTreeHash;
-            blockHeader.Bloom = Bloom.Empty;
-            return new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
-        }
 
         protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {

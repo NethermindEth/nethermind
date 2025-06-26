@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -169,8 +170,8 @@ public partial class EngineModuleTests
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
         string payloadId = (await rpc.engine_forkchoiceUpdatedV1(
-                new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
-                new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })).Data.PayloadId!;
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })).Data.PayloadId!;
 
         await Task.Delay(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay);
 
@@ -250,20 +251,20 @@ public partial class EngineModuleTests
                 GasLimit = 0x3d0900L,
                 GasUsed = 0,
                 LogsBloom =
-                        new Bloom(Bytes.FromHexString(
-                            "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")),
+                    new Bloom(Bytes.FromHexString(
+                        "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")),
                 ParentHash = new("0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c"),
                 PrevRandao = new("0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2"),
                 ReceiptsRoot = new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
                 StateRoot = new("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"),
                 Timestamp = 0xf4240UL,
                 Transactions = new[]
-                    {
-                        Bytes.FromHexString(
-                            "0xf85f800182520894475674cb523a0a2736b7f7534390288fce16982c018025a0634db2f18f24d740be29e03dd217eea5757ed7422680429bdd458c582721b6c2a02f0fa83931c9a99d3448a46b922261447d6a41d8a58992b5596089d15d521102"),
-                        Bytes.FromHexString(
-                            "0x02f8620180011482520894475674cb523a0a2736b7f7534390288fce16982c0180c001a0db002b398e038bc919b316a214154aa6d9d5e404cb201aa8a151efb92f9fdbbda07bee8ea6915ed54bb07af4cd69b201548fe9aac699978e5c444405dc49f55a36")
-                    },
+                {
+                    Bytes.FromHexString(
+                        "0xf85f800182520894475674cb523a0a2736b7f7534390288fce16982c018025a0634db2f18f24d740be29e03dd217eea5757ed7422680429bdd458c582721b6c2a02f0fa83931c9a99d3448a46b922261447d6a41d8a58992b5596089d15d521102"),
+                    Bytes.FromHexString(
+                        "0x02f8620180011482520894475674cb523a0a2736b7f7534390288fce16982c0180c001a0db002b398e038bc919b316a214154aa6d9d5e404cb201aa8a151efb92f9fdbbda07bee8ea6915ed54bb07af4cd69b201548fe9aac699978e5c444405dc49f55a36")
+                },
             },
             id = 67
         }), Is.EqualTo(result));
@@ -506,7 +507,7 @@ public partial class EngineModuleTests
         };
 
         // we build one more block on the same level
-        Block block31B = chain.PostMergeBlockProducer!.PrepareEmptyBlock(block30.Header, payloadAttributes);
+        Block block31B = (await chain.PostMergeBlockProducer!.BuildBlock(block30.Header, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock))!;
         await rpc.engine_newPayloadV1(ExecutionPayload.Create(block31B));
 
         // ...and we change the main chain, so main chain now is 30->31B, block improvement for block 32A is still in progress
@@ -558,7 +559,7 @@ public partial class EngineModuleTests
         string? payloadId = (await rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
                 new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(3).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero }))
-                .Data.PayloadId!;
+            .Data.PayloadId!;
         chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
@@ -621,7 +622,14 @@ public partial class EngineModuleTests
             new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
 
         PostMergeBlockProducer blockProducer = chain.PostMergeBlockProducer!;
-        Block emptyBlock = blockProducer.PrepareEmptyBlock(chain.BlockTree.Head!.Header, new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero });
+        Block emptyBlock = (await blockProducer.BuildBlock(
+            chain.BlockTree.Head!.Header,
+            payloadAttributes: new PayloadAttributes
+            {
+                Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA,
+                SuggestedFeeRecipient = Address.Zero
+            },
+            flags: IBlockProducer.Flags.PrepareEmptyBlock))!;
         Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV1(ExecutionPayload.Create(emptyBlock));
         result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
     }
@@ -644,7 +652,7 @@ public partial class EngineModuleTests
             SuggestedFeeRecipient = Address.Zero,
             Withdrawals = [TestItem.WithdrawalA_1Eth]
         };
-        Block emptyBlock = blockProducer.PrepareEmptyBlock(chain.BlockTree.Head!.Header, payloadAttributes);
+        Block emptyBlock = (await blockProducer.BuildBlock(chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock))!;
         Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV2(ExecutionPayload.Create(emptyBlock));
         result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
     }

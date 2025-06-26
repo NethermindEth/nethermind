@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -52,37 +51,17 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
         _specHelper = specHelper;
     }
 
-    protected override Block CreateEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+    protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = (IBlockProducer.Flags)0)
     {
         OptimismPayloadAttributes attrs = (payloadAttributes as OptimismPayloadAttributes)
-            ?? throw new InvalidOperationException("Payload attributes are not set");
+                                          ?? throw new InvalidOperationException("Payload attributes are not set");
 
-        BlockHeader blockHeader = base.PrepareBlockHeader(parent, attrs);
-
-        IEnumerable<Transaction> txs = _payloadAttrsTxSource.GetTransactions(parent, attrs.GasLimit, attrs);
-
-        Block block = new(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
-
-        if (_producingBlockLock.Wait(BlockProductionTimeoutMs))
+        BlockToProduce blockToProduce = base.PrepareBlock(parent, payloadAttributes, flags);
+        if ((flags & IBlockProducer.Flags.EmptyBlock) != 0)
         {
-            try
-            {
-                if (TrySetState(parent.StateRoot))
-                {
-                    return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
-                }
-                else
-                {
-                    throw new EmptyBlockProductionException($"Setting state for processing block failed: couldn't set state to stateRoot {parent.StateRoot}");
-                }
-            }
-            finally
-            {
-                _producingBlockLock.Release();
-            }
+            blockToProduce.Transactions = _payloadAttrsTxSource.GetTransactions(parent, attrs.GasLimit, attrs);
         }
-
-        throw new EmptyBlockProductionException("Setting state for processing block failed");
+        return blockToProduce;
     }
 
     protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
