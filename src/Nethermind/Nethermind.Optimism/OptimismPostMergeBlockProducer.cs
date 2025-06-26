@@ -54,7 +54,7 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
     protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = (IBlockProducer.Flags)0)
     {
         OptimismPayloadAttributes attrs = (payloadAttributes as OptimismPayloadAttributes)
-                                          ?? throw new InvalidOperationException("Payload attributes are not set");
+            ?? throw new InvalidOperationException("Payload attributes are not set");
 
         BlockToProduce blockToProduce = base.PrepareBlock(parent, payloadAttributes, flags);
         if ((flags & IBlockProducer.Flags.EmptyBlock) != 0)

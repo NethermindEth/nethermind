@@ -165,23 +165,18 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             chain => new DelayBlockImprovementContextFactory(chain.BlockProducer, TimeSpan.FromSeconds(10), improveDelay),
             TimeSpan.FromSeconds(10),
-            configurer: builder =>
-            {
-                builder
-                    .AddSingleton<ITxSource>(Substitute.For<ITxSource>())
-                    .AddSingleton<IBlockProducerTxSourceFactory>(ctx =>
-                    {
-                        IBlockProducerTxSourceFactory factory = Substitute.For<IBlockProducerTxSourceFactory>();
-                        factory.Create().Returns(new TxDelayedSource(
-                            ctx.Resolve<IBlockTree>(),
-                            ctx.Resolve<ISpecProvider>(),
-                            ctx.Resolve<IStateReader>(),
-                            ctx.Resolve<ITimestamper>(),
-                            txDelay));
-                        return factory;
-                    })
-                    ;
-            });
+            configurer: builder => builder
+                .AddSingleton<IBlockProducerTxSourceFactory>(ctx =>
+                {
+                    IBlockProducerTxSourceFactory factory = Substitute.For<IBlockProducerTxSourceFactory>();
+                    factory.Create().Returns(new TxDelayedSource(
+                        ctx.Resolve<IBlockTree>(),
+                        ctx.Resolve<ISpecProvider>(),
+                        ctx.Resolve<IStateReader>(),
+                        ctx.Resolve<ITimestamper>(),
+                        txDelay));
+                    return factory;
+                }));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
