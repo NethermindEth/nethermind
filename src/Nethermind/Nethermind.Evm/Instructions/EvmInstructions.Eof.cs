@@ -553,15 +553,12 @@ internal static partial class EvmInstructions
 
         // Immediate operand determines the swap index.
         int n = 1 + (int)codeInfo.CodeSection.Span[programCounter];
-        if (!stack.Swap<TTracingInst>(n + 1))
-            goto StackUnderflow;
+        EvmExceptionType result = stack.Swap<TTracingInst>(n + 1);
 
         programCounter += 1;
 
-        return EvmExceptionType.None;
+        return result;
     // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     BadInstruction:

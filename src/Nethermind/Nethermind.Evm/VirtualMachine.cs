@@ -1300,7 +1300,7 @@ public sealed unsafe partial class VirtualMachine(
         // Lightest weight conversion as mostly just helpful when debugging to see what the opcodes are.
         static ReadOnlySpan<Instruction> GetInstructions(ICodeInfo codeInfo)
         {
-            ReadOnlySpan<byte> codeBytes = codeInfo.CodeSection.Span;
+            ReadOnlySpan<byte> codeBytes = codeInfo.CodeSpan;
             return MemoryMarshal.CreateReadOnlySpan(
                 ref Unsafe.As<byte, Instruction>(ref MemoryMarshal.GetReference(codeBytes)),
                 codeBytes.Length);

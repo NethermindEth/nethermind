@@ -120,7 +120,7 @@ internal static partial class EvmInstructions
         // Deduct a very low gas cost for the push operation.
         gasAvailable -= GasCostOf.VeryLow;
         // Retrieve the code segment containing immediate data.
-        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSection.Span;
+        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSpan;
 
         ref byte bytes = ref MemoryMarshal.GetReference(code);
         int remainingCode = code.Length - programCounter;
@@ -508,7 +508,7 @@ internal static partial class EvmInstructions
         // Deduct a very low gas cost for the push operation.
         gasAvailable -= GasCostOf.VeryLow;
         // Retrieve the code segment containing immediate data.
-        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSection.Span;
+        ReadOnlySpan<byte> code = vm.EvmState.Env.CodeInfo.CodeSpan;
         // Use the push method defined by the specific push operation.
         TOpCount.Push<TTracingInst>(TOpCount.Count, ref stack, programCounter, code);
         // Advance the program counter by the number of bytes consumed.
@@ -551,11 +551,7 @@ internal static partial class EvmInstructions
     {
         gasAvailable -= GasCostOf.VeryLow;
         // Swap the top element with the (n+1)th element; ensure adequate stack depth.
-        if (!stack.Swap<TTracingInst>(TOpCount.Count + 1)) goto StackUnderflow;
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return stack.Swap<TTracingInst>(TOpCount.Count + 1);
     }
 
     /// <summary>

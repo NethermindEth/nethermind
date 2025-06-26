@@ -107,7 +107,7 @@ internal static partial class EvmInstructions
     public struct OpCodeCopy : IOpCodeCopy
     {
         public static ReadOnlySpan<byte> GetCode(VirtualMachine vm)
-            => vm.EvmState.Env.CodeInfo.MachineCode.Span;
+            => vm.EvmState.Env.CodeInfo.CodeSpan;
     }
 
     /// <summary>
@@ -169,7 +169,7 @@ internal static partial class EvmInstructions
             }
 
             // Get the external code from the repository.
-            ReadOnlySpan<byte> externalCode = codeInfo.MachineCode.Span;
+            ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
 
             // If EOF is enabled and the code is an EOF contract, use a predefined magic value.
             if (spec.IsEofEnabled && EofValidator.IsEof(externalCode, out _))
@@ -233,7 +233,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Attempt a peephole optimization when tracing is not active and code is available.
-        ReadOnlySpan<byte> codeSection = vm.EvmState.Env.CodeInfo.MachineCode.Span;
+        ReadOnlySpan<byte> codeSection = vm.EvmState.Env.CodeInfo.CodeSpan;
         if (!TTracingInst.IsActive && programCounter < codeSection.Length)
         {
             bool optimizeAccess = false;
@@ -286,7 +286,7 @@ internal static partial class EvmInstructions
         // No optimization applied: load the account's code from storage.
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
             .GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _)
-            .MachineCode.Span;
+            .CodeSpan;
         // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
         if (spec.IsEofEnabled && EofValidator.IsEof(accountCode, out _))
         {

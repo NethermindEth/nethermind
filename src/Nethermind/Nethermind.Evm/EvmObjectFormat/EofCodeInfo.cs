@@ -16,6 +16,7 @@ public sealed class EofCodeInfo(in EofContainer container) : ICodeInfo
     public ReadOnlyMemory<byte> CodeSection => EofContainer.CodeSection;
     public ReadOnlyMemory<byte> DataSection => EofContainer.DataSection;
     public ReadOnlyMemory<byte> ContainerSection => EofContainer.ContainerSection;
+    public ReadOnlySpan<byte> CodeSpan => CodeSection.Span;
 
     public SectionHeader CodeSectionOffset(int sectionId) => EofContainer.Header.CodeSections[sectionId];
     public SectionHeader? ContainerSectionOffset(int sectionId) => EofContainer.Header.ContainerSections.Value[sectionId];

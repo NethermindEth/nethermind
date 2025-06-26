@@ -40,6 +40,7 @@ public interface ICodeInfo
     /// By default, this returns the same contents as <see cref="MachineCode"/>.
     /// </summary>
     ReadOnlyMemory<byte> CodeSection => MachineCode;
+    ReadOnlySpan<byte> CodeSpan { get; }
 
     /// <summary>
     /// Gets the data section, which is reserved for additional data segments in EOF.

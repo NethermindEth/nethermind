@@ -549,15 +549,17 @@ public ref struct EvmStack
     public readonly bool EnsureDepth(int depth)
         => Head >= depth;
 
-    public readonly bool Swap<TTracingInst>(int depth)
+    [SkipLocalsInit]
+    public readonly EvmExceptionType Swap<TTracingInst>(int depth)
         where TTracingInst : struct, IFlag
     {
-        if (!EnsureDepth(depth)) return false;
+        int head = Head;
+        if (head < depth) goto StackUnderflow;
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
-        ref byte bottom = ref Unsafe.Add(ref bytes, (Head - depth) * WordSize);
-        ref byte top = ref Unsafe.Add(ref bytes, (Head - 1) * WordSize);
+        ref byte bottom = ref Unsafe.Add(ref bytes, (head - depth) * WordSize);
+        ref byte top = ref Unsafe.Add(ref bytes, (head - 1) * WordSize);
 
         Word buffer = Unsafe.ReadUnaligned<Word>(ref bottom);
         Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));
@@ -565,7 +567,10 @@ public ref struct EvmStack
 
         if (TTracingInst.IsActive) Trace(depth);
 
-        return true;
+        return EvmExceptionType.None;
+    // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 
     public readonly bool Exchange<TTracingInst>(int n, int m)
