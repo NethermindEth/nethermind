@@ -329,7 +329,7 @@ public class CliqueBlockProducer : IBlockProducer
     public ConcurrentDictionary<Address, bool> Proposals => _proposals;
 
     public async Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer = null,
-        PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = 0, CancellationToken token = default)
+        PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None, CancellationToken token = default)
     {
         Block? block = PrepareBlock(parentHeader);
         if (block is null)

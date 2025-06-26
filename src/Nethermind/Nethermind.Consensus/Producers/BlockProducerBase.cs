@@ -77,7 +77,7 @@ namespace Nethermind.Consensus.Producers
         }
 
         public async Task<Block?> BuildBlock(BlockHeader? parentHeader = null, IBlockTracer? blockTracer = null,
-            PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = 0, CancellationToken token = default)
+            PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None, CancellationToken token = default)
         {
             Block? block = null;
             if (await _producingBlockLock.WaitAsync(BlockProductionTimeoutMs, token))
@@ -105,7 +105,7 @@ namespace Nethermind.Consensus.Producers
             return block;
         }
 
-        protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = 0)
+        protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
             if (parentHeader is null)
             {
@@ -129,7 +129,7 @@ namespace Nethermind.Consensus.Producers
             return Task.FromResult((Block?)null);
         }
 
-        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = 0)
+        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
             if (TrySetState(parent.StateRoot))
             {
@@ -250,7 +250,7 @@ namespace Nethermind.Consensus.Producers
             return header;
         }
 
-        protected virtual BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = 0)
+        protected virtual BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 

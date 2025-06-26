@@ -64,7 +64,7 @@ public partial class EngineModuleTests
             CancellationToken cancellationToken)
         {
             await Task.Delay(delay, cancellationToken);
-            Block? block = await blockProducer.BuildBlock(parentHeader, NullBlockTracer.Instance, payloadAttributes, 0, cancellationToken);
+            Block? block = await blockProducer.BuildBlock(parentHeader, NullBlockTracer.Instance, payloadAttributes, IBlockProducer.Flags.None, cancellationToken);
             if (block is not null)
             {
                 CurrentBestBlock = block;

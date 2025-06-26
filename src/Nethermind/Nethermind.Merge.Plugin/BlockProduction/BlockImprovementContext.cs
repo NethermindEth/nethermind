@@ -39,7 +39,7 @@ public class BlockImprovementContext : IBlockImprovementContext
         CancellationToken ct = _linkedCancellation.Token;
         // Task.Run so doesn't block FCU response while first block is being produced
         ImprovementTask = Task.Run(() => blockProducer
-            .BuildBlock(parentHeader, _feesTracer, payloadAttributes, 0, ct)
+            .BuildBlock(parentHeader, _feesTracer, payloadAttributes, IBlockProducer.Flags.None, ct)
             .ContinueWith(SetCurrentBestBlock));
     }
 

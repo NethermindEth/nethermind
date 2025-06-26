@@ -16,12 +16,13 @@ public interface IBlockProducer
         BlockHeader? parentHeader = null,
         IBlockTracer? blockTracer = null,
         PayloadAttributes? payloadAttributes = null,
-        Flags flags = 0,
+        Flags flags = Flags.None,
         CancellationToken cancellationToken = default);
 
     [Flags]
     public enum Flags
     {
+        None = 0,
         EmptyBlock = 1,
         DontSeal = 2,
 
