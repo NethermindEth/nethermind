@@ -133,7 +133,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         fixed (byte* modulusData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength))
         {
             if (modulusData is not null)
-                Gmp.mpz_import(modulusInt, (nuint)modulusLength, 1, 1, 1, 0, (nint)modulusData);
+                Gmp.mpz_import(modulusInt, (nuint)modulusLength, 1, 1, 1, nuint.Zero, (nint)modulusData);
         }
 
         if (Gmp.mpz_sgn(modulusInt) == 0)
@@ -147,10 +147,10 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         fixed (byte* expData = inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength))
         {
             if (baseData is not null)
-                Gmp.mpz_import(baseInt, (nuint)baseLength, 1, 1, 1, 0, (nint)baseData);
+                Gmp.mpz_import(baseInt, (nuint)baseLength, 1, 1, 1, nuint.Zero, (nint)baseData);
 
             if (expData is not null)
-                Gmp.mpz_import(expInt, (nuint)expLength, 1, 1, 1, 0, (nint)expData);
+                Gmp.mpz_import(expInt, (nuint)expLength, 1, 1, 1, nuint.Zero, (nint)expData);
         }
 
         Gmp.mpz_powm(powmResult, baseInt, expInt, modulusInt);
@@ -160,7 +160,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         byte[] result = new byte[modulusLength];
 
         fixed (byte* ptr = result)
-            Gmp.mpz_export((nint)(ptr + offset), out _, 1, 1, 1, 0, powmResult);
+            Gmp.mpz_export((nint)(ptr + offset), out _, 1, 1, 1, nuint.Zero, powmResult);
 
         return (result, true);
     }
