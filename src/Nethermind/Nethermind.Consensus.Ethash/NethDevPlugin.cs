@@ -10,9 +10,6 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
-using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 

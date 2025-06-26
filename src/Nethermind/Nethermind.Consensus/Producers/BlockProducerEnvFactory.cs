@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -12,6 +13,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
@@ -20,6 +22,42 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Producers
 {
+    public class AutoBlockProducerEnvFactory(
+        ILifetimeScope rootLifetime,
+        IWorldStateManager worldStateManager,
+        IBlockProducerTxSourceFactory txSourceFactory,
+        IBlocksConfig blocksConfig,
+        ISpecProvider specProvider
+    ) : IBlockProducerEnvFactory
+    {
+        public IBlockProducerEnv Create()
+        {
+            IWorldState worldState = worldStateManager.CreateResettableWorldState();
+            ILifetimeScope lifetimeScope = rootLifetime.BeginLifetimeScope(builder => builder
+                .AddScoped(worldState)
+                .AddScoped<ITxSource>(txSourceFactory.Create())
+                .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
+                .AddScoped(BlockchainProcessor.Options.NoReceipts)
+                .AddScoped<ITransactionProcessorAdapter, BuildUpTransactionProcessorAdapter>()
+                .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
+                .AddScoped<BlockProcessor.IBlockProductionTransactionPicker>(new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
+                .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
+
+                .AddScoped<IBlockProducerEnv, AutoBlockProducerEnv>()
+            );
+
+            rootLifetime.Disposer.AddInstanceForAsyncDisposal(lifetimeScope);
+
+            return lifetimeScope.Resolve<IBlockProducerEnv>();
+        }
+    }
+
+    public record AutoBlockProducerEnv(
+        IBlockTree BlockTree,
+        IBlockchainProcessor ChainProcessor,
+        IWorldState ReadOnlyStateProvider ,
+        ITxSource TxSource) : IBlockProducerEnv;
+
     public class BlockProducerEnvFactory : IBlockProducerEnvFactory
     {
         protected readonly IWorldStateManager _worldStateManager;
