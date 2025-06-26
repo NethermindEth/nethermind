@@ -17,7 +17,7 @@
     <Copyright>Demerzel Solutions Limited</Copyright>
     <Product>Nethermind</Product>
     <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit)</SourceRevisionId>
-    <VersionPrefix>1.31.11</VersionPrefix>
+    <VersionPrefix>1.31.12</VersionPrefix>
     <VersionSuffix></VersionSuffix>
   </PropertyGroup>
 
