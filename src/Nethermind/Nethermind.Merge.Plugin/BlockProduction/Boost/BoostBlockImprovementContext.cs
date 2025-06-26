@@ -54,7 +54,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         payloadAttributes = await _boostRelay.GetPayloadAttributes(payloadAttributes, cancellationToken);
         _stateReader.TryGetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out AccountStruct account);
         UInt256 balanceBefore = account.Balance;
-        Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, cancellationToken);
+        Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, 0, cancellationToken);
         if (block is not null)
         {
             CurrentBestBlock = block;

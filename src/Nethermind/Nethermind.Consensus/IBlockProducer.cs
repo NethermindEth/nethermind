@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
@@ -15,5 +16,13 @@ public interface IBlockProducer
         BlockHeader? parentHeader = null,
         IBlockTracer? blockTracer = null,
         PayloadAttributes? payloadAttributes = null,
+        Flags flags = 0,
         CancellationToken cancellationToken = default);
+
+    [Flags]
+    public enum Flags
+    {
+        EmptyBlock = 1,
+        DontSeal = 2,
+    }
 }
