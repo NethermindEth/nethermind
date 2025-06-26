@@ -101,4 +101,45 @@ public class IntegrationTests
 
         await Task.CompletedTask;
     }
+
+    [Test]
+    public async Task NodeSendAndListenToTopic()
+    {
+        using var grpcChannel = GrpcChannel.ForAddress(new Uri("http://localhost:33221"), _grpcChannelOptions);
+
+        var client = new GrpcOptimumNodeClient(grpcChannel);
+        var topic = "test";
+        var messageCount = 10;
+
+        var sender = Task.Run(async () =>
+        {
+            for (int i = 0; i < messageCount; i++)
+            {
+                byte[] data = Encoding.UTF8.GetBytes($"msg = {Guid.NewGuid()}");
+                await client.SendToTopicAsync(topic, data, CancellationToken.None);
+            }
+        });
+
+        var subscriber = Task.Run(async () =>
+        {
+            var messages = client.SubscribeToTopic(topic);
+            var receivedCount = 0;
+            await foreach (var _ in messages)
+            {
+                receivedCount++;
+
+                if (receivedCount == messageCount)
+                {
+                    break;
+                }
+            }
+
+            return receivedCount;
+        });
+
+        await Task.WhenAll(sender, subscriber);
+
+        var receivedCount = subscriber.Result;
+        receivedCount.Should().Be(messageCount);
+    }
 }
