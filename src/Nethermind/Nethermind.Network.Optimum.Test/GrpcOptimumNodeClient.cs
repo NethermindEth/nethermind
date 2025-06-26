@@ -13,14 +13,19 @@ using Grpc.Net.Client;
 
 namespace Nethermind.Network.Optimum.Test;
 
-public interface IOptimumNodeClient
+public interface ITopicSubscriber<out T>
 {
-    IAsyncEnumerable<OptimumNodeMessage> SubscribeToTopic(string topic, CancellationToken cancellation = default);
+    IAsyncEnumerable<T> SubscribeToTopic(string topic, CancellationToken cancellation = default);
+}
+
+public interface ITopicPublisher
+{
+    Task PublishToTopicAsync(string topic, ReadOnlySpan<byte> data, CancellationToken cancellation = default);
 }
 
 public sealed class GrpcOptimumNodeClient(
     GrpcChannel grpcChannel
-) : IOptimumNodeClient
+) : ITopicSubscriber<OptimumNodeMessage>, ITopicPublisher
 {
     internal static class ListenCommandsRequestType
     {
