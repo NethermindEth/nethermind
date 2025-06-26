@@ -11,7 +11,6 @@ namespace Nethermind.Merge.Plugin
 {
     public partial class MergePlugin
     {
-        protected PostMergeBlockProducer _postMergeBlockProducer = null!;
         protected ManualTimestamper? _manualTimestamper;
 
         protected virtual PostMergeBlockProducerFactory CreateBlockProducerFactory()
@@ -45,8 +44,8 @@ namespace Nethermind.Merge.Plugin
 
                 BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create();
 
-                _postMergeBlockProducer = CreateBlockProducerFactory().Create(blockProducerEnv);
-                _api.BlockProducer = new MergeBlockProducer(blockProducer, _postMergeBlockProducer, _poSSwitcher);
+                PostMergeBlockProducer postMergeBlockProducer = CreateBlockProducerFactory().Create(blockProducerEnv);
+                _api.BlockProducer = new MergeBlockProducer(blockProducer, postMergeBlockProducer, _poSSwitcher);
             }
 
             return _api.BlockProducer!;
@@ -64,8 +63,6 @@ namespace Nethermind.Merge.Plugin
                     ? baseRunnerFactory.InitBlockProducerRunner(preMergeBlockProducer)
                     : null;
 
-                // IBlockProducer postMergeBlockProducer = mergeBlockProducer.PostMergeBlockProducer;
-                // TODO: Why is mergeBlockProducer used instead of postMergeBlockProducer?
                 StandardBlockProducerRunner postMergeRunner = new StandardBlockProducerRunner(
                     _api.ManualBlockProductionTrigger, _api.BlockTree!, mergeBlockProducer);
 
