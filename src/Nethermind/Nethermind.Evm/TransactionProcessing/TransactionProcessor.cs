@@ -154,7 +154,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
-            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice));
+            VirtualMachine.SetTxExecutionContext(new TxExecutionContext(tx.SenderAddress, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice));
 
             UpdateMetrics(opts, effectiveGasPrice);
 

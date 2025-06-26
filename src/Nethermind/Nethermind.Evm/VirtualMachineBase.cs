@@ -101,12 +101,12 @@ public unsafe partial class VirtualMachineBase(
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
 
-    private TxExecutionContext _txExecutionContext;
-    public ref readonly TxExecutionContext TxExecutionContext => ref _txExecutionContext;
+    private ITxExecutionContext _txExecutionContext;
+    public ref readonly ITxExecutionContext TxExecutionContext => ref _txExecutionContext;
     /// <summary>
     /// Transaction context
     /// </summary>
-    public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
+    public void SetTxExecutionContext(in ITxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
 
     public EvmState EvmState { get => _currentState; private set => _currentState = value; }
     public int SectionIndex { get; set; }

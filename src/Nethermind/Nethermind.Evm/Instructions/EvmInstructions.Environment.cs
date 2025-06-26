@@ -210,7 +210,7 @@ internal static partial class EvmInstructions
     {
         gasAvailable -= TOpEnv.GasCost;
 
-        ref readonly UInt256 result = ref TOpEnv.Operation(vm);
+        UInt256 result = TOpEnv.Operation(vm);
 
         stack.PushUInt256<TTracingInst>(in result);
 

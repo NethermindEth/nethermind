@@ -10,11 +10,21 @@ namespace Nethermind.Evm
         Address origin,
         ICodeInfoRepository codeInfoRepository,
         byte[][] blobVersionedHashes,
-        in UInt256 gasPrice)
+        in UInt256 gasPrice) : ITxExecutionContext
     {
-        public readonly Address Origin = origin;
-        public readonly ICodeInfoRepository CodeInfoRepository = codeInfoRepository;
-        public readonly byte[][]? BlobVersionedHashes = blobVersionedHashes;
-        public readonly UInt256 GasPrice = gasPrice;
+        private readonly UInt256 _gasPrice = gasPrice;
+
+        public readonly Address Origin => origin;
+        public readonly ICodeInfoRepository CodeInfoRepository => codeInfoRepository;
+        public readonly byte[][]? BlobVersionedHashes => blobVersionedHashes;
+        public readonly UInt256 GasPrice => _gasPrice;
+    }
+
+    public interface ITxExecutionContext
+    {
+        Address Origin { get; }
+        ICodeInfoRepository CodeInfoRepository { get; }
+        byte[][]? BlobVersionedHashes { get; }
+        UInt256 GasPrice { get; }
     }
 }
