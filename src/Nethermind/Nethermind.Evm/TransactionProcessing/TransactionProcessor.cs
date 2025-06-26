@@ -740,12 +740,12 @@ namespace Nethermind.Evm.TransactionProcessing
             ReadOnlySpan<byte> auxExtraData = substate.Output.Bytes.Span;
             EofCodeInfo deployCodeInfo = (EofCodeInfo)substate.Output.DeployCode;
 
-            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, deployCodeInfo.MachineCode.Length + auxExtraData.Length);
+            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, deployCodeInfo.Code.Length + auxExtraData.Length);
             if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
             {
                 return false;
             }
-            int codeLength = deployCodeInfo.MachineCode.Length + auxExtraData.Length;
+            int codeLength = deployCodeInfo.Code.Length + auxExtraData.Length;
             // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
             if (codeLength > spec.MaxCodeSize)
             {
@@ -754,9 +754,9 @@ namespace Nethermind.Evm.TransactionProcessing
             // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
             byte[] bytecodeResult = new byte[codeLength];
             // 2 - 1 - 1 - copy old container
-            deployCodeInfo.MachineCode.Span.CopyTo(bytecodeResult);
+            deployCodeInfo.Code.Span.CopyTo(bytecodeResult);
             // 2 - 1 - 2 - copy aux data to dataSection
-            auxExtraData.CopyTo(bytecodeResult.AsSpan(deployCodeInfo.MachineCode.Length));
+            auxExtraData.CopyTo(bytecodeResult.AsSpan(deployCodeInfo.Code.Length));
 
             // 2 - 2 - update data section size in the header u16
             int dataSubHeaderSectionStart =

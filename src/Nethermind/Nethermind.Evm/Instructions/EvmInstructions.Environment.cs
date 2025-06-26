@@ -301,7 +301,7 @@ internal static partial class EvmInstructions
     public struct OpCodeSize : IOpEnvUInt32
     {
         public static uint Operation(EvmState vmState)
-            => (uint)vmState.Env.CodeInfo.MachineCode.Length;
+            => (uint)vmState.Env.CodeInfo.CodeSpan.Length;
     }
 
     /// <summary>
