@@ -208,10 +208,10 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
             BlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
-            PostMergeBlockProducer = postMergeBlockProducer;
+            BlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(
                 postMergeBlockProducer,
-                StoringBlockImprovementContextFactory = new StoringBlockImprovementContextFactory(CreateBlockImprovementContextFactory(PostMergeBlockProducer)),
+                StoringBlockImprovementContextFactory = new StoringBlockImprovementContextFactory(CreateBlockImprovementContextFactory(BlockProducer)),
                 TimerFactory.Default,
                 LogManager,
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),

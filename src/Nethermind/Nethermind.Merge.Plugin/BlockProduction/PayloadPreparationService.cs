@@ -49,7 +49,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
 
     public PayloadPreparationService(
-        PostMergeBlockProducer blockProducer,
+        IBlockProducer blockProducer,
         IBlockImprovementContextFactory blockImprovementContextFactory,
         ITimerFactory timerFactory,
         ILogManager logManager,

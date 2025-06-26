@@ -44,8 +44,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
         }
 
-        public bool SupportsBlobs => TxSource.SupportsBlobs;
-
         protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             BlockHeader blockHeader = base.PrepareBlockHeader(parent, payloadAttributes);

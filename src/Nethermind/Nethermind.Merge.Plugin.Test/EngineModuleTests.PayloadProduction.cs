@@ -9,7 +9,9 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -17,6 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -65,7 +68,7 @@ public partial class EngineModuleTests
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         TimeSpan timePerSlot = TimeSpan.FromMilliseconds(10);
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
-            static chain => new BlockImprovementContextFactory(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(1)),
+            static chain => new BlockImprovementContextFactory(chain.BlockProducer!, TimeSpan.FromSeconds(1)),
             timePerSlot, mergeConfig);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -134,12 +137,19 @@ public partial class EngineModuleTests
         }
     }
 
-    private class TxDelayedSource(Transaction[] transactions, TimeSpan delay) : ITxSource
+    private class TxDelayedSource(IBlockTree blockTree, ISpecProvider specProvider, IStateReader stateReader, ITimestamper timestamper, TimeSpan delay) : ITxSource
     {
         public bool SupportsBlobs { get; }
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
         {
+            Hash256 startingHead = blockTree.HeadHash;
+            uint count = 50;
+            int value = 10;
+            Address recipient = TestItem.AddressF;
+            PrivateKey sender = TestItem.PrivateKeyB;
+            Transaction[] transactions = BuildTransactions(blockTree, specProvider, stateReader, timestamper, startingHead, sender, recipient, count, value, out _, out _);
+
             foreach (var item in transactions)
             {
                 if (delay.TotalMilliseconds > 0)
@@ -153,18 +163,25 @@ public partial class EngineModuleTests
     public async Task getPayloadV1_waits_for_block_production(TimeSpan txDelay, TimeSpan improveDelay, int minCount, int maxCount)
     {
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
-            chain =>
+            chain => new DelayBlockImprovementContextFactory(chain.BlockProducer, TimeSpan.FromSeconds(10), improveDelay),
+            TimeSpan.FromSeconds(10),
+            configurer: builder =>
             {
-                Hash256 startingHead = chain.BlockTree.HeadHash;
-                uint count = 50;
-                int value = 10;
-                Address recipient = TestItem.AddressF;
-                PrivateKey sender = TestItem.PrivateKeyB;
-                Transaction[] transactions = BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
-                chain.PostMergeBlockProducer!.TxSource = new TxDelayedSource(transactions, txDelay);
-                return new DelayBlockImprovementContextFactory(chain.PostMergeBlockProducer, TimeSpan.FromSeconds(10), improveDelay);
-            },
-            TimeSpan.FromSeconds(10));
+                builder
+                    .AddSingleton<ITxSource>(Substitute.For<ITxSource>())
+                    .AddSingleton<IBlockProducerTxSourceFactory>(ctx =>
+                    {
+                        IBlockProducerTxSourceFactory factory = Substitute.For<IBlockProducerTxSourceFactory>();
+                        factory.Create().Returns(new TxDelayedSource(
+                            ctx.Resolve<IBlockTree>(),
+                            ctx.Resolve<ISpecProvider>(),
+                            ctx.Resolve<IStateReader>(),
+                            ctx.Resolve<ITimestamper>(),
+                            txDelay));
+                        return factory;
+                    })
+                    ;
+            });
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
@@ -334,7 +351,7 @@ public partial class EngineModuleTests
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 50 * delay;
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
-            chain => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot))),
+            chain => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(chain.BlockProducer!, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot))),
             timePerSlot, delay: delay);
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.BlockImprovementContextFactory;
 
@@ -388,7 +405,7 @@ public partial class EngineModuleTests
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 1000 * delay;
         StoringBlockImprovementContextFactory improvementContextFactory = new(
-            new BlockImprovementContextFactory(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)),
+            new BlockImprovementContextFactory(chain.BlockProducer!, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)),
             skipDuplicatedContext: true
         );
         ConfigureBlockchainWithImprovementContextFactory(chain, improvementContextFactory, timePerSlot, delay);
@@ -426,7 +443,7 @@ public partial class EngineModuleTests
         TimeSpan timePerSlot = 50 * delay;
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             chain => new StoringBlockImprovementContextFactory(new DelayBlockImprovementContextFactory(
-                chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot), 3 * delay)),
+                chain.BlockProducer!, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot), 3 * delay)),
             timePerSlot, delay: delay);
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.BlockImprovementContextFactory;
 
@@ -467,7 +484,7 @@ public partial class EngineModuleTests
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 4 * delay;
         ConfigureBlockchainWithImprovementContextFactory(chain,
-            new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot))),
+            new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(chain.BlockProducer!, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot))),
             timePerSlot, delay);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -507,7 +524,7 @@ public partial class EngineModuleTests
         };
 
         // we build one more block on the same level
-        Block block31B = (await chain.PostMergeBlockProducer!.BuildBlock(block30.Header, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock))!;
+        Block block31B = (await chain.BlockProducer!.BuildBlock(block30.Header, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock))!;
         await rpc.engine_newPayloadV1(ExecutionPayload.Create(block31B));
 
         // ...and we change the main chain, so main chain now is 30->31B, block improvement for block 32A is still in progress
@@ -547,7 +564,7 @@ public partial class EngineModuleTests
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 4 * delay;
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
-            (chain) => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot))),
+            (chain) => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(chain.BlockProducer!, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot))),
             timePerSlot, delay: delay);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -621,7 +638,7 @@ public partial class EngineModuleTests
         await rpc.engine_forkchoiceUpdatedV1(
             new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
 
-        PostMergeBlockProducer blockProducer = chain.PostMergeBlockProducer!;
+        IBlockProducer blockProducer = chain.BlockProducer!;
         Block emptyBlock = (await blockProducer.BuildBlock(
             chain.BlockTree.Head!.Header,
             payloadAttributes: new PayloadAttributes
@@ -644,7 +661,7 @@ public partial class EngineModuleTests
         await rpc.engine_forkchoiceUpdatedV2(
             new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
 
-        PostMergeBlockProducer blockProducer = chain.PostMergeBlockProducer!;
+        IBlockProducer blockProducer = chain.BlockProducer!;
         PayloadAttributes payloadAttributes = new()
         {
             Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks,
@@ -661,10 +678,11 @@ public partial class EngineModuleTests
         Func<MergeTestBlockchain, IBlockImprovementContextFactory> factoryFactory,
         TimeSpan timePerSlot,
         IMergeConfig? mergeConfig = null,
-        TimeSpan? delay = null
+        TimeSpan? delay = null,
+        Action<ContainerBuilder>? configurer = null
     )
     {
-        MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig);
+        MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig, configurer: configurer);
         IBlockImprovementContextFactory improvementContextFactory = factoryFactory(chain);
         ConfigureBlockchainWithImprovementContextFactory(chain, improvementContextFactory, timePerSlot, delay);
         return chain;
@@ -679,7 +697,7 @@ public partial class EngineModuleTests
     {
         chain.BlockImprovementContextFactory = blockImprovementContext;
         chain.PayloadPreparationService = new PayloadPreparationService(
-            chain.PostMergeBlockProducer!,
+            chain.BlockProducer!,
             chain.BlockImprovementContextFactory,
             TimerFactory.Default,
             chain.LogManager,

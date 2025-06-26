@@ -113,7 +113,8 @@ namespace Nethermind.Consensus.Producers
             }
             else
             {
-                if (Sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
+                bool dontSeal = (flags & IBlockProducer.Flags.DontSeal) != 0;
+                if (dontSeal || Sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
                 {
                     Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
                     return ProduceNewBlock(parentHeader, token, blockTracer, payloadAttributes, flags);
