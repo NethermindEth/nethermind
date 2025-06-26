@@ -27,7 +27,7 @@ public interface ICodeInfo
     /// Gets the raw machine code as a <see cref="ReadOnlyMemory{Byte}"/> segment.
     /// This is the primary code section from which the EVM executes instructions.
     /// </summary>
-    ReadOnlyMemory<byte> MachineCode { get; }
+    ReadOnlyMemory<byte> Code { get; }
 
     /// <summary>
     /// Indicates whether this code represents a precompiled contract.
@@ -37,9 +37,9 @@ public interface ICodeInfo
 
     /// <summary>
     /// Gets the code section. 
-    /// By default, this returns the same contents as <see cref="MachineCode"/>.
+    /// By default, this returns the same contents as <see cref="Code"/>.
     /// </summary>
-    ReadOnlyMemory<byte> CodeSection => MachineCode;
+    ReadOnlyMemory<byte> CodeSection => Code;
     ReadOnlySpan<byte> CodeSpan { get; }
 
     /// <summary>

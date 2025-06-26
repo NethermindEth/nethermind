@@ -344,11 +344,11 @@ public sealed unsafe partial class VirtualMachine(
         EofCodeInfo deployCodeInfo = (EofCodeInfo)callResult.Output.Container;
 
         // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
-        Span<byte> bytecodeResult = new byte[deployCodeInfo.MachineCode.Length + auxExtraData.Length];
+        Span<byte> bytecodeResult = new byte[deployCodeInfo.Code.Length + auxExtraData.Length];
         // 2 - 1 - 1 - copy old container
-        deployCodeInfo.MachineCode.Span.CopyTo(bytecodeResult);
+        deployCodeInfo.Code.Span.CopyTo(bytecodeResult);
         // 2 - 1 - 2 - copy aux data to dataSection
-        auxExtraData.CopyTo(bytecodeResult[deployCodeInfo.MachineCode.Length..]);
+        auxExtraData.CopyTo(bytecodeResult[deployCodeInfo.Code.Length..]);
 
         // 2 - 2 - update data section size in the header u16
         int dataSubHeaderSectionStart =
@@ -807,11 +807,11 @@ public sealed unsafe partial class VirtualMachine(
             currentState.From,
             currentState.To,
             currentState.ExecutionType.IsAnyCreate()
-                ? currentState.Env.CodeInfo.MachineCode
+                ? currentState.Env.CodeInfo.Code
                 : currentState.Env.InputData,
             currentState.ExecutionType);
 
-        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo?.MachineCode ?? default);
+        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo?.Code ?? default);
     }
 
     /// <summary>
@@ -1067,7 +1067,7 @@ public sealed unsafe partial class VirtualMachine(
         }
 
         // If no machine code is present, treat the call as empty.
-        if (env.CodeInfo.MachineCode.Length == 0)
+        if (env.CodeInfo.CodeSpan.Length == 0)
         {
             // Increment a metric for empty calls if this is a nested call.
             if (!vmState.IsTopLevel)

@@ -9,7 +9,7 @@ namespace Nethermind.Evm.CodeAnalysis;
 public sealed class EofCodeInfo(in EofContainer container) : ICodeInfo
 {
     public EofContainer EofContainer { get; private set; } = container;
-    public ReadOnlyMemory<byte> MachineCode => EofContainer.Container;
+    public ReadOnlyMemory<byte> Code => EofContainer.Container;
     public int Version => EofContainer.Header.Version;
     public bool IsEmpty => EofContainer.IsEmpty;
     public ReadOnlyMemory<byte> TypeSection => EofContainer.TypeSection;

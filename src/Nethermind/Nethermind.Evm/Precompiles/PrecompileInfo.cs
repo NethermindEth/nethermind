@@ -8,8 +8,8 @@ namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed class PrecompileInfo(IPrecompile precompile) : ICodeInfo
 {
-    public ReadOnlyMemory<byte> MachineCode => Array.Empty<byte>();
-    ReadOnlySpan<byte> ICodeInfo.CodeSpan => MachineCode.Span;
+    public ReadOnlyMemory<byte> Code => Array.Empty<byte>();
+    ReadOnlySpan<byte> ICodeInfo.CodeSpan => Code.Span;
     public IPrecompile? Precompile { get; } = precompile;
 
     public bool IsPrecompile => true;
