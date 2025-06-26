@@ -60,6 +60,7 @@ jobs:
     needs: publish-ppa
     steps:
       - name: Wait for PPA package to be published
+        if: github.run_attempt == 1
         run: sleep 2h
       - name: Install PPA dependencies
         run: |
