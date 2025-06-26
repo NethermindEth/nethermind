@@ -86,6 +86,7 @@
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="9.0.5" />
     <PackageVersion Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="22.0.14" />
     <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.0.14" />
+    <PackageVersion Include="Testcontainers" Version="4.6.0" />
     <PackageVersion Include="Websocket.Client" Version="5.2.0" />
     <PackageVersion Include="ZstdSharp.Port" Version="0.8.5" />
   </ItemGroup>

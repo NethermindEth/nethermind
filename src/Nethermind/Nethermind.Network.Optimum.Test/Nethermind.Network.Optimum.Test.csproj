@@ -10,11 +10,19 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="identity/p2p.key">
+      <LogicalName>identity/p2p.key</LogicalName>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="NUnit" />
     <PackageReference Include="NUnit.Analyzers" />
     <PackageReference Include="NUnit3TestAdapter" />
+    <PackageReference Include="Testcontainers" />
 
     <PackageReference Include="System.Linq.Async" />
 
