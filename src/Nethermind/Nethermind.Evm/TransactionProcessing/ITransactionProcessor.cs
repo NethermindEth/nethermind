@@ -18,10 +18,13 @@ public interface ITransactionProcessor
         return Execute(transaction, txTracer);
     }
 
+    TransactionResult Execute(Transaction transaction, BlockHeader header, ITxTracer txTracer);
+
     /// <summary>
     /// Call transaction, rollback state
     /// </summary>
     TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer);
+    TransactionResult CallAndRestore(Transaction transaction, BlockHeader header, ITxTracer txTracer);
     TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blockExecutionContext, ITxTracer txTracer)
     {
         SetBlockExecutionContext(in blockExecutionContext);

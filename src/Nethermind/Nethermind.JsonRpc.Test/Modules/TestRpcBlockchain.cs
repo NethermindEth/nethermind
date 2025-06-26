@@ -230,7 +230,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<IProtocolValidator>(),
                 Substitute.For<INetworkStorage>(),
-                new ForkInfo(SpecProvider, GetGenesisBlock(WorldStateManager.GlobalWorldState).Hash!),
+                Container.Resolve<IForkInfo>(),
                 Substitute.For<IGossipPolicy>(),
                 WorldStateManager,
                 LimboLogs.Instance,

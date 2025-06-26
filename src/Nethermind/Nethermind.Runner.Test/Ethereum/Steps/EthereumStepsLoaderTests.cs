@@ -10,6 +10,7 @@ using FluentAssertions;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Init;
@@ -23,6 +24,7 @@ using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Shutter;
 using Nethermind.Shutter.Config;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.Taiko;
 using NUnit.Framework;
 
@@ -51,8 +53,8 @@ public class EthereumStepsLoaderTests
     [Test]
     public void DoubleCheck_PluginsSteps()
     {
-        CheckPlugin(new AuRaPlugin(new ChainSpec()));
-        CheckPlugin(new OptimismPlugin(new ChainSpec()));
+        CheckPlugin(new AuRaPlugin(new ChainSpec() { EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new AuRaChainSpecEngineParameters()) }));
+        CheckPlugin(new OptimismPlugin(new ChainSpec() { EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters()) }));
         CheckPlugin(new TaikoPlugin(new ChainSpec()));
         CheckPlugin(new AuRaMergePlugin(new ChainSpec(), new MergeConfig()));
         CheckPlugin(new SnapshotPlugin(new SnapshotConfig()));
@@ -80,7 +82,12 @@ public class EthereumStepsLoaderTests
 
     private void CheckPlugin(INethermindPlugin plugin)
     {
-        plugin.GetSteps().ToHashSet().Should().BeEquivalentTo(LoadStepInfoFromAssembly(plugin.GetType().Assembly));
+        using IContainer container = new ContainerBuilder()
+            .AddModule(plugin.Module)
+            .Build();
+
+        StepInfo[] steps = container.Resolve<IList<StepInfo>>().ToArray();
+        steps.ToHashSet().Should().BeEquivalentTo(LoadStepInfoFromAssembly(plugin.GetType().Assembly));
     }
 
     private static IEnumerable<StepInfo> LoadStepInfoFromAssembly(Assembly assembly)

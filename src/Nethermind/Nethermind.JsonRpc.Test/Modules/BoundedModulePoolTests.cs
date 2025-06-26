@@ -55,7 +55,7 @@ public class BoundedModulePoolTests
             Substitute.For<IEthSyncingInfo>(),
             Substitute.For<IFeeHistoryOracle>(),
             Substitute.For<IProtocolsManager>(),
-            new BlocksConfig().SecondsPerSlot),
+            new BlocksConfig()),
              1, 1000);
 
         return Task.CompletedTask;
