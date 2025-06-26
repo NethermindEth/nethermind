@@ -98,7 +98,7 @@ public abstract class BlockchainTestBase
 
         if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
         {
-            await KzgPolynomialCommitments.InitializeAsync();
+            await IBlobProofsManager.For(ProofVersion.V0).InitAsync();
         }
 
         DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);

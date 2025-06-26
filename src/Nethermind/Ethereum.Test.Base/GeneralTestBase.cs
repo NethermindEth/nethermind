@@ -37,7 +37,7 @@ namespace Ethereum.Test.Base
         {
             _logManager ??= LimboLogs.Instance;
             _logger = _logManager.GetClassLogger();
-            KzgPolynomialCommitments.InitializeAsync().Wait();
+            IBlobProofsManager.For(ProofVersion.V0).InitAsync().Wait();
         }
 
         [SetUp]
