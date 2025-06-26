@@ -48,7 +48,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
             BlockHeader blockHeader = base.PrepareBlockHeader(parent, payloadAttributes);
 
-            // TODO: this seems to me that it should be done in the Eth2 seal engine?
             blockHeader.ExtraData = _blocksConfig.GetExtraDataBytes();
             blockHeader.IsPostMerge = true;
             IReleaseSpec spec = _specProvider.GetSpec(blockHeader);
