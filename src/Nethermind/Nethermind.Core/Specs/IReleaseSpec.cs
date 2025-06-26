@@ -497,5 +497,10 @@ namespace Nethermind.Core.Specs
         public bool IsEip7939Enabled { get; }
 
         public bool CLZEnabled => IsEip7939Enabled;
+
+        /// <summary>
+        /// EIP-7907: Meter Contract Code Size And Increase Limit
+        /// </summary>
+        public bool IsEip7907Enabled { get; }
     }
 }

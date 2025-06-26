@@ -20,6 +20,8 @@ namespace Nethermind.Specs.Test
 
         public long MaxCodeSize => spec.MaxCodeSize;
 
+        public long MaxInitCodeSize => spec.MaxInitCodeSize;
+
         public long MinGasLimit => spec.MinGasLimit;
 
         public long GasLimitBoundDivisor => spec.GasLimitBoundDivisor;
@@ -188,5 +190,6 @@ namespace Nethermind.Specs.Test
         Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
         Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
         public bool IsEip7939Enabled => spec.IsEip7939Enabled;
+        public bool IsEip7907Enabled => spec.IsEip7907Enabled;
     }
 }

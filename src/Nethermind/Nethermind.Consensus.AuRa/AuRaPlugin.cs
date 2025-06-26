@@ -19,7 +19,6 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -78,12 +77,6 @@ namespace Nethermind.Consensus.AuRa
                 blockProducer);
         }
 
-        public IEnumerable<StepInfo> GetSteps()
-        {
-            yield return typeof(InitializeBlockchainAuRa);
-            yield return typeof(LoadGenesisBlockAuRa);
-        }
-
         public IModule Module => new AuRaModule(chainSpec);
 
         public Type ApiType => typeof(AuRaNethermindApi);
@@ -111,6 +104,10 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<IReportingValidator, IMainProcessingContext>((mainProcessingContext) =>
                     ((AuRaBlockProcessor)mainProcessingContext.BlockProcessor).AuRaValidator.GetReportingValidator())
                 .AddSource(new FallbackToFieldFromApi<AuRaNethermindApi>())
+
+                // Steps override
+                .AddStep(typeof(InitializeBlockchainAuRa))
+                .AddStep(typeof(LoadGenesisBlockAuRa))
 
                 // Block processing components
                 .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()

@@ -381,7 +381,6 @@ public class TestBlockchain : IDisposable
         new BlockCachePreWarmer(
             ReadOnlyTxProcessingEnvFactory,
             WorldStateManager.GlobalWorldState,
-            SpecProvider,
             4,
             LogManager,
             (WorldStateManager.GlobalWorldState as IPreBlockCaches)?.Caches);

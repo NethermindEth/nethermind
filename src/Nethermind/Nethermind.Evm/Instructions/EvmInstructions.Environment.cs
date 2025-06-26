@@ -679,8 +679,6 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionBlobHash<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
-        IReleaseSpec spec = vm.Spec;
-
         // Deduct the gas cost for blob hash operation.
         gasAvailable -= GasCostOf.BlobHash;
 
@@ -735,7 +733,10 @@ internal static partial class EvmInstructions
         long number = a > long.MaxValue ? long.MaxValue : (long)a.u0;
 
         // Retrieve the block hash for the given block number.
-        Hash256? blockHash = vm.BlockHashProvider.GetBlockhash(vm.BlockExecutionContext.Header, number);
+        BlockHeader header = vm.BlockExecutionContext.Header;
+        Hash256? blockHash = number >= header.Number ?
+            null : // Current block or higher is null, don't bother looking up
+            vm.BlockHashProvider.GetBlockhash(header, number, vm.Spec);
 
         // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
         stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);
