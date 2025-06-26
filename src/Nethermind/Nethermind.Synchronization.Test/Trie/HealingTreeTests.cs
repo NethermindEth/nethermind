@@ -21,7 +21,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.State.Healing;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;

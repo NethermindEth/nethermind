@@ -36,7 +36,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.Specs.Test.ChainSpecStyle;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;

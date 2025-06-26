@@ -22,7 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;

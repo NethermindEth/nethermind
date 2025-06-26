@@ -4,8 +4,9 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 
-namespace Nethermind.Evm.TransactionProcessing;
+namespace Nethermind.Consensus.Processing;
 
 public interface IOverridableTxProcessorSource
 {

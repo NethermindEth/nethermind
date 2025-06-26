@@ -6,7 +6,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Optimism;
 

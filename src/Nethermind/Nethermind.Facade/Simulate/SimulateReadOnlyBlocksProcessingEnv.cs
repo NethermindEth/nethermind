@@ -15,11 +15,11 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
 using static Nethermind.Consensus.Processing.BlockProcessor;
 
 namespace Nethermind.Facade.Simulate;

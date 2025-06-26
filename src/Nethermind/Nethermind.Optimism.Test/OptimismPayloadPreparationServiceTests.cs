@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System;
 using NUnit.Framework;
 using NSubstitute;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Logging;

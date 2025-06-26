@@ -23,7 +23,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Config;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -31,6 +31,7 @@ using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
 using Autofac;
 using Nethermind.Consensus;
+using Nethermind.State;
 
 namespace Nethermind.Facade
 {

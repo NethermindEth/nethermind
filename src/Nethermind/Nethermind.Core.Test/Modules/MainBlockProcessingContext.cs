@@ -8,7 +8,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Core.Test.Modules;
 

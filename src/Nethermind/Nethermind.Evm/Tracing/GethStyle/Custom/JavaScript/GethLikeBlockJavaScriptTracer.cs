@@ -8,7 +8,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 

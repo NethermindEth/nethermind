@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
@@ -12,9 +11,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -28,8 +25,8 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.JsonRpc;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;

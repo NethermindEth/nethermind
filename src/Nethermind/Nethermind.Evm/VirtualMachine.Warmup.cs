@@ -7,27 +7,25 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Evm;
 
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 
+// TODO
 public unsafe partial class VirtualMachine
 {
     public static void WarmUpEvmInstructions()
     {
-        IReleaseSpec spec = Fork.GetLatest();
+        /*IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
         VirtualMachine vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
@@ -74,7 +72,7 @@ public unsafe partial class VirtualMachine
         TransactionProcessor processor = new(MainnetSpecProvider.Instance, state, vm, codeInfoRepository, lm);
         processor.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
 
-        RunTransactions(processor, state, spec);
+        RunTransactions(processor, state, spec);*/
     }
 
     private static void RunTransactions(TransactionProcessor processor, IWorldState state, IReleaseSpec spec)
@@ -153,7 +151,7 @@ public unsafe partial class VirtualMachine
         codeToDeploy.Add((byte)Instruction.POP);
     }
 
-    private static void RunOpCodes<TTracingInst>(VirtualMachine vm, WorldState state, EvmState evmState, IReleaseSpec spec)
+    private static void RunOpCodes<TTracingInst>(VirtualMachine vm, IWorldState state, EvmState evmState, IReleaseSpec spec)
         where TTracingInst : struct, IFlag
     {
         const int WarmUpIterations = 40;

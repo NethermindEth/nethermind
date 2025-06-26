@@ -4,10 +4,10 @@
 using System.Linq;
 using Nethermind.Api;
 using Nethermind.Core;
+using Nethermind.Evm.State;
 using Nethermind.Init.Steps;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps
 {

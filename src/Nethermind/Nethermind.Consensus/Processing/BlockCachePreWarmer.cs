@@ -15,9 +15,10 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Collections;
+using Nethermind.State;
 using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;

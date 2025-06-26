@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Autofac;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -10,8 +9,8 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {

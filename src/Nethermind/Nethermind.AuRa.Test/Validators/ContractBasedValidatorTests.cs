@@ -23,7 +23,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 using NSubstitute;
 using NUnit.Framework;

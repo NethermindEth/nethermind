@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
+using Nethermind.Evm.State;
 using Nethermind.Trie;
 
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
@@ -49,15 +50,6 @@ public class PreBlockCaches
         }
 
         return isDirty;
-    }
-
-    public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>
-    {
-        private Address Address { get; } = address;
-        private ReadOnlyMemory<byte> Data { get; } = data;
-        public bool Equals(PrecompileCacheKey other) => Address == other.Address && Data.Span.SequenceEqual(other.Data.Span);
-        public override bool Equals(object? obj) => obj is PrecompileCacheKey other && Equals(other);
-        public override int GetHashCode() => Data.Span.FastHash() ^ Address.GetHashCode();
     }
 }
 

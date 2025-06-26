@@ -4,7 +4,7 @@
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
 

@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State.Healing;
 using Nethermind.State.SnapServer;
@@ -15,7 +16,7 @@ namespace Nethermind.State;
 
 public class WorldStateManager : IWorldStateManager
 {
-    private readonly IWorldState _worldState;
+    private readonly IVisitingWorldState _worldState;
     private readonly IPruningTrieStore _trieStore;
     private readonly IReadOnlyTrieStore _readOnlyTrieStore;
     private readonly ILogManager _logManager;
@@ -25,7 +26,7 @@ public class WorldStateManager : IWorldStateManager
     private readonly ILastNStateRootTracker _lastNStateRootTracker;
 
     public WorldStateManager(
-        IWorldState worldState,
+        IVisitingWorldState worldState,
         IPruningTrieStore trieStore,
         IDbProvider dbProvider,
         ILogManager logManager,
@@ -45,7 +46,7 @@ public class WorldStateManager : IWorldStateManager
         _lastNStateRootTracker = lastNStateRootTracker;
     }
 
-    public IWorldState GlobalWorldState => _worldState;
+    public IVisitingWorldState GlobalWorldState => _worldState;
 
     public IReadOnlyKeyValueStore? HashServer => _trieStore.Scheme != INodeStorage.KeyScheme.Hash ? null : _trieStore.TrieNodeRlpStore;
 

@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
@@ -22,7 +23,7 @@ public class OverridableWorldStateManager : IOverridableWorldScope
         WorldState = new WorldState(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager, null, true);
     }
 
-    public IWorldState WorldState { get; }
+    public IVisitingWorldState WorldState { get; }
     public IStateReader GlobalStateReader => _reader;
     public void ResetOverrides()
     {

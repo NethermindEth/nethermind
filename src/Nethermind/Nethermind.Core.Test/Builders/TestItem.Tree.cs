@@ -8,6 +8,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Trie.Pruning;

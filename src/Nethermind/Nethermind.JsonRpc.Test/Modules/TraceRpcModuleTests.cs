@@ -28,9 +28,10 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Newtonsoft.Json.Linq;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 

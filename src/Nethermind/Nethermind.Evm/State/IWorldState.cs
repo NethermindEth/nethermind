@@ -7,10 +7,10 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
-using Nethermind.State.Tracing;
 
-namespace Nethermind.State;
+namespace Nethermind.Evm.State;
 /// <summary>
 /// Represents state that can be anchored at specific state root, snapshot, committed, reverted.
 /// Current format is an intermittent form on the way to a better state management.

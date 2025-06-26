@@ -19,7 +19,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Optimism.Rpc;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;

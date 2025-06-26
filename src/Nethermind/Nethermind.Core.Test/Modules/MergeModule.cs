@@ -20,6 +20,7 @@ using Nethermind.Merge.Plugin.BlockProduction.Boost;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Serialization.Json;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
 

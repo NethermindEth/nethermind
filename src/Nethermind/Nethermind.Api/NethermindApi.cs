@@ -18,7 +18,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Authentication;
 using Nethermind.Core.PubSub;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
@@ -37,7 +36,6 @@ using Nethermind.Network;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -47,6 +45,7 @@ using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Facade.Find;
+using Nethermind.State;
 
 namespace Nethermind.Api
 {
