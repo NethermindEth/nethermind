@@ -54,45 +54,6 @@ public class Node
     }
 
     [Test]
-    public async Task SubscribeToTopic()
-    {
-        using var grpcChannel = GrpcChannel.ForAddress(new Uri("http://localhost:33221"), Configuration.DefaultGrpcChannelOptions);
-
-        var client = new GrpcOptimumNodeClient(grpcChannel);
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-
-        var messages = client.SubscribeToTopic(topic: "test", cts.Token);
-        int receivedCount = 0;
-        try
-        {
-            await foreach (var _ in messages)
-            {
-                receivedCount++;
-            }
-        }
-        catch (OperationCanceledException) { }
-
-        receivedCount.Should().BeGreaterThan(0, "Expected to receive at least one message from the gateway");
-    }
-
-    [Test]
-    public async Task PublishToTopic()
-    {
-        using var grpcChannel = GrpcChannel.ForAddress(new Uri("http://localhost:33221"), Configuration.DefaultGrpcChannelOptions);
-
-        var client = new GrpcOptimumNodeClient(grpcChannel);
-
-        for (int i = 0; i < 10; i++)
-        {
-            byte[] data = Encoding.UTF8.GetBytes($"msg = {Guid.NewGuid()}");
-            await client.PublishToTopicAsync(topic: "test", data, CancellationToken.None);
-        }
-
-        await Task.CompletedTask;
-    }
-
-    [Test]
     public async Task PublishAndSubscribeToTopic()
     {
         using var grpcChannel = GrpcChannel.ForAddress(_grpcEndpoint, Configuration.DefaultGrpcChannelOptions);
