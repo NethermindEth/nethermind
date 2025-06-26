@@ -16,6 +16,8 @@
     <PackageReference Include="NUnit.Analyzers" />
     <PackageReference Include="NUnit3TestAdapter" />
 
+    <PackageReference Include="System.Linq.Async" />
+
     <Protobuf Include="proto/gateway_stream.proto" GrpcServices="Client" Link="proto/gateway_stream.proto" />
     <Protobuf Include="proto/p2p_stream.proto" GrpcServices="Client" Link="proto/p2p_stream.proto" />
 

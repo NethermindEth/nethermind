@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
@@ -109,37 +110,31 @@ public class IntegrationTests
 
         var client = new GrpcOptimumNodeClient(grpcChannel);
         var topic = "test";
-        var messageCount = 10;
+
+        var sentMessages = Enumerable.Range(0, 10)
+            .Select(_ => Encoding.UTF8.GetBytes($"msg = {Guid.NewGuid()}"))
+            .ToArray();
 
         var publisher = Task.Run(async () =>
         {
-            for (int i = 0; i < messageCount; i++)
+            foreach (var msg in sentMessages)
             {
-                byte[] data = Encoding.UTF8.GetBytes($"msg = {Guid.NewGuid()}");
-                await client.PublishToTopicAsync(topic, data, CancellationToken.None);
+                await client.PublishToTopicAsync(topic, msg, CancellationToken.None);
             }
         });
 
         var subscriber = Task.Run(async () =>
         {
             var messages = client.SubscribeToTopic(topic);
-            var receivedCount = 0;
-            await foreach (var _ in messages)
-            {
-                receivedCount++;
-
-                if (receivedCount == messageCount)
-                {
-                    break;
-                }
-            }
-
-            return receivedCount;
+            return await messages
+                .Take(sentMessages.Length)
+                .Select(msg => msg.Message)
+                .ToArrayAsync();
         });
 
         await Task.WhenAll(publisher, subscriber);
 
-        var receivedCount = subscriber.Result;
-        receivedCount.Should().Be(messageCount);
+        var receivedMessages = subscriber.Result;
+        receivedMessages.Should().BeEquivalentTo(sentMessages);
     }
 }
