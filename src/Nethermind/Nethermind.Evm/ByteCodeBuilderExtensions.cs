@@ -103,6 +103,8 @@ namespace Nethermind.Evm
             => @this.Op(Instruction.DUP1 + i - 1);
         public static Prepare INVALID(this Prepare @this)
             => @this.Op(Instruction.INVALID);
+        public static Prepare CLZ(this Prepare @this)
+            => @this.Op(Instruction.CLZ);
         #endregion
 
         #region opcodes_with_1_arg

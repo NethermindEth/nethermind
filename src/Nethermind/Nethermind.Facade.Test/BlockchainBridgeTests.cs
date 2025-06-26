@@ -5,31 +5,23 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Config;
+using Nethermind.Consensus;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Facade.Find;
-using Nethermind.Facade.Simulate;
-using Nethermind.State;
 
 namespace Nethermind.Facade.Test;
 
@@ -37,73 +29,37 @@ public class BlockchainBridgeTests
 {
     private IBlockchainBridge _blockchainBridge;
     private IBlockTree _blockTree;
-    private ITxPool _txPool;
     private IReceiptStorage _receiptStorage;
-    private IFilterStore _filterStore;
-    private IFilterManager _filterManager;
     private ITransactionProcessor _transactionProcessor;
-    private IEthereumEcdsa _ethereumEcdsa;
     private ManualTimestamper _timestamper;
-    private ISpecProvider _specProvider;
-    private IDbProvider _dbProvider;
-
-    private class TestReadOnlyTxProcessingEnv(
-        IOverridableWorldScope worldStateManager,
-        IReadOnlyBlockTree blockTree,
-        ISpecProvider specProvider,
-        ILogManager logManager,
-        ITransactionProcessor transactionProcessor)
-        : OverridableTxProcessingEnv(worldStateManager, blockTree, specProvider, logManager)
-    {
-        protected override ITransactionProcessor CreateTransactionProcessor() => transactionProcessor;
-    }
+    private IContainer _container;
 
     [SetUp]
-    public async Task SetUp()
+    public Task SetUp()
     {
-        _dbProvider = await TestMemDbProvider.InitAsync();
         _timestamper = new ManualTimestamper();
         _blockTree = Substitute.For<IBlockTree>();
-        _txPool = Substitute.For<ITxPool>();
         _receiptStorage = Substitute.For<IReceiptStorage>();
-        _filterStore = Substitute.For<IFilterStore>();
-        _filterManager = Substitute.For<IFilterManager>();
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
-        _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
-        _specProvider = MainnetSpecProvider.Instance;
 
-        WorldStateManager worldStateManager = WorldStateManager.CreateForTest(_dbProvider, LimboLogs.Instance);
-        IOverridableWorldScope overridableWorldScope = worldStateManager.CreateOverridableWorldScope();
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton(_blockTree)
+            .AddSingleton<IReceiptFinder>(_receiptStorage)
+            .AddSingleton(_timestamper)
+            .AddSingleton(Substitute.For<ILogFinder>())
+            .AddSingleton<IMiningConfig>(new MiningConfig() { Enabled = false })
+            .AddScoped<ITransactionProcessor>(_transactionProcessor)
+            .Build();
 
-        IReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
-        TestReadOnlyTxProcessingEnv processingEnv = new(
-            overridableWorldScope,
-            readOnlyBlockTree,
-            _specProvider,
-            LimboLogs.Instance,
-            _transactionProcessor);
+        _blockchainBridge = _container.Resolve<IBlockchainBridge>();
+        return Task.CompletedTask;
+    }
 
-        SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory = new SimulateReadOnlyBlocksProcessingEnvFactory(
-            worldStateManager,
-            readOnlyBlockTree,
-            new ReadOnlyDbProvider(_dbProvider, true),
-            _specProvider,
-            SimulateTransactionProcessorFactory.Instance,
-            LimboLogs.Instance);
-
-        _blockchainBridge = new BlockchainBridge(
-            processingEnv,
-            simulateProcessingEnvFactory,
-            _txPool,
-            _receiptStorage,
-            _filterStore,
-            _filterManager,
-            _ethereumEcdsa,
-            _timestamper,
-            Substitute.For<ILogFinder>(),
-            _specProvider,
-            new BlocksConfig(),
-            false);
+    [TearDown]
+    public void TearDown()
+    {
+        _container.Dispose();
     }
 
     [Test]
@@ -207,41 +163,11 @@ public class BlockchainBridgeTests
     [TestCase(0)]
     public void Bridge_head_is_correct(long headNumber)
     {
-        WorldStateManager worldStateManager = WorldStateManager.CreateForTest(_dbProvider, LimboLogs.Instance);
-        IReadOnlyBlockTree roBlockTree = _blockTree.AsReadOnly();
-        OverridableTxProcessingEnv processingEnv = new(
-            worldStateManager.CreateOverridableWorldScope(),
-            roBlockTree,
-            _specProvider,
-            LimboLogs.Instance);
-
-        SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnv = new SimulateReadOnlyBlocksProcessingEnvFactory(
-            worldStateManager,
-            roBlockTree,
-            new ReadOnlyDbProvider(_dbProvider, true),
-            _specProvider,
-            SimulateTransactionProcessorFactory.Instance,
-            LimboLogs.Instance);
-
         Block head = Build.A.Block.WithNumber(headNumber).TestObject;
         Block bestSuggested = Build.A.Block.WithNumber(8).TestObject;
 
         _blockTree.Head.Returns(head);
         _blockTree.BestSuggestedBody.Returns(bestSuggested);
-
-        _blockchainBridge = new BlockchainBridge(
-            processingEnv,
-            simulateProcessingEnv,
-            _txPool,
-            _receiptStorage,
-            _filterStore,
-            _filterManager,
-            _ethereumEcdsa,
-            _timestamper,
-            Substitute.For<ILogFinder>(),
-            _specProvider,
-            new BlocksConfig(),
-            false);
 
         _blockchainBridge.HeadBlock.Should().Be(head);
     }

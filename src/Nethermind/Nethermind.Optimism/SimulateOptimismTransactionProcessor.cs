@@ -16,7 +16,7 @@ public sealed class SimulateOptimismTransactionProcessor(
     ISpecProvider specProvider,
     IWorldState worldState,
     IVirtualMachine virtualMachine,
-    IL1CostHelper l1CostHelper,
+    ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper,
     ICodeInfoRepository? codeInfoRepository,
     ILogManager logManager,
@@ -26,33 +26,33 @@ public sealed class SimulateOptimismTransactionProcessor(
         worldState,
         virtualMachine,
         logManager,
-        l1CostHelper,
+        costHelper,
         opSpecHelper,
         codeInfoRepository)
 {
     protected override bool ShouldValidate(ExecutionOptions opts) => true;
 
-    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (!validate)
         {
             opts |= ExecutionOptions.SkipValidation;
         }
 
-        return base.Execute(tx, in blCtx, tracer, opts);
+        return base.Execute(tx, tracer, opts);
     }
 }
 
 public sealed class SimulateOptimismTransactionProcessorFactory(
-    IL1CostHelper l1CostHelper,
+    ICostHelper costHelper,
     IOptimismSpecHelper opSpecHelper
 ) : ISimulateTransactionProcessorFactory
 {
     public ITransactionProcessor CreateTransactionProcessor(
         ISpecProvider specProvider,
         IWorldState worldState,
-        SimulateVirtualMachine virtualMachine,
-        OverridableCodeInfoRepository codeInfoRepository,
+        IVirtualMachine virtualMachine,
+        ICodeInfoRepository codeInfoRepository,
         ILogManager? logManager,
         bool validate)
     {
@@ -60,7 +60,7 @@ public sealed class SimulateOptimismTransactionProcessorFactory(
             specProvider,
             worldState,
             virtualMachine,
-            l1CostHelper,
+            costHelper,
             opSpecHelper,
             codeInfoRepository,
             logManager!,

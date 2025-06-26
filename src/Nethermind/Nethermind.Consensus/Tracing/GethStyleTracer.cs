@@ -51,12 +51,17 @@ public class GethStyleTracer(
         Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
         if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockHash} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
 
-        return Trace(block, block.Transactions[txIndex].Hash, cancellationToken, options);
+        return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options);
     }
 
-    public GethLikeTxTrace? Trace(Rlp block, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken)
+    public GethLikeTxTrace? Trace(Rlp blockRlp, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken)
     {
-        return TraceBlock(GetBlockToTrace(block), options with { TxHash = txHash }, cancellationToken).FirstOrDefault();
+        return TraceBlockImpl(GetBlockToTrace(blockRlp), options with { TxHash = txHash }, cancellationToken).FirstOrDefault();
+    }
+
+    public GethLikeTxTrace? Trace(Block block, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken)
+    {
+        return TraceBlockImpl(block, options with { TxHash = txHash }, cancellationToken).FirstOrDefault();
     }
 
     public GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
@@ -69,7 +74,7 @@ public class GethStyleTracer(
 
         try
         {
-            return Trace(block, tx.Hash, cancellationToken, options, ProcessingOptions.TraceTransactions);
+            return TraceImpl(block, tx.Hash, cancellationToken, options, ProcessingOptions.TraceTransactions);
         }
         finally
         {
@@ -91,7 +96,7 @@ public class GethStyleTracer(
             return null;
         }
 
-        return Trace(block, txHash, cancellationToken, traceOptions);
+        return TraceImpl(block, txHash, cancellationToken, traceOptions);
     }
 
     public GethLikeTxTrace? Trace(long blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
@@ -99,7 +104,7 @@ public class GethStyleTracer(
         Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical) ?? throw new InvalidOperationException($"No historical block found for {blockNumber}");
         if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockNumber} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
 
-        return Trace(block, block.Transactions[txIndex].Hash, cancellationToken, options);
+        return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options);
     }
 
     public GethLikeTxTrace? Trace(long blockNumber, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
@@ -126,12 +131,17 @@ public class GethStyleTracer(
     {
         var block = _blockTree.FindBlock(blockParameter);
 
-        return TraceBlock(block, options, cancellationToken);
+        return TraceBlockImpl(block, options, cancellationToken);
     }
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken)
     {
-        return TraceBlock(GetBlockToTrace(blockRlp), options, cancellationToken);
+        return TraceBlockImpl(GetBlockToTrace(blockRlp), options, cancellationToken);
+    }
+
+    public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block block, GethTraceOptions options, CancellationToken cancellationToken)
+    {
+        return TraceBlockImpl(block, options, cancellationToken);
     }
 
     public IEnumerable<string> TraceBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken)
@@ -149,8 +159,8 @@ public class GethStyleTracer(
                 throw new InvalidOperationException("Cannot trace blocks with invalid parents");
         }
 
+        using var _ = _env.BuildAndOverride(block.Header, options.StateOverrides);
         var tracer = new GethLikeBlockFileTracer(block, options, _fileSystem);
-
         _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
@@ -166,14 +176,14 @@ public class GethStyleTracer(
                         .FirstOrDefault(b => b.Hash == blockHash)
                     ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
 
+        using var _ = _env.BuildAndOverride(block.Header, options.StateOverrides);
         var tracer = new GethLikeBlockFileTracer(block, options, _fileSystem);
-
         _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
     }
 
-    private GethLikeTxTrace? Trace(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options,
+    private GethLikeTxTrace? TraceImpl(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options,
         ProcessingOptions processingOptions = ProcessingOptions.Trace)
     {
         ArgumentNullException.ThrowIfNull(txHash);
@@ -201,7 +211,7 @@ public class GethStyleTracer(
             _ => new GethLikeBlockMemoryTracer(options),
         };
 
-    private IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block? block, GethTraceOptions options, CancellationToken cancellationToken)
+    private IReadOnlyCollection<GethLikeTxTrace> TraceBlockImpl(Block? block, GethTraceOptions options, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(block);
 

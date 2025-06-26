@@ -9,12 +9,13 @@ using System.Text.Unicode;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Evm;
 
-public class TransactionSubstate
+public readonly ref struct TransactionSubstate
 {
     private readonly ILogger _logger;
     private static readonly List<Address> _emptyDestroyList = new(0);
@@ -43,24 +44,38 @@ public class TransactionSubstate
         { 0x51, "uninitialized function" },
     }.ToFrozenDictionary();
 
+    private readonly IReadOnlyCollection<Address>? _destroyList;
+    private readonly IReadOnlyCollection<LogEntry>? _logs;
+
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
-    public ReadOnlyMemory<byte> Output { get; }
+    public (ICodeInfo DeployCode, ReadOnlyMemory<byte> Bytes) Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
-    public IReadOnlyCollection<LogEntry> Logs { get; }
-    public IReadOnlyCollection<Address> DestroyList { get; }
+    public IReadOnlyCollection<LogEntry> Logs => _logs ?? _emptyLogs;
+    public IReadOnlyCollection<Address> DestroyList => _destroyList ?? _emptyDestroyList;
 
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected)
     {
         Error = isTracerConnected ? exceptionType.ToString() : SomeError;
         Refund = 0;
-        DestroyList = _emptyDestroyList;
-        Logs = _emptyLogs;
+        _destroyList = _emptyDestroyList;
+        _logs = _emptyLogs;
         ShouldRevert = false;
     }
 
-    public TransactionSubstate(ReadOnlyMemory<byte> output,
+    public static TransactionSubstate FailedInitCode => new TransactionSubstate("Eip 7698: Invalid CreateTx InitCode");
+
+    private TransactionSubstate(string errorCode)
+    {
+        Error = errorCode;
+        Refund = 0;
+        _destroyList = _emptyDestroyList;
+        _logs = _emptyLogs;
+        ShouldRevert = true;
+    }
+
+    public TransactionSubstate((ICodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
         long refund,
         IReadOnlyCollection<Address> destroyList,
         IReadOnlyCollection<LogEntry> logs,
@@ -71,8 +86,8 @@ public class TransactionSubstate
         _logger = logger;
         Output = output;
         Refund = refund;
-        DestroyList = destroyList;
-        Logs = logs;
+        _destroyList = destroyList;
+        _logs = logs;
         ShouldRevert = shouldRevert;
 
         if (!ShouldRevert)
@@ -86,10 +101,10 @@ public class TransactionSubstate
         if (!isTracerConnected)
             return;
 
-        if (Output.IsEmpty)
+        if (Output.Bytes.IsEmpty)
             return;
 
-        ReadOnlySpan<byte> span = Output.Span;
+        ReadOnlySpan<byte> span = Output.Bytes.Span;
         Error = TryGetErrorMessage(span) ?? EncodeErrorMessage(span);
     }
 

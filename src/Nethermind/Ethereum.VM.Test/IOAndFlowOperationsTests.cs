@@ -21,7 +21,7 @@ namespace Ethereum.VM.Test
         public static IEnumerable<GeneralStateTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmIOAndFlowOperations");
-            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+            return loader.LoadTests<GeneralStateTest>();
         }
     }
 }

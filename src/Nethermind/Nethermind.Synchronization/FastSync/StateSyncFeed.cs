@@ -94,5 +94,6 @@ namespace Nethermind.Synchronization.FastSync
         }
 
         public override bool IsFinished => false; // Check MultiSyncModeSelector
+        public override string FeedName => nameof(StateSyncFeed);
     }
 }

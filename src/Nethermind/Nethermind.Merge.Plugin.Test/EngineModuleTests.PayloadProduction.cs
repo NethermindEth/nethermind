@@ -108,7 +108,7 @@ public partial class EngineModuleTests
 
         getPayloadResult.StateRoot.Should().NotBe(chain.BlockTree.Genesis!.StateRoot!);
 
-        Transaction[] transactionsInBlock = getPayloadResult.GetTransactions();
+        Transaction[] transactionsInBlock = getPayloadResult.TryGetTransactions().Transactions;
         transactionsInBlock.Should().BeEquivalentTo(transactions, o => o
             .Excluding(t => t.ChainId)
             .Excluding(t => t.SenderAddress)
@@ -174,11 +174,8 @@ public partial class EngineModuleTests
 
         await Task.Delay(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay);
 
-        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
-
-        await Task.Delay(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay);
-
-        Assert.That(getPayloadResult.Transactions, Has.Length.InRange(minCount, maxCount));
+        Assert.That(() => rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId)).Result.Data!.Transactions,
+            Has.Length.InRange(minCount, maxCount).After(2000, 1)); // Polling interval need to be short or it might miss it.
     }
 
     [Test]
@@ -364,7 +361,7 @@ public partial class EngineModuleTests
             .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
 
         transactionsLength.Should().Equal(3, 6, 11);
-        Transaction[] txs = getPayloadResult.GetTransactions();
+        Transaction[] txs = getPayloadResult.TryGetTransactions().Transactions;
 
         txs.Should().HaveCount(11);
     }
@@ -415,7 +412,7 @@ public partial class EngineModuleTests
 
         transactionsLength.Should().Equal(1, 2);
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
-        Transaction[] txs = getPayloadResult.GetTransactions();
+        Transaction[] txs = getPayloadResult.TryGetTransactions().Transactions;
 
         txs.Should().HaveCount(2);
     }
@@ -458,7 +455,7 @@ public partial class EngineModuleTests
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
-        getPayloadResult.GetTransactions().Should().HaveCount(3);
+        getPayloadResult.TryGetTransactions().Transactions.Should().HaveCount(3);
         cancelledContext?.Disposed.Should().BeTrue();
     }
 

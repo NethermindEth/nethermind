@@ -70,6 +70,12 @@ public class EraImporter(
         if (from > to && to != 0)
             throw new ArgumentException($"Start block ({from}) must not be after end block ({to})");
 
+        long headp1 = (blockTree.Head?.Number ?? 0) + 1;
+        if (from > headp1)
+        {
+            throw new ArgumentException($"Start block ({from}) must not be after block after head ({headp1})");
+        }
+
         receiptsDb.Tune(ITunableDb.TuneType.HeavyWrite);
         blocksDb.Tune(ITunableDb.TuneType.HeavyWrite);
 
@@ -98,7 +104,7 @@ public class EraImporter(
         progressLogger.Reset(0, to - from + 1);
         long blocksProcessed = 0;
 
-        using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(blockTree);
+        using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(blockTree, eraConfig.ImportBlocksBufferSize, eraConfig.ImportBlocksBufferSize - 1024);
         long blockNumber = from;
 
         long suggestFromBlock = (blockTree.Head?.Number ?? 0) + 1;
@@ -157,6 +163,7 @@ public class EraImporter(
 
         async Task ImportBlock(long blockNumber)
         {
+            if (_logger.IsTrace) _logger.Trace($"Importing block {blockNumber}");
             cancellation.ThrowIfCancellationRequested();
 
             (Block? block, TxReceipt[]? receipt) = await eraStore.FindBlockAndReceipts(blockNumber, cancellation: cancellation);

@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+
 using Ethereum.Test.Base.Interfaces;
 
 namespace Ethereum.Test.Base
@@ -23,6 +25,11 @@ namespace Ethereum.Test.Base
         public IEnumerable<EthereumTest> LoadTests()
         {
             return _testLoadStrategy.Load(_path, _wildcard);
+        }
+        public IEnumerable<TTestType> LoadTests<TTestType>()
+            where TTestType : EthereumTest
+        {
+            return _testLoadStrategy.Load(_path, _wildcard).Cast<TTestType>();
         }
     }
 }

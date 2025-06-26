@@ -374,18 +374,16 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         {
             if (localErrorResponse?.Error?.SuppressWarning == false)
             {
-                if (_logger.IsWarn) _logger.Warn($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
+                if (_logger.IsWarn) _logger.Warn($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {localErrorResponse.Error.Code} Message: {localErrorResponse.Error.Message}");
+                if (_logger.IsTrace) _logger.Trace($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
             }
             Metrics.JsonRpcErrors++;
         }
         else
         {
-            if (_logger.IsDebug) _logger.Debug($"Responded to {request}");
+            if (_logger.IsDebug) _logger.Debug($"Responded to Id:{request.Id} Method:{request.Method} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             Metrics.JsonRpcSuccesses++;
         }
-
-
-        if (_logger.IsDebug) _logger.Debug($"  {request} handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
         JsonRpcResult.Entry result = new(response, new RpcReport(request.Method, (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, isSuccess));
         TraceResult(result);

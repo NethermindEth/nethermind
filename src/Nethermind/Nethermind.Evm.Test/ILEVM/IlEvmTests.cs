@@ -25,6 +25,7 @@ using System.Net;
 using System.Threading;
 using Org.BouncyCastle.Asn1.X509;
 using Nethermind.Evm.CodeAnalysis.IL.Delegates;
+using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm.Test.ILEVM
 {
@@ -2073,19 +2074,19 @@ namespace Nethermind.Evm.Test.ILEVM
             enhancedChain.Execute<ITxTracer>(bytecode1, NullTxTracer.Instance, forceAnalysis: false);
             enhancedChain.Execute<ITxTracer>(bytecode2, NullTxTracer.Instance, forceAnalysis: false);
 
-            var codeInfo1 = enhancedChain.GetCodeInfo(address1);
+            var codeInfo1 = enhancedChain.GetCodeInfo(address1) as CodeInfo;
             AotContractsRepository.TryGetIledCode(codeHash1, out var iledCodeAfter);
             Assert.That(iledCodeAfter, Is.Not.Null, "AOT code should be generated for whitelisted contract");
 
-            var code1phase = codeInfo1.IlInfo.AnalysisPhase;
+            var code1phase = codeInfo1.IlMetadata.AnalysisPhase;
             Assert.That(code1phase, Is.EqualTo(AnalysisPhase.Completed), "AOT code should be processed for whitelisted contract");
 
 
-            var codeInfo2 = enhancedChain.GetCodeInfo(address2);
+            var codeInfo2 = enhancedChain.GetCodeInfo(address2) as CodeInfo;
             AotContractsRepository.TryGetIledCode(codeHash2, out var iledCode2After);
             Assert.That(iledCode2After, Is.Null, "AOT code should not be generated for non-whitelisted contract");
 
-            var code2phase = codeInfo2.IlInfo.AnalysisPhase;
+            var code2phase = codeInfo2.IlMetadata.AnalysisPhase;
             Assert.That(code2phase, Is.EqualTo(AnalysisPhase.NotStarted), "AOT code should not be processed for non-whitelisted contract");
 
             Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(1), "AOT precompiled calls should be counted for whitelisted contract");

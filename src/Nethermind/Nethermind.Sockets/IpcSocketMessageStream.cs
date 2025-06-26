@@ -18,10 +18,10 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
     private byte[] _bufferedData = [];
     private int _bufferedDataLength = 0;
 
-    public async Task<ReceiveResult?> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken = default)
+    public async ValueTask<ReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken = default)
     {
         if (!Socket.Connected)
-            return null;
+            return default;
 
         if (_bufferedDataLength > 0)
         {
@@ -75,8 +75,7 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
         {
             Closed = read == 0,
             Read = read > 0 && buffer[read - 1] == Delimiter ? read - 1 : read,
-            EndOfMessage = endOfMessage,
-            CloseStatusDescription = null
+            EndOfMessage = endOfMessage
         };
     }
 
@@ -89,9 +88,9 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
         base.Dispose(disposing);
     }
 
-    public Task<int> WriteEndOfMessageAsync()
+    public ValueTask<int> WriteEndOfMessageAsync()
     {
         WriteByte(Delimiter);
-        return Task.FromResult(1);
+        return ValueTask.FromResult(1);
     }
 }

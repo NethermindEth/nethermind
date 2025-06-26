@@ -29,7 +29,17 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
     private readonly Channel<ProcessRequest> _processChannel;
-    private record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner);
+
+    private record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner) : IAsyncDisposable
+    {
+        private bool _disposed = false;
+        public ValueTask DisposeAsync()
+        {
+            if (Interlocked.CompareExchange(ref _disposed, true, false) == true) return ValueTask.CompletedTask;
+            BufferOwner.Dispose();
+            return ValueTask.CompletedTask;
+        }
+    };
 
     private readonly int _workerTaskCount = 1;
 
@@ -108,7 +118,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     {
         await foreach (ProcessRequest request in _processChannel.Reader.ReadAllAsync(cancellationToken))
         {
-            using var _ = request.BufferOwner;
+            await using var _ = request;
             await HandleRequest(request.Buffer, cancellationToken);
         }
     }

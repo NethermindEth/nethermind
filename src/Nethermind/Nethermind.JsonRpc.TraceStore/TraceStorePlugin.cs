@@ -68,7 +68,7 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
         if (_jsonRpcConfig.Enabled)
         {
             IRpcModuleProvider apiRpcModuleProvider = _api.RpcModuleProvider!;
-            if (apiRpcModuleProvider.GetPool(ModuleType.Trace) is IRpcModulePool<ITraceRpcModule> traceModulePool)
+            if (apiRpcModuleProvider.GetPoolForMethod(nameof(ITraceRpcModule.trace_call)) is IRpcModulePool<ITraceRpcModule> traceModulePool)
             {
                 TraceStoreModuleFactory traceModuleFactory = new(traceModulePool.Factory, _db!, _api.BlockTree!, _api.ReceiptFinder!, _traceSerializer!, _logManager, traceStoreConfig.DeserializationParallelization);
                 apiRpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);

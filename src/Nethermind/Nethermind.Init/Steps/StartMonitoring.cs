@@ -54,7 +54,7 @@ public class StartMonitoring : IStep
 
         if (_metricsConfig.Enabled)
         {
-            IMonitoringService monitoringService = _api.MonitoringService = new MonitoringService(controller, _metricsConfig, _api.LogManager);
+            IMonitoringService monitoringService = new MonitoringService(controller, _metricsConfig, _api.LogManager);
 
             SetupMetrics(monitoringService);
 

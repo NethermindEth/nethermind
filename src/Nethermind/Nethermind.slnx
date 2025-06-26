@@ -34,15 +34,16 @@
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="Directory.Build.props" />
-    <File Path="Directory.Packages.props" />
-    <File Path="nuget.config" />
+    <File Path="../../Directory.Packages.props" />
+    <File Path="../../nuget.config" />
+    <File Path="testenvironments.json" />
+    <File Path="tests.props" />
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="Nethermind.Abi.Test/Nethermind.Abi.Test.csproj" />
     <Project Path="Nethermind.Api.Test/Nethermind.Api.Test.csproj" />
     <Project Path="Nethermind.AuRa.Test/Nethermind.AuRa.Test.csproj" />
     <Project Path="Nethermind.Blockchain.Test/Nethermind.Blockchain.Test.csproj" />
-    <Project Path="Nethermind.Cli.Test/Nethermind.Cli.Test.csproj" />
     <Project Path="Nethermind.Clique.Test/Nethermind.Clique.Test.csproj" />
     <Project Path="Nethermind.Config.Test/Nethermind.Config.Test.csproj" />
     <Project Path="Nethermind.Consensus.Test/Nethermind.Consensus.Test.csproj" />
@@ -78,13 +79,9 @@
     <Project Path="Nethermind.TxPool.Test/Nethermind.TxPool.Test.csproj" />
     <Project Path="Nethermind.Wallet.Test/Nethermind.Wallet.Test.csproj" />
   </Folder>
-  <Folder Name="/Tools/">
-    <Project Path="Nethermind.Tools.GasHistorian/Nethermind.Tools.GasHistorian.csproj" />
-  </Folder>
   <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
   <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
-  <Project Path="Nethermind.Cli/Nethermind.Cli.csproj" />
   <Project Path="Nethermind.Config/Nethermind.Config.csproj" />
   <Project Path="Nethermind.Consensus.AuRa/Nethermind.Consensus.AuRa.csproj" />
   <Project Path="Nethermind.Consensus.Clique/Nethermind.Consensus.Clique.csproj" />

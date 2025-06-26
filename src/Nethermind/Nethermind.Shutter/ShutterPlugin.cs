@@ -3,19 +3,30 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Shutter.Config;
 using Nethermind.Merge.Plugin;
 using Nethermind.Logging;
 using System.Threading;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Config;
-using Multiformats.Address;
+using Nethermind.Abi;
+using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
+using Nethermind.Network;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Shutter;
@@ -29,17 +40,14 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
     public int Priority => PluginPriorities.Shutter;
 
     private INethermindApi? _api;
-    private IBlocksConfig? _blocksConfig;
-    private ShutterApi? _shutterApi;
+    private ShutterApi ShutterApi => _api!.Context.Resolve<ShutterApi>();
     private ILogger _logger;
-    private readonly CancellationTokenSource _cts = new();
 
     public class ShutterLoadingException(string message, Exception? innerException = null) : Exception(message, innerException);
 
     public Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
-        _blocksConfig = _api.Config<IBlocksConfig>();
         _logger = _api.LogManager.GetClassLogger();
         if (_logger.IsInfo) _logger.Info($"Initializing Shutter plugin.");
         return Task.CompletedTask;
@@ -50,31 +58,38 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
         if (_api!.BlockProducer is null) throw new ArgumentNullException(nameof(_api.BlockProducer));
 
         if (_logger.IsInfo) _logger.Info("Initializing Shutter block improvement.");
-        _api.BlockImprovementContextFactory = _shutterApi!.GetBlockImprovementContextFactory(_api.BlockProducer);
+        _api.BlockImprovementContextFactory = ShutterApi.GetBlockImprovementContextFactory(_api.BlockProducer);
         return Task.CompletedTask;
     }
 
-    public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
+    public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin)
     {
-        if (_api!.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
-        if (_api.EthereumEcdsa is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-        ArgumentNullException.ThrowIfNull(_api.LogFinder);
-        ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-        ArgumentNullException.ThrowIfNull(_api.ReceiptFinder);
-        ArgumentNullException.ThrowIfNull(_api.WorldStateManager);
-        ArgumentNullException.ThrowIfNull(_api.IpResolver);
-
         if (_logger.IsInfo) _logger.Info("Initializing Shutter block producer.");
+        return consensusPlugin.InitBlockProducer();
+    }
 
-        IEnumerable<Multiaddress> bootnodeP2PAddresses;
-        try
-        {
-            shutterConfig!.Validate(out bootnodeP2PAddresses);
-        }
-        catch (ArgumentException e)
-        {
-            throw new ShutterLoadingException("Invalid Shutter config", e);
-        }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    public IModule? Module => new ShutterPluginModule();
+}
+
+public class ShutterPluginModule : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        builder
+            .AddStep(typeof(RunShutterP2P)) // Where it start the p2p
+
+            .AddSingleton(CreateShutterApi)
+            .Bind<IShutterApi, ShutterApi>()
+            .AddDecorator<IBlockProducerTxSourceFactory, ShutterAdditionalBlockProductionTxSource>()
+            ;
+    }
+
+    private ShutterApi CreateShutterApi(IComponentContext ctx)
+    {
+        IShutterConfig shutterConfig = ctx.Resolve<IShutterConfig>();
+        IBlocksConfig blocksConfig = ctx.Resolve<IBlocksConfig>();
 
         ShutterValidatorsInfo validatorsInfo = new();
         if (shutterConfig!.ValidatorInfoFile is not null)
@@ -85,36 +100,26 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
             }
             catch (Exception e)
             {
-                throw new ShutterLoadingException("Could not load Shutter validator info file", e);
+                throw new ShutterPlugin.ShutterLoadingException("Could not load Shutter validator info file", e);
             }
         }
 
-        _shutterApi = new ShutterApi(
-            _api.AbiEncoder,
-            _api.BlockTree,
-            _api.EthereumEcdsa,
-            _api.LogFinder,
-            _api.ReceiptFinder,
-            _api.LogManager,
-            _api.SpecProvider,
-            _api.Timestamper,
-            _api.WorldStateManager,
-            _api.FileSystem,
-            _api.Config<IKeyStoreConfig>(),
+        return new ShutterApi(
+            ctx.Resolve<IAbiEncoder>(),
+            ctx.Resolve<IBlockTree>(),
+            ctx.Resolve<IEthereumEcdsa>(),
+            ctx.Resolve<ILogFinder>(),
+            ctx.Resolve<IReceiptFinder>(),
+            ctx.Resolve<ILogManager>(),
+            ctx.Resolve<ISpecProvider>(),
+            ctx.Resolve<ITimestamper>(),
+            ctx.Resolve<IReadOnlyTxProcessingEnvFactory>(),
+            ctx.Resolve<IFileSystem>(),
+            ctx.Resolve<IKeyStoreConfig>(),
             shutterConfig,
             validatorsInfo,
-            TimeSpan.FromSeconds(_blocksConfig!.SecondsPerSlot),
-            _api.IpResolver.ExternalIp
+            TimeSpan.FromSeconds(blocksConfig!.SecondsPerSlot),
+            ctx.Resolve<IIPResolver>().ExternalIp
         );
-
-        _ = _shutterApi.StartP2P(bootnodeP2PAddresses, _cts);
-
-        return consensusPlugin.InitBlockProducer(_shutterApi is null ? txSource : _shutterApi.TxSource.Then(txSource));
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        _cts.Dispose();
-        await (_shutterApi?.DisposeAsync() ?? default);
     }
 }

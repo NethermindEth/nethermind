@@ -26,19 +26,30 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerab
 
     private IEnumerable<BlobAndProofV1?> GetBlobsAndProofs(byte[][] request)
     {
+        bool allBlobsAvailable = true;
         Metrics.NumberOfRequestedBlobs += request.Length;
 
         foreach (byte[] requestedBlobVersionedHash in request)
         {
-            if (txPool.TryGetBlobAndProof(requestedBlobVersionedHash, out byte[]? blob, out byte[]? proof))
+            if (txPool.TryGetBlobAndProofV0(requestedBlobVersionedHash, out byte[]? blob, out byte[]? proof))
             {
                 Metrics.NumberOfSentBlobs++;
                 yield return new BlobAndProofV1(blob, proof);
             }
             else
             {
+                allBlobsAvailable = false;
                 yield return null;
             }
+        }
+
+        if (allBlobsAvailable)
+        {
+            Metrics.GetBlobsRequestsSuccessTotal++;
+        }
+        else
+        {
+            Metrics.GetBlobsRequestsFailureTotal++;
         }
     }
 }

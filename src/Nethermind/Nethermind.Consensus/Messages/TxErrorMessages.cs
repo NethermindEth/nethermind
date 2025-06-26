@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -31,7 +31,7 @@ public static class TxErrorMessages
     public const string NotAllowedBlobVersionedHashes =
         "NotAllowedBlobVersionedHashes: Cannot be set.";
 
-    public const string InvalidTransaction =
+    public const string InvalidTransactionForm =
         $"InvalidTransaction: Cannot be {nameof(ShardBlobNetworkWrapper)}.";
 
     public const string NotAllowedCreateTransaction =
@@ -58,14 +58,19 @@ public static class TxErrorMessages
     public const string InvalidBlobVersionedHashVersion =
         "InvalidBlobVersionedHashVersion: Blob version not supported.";
 
-    public static readonly string ExceededBlobSize =
-        $"ExceededBlobSize: Cannot be more than {Ckzg.Ckzg.BytesPerBlob}.";
+    public static readonly string InvalidBlobDataSize =
+        $"InvalidBlobDataSize: Blob data fields are of incorrect size.";
 
-    public static readonly string ExceededBlobCommitmentSize =
-        $"ExceededBlobCommitmentSize: Cannot be more than {Ckzg.Ckzg.BytesPerCommitment}.";
+    public const string InvalidBlobHashes =
+        "InvalidBlobProof: Hashes do not match the blobs.";
 
-    public static readonly string InvalidBlobProofSize =
-        $"InvalidBlobProofSize: Cannot be more than {Ckzg.Ckzg.BytesPerProof}.";
+    public const string InvalidBlobProofs =
+        "InvalidBlobProof: Proofs do not match the blobs.";
+
+    public const string InvalidProofVersion =
+        "InvalidTxProofVersion: Version of network wrapper is not supported.";
+
+
 
     public const string NotAllowedAuthorizationList = $"NotAllowedAuthorizationList: Only transactions with type {nameof(TxType.SetCode)} can have authorization_list.";
 
@@ -76,9 +81,18 @@ public static class TxErrorMessages
     public const string InvalidBlobCommitmentHash =
         "InvalidBlobCommitmentHash: Commitment hash does not match.";
 
-    public const string InvalidBlobProof =
-        "InvalidBlobProof: Proof does not match.";
+    public static string TxGasLimitCapExceeded(long gasLimit, long gasLimitCap)
+        => $"TxGasLimitCapExceeded: Gas limit {gasLimit} exceeed cap of {gasLimitCap}.";
 
-    public const string InvalidBlobData
-        = "InvalidTxBlobData: Number of blobs, hashes, commitments and proofs must match.";
+    public const string InvalidCreateTxData
+        = "InvalidCreateTxData: Legacy createTx cannot create Eof code";
+
+    public const string TooManyEofInitcodes
+        = $"TooManyEofInitcodes: Eof initcodes count exceeded limit";
+
+    public const string EmptyEofInitcodesField
+        = $"EmptyEofInitcodesField: Eof initcodes count must be greater than 0";
+
+    public const string EofContractSizeInvalid
+        = "EofContractSizeInvalid: Eof initcode size is invalid (either 0 or too big)";
 }

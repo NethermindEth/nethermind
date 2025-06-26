@@ -102,7 +102,7 @@ namespace Nethermind.Consensus.Validators
                 && ValidateRequestsHash(header, spec, ref error);
         }
 
-        private bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        protected virtual bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
             if (spec.RequestsEnabled)
             {
@@ -271,7 +271,11 @@ namespace Nethermind.Consensus.Validators
                                      header.GasLimit >= spec.MinGasLimit;
             if (!gasLimitNotTooLow)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low. " +
+                                                 $"Gas limit: {header.GasLimit}, " +
+                                                 $"Adjusted parent gas limit: {adjustedParentGasLimit}, " +
+                                                 $"Max gas limit difference: {maxGasLimitDifference}, " +
+                                                 $"Spec min gas limit: {spec.MinGasLimit}");
                 error = BlockErrorMessages.InvalidGasLimit;
             }
 

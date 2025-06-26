@@ -3,11 +3,13 @@
 
 #nullable disable
 
+using System;
 using System.Linq;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -16,7 +18,6 @@ using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.SnapSync
@@ -25,7 +26,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
     public class RecreateStateFromStorageRangesTests
     {
 
-        private TrieStore _store;
+        private TestRawTrieStore _store;
         private StateTree _inputStateTree;
         private StorageTree _inputStorageTree;
         private Hash256 _storage;
@@ -33,12 +34,12 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [OneTimeSetUp]
         public void Setup()
         {
-            _store = new TrieStore(new MemDb(), LimboLogs.Instance);
+            _store = new TestRawTrieStore(new MemDb());
             (_inputStateTree, _inputStorageTree, _storage) = TestItem.Tree.GetTrees(_store);
         }
 
         [OneTimeTearDown]
-        public void TearDown() => _store?.Dispose();
+        public void TearDown() => ((IDisposable)_store)?.Dispose();
 
         [Test]
         public void RecreateStorageStateFromOneRangeWithNonExistenceProof()

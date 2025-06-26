@@ -352,29 +352,10 @@ public partial class BlockTreeTests
                 BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber, 0)!;
                 while (headers is not null && headers.Length > 1)
                 {
-                    BlockDownloadContext blockDownloadContext = new(
-                        Substitute.For<ISpecProvider>(),
-                        new PeerInfo(Substitute.For<ISyncPeer>()),
-                        headers,
-                        false,
-                        Substitute.For<IReceiptsRecovery>()
-                    );
-                    bool shouldSetBlocks = NotSyncedTree.FindBlock(headers[1].Hash,
-                        BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null;
-                    Assert.That(_chainLevelHelper.TrySetNextBlocks(maxCount, blockDownloadContext), Is.EqualTo(shouldSetBlocks));
                     for (int i = 1; i < headers.Length; ++i)
                     {
-                        Block? beaconBlock;
-                        if (shouldSetBlocks)
-                        {
-                            beaconBlock = blockDownloadContext.Blocks[i - 1];
-                        }
-                        else
-                        {
-                            beaconBlock =
-                                SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
-                            beaconBlock!.Header.TotalDifficulty = null;
-                        }
+                        Block? beaconBlock = SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
+                        beaconBlock!.Header.TotalDifficulty = null;
 
                         AddBlockResult insertResult = NotSyncedTree.SuggestBlock(beaconBlock, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock | BlockTreeSuggestOptions.ForceSetAsMain);
                         Assert.That(AddBlockResult.Added == insertResult, Is.True, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)} result {insertResult}");

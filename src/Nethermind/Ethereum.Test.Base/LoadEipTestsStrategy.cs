@@ -25,7 +25,7 @@ namespace Ethereum.Test.Base
                 testDirs = new[] { testsDirectoryName };
             }
 
-            List<GeneralStateTest> testJsons = new();
+            List<EthereumTest> testJsons = new();
             foreach (string testDir in testDirs)
             {
                 testJsons.AddRange(LoadTestsFromDirectory(testDir, wildcard));
@@ -42,28 +42,21 @@ namespace Ethereum.Test.Base
             return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src")), "src", "tests", "EIPTests", "StateTests");
         }
 
-        private IEnumerable<GeneralStateTest> LoadTestsFromDirectory(string testDir, string wildcard)
+        private IEnumerable<EthereumTest> LoadTestsFromDirectory(string testDir, string wildcard)
         {
-            List<GeneralStateTest> testsByName = new();
+            List<EthereumTest> testsByName = new();
             IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir);
 
             foreach (string testFile in testFiles)
             {
                 FileTestsSource fileTestsSource = new(testFile, wildcard);
-                try
+                var tests = fileTestsSource.LoadTests(TestType.State);
+                foreach (EthereumTest blockchainTest in tests)
                 {
-                    var tests = fileTestsSource.LoadGeneralStateTests();
-                    foreach (GeneralStateTest blockchainTest in tests)
-                    {
-                        blockchainTest.Category = testDir;
-                    }
+                    blockchainTest.Category = testDir;
+                }
 
-                    testsByName.AddRange(tests);
-                }
-                catch (Exception e)
-                {
-                    testsByName.Add(new GeneralStateTest { Name = testFile, LoadFailure = $"Failed to load: {e}" });
-                }
+                testsByName.AddRange(tests);
             }
 
             return testsByName;

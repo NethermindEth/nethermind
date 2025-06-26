@@ -39,7 +39,13 @@ namespace Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle
         public ITxTracer TxTracer;
         public ILogger Logger;
 
-        public ILChunkExecutionArguments(ref byte machineCode, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef, IReleaseSpec spec, ISpecProvider specProvider, IBlockhashProvider blockhashProvider, ICodeInfoRepository codeInfoRepository, EvmState evmState, IWorldState worldState, ReadOnlyMemory<byte> returnDataBuffer, ITxTracer txTracer, ILogger logger)
+        public ILChunkExecutionArguments(
+            ref byte machineCode, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef,
+            in TxExecutionContext txExecutionContext, in BlockExecutionContext blockExecutionContext,
+            EvmState evmState,
+            IReleaseSpec spec, ISpecProvider specProvider, IBlockhashProvider blockhashProvider, ICodeInfoRepository codeInfoRepository,
+            IWorldState worldState, ReadOnlyMemory<byte> returnDataBuffer, ITxTracer txTracer, ILogger logger
+            )
         {
             MachineCode = ref machineCode;
             Spec = spec;
@@ -58,8 +64,8 @@ namespace Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle
             Logger = logger;
 
             Environment = ref evmState.Env;
-            TxExecutionContext = ref Environment.TxExecutionContext;
-            BlockExecutionContext = ref TxExecutionContext.BlockExecutionContext;
+            TxExecutionContext = ref txExecutionContext;
+            BlockExecutionContext = ref blockExecutionContext;
 
             Memory = ref evmState.Memory;
         }

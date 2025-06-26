@@ -1,9 +1,8 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
@@ -20,18 +19,8 @@ public static class ExecutionRequestExtensions
     public const int MaxRequestsCount = 3;
     private const int PublicKeySize = 48;
 
-    public static byte[][] EmptyRequests = [];
-    public static Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
-
-    public static int GetRequestsByteSize(this IEnumerable<ExecutionRequest> requests)
-    {
-        int size = 0;
-        foreach (ExecutionRequest request in requests)
-        {
-            size += request.RequestData!.Length + 1;
-        }
-        return size;
-    }
+    public static readonly byte[][] EmptyRequests = [];
+    public static readonly Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
 
     [SkipLocalsInit]
     public static Hash256 CalculateHashFromFlatEncodedRequests(byte[][]? flatEncodedRequests)
@@ -42,16 +31,15 @@ public static class ExecutionRequestExtensions
             throw new ArgumentException("Flat encoded requests must be an array");
         }
 
-        using SHA256 sha256 = SHA256.Create();
         using ArrayPoolList<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);
         foreach (byte[] requests in flatEncodedRequests)
         {
             if (requests.Length <= 1) continue;
-            concatenatedHashes.AddRange(sha256.ComputeHash(requests));
+            concatenatedHashes.AddRange(SHA256.HashData(requests));
         }
 
         // Compute sha256 of the concatenated hashes
-        return new Hash256(sha256.ComputeHash(concatenatedHashes.UnsafeGetInternalArray(), 0, concatenatedHashes.Count));
+        return new Hash256(SHA256.HashData(concatenatedHashes.UnsafeGetInternalArray().AsSpan(0, concatenatedHashes.Count)));
     }
 
 

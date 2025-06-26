@@ -75,7 +75,7 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
         ILogManager logManager = GetLogManager();
 
         _blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        Machine = new VirtualMachine(_blockhashProvider, SpecProvider, CodeInfoRepository, logManager, _config);
+        Machine = new VirtualMachine(_blockhashProvider, SpecProvider, logManager, _config);
         _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
 
         var code = Prepare.EvmCode
@@ -111,8 +111,9 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
         {
             ForceRunAnalysis(tx.To, ILMode.AOT_MODE);
         }
-        Execute(fork ?? MainnetSpecProvider.PragueActivation, tx, tracer);
+        base.Execute(fork ?? Activation, tx, gasAvailable);
     }
+
     public Address InsertCode(byte[] bytecode)
     {
         var hashcode = Keccak.Compute(bytecode);
@@ -144,16 +145,15 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
     {
         var codeinfo = CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance, out _);
 
-        if (mode.HasFlag(ILMode.AOT_MODE))
+        if (mode.HasFlag(ILMode.AOT_MODE) && codeinfo is CodeInfo ci)
         {
-            IlAnalyzer.Analyse(codeinfo, ILMode.AOT_MODE, _config, NullLogger.Instance);
+            IlAnalyzer.Analyse(ci, ILMode.AOT_MODE, _config, NullLogger.Instance);
+            ci.IlMetadata.AnalysisPhase = AnalysisPhase.Completed;
         }
-
-        codeinfo.IlInfo.AnalysisPhase = AnalysisPhase.Completed;
     }
 
 
-    public CodeInfo GetCodeInfo(Address address) => CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance, out _);
+    public ICodeInfo GetCodeInfo(Address address) => CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance, out _);
 
     public Hash256 StateRoot
     {

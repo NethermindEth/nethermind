@@ -42,10 +42,7 @@ namespace Nethermind.Facade
         Hash256[] GetBlockFilterChanges(int filterId);
         Hash256[] GetPendingTransactionFilterChanges(int filterId);
         FilterLog[] GetLogFilterChanges(int filterId);
-
         FilterType GetFilterType(int filterId);
-        FilterLog[] GetFilterLogs(int filterId);
-
         LogFilter GetFilter(BlockParameter fromBlock, BlockParameter toBlock, object? address = null, IEnumerable<object>? topics = null);
         IEnumerable<FilterLog> GetLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object? address = null, IEnumerable<object>? topics = null, CancellationToken cancellationToken = default);

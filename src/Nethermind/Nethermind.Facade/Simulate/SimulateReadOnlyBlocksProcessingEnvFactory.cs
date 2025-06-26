@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm.Config;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
@@ -35,6 +36,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             tempBlockTree,
             specProvider,
             transactionProcessorFactory,
+            new VMConfig(),
             logManager,
             validate);
     }

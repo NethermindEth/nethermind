@@ -19,6 +19,6 @@ public class ShanghaiBlockChainTests : BlockchainTestBase
     private static IEnumerable<BlockchainTest> LoadTests()
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests/shanghai");
-        return loader.LoadTests().Cast<BlockchainTest>();
+        return loader.LoadTests<BlockchainTest>();
     }
 }

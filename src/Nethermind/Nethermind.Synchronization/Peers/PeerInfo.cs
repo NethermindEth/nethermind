@@ -4,6 +4,7 @@
 using System;
 using NonBlocking;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -36,7 +37,10 @@ namespace Nethermind.Synchronization.Peers
 
         public bool IsInitialized => SyncPeer.IsInitialized;
 
-        public UInt256 TotalDifficulty => SyncPeer.TotalDifficulty;
+        /// <summary>
+        /// See <see cref="ISyncPeer.TotalDifficulty"/>.
+        /// </summary>
+        public UInt256? TotalDifficulty => SyncPeer.TotalDifficulty;
 
         public long HeadNumber => SyncPeer.HeadNumber;
 
@@ -144,6 +148,17 @@ namespace Nethermind.Synchronization.Peers
             return sleeps;
         }
 
+        public bool HasEqualOrBetterTDOrBlock(PeerInfo? other)
+        {
+            if (other is null)
+                return true;
+
+            if (TotalDifficulty is null || other.TotalDifficulty is null)
+                return HeadNumber >= other.HeadNumber;
+
+            return TotalDifficulty >= other.TotalDifficulty;
+        }
+
         private static void ResolveWeaknessChecks(ref int weakness, AllocationContexts singleContext, ref AllocationContexts sleeps)
         {
             int level = Interlocked.Increment(ref weakness);
@@ -156,6 +171,14 @@ namespace Nethermind.Synchronization.Peers
         private static string BuildContextString(AllocationContexts contexts)
         {
             return $"{((contexts & AllocationContexts.Headers) == AllocationContexts.Headers ? "H" : " ")}{((contexts & AllocationContexts.Bodies) == AllocationContexts.Bodies ? "B" : " ")}{((contexts & AllocationContexts.Receipts) == AllocationContexts.Receipts ? "R" : " ")}{((contexts & AllocationContexts.State) == AllocationContexts.State ? "N" : " ")}{((contexts & AllocationContexts.Snap) == AllocationContexts.Snap ? "S" : " ")}{((contexts & AllocationContexts.ForwardHeader) == AllocationContexts.ForwardHeader ? "F" : " ")}";
+        }
+
+        public void EnsureInitialized()
+        {
+            if (!IsInitialized)
+            {
+                throw new InvalidAsynchronousStateException($"{GetType().Name} found an uninitialized peer - {this}");
+            }
         }
 
         public override string ToString() => $"[{BuildContextString(AllocatedContexts)} ][{BuildContextString(SleepingContexts)} ]{SyncPeer}";

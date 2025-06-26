@@ -25,7 +25,7 @@ public class ProgressTrackerTests
     public async Task Did_not_have_race_issue()
     {
         using ProgressTracker progressTracker = CreateProgressTracker(accountRangePartition: 1);
-        progressTracker.EnqueueStorageRange(new StorageRange()
+        progressTracker.EnqueueNextSlot(new StorageRange()
         {
             Accounts = ArrayPoolList<PathWithAccount>.Empty(),
         });
@@ -37,7 +37,7 @@ public class ProgressTrackerTests
             {
                 bool finished = progressTracker.IsFinished(out SnapSyncBatch? snapSyncBatch);
                 finished.Should().BeFalse();
-                progressTracker.EnqueueStorageRange(snapSyncBatch!.StorageRangeRequest!);
+                progressTracker.EnqueueNextSlot(snapSyncBatch!.StorageRangeRequest!);
             }
         });
 
@@ -177,7 +177,7 @@ public class ProgressTrackerTests
             StartingHash = new ValueHash256(start),
             LimitHash = limitHash
         };
-        progressTracker.EnqueueStorageRange(storageRange, 0, lastProcessedHash);
+        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash);
 
         //ignore account range
         bool isFinished = progressTracker.IsFinished(out _);
@@ -214,7 +214,7 @@ public class ProgressTrackerTests
             StartingHash = new ValueHash256(start),
             LimitHash = limitHash
         };
-        progressTracker.EnqueueStorageRange(storageRange, 0, lastProcessedHash);
+        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash);
 
         //ignore account range
         bool isFinished = progressTracker.IsFinished(out _);

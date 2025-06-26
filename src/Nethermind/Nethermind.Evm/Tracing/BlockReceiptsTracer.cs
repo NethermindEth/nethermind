@@ -96,8 +96,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         return txReceipt;
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) =>
-        _currentTxTracer.StartOperation(pc, opcode, gas, env);
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0) =>
+        _currentTxTracer.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
 
     public void ReportOperationError(EvmExceptionType error) =>
         _currentTxTracer.ReportOperationError(error);
@@ -172,7 +172,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportExtraGasPressure(long extraGasPressure) =>
         _currentTxTracer.ReportExtraGasPressure(extraGasPressure);
 
-    public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) =>
+    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells) =>
         _currentTxTracer.ReportAccess(accessedAddresses, accessedStorageCells);
 
     public void SetOperationStack(TraceStack stack) =>

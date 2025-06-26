@@ -30,4 +30,7 @@ public interface IEraConfig : IConfig
 
     [ConfigItem(Description = "Maximum concurrency. Set to 0 to use logical core count. Lowering this may improve performance in some configuration.", DefaultValue = "0", HiddenFromDocs = true)]
     int Concurrency { get; set; }
+
+    [ConfigItem(Description = "[Technical] Buffer size during full sync when era importing. Lower number reduces memory usage.", DefaultValue = "4096", HiddenFromDocs = true)]
+    long ImportBlocksBufferSize { get; set; }
 }

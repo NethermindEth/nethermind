@@ -28,6 +28,7 @@ using Nethermind.Evm.CodeAnalysis.IL;
 using static Nethermind.Evm.VirtualMachine;
 using Microsoft.Diagnostics.Runtime;
 using BenchmarkDotNet.Columns;
+using Nethermind.Benchmarks.State;
 using Nethermind.Precompiles.Benchmark;
 using System.Threading.Tasks;
 using System.Threading;

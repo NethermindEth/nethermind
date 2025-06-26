@@ -42,7 +42,7 @@ public static class IlAnalyzer
 
     public static void Enqueue(CodeInfo codeInfo, IVMConfig config, ILogger logger)
     {
-        if (Interlocked.CompareExchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Queued, AnalysisPhase.NotStarted) != AnalysisPhase.NotStarted)
+        if (Interlocked.CompareExchange(ref codeInfo.IlMetadata.AnalysisPhase, AnalysisPhase.Queued, AnalysisPhase.NotStarted) != AnalysisPhase.NotStarted)
         {
             return;
         }
@@ -95,15 +95,15 @@ public static class IlAnalyzer
 
     private static Task ProcessCodeInfoAsync(IVMConfig config, ILogger logger, CodeInfo worklet)
     {
-        worklet.IlInfo.AnalysisPhase = AnalysisPhase.Processing;
+        worklet.IlMetadata.AnalysisPhase = AnalysisPhase.Processing;
         try
         {
             Analyse(worklet, config.IlEvmEnabledMode, config, logger);
         }
         catch (Exception e)
         {
-            logger.Error($"IlAnalyzer: {worklet.Codehash} failed to analyze error : {e.Message}");
-            Interlocked.Exchange(ref worklet.IlInfo.AnalysisPhase, AnalysisPhase.Failed);
+            logger.Error($"IlAnalyzer: {worklet.CodeHash} failed to analyze error : {e.Message}");
+            Interlocked.Exchange(ref worklet.IlMetadata.AnalysisPhase, AnalysisPhase.Failed);
             throw;
         }
         finally
@@ -134,9 +134,9 @@ public static class IlAnalyzer
         switch (mode)
         {
             case ILMode.AOT_MODE:
-                if (AotContractsRepository.TryGetIledCode(codeInfo.Codehash.Value, out ILEmittedMethod? contractDelegate))
+                if (AotContractsRepository.TryGetIledCode(codeInfo.CodeHash.Value, out ILEmittedMethod? contractDelegate))
                 {
-                    codeInfo.IlInfo.PrecompiledContract = contractDelegate;
+                    codeInfo.IlMetadata.PrecompiledContract = contractDelegate;
                     Metrics.IncrementIlvmAotCacheTouched();
                     break;
                 }
@@ -144,29 +144,29 @@ public static class IlAnalyzer
                 {
                     if (!AnalyseContract(codeInfo, vmConfig, out ContractCompilerMetadata? compilerMetadata))
                     {
-                        Interlocked.Exchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Skipped);
+                        Interlocked.Exchange(ref codeInfo.IlMetadata.AnalysisPhase, AnalysisPhase.Skipped);
                         return;
                     }
 
                     if (!TryCompileContract(codeInfo, compilerMetadata.Value, vmConfig))
                     {
-                        Interlocked.Exchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Failed);
+                        Interlocked.Exchange(ref codeInfo.IlMetadata.AnalysisPhase, AnalysisPhase.Failed);
                         return;
                     }
                     Metrics.IncrementIlvmContractsAnalyzed();
                 }
                 break;
         }
-        Interlocked.Exchange(ref codeInfo.IlInfo.AnalysisPhase, AnalysisPhase.Completed);
+        Interlocked.Exchange(ref codeInfo.IlMetadata.AnalysisPhase, AnalysisPhase.Completed);
     }
 
     internal static bool TryCompileContract(CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig vmConfig)
     {
         Metrics.IncrementIlvmCurrentlyCompiling();
-        if (Precompiler.TryCompileContract(codeInfo.Codehash?.ToString(), codeInfo, contractMetadata, vmConfig, SimpleConsoleLogManager.Instance.GetLogger("IlvmLogger"), out ILEmittedMethod? contractDelegate))
+        if (Precompiler.TryCompileContract(codeInfo.CodeHash?.ToString(), codeInfo, contractMetadata, vmConfig, SimpleConsoleLogManager.Instance.GetLogger("IlvmLogger"), out ILEmittedMethod? contractDelegate))
         {
-            AotContractsRepository.AddIledCode(codeInfo.Codehash.Value, contractDelegate);
-            codeInfo.IlInfo.PrecompiledContract = contractDelegate;
+            AotContractsRepository.AddIledCode(codeInfo.CodeHash.Value, contractDelegate);
+            codeInfo.IlMetadata.PrecompiledContract = contractDelegate;
             return true;
         }
         Metrics.DecrementIlvmCurrentlyCompiling();
@@ -279,7 +279,7 @@ public static class IlAnalyzer
                         costStart = pc + 1;             // start with the next again
                         coststack = 0;
                     }
-                    else if(op.IsJump() || op.IsTerminating())
+                    else if(op.IsJump() || IlvmInstructionExtensions.IsTerminating(op))
                     {
                         subSegment.Start = subsegmentStart;
                         subSegment.RequiredStack = -subSegment.RequiredStack;

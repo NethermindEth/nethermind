@@ -16,47 +16,50 @@ internal class Program
 {
     public class Options
     {
-        public static CliOption<string> Input { get; } =
+        public static Option<string> Input { get; } =
             new("--input", "-i") { Description = "Set the state test input file or directory. Either 'input' or 'stdin' is required." };
 
-        public static CliOption<string> Filter { get; } =
+        public static Option<string> Filter { get; } =
             new("--filter", "-f") { Description = "Set the test name that you want to run. Could also be a regular expression." };
 
-        public static CliOption<bool> BlockTest { get; } =
+        public static Option<bool> BlockTest { get; } =
             new("--blockTest", "-b") { Description = "Set test as blockTest. if not, it will be by default assumed a state test." };
 
-        public static CliOption<bool> TraceAlways { get; } =
+        public static Option<bool> EofTest { get; } =
+            new("--eofTest", "-e") { Description = "Set test as eofTest. if not, it will be by default assumed a state test." };
+        public static Option<bool> TraceAlways { get; } =
             new("--trace", "-t") { Description = "Set to always trace (by default traces are only generated for failing tests). [Only for State Test]" };
 
-        public static CliOption<bool> TraceNever { get; } =
+        public static Option<bool> TraceNever { get; } =
             new("--neverTrace", "-n") { Description = "Set to never trace (by default traces are only generated for failing tests). [Only for State Test]" };
 
-        public static CliOption<bool> ExcludeMemory { get; } =
+        public static Option<bool> ExcludeMemory { get; } =
             new("--memory", "-m") { Description = "Exclude memory trace. [Only for State Test]" };
 
-        public static CliOption<bool> ExcludeStack { get; } =
+        public static Option<bool> ExcludeStack { get; } =
             new("--stack", "-s") { Description = "Exclude stack trace. [Only for State Test]" };
 
-        public static CliOption<bool> Wait { get; } =
+        public static Option<bool> Wait { get; } =
             new("--wait", "-w") { Description = "Wait for input after the test run." };
 
-        public static CliOption<bool> Stdin { get; } =
+        public static Option<bool> Stdin { get; } =
             new("--stdin", "-x") { Description = "If stdin is used, the state runner will read inputs (filenames) from stdin, and continue executing until empty line is read." };
 
-        public static CliOption<bool> GnosisTest { get; } =
+        public static Option<bool> GnosisTest { get; } =
             new("--gnosisTest", "-g") { Description = "Set test as gnosisTest. if not, it will be by default assumed a mainnet test." };
 
-        public static CliOption<bool> EnableWarmup { get; } =
+        public static Option<bool> EnableWarmup { get; } =
             new("--warmup", "-wu") { Description = "Enable warmup for benchmarking purposes." };
     }
 
     public static async Task<int> Main(params string[] args)
     {
-        CliRootCommand rootCommand =
+        RootCommand rootCommand =
         [
             Options.Input,
             Options.Filter,
             Options.BlockTest,
+            Options.EofTest,
             Options.TraceAlways,
             Options.TraceNever,
             Options.ExcludeMemory,
@@ -68,7 +71,7 @@ internal class Program
         ];
         rootCommand.SetAction(Run);
 
-        CliConfiguration configuration = new(rootCommand);
+        CommandLineConfiguration configuration = new(rootCommand);
 
         return await configuration.InvokeAsync(args);
     }
@@ -94,6 +97,8 @@ internal class Program
         {
             if (parseResult.GetValue(Options.BlockTest))
                 await RunBlockTest(input, source => new BlockchainTestsRunner(source, parseResult.GetValue(Options.Filter), chainId));
+            else if (parseResult.GetValue(Options.EofTest))
+                RunEofTest(input, source => new EofTestsRunner(source, parseResult.GetValue(Options.Filter)));
             else
                 RunStateTest(input, source => new StateTestsRunner(source, whenTrace,
                     !parseResult.GetValue(Options.ExcludeMemory),
@@ -121,6 +126,14 @@ internal class Program
             ? new TestsSourceLoader(new LoadBlockchainTestFileStrategy(), path)
             : new TestsSourceLoader(new LoadBlockchainTestsStrategy(), path);
         await testRunnerBuilder(source).RunTestsAsync();
+    }
+
+    private static void RunEofTest(string path, Func<ITestSourceLoader, IEofTestRunner> testRunnerBuilder)
+    {
+        ITestSourceLoader source = Path.HasExtension(path)
+            ? new TestsSourceLoader(new LoadEofTestFileStrategy(), path)
+            : new TestsSourceLoader(new LoadEofTestsStrategy(), path);
+        testRunnerBuilder(source).RunTests();
     }
 
     private static void RunStateTest(string path, Func<ITestSourceLoader, IStateTestRunner> testRunnerBuilder)

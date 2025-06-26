@@ -133,7 +133,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = false, Description = "Signs a transaction", IsSharable = true)]
-        ResultWrapper<Memory<byte>> eth_sign(Address addressData, byte[] message);
+        ResultWrapper<string> eth_sign(Address addressData, byte[] message);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Send a transaction to the tx pool and broadcasting",
@@ -233,10 +233,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true,
             Description = "Retrieves an uncle block header by block hash and uncle index",
             IsSharable = true)]
-        ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Hash256 blockHashData, UInt256 positionIndex);
+        ResultWrapper<BlockForRpc?> eth_getUncleByBlockHashAndIndex(Hash256 blockHashData, UInt256 positionIndex);
 
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves an uncle block header by block number and uncle index", IsSharable = true)]
-        ResultWrapper<BlockForRpc> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex);
+        ResultWrapper<BlockForRpc?> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Creates an update filter",

@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Config;
 using Nethermind.Evm.Tracing;
@@ -71,7 +72,7 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
         ILogManager logManager = GetLogManager();
 
         _blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        Machine = new VirtualMachine(_blockhashProvider, SpecProvider, CodeInfoRepository, logManager, _config);
+        Machine = new VirtualMachine(_blockhashProvider, SpecProvider, logManager, _config);
         _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }
 
@@ -93,7 +94,9 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
     {
         var codeinfo = CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance, out _);
 
-        if (codeinfo.IlInfo != null && codeinfo.IlInfo.AnalysisPhase == AnalysisPhase.Completed)
+        if (codeinfo is not CodeInfo ci) return;
+
+        if (ci.IlMetadata != null && ci.IlMetadata.AnalysisPhase == AnalysisPhase.Completed)
         {
             // Nothing to analyze, already prepared.
             return;
@@ -101,12 +104,12 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
 
         if (mode.HasFlag(ILMode.AOT_MODE))
         {
-            IlAnalyzer.Analyse(codeinfo, ILMode.AOT_MODE, _config, NullLogger.Instance);
+            IlAnalyzer.Analyse(ci, ILMode.AOT_MODE, _config, NullLogger.Instance);
         }
 
-        codeinfo.IlInfo.AnalysisPhase.Should().Be(AnalysisPhase.Completed);
+        ci.IlMetadata.AnalysisPhase.Should().Be(AnalysisPhase.Completed);
 
-        Precompiler.TryGetEmittedIL(codeinfo.IlInfo.PrecompiledContract!, out var ilInfo).Should().Be(true);
+        Precompiler.TryGetEmittedIL(ci.IlMetadata.PrecompiledContract!, out var ilInfo).Should().Be(true);
     }
 
     [Test]
@@ -124,11 +127,13 @@ public abstract class RealContractTestsBase : VirtualMachineTestsBase
         TestState.InsertCode(ContractAddress, Keccak.MaxValue.ValueHash256, ByteCode, SpecProvider.GenesisSpec);
         var codeinfo = CodeInfoRepository.GetCachedCodeInfo(TestState, ContractAddress, Prague.Instance, out _);
 
-        IlAnalyzer.Analyse(codeinfo, ILMode.AOT_MODE, _config, NullLogger.Instance);
+        if (codeinfo is not CodeInfo ci) { return; }
 
-        codeinfo.IlInfo.AnalysisPhase.Should().Be(AnalysisPhase.Completed);
+        IlAnalyzer.Analyse(ci, ILMode.AOT_MODE, _config, NullLogger.Instance);
 
-        Precompiler.TryGetEmittedIL(codeinfo.IlInfo.PrecompiledContract!, out var ilInfo).Should().Be(true);
+        ci.IlMetadata.AnalysisPhase.Should().Be(AnalysisPhase.Completed);
+
+        Precompiler.TryGetEmittedIL(ci.IlMetadata.PrecompiledContract!, out var ilInfo).Should().Be(true);
 
         await Verifier.Verify(ilInfo);
     }

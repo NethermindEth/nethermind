@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Autofac;
@@ -10,6 +9,7 @@ using Autofac.Builder;
 using Autofac.Core;
 using Autofac.Core.Resolving.Pipeline;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Container;
 
 namespace Nethermind.Core;
 
@@ -24,7 +24,7 @@ public static class ContainerBuilderExtensions
     {
         builder.RegisterType<T>()
             .As<T>()
-            .WithAttributeFiltering()
+            .CommonNethermindConfig()
             .SingleInstance();
 
         return builder;
@@ -67,11 +67,63 @@ public static class ContainerBuilderExtensions
                 TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter
                     ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
                     : ctx.Resolve<TArg0>();
-                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter2
-                    ? ctx.ResolveKeyed<TArg1>(keyFilter2.Key)
+                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter1
+                    ? ctx.ResolveKeyed<TArg1>(keyFilter1.Key)
                     : ctx.Resolve<TArg1>();
 
                 return factoryMethod(arg0, arg1);
+            })
+            .As<T>()
+            .SingleInstance();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddSingleton<T, TArg0, TArg1, TArg2>(this ContainerBuilder builder, Func<TArg0, TArg1, TArg2, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull where TArg2 : notnull
+    {
+        builder.Register((ctx) =>
+            {
+                MethodInfo factoryMethodInfo = factoryMethod.Method;
+
+                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter
+                    ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
+                    : ctx.Resolve<TArg0>();
+                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter1
+                    ? ctx.ResolveKeyed<TArg1>(keyFilter1.Key)
+                    : ctx.Resolve<TArg1>();
+                TArg2 arg2 = factoryMethodInfo.GetParameters()[2].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter2
+                    ? ctx.ResolveKeyed<TArg2>(keyFilter2.Key)
+                    : ctx.Resolve<TArg2>();
+
+                return factoryMethod(arg0, arg1, arg2);
+            })
+            .As<T>()
+            .SingleInstance();
+
+        return builder;
+    }
+
+
+    public static ContainerBuilder AddSingleton<T, TArg0, TArg1, TArg2, TArg3>(this ContainerBuilder builder, Func<TArg0, TArg1, TArg2, TArg3, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull where TArg2 : notnull where TArg3 : notnull
+    {
+        builder.Register((ctx) =>
+            {
+                MethodInfo factoryMethodInfo = factoryMethod.Method;
+
+                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter
+                    ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
+                    : ctx.Resolve<TArg0>();
+                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter1
+                    ? ctx.ResolveKeyed<TArg1>(keyFilter1.Key)
+                    : ctx.Resolve<TArg1>();
+                TArg2 arg2 = factoryMethodInfo.GetParameters()[2].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter2
+                    ? ctx.ResolveKeyed<TArg2>(keyFilter2.Key)
+                    : ctx.Resolve<TArg2>();
+                TArg3 arg3 = factoryMethodInfo.GetParameters()[3].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter3
+                    ? ctx.ResolveKeyed<TArg3>(keyFilter3.Key)
+                    : ctx.Resolve<TArg3>();
+
+                return factoryMethod(arg0, arg1, arg2, arg3);
             })
             .As<T>()
             .SingleInstance();
@@ -93,7 +145,7 @@ public static class ContainerBuilderExtensions
         builder.RegisterType<TImpl>()
             .As<T>()
             .AsSelf()
-            .WithAttributeFiltering()
+            .CommonNethermindConfig()
             .SingleInstance();
 
         return builder;
@@ -123,7 +175,7 @@ public static class ContainerBuilderExtensions
         builder.RegisterType<T>()
             .As<T>()
             .AsSelf()
-            .WithAttributeFiltering()
+            .CommonNethermindConfig()
             .InstancePerLifetimeScope();
 
         return builder;
@@ -206,19 +258,37 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddScoped<T, TImpl>(this ContainerBuilder builder) where TImpl : notnull where T : notnull
+    public static ContainerBuilder AddScoped<T, TImpl>(this ContainerBuilder builder) where TImpl : T where T : notnull
     {
         builder.RegisterType<TImpl>()
-            .As<T>()
-            .WithAttributeFiltering()
+            .As<TImpl>()
+            .CommonNethermindConfig()
+            .InstancePerLifetimeScope();
+
+        builder.Bind<T, TImpl>();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddKeyedScoped<T, TImpl>(this ContainerBuilder builder, object key) where TImpl : notnull where T : notnull
+    {
+        builder.RegisterType<TImpl>()
+            .Keyed<T>(key)
+            .CommonNethermindConfig()
             .InstancePerLifetimeScope();
 
         return builder;
     }
 
+    public static ContainerBuilder AddScoped<T>(this ContainerBuilder builder, Func<IComponentContext, T> factoryMethod) where T : class
+    {
+        return builder.AddScoped<T, IComponentContext>(factoryMethod);
+    }
+
     public static ContainerBuilder Add<T>(this ContainerBuilder builder) where T : class
     {
         builder.RegisterType<T>()
+            .CommonNethermindConfig()
             .As<T>();
 
         return builder;
@@ -235,6 +305,7 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder Add<T, TImpl>(this ContainerBuilder builder) where T : class where TImpl : notnull
     {
         builder.RegisterType<TImpl>()
+            .CommonNethermindConfig()
             .As<T>();
 
         return builder;
@@ -244,7 +315,7 @@ public static class ContainerBuilderExtensions
     {
         IRegistrationBuilder<T, ConcreteReflectionActivatorData, SingleRegistrationStyle> adv = builder
             .RegisterType<T>()
-            .WithAttributeFiltering();
+            .CommonNethermindConfig();
 
         configurer(adv);
 
@@ -364,6 +435,16 @@ public static class ContainerBuilderExtensions
 
         return builder;
     }
+
+    private static IRegistrationBuilder<TLimit, TReflectionActivatorData, TRegistrationStyle> CommonNethermindConfig<TLimit, TReflectionActivatorData, TRegistrationStyle>(
+        this IRegistrationBuilder<TLimit, TReflectionActivatorData, TRegistrationStyle> builder
+    ) where TReflectionActivatorData : ReflectionActivatorData
+    {
+        return builder
+            .WithAttributeFiltering()
+            .FindConstructorsWith(NethermindConstructorFinder.Instance);
+    }
+
 }
 
 /// <summary>

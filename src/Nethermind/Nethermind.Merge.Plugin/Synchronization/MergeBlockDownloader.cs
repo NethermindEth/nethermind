@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -12,11 +13,12 @@ using Nethermind.Logging;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Merge.Plugin.Synchronization
 {
-    public class MergeBlockDownloader : BlockDownloader, ISyncDownloader<BlocksRequest>
+    public class MergeBlockDownloader : BlockDownloader
     {
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockTree _blockTree;
@@ -32,10 +34,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IBetterPeerStrategy betterPeerStrategy,
             IFullStateFinder fullStateFinder,
             IForwardHeaderProvider forwardHeaderProvider,
-            ILogManager logManager,
-            SyncBatchSize? syncBatchSize = null)
+            ISyncPeerPool syncPeerPool,
+            ISyncConfig syncConfig,
+            ILogManager logManager)
             : base(blockTree, blockValidator, syncReport, receiptStorage,
-                specProvider, betterPeerStrategy, fullStateFinder, forwardHeaderProvider, logManager, syncBatchSize)
+                specProvider, betterPeerStrategy, fullStateFinder, forwardHeaderProvider, syncPeerPool, syncConfig, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _beaconPivot = beaconPivot;

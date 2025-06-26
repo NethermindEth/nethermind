@@ -71,7 +71,7 @@ public static class ReleaseSpecEmit
             {
                 envirementLoader.LoadSpec(method, locals, false);
                 method.LoadConstant((byte)opcode);
-                method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
+                method.Call(typeof(IlvmInstructionExtensions).GetMethod(nameof(IlvmInstructionExtensions.IsEnabled)));
                 method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
             }
         }

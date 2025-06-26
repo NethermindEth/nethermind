@@ -8,11 +8,10 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
-using Nethermind.Consensus;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -29,15 +28,8 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 {
     private readonly IBlocksConfig _blocksConfig = api.Config<IBlocksConfig>();
 
-    private readonly OptimismChainSpecEngineParameters _chainSpecParameters = api.ChainSpec
-        .EngineChainSpecParametersProvider.GetChainSpecParameters<OptimismChainSpecEngineParameters>();
-
     protected override async Task InitBlockchain()
     {
-        api.SpecHelper = new(_chainSpecParameters);
-        api.L1CostHelper = new(api.SpecHelper, _chainSpecParameters.L1BlockAddress!);
-        api.SimulateTransactionProcessorFactory = new SimulateOptimismTransactionProcessorFactory(api.L1CostHelper, api.SpecHelper);
-
         await base.InitBlockchain();
 
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
@@ -77,24 +69,21 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             api.SpecProvider,
             api.BlockValidator,
             api.RewardCalculatorSource.Get(transactionProcessor),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
             worldState,
-            api.ReceiptStorage,
-            transactionProcessor,
+            api.ReceiptStorage!,
             new BlockhashStore(api.SpecProvider, worldState),
             new BeaconBlockRootHandler(transactionProcessor, worldState),
             api.LogManager,
             api.SpecHelper,
             contractRewriter,
-            new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
+            new OptimismWithdrawalProcessor(api.WorldStateManager!.GlobalWorldState, api.LogManager, api.SpecHelper),
+            new ExecutionRequestsProcessor(transactionProcessor),
             preWarmer: preWarmer);
     }
 
-    protected override IHealthHintService CreateHealthHintService() =>
-        new ManualHealthHintService(_blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint);
-
     protected override IBlockProductionPolicy CreateBlockProductionPolicy() => AlwaysStartBlockProductionPolicy.Instance;
 
-    protected override ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
-        api.Config<IOptimismConfig>().SequencerUrl is not null ? NullTxPool.Instance : base.CreateTxPool(codeInfoRepository);
+    protected override ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider) =>
+        api.Config<IOptimismConfig>().SequencerUrl is not null ? NullTxPool.Instance : base.CreateTxPool(chainHeadInfoProvider);
 }

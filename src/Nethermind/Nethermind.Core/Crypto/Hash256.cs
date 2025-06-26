@@ -57,10 +57,6 @@ namespace Nethermind.Core.Crypto
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
         }
 
-        public ValueHash256(UInt256 uint256, bool isBigEndian = true) : this(isBigEndian ? uint256.ToBigEndian() : uint256.ToLittleEndian())
-        {
-        }
-
         public override bool Equals(object? obj) => obj is ValueHash256 keccak && Equals(keccak);
 
         public bool Equals(ValueHash256 other) => _bytes.Equals(other._bytes);
@@ -107,7 +103,7 @@ namespace Nethermind.Core.Crypto
         private bool IsZero => _bytes == default;
     }
 
-    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>
+    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>
     {
         private readonly Hash256 _key = key;
         public Hash256 Value => _key;
@@ -117,6 +113,8 @@ namespace Nethermind.Core.Crypto
 
         public bool Equals(Hash256AsKey other) => Equals(_key, other._key);
         public override int GetHashCode() => _key?.GetHashCode() ?? 0;
+
+        public int CompareTo(Hash256AsKey other) => _key.CompareTo(other._key);
     }
 
     [JsonConverter(typeof(Hash256Converter))]

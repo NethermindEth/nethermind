@@ -34,14 +34,12 @@ namespace Nethermind.Api
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
         IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         IBlockProducer? BlockProducer { get; set; }
-        IBlockProducerRunner? BlockProducerRunner { get; set; }
+        IBlockProducerRunner BlockProducerRunner { get; set; }
 
         [SkipServiceCollection]
-        IBlockValidator? BlockValidator { get; }
+        IBlockValidator BlockValidator { get; }
 
         IEnode? Enode { get; set; }
-        IFilterStore? FilterStore { get; set; }
-        IFilterManager? FilterManager { get; set; }
 
         [SkipServiceCollection]
         IUnclesValidator? UnclesValidator { get; }
@@ -49,24 +47,18 @@ namespace Nethermind.Api
         [SkipServiceCollection]
         IHeaderValidator? HeaderValidator { get; }
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
-        IRewardCalculatorSource? RewardCalculatorSource { get; set; }
-        ISealer? Sealer { get; set; }
-        ISealValidator? SealValidator { get; set; }
-        ISealEngine SealEngine { get; set; }
-        IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
-        IStateReader? StateReader { get; set; }
+        IRewardCalculatorSource RewardCalculatorSource { get; }
+        ISealer Sealer { get; }
+        ISealValidator SealValidator { get; }
+        ISealEngine SealEngine { get; }
+        IStateReader? StateReader { get; }
 
-        IWorldStateManager? WorldStateManager { get; set; }
-        INodeStorage? MainNodeStorage { get; set; }
-        CompositePruningTrigger? PruningTrigger { get; set; }
-        IVerifyTrieStarter? VerifyTrieStarter { get; set; }
+        IWorldStateManager? WorldStateManager { get; }
         IMainProcessingContext? MainProcessingContext { get; set; }
         ITxSender? TxSender { get; set; }
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
-        ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         CompositeTxGossipPolicy TxGossipPolicy { get; }
-        IHealthHintService? HealthHintService { get; set; }
         IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
 
@@ -81,12 +73,14 @@ namespace Nethermind.Api
         /// </remarks>
         IBlockFinalizationManager? FinalizationManager { get; set; }
 
-        IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
+        IBlockProducerEnvFactory BlockProducerEnvFactory { get; }
         IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
+        IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory { get; }
 
-        IGasPriceOracle? GasPriceOracle { get; set; }
+        IGasPriceOracle GasPriceOracle { get; }
 
-        IEthSyncingInfo? EthSyncingInfo { get; set; }
+        [SkipServiceCollection]
+        IEthSyncingInfo? EthSyncingInfo { get; }
 
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }

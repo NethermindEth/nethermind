@@ -3,20 +3,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
 public interface IChainLevelHelper
 {
     BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0);
-
-    bool TrySetNextBlocks(int maxCount, BlockDownloadContext context);
 }
 
 public class ChainLevelHelper : IChainLevelHelper
@@ -138,34 +136,10 @@ public class ChainLevelHelper : IChainLevelHelper
         }
         else
         {
-            headers.RemoveRange(toTake, headers.Count - toTake);
+            CollectionsMarshal.SetCount(headers, toTake);
         }
 
         return headers.ToArray();
-    }
-
-    public bool TrySetNextBlocks(int maxCount, BlockDownloadContext context)
-    {
-        if (context.Blocks.Length == 0) return false;
-
-        BlockInfo? beaconMainChainBlockInfo = GetBeaconMainChainBlockInfo(context.Blocks[0].Number);
-        if (beaconMainChainBlockInfo?.IsBeaconHeader == true && beaconMainChainBlockInfo.IsBeaconBody == false) return false;
-
-        int offset = 0;
-        while (offset != context.NonEmptyBlockHashes.Count)
-        {
-            IReadOnlyList<Hash256> hashesToRequest = context.GetHashesByOffset(offset, maxCount);
-            for (int i = 0; i < hashesToRequest.Count; i++)
-            {
-                Block? block = _blockTree.FindBlock(hashesToRequest[i], BlockTreeLookupOptions.None);
-                if (block is null) return false;
-                BlockBody blockBody = new(block.Transactions, block.Uncles, block?.Withdrawals);
-                context.SetBody(i + offset, blockBody);
-            }
-
-            offset += hashesToRequest.Count;
-        }
-        return true;
     }
 
     /// <summary>

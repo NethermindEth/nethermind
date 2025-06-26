@@ -13,14 +13,20 @@ namespace Nethermind.Consensus.Producers
     {
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
+        private readonly long _maxTxLengthKilobytes;
 
-        public BlockProducerTransactionsExecutorFactory(ISpecProvider specProvider, ILogManager logManager)
+        public BlockProducerTransactionsExecutorFactory(ISpecProvider specProvider, long maxTxLengthKilobytes, ILogManager logManager)
         {
             _specProvider = specProvider;
             _logManager = logManager;
+            _maxTxLengthKilobytes = maxTxLengthKilobytes;
         }
 
         public IBlockProcessor.IBlockTransactionsExecutor Create(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv) =>
-            new BlockProcessor.BlockProductionTransactionsExecutor(readOnlyTxProcessingEnv, _specProvider, _logManager);
+            new BlockProcessor.BlockProductionTransactionsExecutor(
+                new BuildUpTransactionProcessorAdapter(readOnlyTxProcessingEnv.TransactionProcessor),
+                readOnlyTxProcessingEnv.WorldState,
+                new BlockProcessor.BlockProductionTransactionPicker(_specProvider, _maxTxLengthKilobytes),
+                _logManager);
     }
 }

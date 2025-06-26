@@ -99,10 +99,12 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        if (!request.TryGetBlock(out Block? block, _poSSwitcher.FinalTotalDifficulty))
+        BlockDecodingResult decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+        Block? block = decodingResult.Block;
+        if (block is null)
         {
-            if (_logger.IsWarn) _logger.Warn($"New Block Request Invalid: {request}.");
-            return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
+            if (_logger.IsTrace) _logger.Trace($"New Block Request Invalid: {decodingResult.Error} ; {request}.");
+            return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
 
         string requestStr = $"New Block:  {request}";
@@ -322,8 +324,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
-        TaskCompletionSource<ValidationResult?> blockProcessedTaskCompletionSource = new();
-        Task<ValidationResult?> blockProcessed = blockProcessedTaskCompletionSource.Task;
+        TaskCompletionSource<ValidationResult?> blockProcessed = new();
 
         void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
         {
@@ -334,7 +335,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
                 if (e.ProcessingResult == ProcessingResult.Exception)
                 {
                     BlockchainException? exception = new(e.Exception?.Message ?? "Block processing threw exception.", e.Exception);
-                    blockProcessedTaskCompletionSource.SetException(exception);
+                    blockProcessed.SetException(exception);
                     return;
                 }
 
@@ -353,14 +354,15 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
                     _ => null
                 };
 
-                blockProcessedTaskCompletionSource.TrySetResult(validationResult);
+                blockProcessed.TrySetResult(validationResult);
             }
         }
 
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
         try
         {
-            Task timeoutTask = Task.Delay(_timeout);
+            CancellationTokenSource cts = new();
+            Task timeoutTask = Task.Delay(_timeout, cts.Token);
 
             AddBlockResult addResult = await _blockTree
                 .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
@@ -393,8 +395,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                _processingQueue.Enqueue(block, processingOptions);
-                result = await blockProcessed.TimeoutOn(timeoutTask);
+                await _processingQueue.Enqueue(block, processingOptions);
+                result = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
         }
         catch (TimeoutException)

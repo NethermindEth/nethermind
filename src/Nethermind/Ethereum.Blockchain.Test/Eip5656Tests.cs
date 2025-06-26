@@ -20,6 +20,6 @@ public class EIP5656MCOPYTests : GeneralStateTestBase
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
         var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP5656-MCOPY");
-        return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+        return loader.LoadTests<GeneralStateTest>();
     }
 }

@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Optimism.CL;
+using Nethermind.Optimism.CL.P2P;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test.CL;

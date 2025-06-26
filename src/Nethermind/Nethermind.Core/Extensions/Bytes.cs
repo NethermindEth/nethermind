@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
@@ -18,7 +19,6 @@ using System.Text;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using System.Buffers;
 
 namespace Nethermind.Core.Extensions
 {
@@ -30,6 +30,7 @@ namespace Nethermind.Core.Extensions
         // The ReadOnlyMemory<byte> needs to be initialized = or it will be created each time.
         public static ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
         public static ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
+        public static ReadOnlyMemory<byte> TwoByte = new byte[] { 2 };
         // The Jit converts a ReadOnlySpan<byte> => new byte[] to a data section load, no allocation.
         public static ReadOnlySpan<byte> ZeroByteSpan => new byte[] { 0 };
         public static ReadOnlySpan<byte> OneByteSpan => new byte[] { 1 };
@@ -388,6 +389,51 @@ namespace Nethermind.Core.Extensions
             return new(bytes, true, true);
         }
 
+        public static ReadOnlySpan<byte> Trim(this ReadOnlySpan<byte> bytes, int length)
+            => bytes.Length > length ? bytes.Slice(bytes.Length - length, length) : bytes;
+
+        public static short ReadEthInt16(this ReadOnlySpan<byte> bytes)
+        {
+            bytes = bytes.Trim(2);
+
+            return bytes.Length switch
+            {
+                2 => BinaryPrimitives.ReadInt16BigEndian(bytes),
+                1 => bytes[0],
+                _ => 0
+            };
+        }
+
+        public static ushort ReadEthUInt16(this ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length > 2)
+            {
+                bytes = bytes.Slice(bytes.Length - 2, 2);
+            }
+
+            return bytes.Length switch
+            {
+                2 => BinaryPrimitives.ReadUInt16BigEndian(bytes),
+                1 => bytes[0],
+                _ => 0
+            };
+        }
+
+        public static ushort ReadEthUInt16LittleEndian(this Span<byte> bytes)
+        {
+            if (bytes.Length > 2)
+            {
+                bytes = bytes.Slice(bytes.Length - 2, 2);
+            }
+
+            return bytes.Length switch
+            {
+                2 => BinaryPrimitives.ReadUInt16LittleEndian(bytes),
+                1 => bytes[0],
+                _ => 0
+            };
+        }
+
         public static uint ReadEthUInt32(this Span<byte> bytes)
         {
             return ReadEthUInt32((ReadOnlySpan<byte>)bytes);
@@ -408,23 +454,6 @@ namespace Nethermind.Core.Extensions
             Span<byte> fourBytes = stackalloc byte[4];
             bytes.CopyTo(fourBytes[(4 - bytes.Length)..]);
             return BinaryPrimitives.ReadUInt32BigEndian(fourBytes);
-        }
-
-        public static uint ReadEthUInt32LittleEndian(this Span<byte> bytes)
-        {
-            if (bytes.Length > 4)
-            {
-                bytes = bytes.Slice(bytes.Length - 4, 4);
-            }
-
-            if (bytes.Length == 4)
-            {
-                return BinaryPrimitives.ReadUInt32LittleEndian(bytes);
-            }
-
-            Span<byte> fourBytes = stackalloc byte[4];
-            bytes.CopyTo(fourBytes[(4 - bytes.Length)..]);
-            return BinaryPrimitives.ReadUInt32LittleEndian(fourBytes);
         }
 
         public static int ReadEthInt32(this Span<byte> bytes)
@@ -585,34 +614,6 @@ namespace Nethermind.Core.Extensions
 
             public readonly byte[] Bytes;
             public readonly bool WithZeroX;
-        }
-
-        private readonly struct StateSmallMemory
-        {
-            public StateSmallMemory(Memory<byte> bytes, bool withZeroX)
-            {
-                Bytes = bytes;
-                WithZeroX = withZeroX;
-            }
-
-            public readonly Memory<byte> Bytes;
-            public readonly bool WithZeroX;
-        }
-
-        private struct StateOld
-        {
-            public StateOld(byte[] bytes, int leadingZeros, bool withZeroX, bool withEip55Checksum)
-            {
-                Bytes = bytes;
-                LeadingZeros = leadingZeros;
-                WithZeroX = withZeroX;
-                WithEip55Checksum = withEip55Checksum;
-            }
-
-            public int LeadingZeros;
-            public byte[] Bytes;
-            public bool WithZeroX;
-            public bool WithEip55Checksum;
         }
 
         private readonly struct State
@@ -1062,15 +1063,13 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidOperationException()
         {
             throw new InvalidOperationException();
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowFormatException_IncorrectHexString()
         {
             throw new FormatException("Incorrect hex string");

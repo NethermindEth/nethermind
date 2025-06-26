@@ -1,11 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -73,19 +73,8 @@ namespace Nethermind.Evm.Test
             ConstantinopleFixInstructions.Union(
                 new[] { Instruction.SELFBALANCE, Instruction.CHAINID }).ToArray();
 
-        private static readonly Instruction[] BerlinInstructions =
-            IstanbulInstructions.Union(
-                // new[]
-                // {
-                //     Instruction.BEGINSUB,
-                //     Instruction.JUMPSUB,
-                //     Instruction.RETURNSUB
-                // }
-                System.Array.Empty<Instruction>()
-            ).ToArray();
-
         private static readonly Instruction[] LondonInstructions =
-            BerlinInstructions.Union(
+            IstanbulInstructions.Union(
                 new Instruction[]
                 {
                     Instruction.BASEFEE
@@ -112,6 +101,31 @@ namespace Nethermind.Evm.Test
                 }
             ).ToArray();
 
+        private static readonly Instruction[] OsakaInstructions =
+            CancunInstructions.Union(
+                new Instruction[]
+                {
+                    Instruction.RJUMP,
+                    Instruction.RJUMPI,
+                    Instruction.RJUMPV,
+                    Instruction.CALLF,
+                    Instruction.RETF,
+                    Instruction.JUMPF,
+                    Instruction.EOFCREATE,
+                    Instruction.RETURNCODE,
+                    Instruction.DATASIZE,
+                    Instruction.DATACOPY,
+                    Instruction.DATALOAD,
+                    Instruction.DATALOADN,
+                    Instruction.SWAPN,
+                    Instruction.DUPN,
+                    Instruction.EXCHANGE,
+                    Instruction.EXTCALL,
+                    Instruction.EXTDELEGATECALL,
+                    Instruction.EXTSTATICCALL,
+                }
+            ).ToArray();
+
         private readonly Dictionary<ForkActivation, Instruction[]> _validOpcodes
             = new()
             {
@@ -123,11 +137,13 @@ namespace Nethermind.Evm.Test
                 {(ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber, ConstantinopleFixInstructions},
                 {(ForkActivation)MainnetSpecProvider.IstanbulBlockNumber, IstanbulInstructions},
                 {(ForkActivation)MainnetSpecProvider.MuirGlacierBlockNumber, IstanbulInstructions},
-                {(ForkActivation)MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions},
+                {(ForkActivation)MainnetSpecProvider.BerlinBlockNumber, IstanbulInstructions},
                 {(ForkActivation)MainnetSpecProvider.LondonBlockNumber, LondonInstructions},
                 {MainnetSpecProvider.ShanghaiActivation, ShanghaiInstructions},
                 {MainnetSpecProvider.CancunActivation, CancunInstructions},
-                {(long.MaxValue, ulong.MaxValue), CancunInstructions}
+                {MainnetSpecProvider.PragueActivation, CancunInstructions},
+                {MainnetSpecProvider.OsakaActivation, OsakaInstructions},
+                {(long.MaxValue, ulong.MaxValue), OsakaInstructions}
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
@@ -136,7 +152,7 @@ namespace Nethermind.Evm.Test
 
         protected override ILogManager GetLogManager()
         {
-            _logManager ??= new OneLoggerLogManager(new(new NUnitLogger(LogLevel.Trace)));
+            _logManager ??= new TestLogManager(LogLevel.Trace);
             return _logManager;
         }
 
@@ -152,7 +168,7 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.LondonBlockNumber)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 2, MainnetSpecProvider.CancunBlockTimestamp)]
-        [TestCase(long.MaxValue, ulong.MaxValue)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 3, MainnetSpecProvider.PragueBlockTimestamp)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {
             ILogger logger = _logManager.GetClassLogger();

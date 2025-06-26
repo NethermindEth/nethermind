@@ -57,10 +57,8 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IValidatorStore>(),
                 _validSealerStrategy,
                 _ethereumEcdsa,
-                _logManager)
-            {
-                ReportingValidator = _reportingValidator
-            };
+                new Lazy<IReportingValidator>(_reportingValidator),
+                _logManager);
         }
 
         public enum Repeat
@@ -198,7 +196,7 @@ namespace Nethermind.AuRa.Test
 
             Hash256 hash = block.CalculateHash(RlpBehaviors.ForSealing);
             block.AuRaSignature = _wallet.Sign(hash, signedAddress).BytesWithRecovery;
-            _ethereumEcdsa.RecoverAddress(Arg.Any<Signature>(), hash).Returns(recoveredAddress);
+            _ethereumEcdsa.RecoverAddress(Arg.Any<Signature>(), in hash.ValueHash256).Returns(recoveredAddress);
 
             return _sealValidator.ValidateSeal(block, false);
         }

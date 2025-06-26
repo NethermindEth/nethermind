@@ -16,38 +16,36 @@ env:
   PACKAGE_DIR: pkg
   PACKAGE_RETENTION: 7
   PUB_DIR: pub
-  SCRIPTS_PATH: ${{ github.workspace }}/scripts/deployment
+  SCRIPTS_PATH: ${{ github.workspace }}/scripts/build
 
 jobs:
   build:
     name: Build Nethermind packages
     runs-on: ubuntu-latest
     outputs:
-      build-timestamp: ${{ steps.build-runner.outputs.build-timestamp }}
+      build-timestamp: ${{ steps.build.outputs.build-timestamp }}
       package-prefix: ${{ steps.archive.outputs.package-prefix }}
-      prerelease: ${{ steps.build-runner.outputs.prerelease }}
+      prerelease: ${{ steps.build.outputs.prerelease }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
       - name: Build Nethermind.Runner
-        id: build-runner
+        id: build
         run: |
           build_timestamp=$(date '+%s')
           echo "build-timestamp=$build_timestamp" >> $GITHUB_OUTPUT
           echo "commit-hash=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
           echo "prerelease=${{ contains(github.event.inputs.tag, '-') }}" >> $GITHUB_OUTPUT
-          $SCRIPTS_PATH/build-runner.sh $GITHUB_SHA $build_timestamp
-      - name: Build Nethermind.Cli
-        run: $SCRIPTS_PATH/build-cli.sh $GITHUB_SHA ${{ steps.build-runner.outputs.build-timestamp }}
+          $SCRIPTS_PATH/build.sh $GITHUB_SHA $build_timestamp
       - name: Archive packages
         id: archive
         env:
-          PACKAGE_PREFIX: nethermind-${{ github.event.inputs.tag }}-${{ steps.build-runner.outputs.commit-hash }}
+          PACKAGE_PREFIX: nethermind-${{ github.event.inputs.tag }}-${{ steps.build.outputs.commit-hash }}
         run: |
           echo "package-prefix=$PACKAGE_PREFIX" >> $GITHUB_OUTPUT
-          $SCRIPTS_PATH/archive-packages.sh
+          $SCRIPTS_PATH/archive.sh
       - name: Upload Nethermind Linux x64 package
         uses: actions/upload-artifact@v4
         with:

@@ -16,7 +16,7 @@ namespace Nethermind.Shutter;
 
 public class ShutterEon(
     IReadOnlyBlockTree blockTree,
-    ReadOnlyTxProcessingEnvFactory envFactory,
+    IReadOnlyTxProcessingEnvFactory envFactory,
     IAbiEncoder abiEncoder,
     IShutterConfig shutterConfig,
     ILogManager logManager) : IShutterEon

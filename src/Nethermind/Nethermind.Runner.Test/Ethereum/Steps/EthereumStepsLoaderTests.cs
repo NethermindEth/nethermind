@@ -6,13 +6,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Autofac;
-using Autofac.Core;
 using FluentAssertions;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Init;
 using Nethermind.Init.Snapshot;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.AuRa;
@@ -23,6 +24,7 @@ using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Shutter;
 using Nethermind.Shutter.Config;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.Taiko;
 using NUnit.Framework;
 
@@ -37,6 +39,9 @@ public class EthereumStepsLoaderTests
         steps.AddRange(LoadStepInfoFromAssembly(typeof(InitializeBlockTree).Assembly));
         steps.AddRange(LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly));
 
+        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie)];
+        steps = steps.Where((s) => !optionalSteps.Contains(s.StepBaseType)).ToHashSet();
+
         using IContainer container = new ContainerBuilder()
             .AddModule(new BuiltInStepsModule())
             .AddModule(new StartRpcStepsModule())
@@ -48,8 +53,8 @@ public class EthereumStepsLoaderTests
     [Test]
     public void DoubleCheck_PluginsSteps()
     {
-        CheckPlugin(new AuRaPlugin(new ChainSpec()));
-        CheckPlugin(new OptimismPlugin(new ChainSpec()));
+        CheckPlugin(new AuRaPlugin(new ChainSpec() { EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new AuRaChainSpecEngineParameters()) }));
+        CheckPlugin(new OptimismPlugin(new ChainSpec() { EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters()) }));
         CheckPlugin(new TaikoPlugin(new ChainSpec()));
         CheckPlugin(new AuRaMergePlugin(new ChainSpec(), new MergeConfig()));
         CheckPlugin(new SnapshotPlugin(new SnapshotConfig()));
@@ -71,12 +76,18 @@ public class EthereumStepsLoaderTests
                 new StepInfo(typeof(StepB)),
                 new StepInfo(typeof(StepCAuRa)),
                 new StepInfo(typeof(StepCStandard)),
+                new StepInfo(typeof(StepE)),
             ]);
     }
 
     private void CheckPlugin(INethermindPlugin plugin)
     {
-        plugin.GetSteps().ToHashSet().Should().BeEquivalentTo(LoadStepInfoFromAssembly(plugin.GetType().Assembly));
+        using IContainer container = new ContainerBuilder()
+            .AddModule(plugin.Module)
+            .Build();
+
+        StepInfo[] steps = container.Resolve<IList<StepInfo>>().ToArray();
+        steps.ToHashSet().Should().BeEquivalentTo(LoadStepInfoFromAssembly(plugin.GetType().Assembly));
     }
 
     private static IEnumerable<StepInfo> LoadStepInfoFromAssembly(Assembly assembly)

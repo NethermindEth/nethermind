@@ -4,7 +4,7 @@
 using System;
 using Nethermind.Merge.Plugin.Data;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.P2P;
 
 public interface IPayloadDecoder
 {

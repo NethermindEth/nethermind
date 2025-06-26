@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.FastSync
     public class TreeSync : ITreeSync
     {
         public const int AlreadySavedCapacity = 1024 * 1024;
-        public const int MaxRequestSize = 384;
+        public const int MaxRequestSize = 384; // TODO: Consider using peer-specific limits from NodeStats
 
         private const StateSyncBatch EmptyBatch = null;
 
@@ -99,6 +99,7 @@ namespace Nethermind.Synchronization.FastSync
         {
             try
             {
+                // TODO: Consider using peer-specific request limits from NodeStats instead of fixed MaxRequestSize
                 List<StateSyncItem> requestItems = _pendingItems.TakeBatch(MaxRequestSize);
                 LogRequestInfo(requestItems);
 
@@ -718,7 +719,7 @@ namespace Nethermind.Synchronization.FastSync
             DependentItem dependentItem = new DependentItem(item, value, _stateSyncPivot.UpdatedStorages.Count);
 
             // Need complete state tree as the correct storage root may be different at this point.
-            StateTree stateTree = new StateTree(new TrieStore(_nodeStorage, LimboLogs.Instance), LimboLogs.Instance);
+            StateTree stateTree = new StateTree(new RawScopedTrieStore(_nodeStorage, null), LimboLogs.Instance);
             // The root is not persisted at this point yet, so we set it as root ref here.
             stateTree.RootRef = new TrieNode(NodeType.Unknown, value);
 
@@ -912,7 +913,8 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
-                        (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(trieNode.Value.AsRlpStream());
+                        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(trieNode.Value.Span);
+                        (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(ref ctx);
                         if (codeHash != Keccak.OfAnEmptyString)
                         {
                             AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash, null, TreePath.Empty, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");

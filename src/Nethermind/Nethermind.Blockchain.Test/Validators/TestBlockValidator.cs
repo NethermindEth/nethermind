@@ -84,5 +84,9 @@ public class TestBlockValidator : IBlockValidator
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
 
-
+    public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? errorMessage)
+    {
+        errorMessage = null;
+        return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
+    }
 }

@@ -4,6 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -21,7 +22,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Nethermind.Core.ExecutionRequest;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
@@ -205,12 +205,13 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     {
         IWorldState stateProvider = env.WorldState;
         Snapshot shoot = stateProvider.TakeSnapshot();
-        currentBlock = new Block(callHeader);
+        BlockToProduce block = new(callHeader);
+        currentBlock = block;
         LinkedHashSet<Transaction> testedTxs = new();
         for (int index = 0; index < transactions.Length; index++)
         {
             Transaction transaction = transactions[index];
-            BlockProcessor.AddingTxEventArgs? args = env.BlockTransactionPicker.CanAddTransaction(currentBlock, transaction, testedTxs, stateProvider);
+            BlockProcessor.AddingTxEventArgs? args = env.BlockTransactionPicker.CanAddTransaction(block, transaction, testedTxs, stateProvider);
 
             if (args.Action is BlockProcessor.TxAction.Stop or BlockProcessor.TxAction.Skip && payload.Validation)
             {
@@ -259,7 +260,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     {
         Transaction? transaction = transactionDetails.Transaction;
         transaction.SenderAddress ??= Address.Zero;
-        transaction.Data ??= Memory<byte>.Empty;
 
         if (!transactionDetails.HadNonceInRequest)
         {

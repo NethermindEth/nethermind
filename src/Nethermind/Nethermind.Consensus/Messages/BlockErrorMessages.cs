@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -127,4 +127,20 @@ public static class BlockErrorMessages
 
     public const string InvalidRequestsOrder =
         "InvalidRequestsOrder: Requests are not in the correct order in block.";
+
+
+    public const string WithdrawalsContractEmpty =
+        "WithdrawalsEmpty: Contract is not deployed.";
+
+    public const string WithdrawalsContractFailed =
+        "WithdrawalsFailed: Contract execution failed.";
+
+    public const string ConsolidationsContractEmpty =
+        "ConsolidationsEmpty: Contract is not deployed.";
+
+    public const string ConsolidationsContractFailed =
+        "ConsolidationsFailed: Contract execution failed.";
+
+    public static string InvalidDepositEventLayout(string error) =>
+        $"DepositsInvalid: Invalid deposit event layout: {error}";
 }

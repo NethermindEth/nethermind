@@ -9,6 +9,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -33,11 +34,9 @@ public class NonceManagerTests
     [SetUp]
     public void Setup()
     {
-        ILogManager logManager = LimboLogs.Instance;
         _specProvider = MainnetSpecProvider.Instance;
-        var trieStore = new TrieStore(new MemDb(), logManager);
-        var codeDb = new MemDb();
-        _stateProvider = new WorldState(trieStore, codeDb, logManager);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
         _blockTree = Substitute.For<IBlockTree>();
         Block block = Build.A.Block.WithNumber(0).TestObject;
         _blockTree.Head.Returns(block);

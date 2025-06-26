@@ -52,7 +52,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
 
     protected override GethLikeTxTrace OnEnd(GethLikeTxFileTracer txTracer)
     {
-        var trace = txTracer.BuildResult();
+        GethLikeTxTrace trace = txTracer.BuildResult();
 
         JsonSerializer.Serialize(_jsonWriter,
             new
@@ -103,8 +103,10 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
             });
 
         for (; index < _block.Transactions.Length; index++)
+        {
             if (_block.Transactions[index].Hash == txHash)
                 break;
+        }
 
         return string.Format(_fileNameFormat, index, hash, suffix);
     }

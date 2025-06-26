@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -20,7 +21,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,6 +32,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
@@ -55,7 +56,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
 
-public partial class BaseEngineModuleTests
+public abstract partial class BaseEngineModuleTests
 {
     [SetUp]
     public Task Setup()
@@ -68,9 +69,8 @@ public partial class BaseEngineModuleTests
     protected virtual MergeTestBlockchain CreateBaseBlockchain(
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,
-        ILogManager? logManager = null,
-        IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null) =>
-        new(mergeConfig, mockedPayloadService, logManager, mockedExecutionRequestsProcessor);
+        ILogManager? logManager = null) =>
+        new(mergeConfig, mockedPayloadService, logManager);
 
 
     protected async Task<MergeTestBlockchain> CreateBlockchain(
@@ -80,12 +80,19 @@ public partial class BaseEngineModuleTests
         ILogManager? logManager = null,
         IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null,
         Action<ContainerBuilder>? configurer = null)
-        => await CreateBaseBlockchain(mergeConfig, mockedPayloadService, logManager, mockedExecutionRequestsProcessor)
+    {
+        var bc = CreateBaseBlockchain(mergeConfig, mockedPayloadService, logManager);
+        bc.ExecutionRequestsProcessorOverride = mockedExecutionRequestsProcessor;
+        return await bc
             .BuildMergeTestBlockchain(configurer: (builder) =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
+
+                if (mockedExecutionRequestsProcessor is not null) builder.AddScoped<IExecutionRequestsProcessor>(mockedExecutionRequestsProcessor);
+
                 configurer?.Invoke(builder);
             });
+    }
 
     protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
         ILogManager? logManager = null)
@@ -128,6 +135,10 @@ public partial class BaseEngineModuleTests
                 chain.PayloadPreparationService!,
                 chain.SpecProvider!,
                 chain.LogManager),
+            new GetPayloadV5Handler(
+                chain.PayloadPreparationService!,
+                chain.SpecProvider!,
+                chain.LogManager),
             new NewPayloadHandler(
                 chain.BlockValidator,
                 chain.BlockTree,
@@ -161,6 +172,8 @@ public partial class BaseEngineModuleTests
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
             new GetBlobsHandler(chain.TxPool),
+            new GetBlobsHandlerV2(chain.TxPool),
+            Substitute.For<IEngineRequestsTracker>(),
             chain.SpecProvider,
             new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
             chain.LogManager);
@@ -173,7 +186,7 @@ public partial class BaseEngineModuleTests
     {
         List<ExecutionPayload> blocks = new();
         ExecutionPayload parentBlock = startingParentBlock;
-        parentBlock.TryGetBlock(out Block? block);
+        Block? block = parentBlock.TryGetBlock().Block;
         UInt256? startingTotalDifficulty = block!.IsGenesis
             ? block.Difficulty : chain.BlockFinder.FindHeader(block!.Header!.ParentHash!)!.TotalDifficulty;
         BlockHeader parentHeader = block!.Header;
@@ -197,7 +210,7 @@ public partial class BaseEngineModuleTests
 
             blocks.Add((getPayloadResult));
             parentBlock = getPayloadResult;
-            parentBlock.TryGetBlock(out block!);
+            block = parentBlock.TryGetBlock().Block!;
             block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
             parentHeader = block.Header;
         }
@@ -264,9 +277,11 @@ public partial class BaseEngineModuleTests
 
         public BeaconSync? BeaconSync { get; set; }
 
-        public IWithdrawalProcessor? WithdrawalProcessor { get; set; }
+        public IWithdrawalProcessor WithdrawalProcessor => ((MainBlockProcessingContext)MainProcessingContext).LifetimeScope.Resolve<IWithdrawalProcessor>();
 
         public ISyncPeerPool SyncPeerPool { get; set; }
+
+        public IExecutionRequestsProcessor? ExecutionRequestsProcessorOverride { get; set; }
 
         protected int _blockProcessingThrottle = 0;
 
@@ -280,14 +295,13 @@ public partial class BaseEngineModuleTests
             return this;
         }
 
-        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null, IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null)
+        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null)
         {
             GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
             MergeConfig = mergeConfig ?? new MergeConfig() { TerminalTotalDifficulty = "0" };
             PayloadPreparationService = mockedPayloadPreparationService;
             SyncPeerPool = Substitute.For<ISyncPeerPool>();
             LogManager = logManager ?? LogManager;
-            ExecutionRequestsProcessor = mockedExecutionRequestsProcessor;
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
@@ -308,12 +322,13 @@ public partial class BaseEngineModuleTests
 
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)
+                .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
                 .AddModule(new MergeModule(configProvider));
 
-        protected override IBlockProducer CreateTestBlockProducer(ITxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+        protected override IBlockProducer CreateTestBlockProducer()
         {
-            IBlockProducer preMergeBlockProducer =
-                base.CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
+            IBlockProducer preMergeBlockProducer = base.CreateTestBlockProducer();
+
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
             ISyncConfig syncConfig = new SyncConfig();
@@ -327,21 +342,12 @@ public partial class BaseEngineModuleTests
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
-            BlockProducerEnvFactory blockProducerEnvFactory = new(
-                WorldStateManager!,
-                BlockTree,
-                SpecProvider,
-                BlockValidator,
-                NoBlockRewards.Instance,
-                ReceiptStorage,
-                BlockPreprocessorStep,
-                TxPool,
-                transactionComparerProvider,
-                blocksConfig,
-                LogManager,
-                ExecutionRequestsProcessor);
+            if (ExecutionRequestsProcessorOverride is not null)
+            {
+                ((BlockProducerEnvFactory)BlockProducerEnvFactory).ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
+            }
 
-            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
+            BlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
             BlockImprovementContextFactory ??= new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
@@ -353,27 +359,24 @@ public partial class BaseEngineModuleTests
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
                 50000); // by default we want to avoid cleanup payload effects in testing
 
-            ExecutionRequestsProcessor ??= new ExecutionRequestsProcessor(TxProcessor);
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 
         protected override IBlockProcessor CreateBlockProcessor(IWorldState worldState)
         {
-            WithdrawalProcessor = new WithdrawalProcessor(worldState, LogManager);
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), worldState),
                 worldState,
                 ReceiptStorage,
-                TxProcessor,
                 new BeaconBlockRootHandler(TxProcessor, worldState),
                 new BlockhashStore(SpecProvider, worldState),
                 LogManager,
                 WithdrawalProcessor,
-                preWarmer: CreateBlockCachePreWarmer(),
-                executionRequestsProcessor: ExecutionRequestsProcessor);
+                ExecutionRequestsProcessorOverride ?? MainExecutionRequestsProcessor,
+                CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }

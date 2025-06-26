@@ -16,4 +16,5 @@ public class MetricsConfig : IMetricsConfig
     public string MonitoringGroup { get; set; } = "nethermind";
     public string MonitoringJob { get; set; } = "nethermind";
     public bool EnableDetailedMetric { get; set; } = false;
+    public bool InitializeStaticLabels { get; set; } = true;
 }

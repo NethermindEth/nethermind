@@ -21,7 +21,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SyncLimits;
+using Nethermind.Stats.SyncLimits;
 
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 
@@ -52,6 +52,7 @@ namespace Nethermind.Synchronization.FastBlocks
             || WithinOldBarrierDefault;
 
         public override bool IsFinished => AllDownloaded;
+        public override string FeedName => nameof(ReceiptsSyncFeed);
 
         public ReceiptsSyncFeed(
             ISpecProvider specProvider,

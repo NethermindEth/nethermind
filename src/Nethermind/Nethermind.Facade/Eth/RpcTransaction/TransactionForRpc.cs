@@ -43,6 +43,9 @@ public abstract class TransactionForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? BlockNumber { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public long? Gas { get; set; }
+
     [JsonConstructor]
     protected TransactionForRpc() { }
 

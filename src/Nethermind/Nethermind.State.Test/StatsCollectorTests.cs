@@ -4,7 +4,7 @@
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -26,7 +26,7 @@ namespace Nethermind.Store.Test
             MemDb codeDb = new();
             MemDb stateDb = new MemDb();
             NodeStorage nodeStorage = new NodeStorage(stateDb);
-            TrieStore trieStore = new(nodeStorage, new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
+            TestRawTrieStore trieStore = new(nodeStorage);
             WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
 
             stateProvider.CreateAccount(TestItem.AddressA, 1);
@@ -53,8 +53,6 @@ namespace Nethermind.Store.Test
             TreePath path = new TreePath(new ValueHash256("0x1800000000000000000000000000000000000000000000000000000000000000"), 2);
             Hash256 storageKey = new("0x345e54154080bfa9e8f20c99d7a0139773926479bc59e5b4f830ad94b6425332");
             nodeStorage.Set(address, path, storageKey, null);
-
-            trieStore.ClearCache();
 
             TrieStatsCollector statsCollector = new(codeDb, LimboLogs.Instance);
             VisitingOptions visitingOptions = new VisitingOptions()

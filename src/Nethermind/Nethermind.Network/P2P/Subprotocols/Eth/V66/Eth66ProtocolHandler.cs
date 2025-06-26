@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
             IGossipPolicy gossipPolicy,
-            ForkInfo forkInfo,
+            IForkInfo forkInfo,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
             : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
@@ -155,7 +155,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 await FulfillPooledTransactionsRequest(message.EthMessage, cancellationToken));
         }
 
-        private async Task<ReceiptsMessage> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
+        protected async Task<ReceiptsMessage> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
             using var message = getReceiptsMessage;
             V63.Messages.ReceiptsMessage receiptsMessage = await FulfillReceiptsRequest(message.EthMessage, cancellationToken);
@@ -184,7 +184,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             _nodeDataRequests66.Handle(msg.RequestId, msg.EthMessage.Data, size);
         }
 
-        private void Handle(ReceiptsMessage msg, long size)
+        protected void Handle(ReceiptsMessage msg, long size)
         {
             _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
         }

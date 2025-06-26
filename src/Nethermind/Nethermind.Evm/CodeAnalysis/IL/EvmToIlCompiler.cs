@@ -20,6 +20,7 @@ using Nethermind.Core.Crypto;
 using Org.BouncyCastle.Ocsp;
 using Sigil.NonGeneric;
 using System.Reflection.PortableExecutable;
+using static Nethermind.Evm.IlvmInstructionExtensions;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
@@ -56,7 +57,7 @@ public static class Precompiler
     private static ILEmittedMethod? CompileContractInternal(
         ModuleBuilder moduleBuilder,
         string identifier,
-        CodeInfo codeinfo,
+        ICodeInfo codeinfo,
         ContractCompilerMetadata metadata,
         IVMConfig config,
         bool runtimeTarget)
@@ -114,7 +115,7 @@ public static class Precompiler
 
     public static bool TryCompileContract(
         string contractName,
-        CodeInfo codeInfo,
+        ICodeInfo codeInfo,
         ContractCompilerMetadata metadata,
         IVMConfig config,
         ILogger logger,
@@ -173,7 +174,7 @@ public static class Precompiler
         _currentBundleSize = 0;
     }
 
-    public static Emit<ILEmittedMethod> EmitInternalMethod(Emit<ILEmittedMethod> method, int pc, CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
+    public static Emit<ILEmittedMethod> EmitInternalMethod(Emit<ILEmittedMethod> method, int pc, ICodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
     {
         var machineCodeAsSpan = codeInfo.MachineCode.Span;
 
@@ -266,7 +267,7 @@ public static class Precompiler
         return method;
     }
 
-    public static Emit<ILEmittedMethod> EmitEntryPoint(Emit<ILEmittedMethod> method, TypeBuilder typeBuilder,  CodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
+    public static Emit<ILEmittedMethod> EmitEntryPoint(Emit<ILEmittedMethod> method, TypeBuilder typeBuilder,  ICodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
     {
         var machineCodeAsSpan = codeInfo.MachineCode.Span;
 

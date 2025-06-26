@@ -316,7 +316,7 @@ namespace Nethermind.Monitoring.Metrics
 
         public MetricsController(IMetricsConfig metricsConfig)
         {
-            if (!_staticLabelsInitialized)
+            if (metricsConfig.InitializeStaticLabels && !_staticLabelsInitialized)
             {
                 _staticLabelsInitialized = true;
                 Prometheus.Metrics.DefaultRegistry.SetStaticLabels(_commonStaticTags);

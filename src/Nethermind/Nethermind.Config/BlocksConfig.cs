@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Reflection;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -12,24 +13,21 @@ namespace Nethermind.Config
 {
     public class BlocksConfig : IBlocksConfig
     {
-        public static bool AddVersionToExtraData { get; set; }
+        public const int MaxBlockSizeKilobytes = 10240;
+        public const int MaxCLWrapperKilobytes = 2048;
+        public const int SafetyMarginKilobytes = 256;
+        // 7936
+        public const int DefaultMaxTxKilobytes = MaxBlockSizeKilobytes - MaxCLWrapperKilobytes - SafetyMarginKilobytes;
+        private const string _clientExtraData = "Nethermind";
+        public static string DefaultExtraData = _clientExtraData;
 
-        public const string DefaultExtraData = "Nethermind";
-        private byte[] _extraDataBytes = [];
-        private string _extraDataString;
+        public static void SetDefaultExtraDataWithVersion() => DefaultExtraData = GetDefaultVersionExtraData();
 
-        public BlocksConfig()
+        private byte[] _extraDataBytes = Encoding.UTF8.GetBytes(DefaultExtraData);
+        private string _extraDataString = DefaultExtraData;
+
+        private static string GetDefaultVersionExtraData()
         {
-            _extraDataString = GetDefaultExtraData();
-            // Validate that it doesn't overflow when converted to bytes
-            ExtraData = _extraDataString;
-        }
-
-        private static string GetDefaultExtraData()
-        {
-            // Don't want block hashes in tests to change with every version
-            if (!AddVersionToExtraData) return DefaultExtraData;
-
             ReadOnlySpan<char> version = ProductInfo.Version.AsSpan();
             int index = version.IndexOfAny('+', '-');
             string alpha = "";
@@ -45,7 +43,10 @@ namespace Nethermind.Config
                 index = version.Length;
             }
 
-            return $"{DefaultExtraData} v{version[..index]}{alpha}";
+            // Don't include too much if the version is long (can be in custom builds)
+            index = Math.Min(index, 9);
+            string defaultExtraData = $"{_clientExtraData} v{version[..index]}{alpha}";
+            return defaultExtraData;
         }
 
         public bool Enabled { get; set; }
@@ -61,6 +62,7 @@ namespace Nethermind.Config
         public int PreWarmStateConcurrency { get; set; } = 0;
 
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
+        public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
 
         public int GenesisTimeoutMs { get; set; } = 40_000;
 
@@ -92,5 +94,7 @@ namespace Nethermind.Config
         public string GasToken { get => GasTokenTicker; set => GasTokenTicker = value; }
 
         public static string GasTokenTicker { get; set; } = "ETH";
+
+        public long BlockProductionMaxTxKilobytes { get; set; } = DefaultMaxTxKilobytes;
     }
 }

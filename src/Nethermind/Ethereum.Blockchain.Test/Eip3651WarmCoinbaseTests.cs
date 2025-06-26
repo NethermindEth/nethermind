@@ -20,6 +20,6 @@ public class Eip3651WarmCoinbaseTests : GeneralStateTestBase
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
         var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP3651-warmcoinbase");
-        return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+        return loader.LoadTests<GeneralStateTest>();
     }
 }

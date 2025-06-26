@@ -1,15 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <OutputType>Exe</OutputType>
+      <OutputType>Exe</OutputType>
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="App.Metrics" Version="4.3.0" />
-      <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
-      <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.0.0" />
-      <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.24528.1" />
-      <PackageReference Include="System.Linq.Async" Version="6.0.1" />
+      <PackageReference Include="App.Metrics" />
+      <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+      <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
+      <PackageReference Include="System.CommandLine" />
+      <PackageReference Include="System.Linq.Async" />
     </ItemGroup>
 
 </Project>

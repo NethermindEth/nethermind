@@ -28,7 +28,7 @@ public enum AnalysisPhase
 /// Represents the IL-EVM information about the contract.
 /// </summary>
 /// 
-internal class IlInfo
+public class IlInfo
 {
     /// <summary>
     /// Represents an information about IL-EVM being not able to optimize the given <see cref="CodeInfo"/>.

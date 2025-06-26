@@ -34,6 +34,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The block time slot, in seconds.", DefaultValue = "12")]
     ulong SecondsPerSlot { get; set; }
 
+    [ConfigItem(Description = "The fraction of slot time that can be used for a single block improvement.", DefaultValue = "0.25", HiddenFromDocs = true)]
+    double SingleBlockImprovementOfSlot { get; set; }
+
     [ConfigItem(Description = "Whether to pre-warm the state when processing blocks. This can lead to an up to 2x speed-up in the main loop block processing.", DefaultValue = "True")]
     bool PreWarmStateOnBlockProcessing { get; set; }
 
@@ -45,6 +48,9 @@ public interface IBlocksConfig : IConfig
 
     [ConfigItem(Description = "The genesis block load timeout, in milliseconds.", DefaultValue = "40000")]
     int GenesisTimeoutMs { get; set; }
+
+    [ConfigItem(Description = "The max transaction bytes to add in block production, in kilobytes.", DefaultValue = "9728")]
+    long BlockProductionMaxTxKilobytes { get; set; }
 
     [ConfigItem(Description = "The ticker that gas rewards are denominated in for processing logs", DefaultValue = "ETH", HiddenFromDocs = true)]
     string GasToken { get; set; }

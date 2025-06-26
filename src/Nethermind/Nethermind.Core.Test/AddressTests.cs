@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -196,6 +198,29 @@ public class AddressTests
     {
         Address.TryParseVariableLength("1", out Address? address).Should().Be(true);
         address.Should().Be(new Address("0000000000000000000000000000000000000001"));
+    }
+
+    [Test]
+    [SuppressMessage("ReSharper", "StackAllocInsideLoop")]
+    [SuppressMessage("Reliability", "CA2014:Do not use stackalloc in loops")]
+    public void ToHash_avoid_garbage_in_first_bytes()
+    {
+        for (var j = 0; j < 2; j++) // Loop to ensure stack is filled with some data
+        {
+            Span<byte> addressBytes = stackalloc byte[Address.Size];
+            for (var i = 0; i < Address.Size; i++)
+            {
+                addressBytes[i] = (byte)(i + j);
+            }
+
+            var address = new Address(addressBytes);
+
+            Span<byte> expectedHashBytes = stackalloc byte[Hash256.Size];
+            addressBytes.CopyTo(expectedHashBytes[(Hash256.Size - Address.Size)..]);
+            var expectedHash = new ValueHash256(expectedHashBytes);
+
+            address.ToHash().Should().BeEquivalentTo(expectedHash);
+        }
     }
 
     public static IEnumerable PointEvaluationPrecompileTestCases
