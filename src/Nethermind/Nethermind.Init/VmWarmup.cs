@@ -70,7 +70,7 @@ public unsafe class VmWarmup
             FieldInfo worldStateField =
                 typeof(VirtualMachine).GetField("_worldState", BindingFlags.NonPublic | BindingFlags.Instance) ?? throw new ArgumentNullException();
             FieldInfo codeInfoRepositoryField =
-                typeof(VirtualMachine).GetField("_codeInfoRepository", BindingFlags.NonPublic | BindingFlags.Instance) ??  throw new ArgumentNullException();
+                typeof(VirtualMachine).GetField("_codeInfoRepository", BindingFlags.NonPublic | BindingFlags.Instance) ?? throw new ArgumentNullException();
             evmStateField.SetValue(vm, evmState);
             worldStateField.SetValue(vm, state);
             codeInfoRepositoryField.SetValue(vm, codeInfoRepository);
