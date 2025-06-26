@@ -638,7 +638,8 @@ public partial class EngineModuleTests
             chain.BlockTree.Head!.Header,
             payloadAttributes: new PayloadAttributes
             {
-                Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA,
+                Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks,
+                PrevRandao = TestItem.KeccakA,
                 SuggestedFeeRecipient = Address.Zero
             },
             flags: IBlockProducer.Flags.PrepareEmptyBlock))!;
