@@ -3,6 +3,7 @@
 
 using System;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -83,5 +84,21 @@ public class IntegrationTests
         catch (OperationCanceledException) { }
 
         receivedCount.Should().BeGreaterThan(0, "Expected to receive at least one message from the gateway");
+    }
+
+    [Test]
+    public async Task NodeSendToTopic()
+    {
+        using var grpcChannel = GrpcChannel.ForAddress(new Uri("http://localhost:33221"), _grpcChannelOptions);
+
+        var client = new GrpcOptimumNodeClient(grpcChannel);
+
+        for (int i = 0; i < 10; i++)
+        {
+            byte[] data = Encoding.UTF8.GetBytes($"msg = {Guid.NewGuid()}");
+            await client.SendToTopicAsync(topic: "test", data, CancellationToken.None);
+        }
+
+        await Task.CompletedTask;
     }
 }

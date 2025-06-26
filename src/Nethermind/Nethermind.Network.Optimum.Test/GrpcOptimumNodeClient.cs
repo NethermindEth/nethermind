@@ -3,10 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using GetOptimum.Node.Proto;
 using Grpc.Core;
 using Grpc.Net.Client;
@@ -73,5 +73,33 @@ public sealed class GrpcOptimumNodeClient(
         }
 
         // TODO: We never send a `UnsubscribeToTopic` command to the Node
+    }
+
+    public Task SendToTopicAsync(string topic, ReadOnlySpan<byte> data, CancellationToken token = default)
+    {
+        var client = new CommandStream.CommandStreamClient(grpcChannel);
+        using var commands = client.ListenCommands(cancellationToken: token);
+
+        var request = new ListenCommandsRequest
+        {
+            Command = ListenCommandsRequestType.PublishData,
+            Topic = topic,
+            Data = Google.Protobuf.ByteString.CopyFrom(data)
+        };
+
+        return Send(client, request, token);
+
+        static async Task Send(CommandStream.CommandStreamClient client, ListenCommandsRequest request, CancellationToken token)
+        {
+            try
+            {
+                await client.ListenCommands(cancellationToken: token)
+                    .RequestStream.WriteAsync(request, token);
+            }
+            catch (RpcException e) when (e.InnerException is OperationCanceledException)
+            {
+                throw e.InnerException;
+            }
+        }
     }
 }
