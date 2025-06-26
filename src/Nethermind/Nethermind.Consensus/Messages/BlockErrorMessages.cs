@@ -56,6 +56,9 @@ public static class BlockErrorMessages
     public const string InvalidGenesisBlock =
         "InvalidGenesisBlock: Genesis block could not be validated.";
 
+    public static string MismatchedParent(Hash256 hash, Hash256 expectedParent, Hash256 givenParent) =>
+        $"Mismatched parent: Hash {hash}, expected parent hash {expectedParent}, given parent hash {givenParent}";
+
     public const string InvalidAncestor =
         "InvalidAncestor: No valid ancestors could be found.";
 
