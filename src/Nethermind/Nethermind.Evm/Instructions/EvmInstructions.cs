@@ -79,7 +79,7 @@ internal static unsafe partial class EvmInstructions
         // Environment opcodes.
         lookup[(int)Instruction.ADDRESS] = &InstructionEnvAddress<OpAddress, TTracingInst>;
         lookup[(int)Instruction.BALANCE] = &InstructionBalance<TTracingInst>;
-        lookup[(int)Instruction.ORIGIN] = &InstructionBlkAddress<OpOrigin, TTracingInst>;
+        lookup[(int)Instruction.ORIGIN] = &InstructionEnv32Bytes<OpOrigin, TTracingInst>;
         lookup[(int)Instruction.CALLER] = &InstructionEnvAddress<OpCaller, TTracingInst>;
         lookup[(int)Instruction.CALLVALUE] = &InstructionEnvUInt256<OpCallValue, TTracingInst>;
         lookup[(int)Instruction.CALLDATALOAD] = &InstructionCallDataLoad<TTracingInst>;
@@ -117,7 +117,7 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.GASLIMIT] = &InstructionBlkUInt64<OpGasLimit, TTracingInst>;
         if (spec.ChainIdOpcodeEnabled)
         {
-            lookup[(int)Instruction.CHAINID] = &InstructionChainId<TTracingInst>;
+            lookup[(int)Instruction.CHAINID] = &InstructionEnv32Bytes<OpChainId, TTracingInst>;
         }
         if (spec.SelfBalanceOpcodeEnabled)
         {
