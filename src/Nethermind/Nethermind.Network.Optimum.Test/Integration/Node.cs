@@ -60,31 +60,33 @@ public class Node
 
         var client = new GrpcOptimumNodeClient(grpcChannel);
         var topic = Guid.NewGuid().ToString();
-
-        var sentMessages = Enumerable.Range(0, 10)
-            .Select(_ => Encoding.UTF8.GetBytes($"msg = {Guid.NewGuid()}"))
-            .ToArray();
+        var messageCount = 10;
 
         var publisher = Task.Run(async () =>
         {
-            foreach (var msg in sentMessages)
+            var messages = Enumerable.Range(0, messageCount)
+                .Select(_ => Encoding.UTF8.GetBytes($"msg = {Guid.NewGuid()}"))
+                .ToArray();
+
+            foreach (var msg in messages)
             {
                 await client.PublishToTopicAsync(topic, msg, CancellationToken.None);
             }
+
+            return messages;
         });
 
         var subscriber = Task.Run(async () =>
         {
             var messages = client.SubscribeToTopic(topic);
             return await messages
-                .Take(sentMessages.Length)
+                .Take(messageCount)
                 .Select(msg => msg.Message)
                 .ToArrayAsync();
         });
 
-        await Task.WhenAll(publisher, subscriber);
-
-        var receivedMessages = subscriber.Result;
+        var sentMessages = await publisher;
+        var receivedMessages = await subscriber;
         receivedMessages.Should().BeEquivalentTo(sentMessages);
     }
 }
