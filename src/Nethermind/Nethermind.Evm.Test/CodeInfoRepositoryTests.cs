@@ -160,7 +160,7 @@ public class CodeInfoRepositoryTests
         CodeInfoRepository sut = new();
 
         ICodeInfo result = sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>());
-        result.MachineCode.ToArray().Should().BeEquivalentTo(delegationCode);
+        result.CodeSpan.ToArray().Should().BeEquivalentTo(delegationCode);
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]
