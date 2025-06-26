@@ -65,7 +65,7 @@ namespace Nethermind.Init.Steps
                 "- binary data -");
 
             IStateReader stateReader = setApi.StateReader!;
-            IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
+            IVisitingWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
             PreBlockCaches? preBlockCaches = (mainWorldState as IPreBlockCaches)?.Caches;
             CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
             IChainHeadInfoProvider chainHeadInfoProvider =

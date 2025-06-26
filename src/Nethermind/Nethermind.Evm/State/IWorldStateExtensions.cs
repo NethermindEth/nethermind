@@ -16,13 +16,4 @@ public static class WorldStateExtensions
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
         worldState.InsertCode(address, codeHash, code, spec, isGenesis);
     }
-
-    public static string DumpState(this IWorldState stateProvider)
-    {
-        // TODO
-        // TreeDumper dumper = new();
-        // stateProvider.Accept(dumper, stateProvider.StateRoot);
-        // return dumper.ToString();
-        return "";
-    }
 }

@@ -67,7 +67,7 @@ public class StateProviderTests
     public void Can_dump_state()
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState provider = worldStateManager.GlobalWorldState;
+        IVisitingWorldState provider = worldStateManager.GlobalWorldState;
         provider.CreateAccount(TestItem.AddressA, 1.Ether());
         provider.Commit(MuirGlacier.Instance);
         provider.CommitTree(0);

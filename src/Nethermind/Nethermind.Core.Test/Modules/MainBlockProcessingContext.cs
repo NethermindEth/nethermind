@@ -8,7 +8,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Evm.State;
+using Nethermind.State;
 
 namespace Nethermind.Core.Test.Modules;
 
@@ -23,7 +23,7 @@ public record MainBlockProcessingContext(
     ILifetimeScope LifetimeScope,
     IBlockProcessingQueue BlockProcessingQueue,
     IBlockchainProcessor BlockchainProcessor,
-    IWorldState WorldState,
+    IVisitingWorldState WorldState,
     IBlockProcessor BlockProcessor,
     ITransactionProcessor TransactionProcessor,
     GenesisLoader GenesisLoader) : IMainProcessingContext, IAsyncDisposable
