@@ -25,9 +25,7 @@ namespace Nethermind.Consensus.Producers
     public class AutoBlockProducerEnvFactory(
         ILifetimeScope rootLifetime,
         IWorldStateManager worldStateManager,
-        IBlockProducerTxSourceFactory txSourceFactory,
-        IBlocksConfig blocksConfig,
-        ISpecProvider specProvider
+        IBlockProducerTxSourceFactory txSourceFactory
     ) : IBlockProducerEnvFactory
     {
         public IBlockProducerEnv Create()
@@ -40,7 +38,6 @@ namespace Nethermind.Consensus.Producers
                 .AddScoped(BlockchainProcessor.Options.NoReceipts)
                 .AddScoped<ITransactionProcessorAdapter, BuildUpTransactionProcessorAdapter>()
                 .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
-                .AddScoped<BlockProcessor.IBlockProductionTransactionPicker>(new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
                 .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
 
                 .AddScoped<IBlockProducerEnv, AutoBlockProducerEnv>()

@@ -38,6 +38,7 @@ using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Simulate;
@@ -352,12 +353,11 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddScoped<IBlockProcessor, OptimismBlockProcessor>()
             .AddScoped<IWithdrawalProcessor, OptimismWithdrawalProcessor>()
             .AddScoped<Create2DeployerContractRewriter>()
+            .AddScoped<BlockProcessor.IBlockProductionTransactionPicker, ISpecProvider, IBlocksConfig>((specProvider, blocksConfig) =>
+                new OptimismBlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
 
             .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
-            .AddSingleton<IBlockProducerEnvFactory, OptimismBlockProducerEnvFactory>()
             .AddDecorator<IBlockProducerTxSourceFactory, OptimismBlockProducerTxSourceFactory>()
-
-            .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddSingleton<ISimulateTransactionProcessorFactory, SimulateOptimismTransactionProcessorFactory>()
 
             // Rpcs
