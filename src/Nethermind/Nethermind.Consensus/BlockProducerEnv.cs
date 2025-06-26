@@ -8,11 +8,19 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus
 {
-    public class BlockProducerEnv
+    public class BlockProducerEnv: IBlockProducerEnv
     {
         public IBlockTree BlockTree { get; set; }
         public IBlockchainProcessor ChainProcessor { get; set; }
         public IWorldState ReadOnlyStateProvider { get; set; }
         public ITxSource TxSource { get; set; }
+    }
+
+    public interface IBlockProducerEnv
+    {
+        public IBlockTree BlockTree { get; }
+        public IBlockchainProcessor ChainProcessor { get; }
+        public IWorldState ReadOnlyStateProvider { get; }
+        public ITxSource TxSource { get; }
     }
 }

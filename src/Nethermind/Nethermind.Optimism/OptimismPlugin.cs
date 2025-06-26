@@ -78,7 +78,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         OptimismGasLimitCalculator gasLimitCalculator = new OptimismGasLimitCalculator();
 
-        BlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
+        IBlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
 
         return new OptimismPostMergeBlockProducer(
             new OptimismPayloadTxSource(),

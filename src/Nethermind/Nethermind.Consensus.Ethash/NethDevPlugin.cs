@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.Ethash
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
-            BlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create();
+            IBlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create();
             IBlockProducer blockProducer = new DevBlockProducer(
                 env.TxSource,
                 env.ChainProcessor,

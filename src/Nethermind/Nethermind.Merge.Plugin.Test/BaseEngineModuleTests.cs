@@ -345,7 +345,7 @@ public abstract partial class BaseEngineModuleTests
                 ((BlockProducerEnvFactory)BlockProducerEnvFactory).ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
             }
 
-            BlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
+            IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             BlockProducer = postMergeBlockProducer;
             BlockImprovementContextFactory ??= new BlockImprovementContextFactory(BlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));

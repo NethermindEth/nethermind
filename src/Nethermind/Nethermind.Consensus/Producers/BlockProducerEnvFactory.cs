@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.Producers
             TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, _blocksConfig.BlockProductionMaxTxKilobytes, logManager);
         }
 
-        public virtual BlockProducerEnv Create()
+        public virtual IBlockProducerEnv Create()
         {
             ReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
 

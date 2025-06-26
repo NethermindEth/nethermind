@@ -68,7 +68,6 @@ public class StartBlockProducerAuRa(
     ICryptoRandom cryptoRandom,
     IBlockValidator blockValidator,
     IRewardCalculatorSource rewardCalculatorSource,
-    IBlockProducerEnvFactory blockProducerEnvFactory,
     IAuRaStepCalculator stepCalculator,
     AuRaGasLimitOverrideFactory gasLimitOverrideFactory,
     ILogManager logManager)
@@ -158,11 +157,12 @@ public class StartBlockProducerAuRa(
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _parameters.RewriteBytecode;
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
+        var executorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, blocksConfig.BlockProductionMaxTxKilobytes, logManager);
         return new AuRaBlockProcessor(
             specProvider,
             blockValidator,
             rewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
-            blockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
+            executorFactory.Create(changeableTxProcessingEnv),
             changeableTxProcessingEnv.WorldState,
             receiptStorage,
             new BeaconBlockRootHandler(changeableTxProcessingEnv.TransactionProcessor, changeableTxProcessingEnv.WorldState),

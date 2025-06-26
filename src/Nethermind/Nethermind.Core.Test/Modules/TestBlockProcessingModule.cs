@@ -119,7 +119,7 @@ public class TestBlockProcessingModule : Module
     private BlockProducerContext ConfigureBlockProducerContext(ILifetimeScope ctx)
     {
         // Note: This is modelled after TestBlockchain, not prod
-        BlockProducerEnv env = ctx.Resolve<IBlockProducerEnvFactory>().Create();
+        IBlockProducerEnv env = ctx.Resolve<IBlockProducerEnvFactory>().Create();
         ILifetimeScope innerScope = ctx.BeginLifetimeScope((producerCtx) =>
         {
             producerCtx
