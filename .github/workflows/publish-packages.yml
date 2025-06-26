@@ -85,13 +85,15 @@ jobs:
     name: Publish on Windows Package Manager
     runs-on: windows-latest
     if: ${{ !github.event.release.prerelease }}
+    env:
+      WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
     steps:
       - name: Submit package
         run: |
           $releaseInfo = curl -sL ${{ github.event.release.assets_url }} | ConvertFrom-Json
           $releaseUrl = $releaseInfo | Where-Object -Property name -match 'windows' | Select -ExpandProperty browser_download_url
           curl -sL https://aka.ms/wingetcreate/latest -o wingetcreate.exe
-          ./wingetcreate update Nethermind.Nethermind -s -v ${{ github.event.release.tag_name }} -u $releaseUrl -t ${{ secrets.WINGET_TOKEN }}
+          ./wingetcreate update Nethermind.Nethermind -s -v ${{ github.event.release.tag_name }} -u $releaseUrl
 
   publish-homebrew:
     name: Publish on Homebrew
