@@ -155,7 +155,7 @@ namespace Nethermind.Init.Steps
             return Task.CompletedTask;
         }
 
-        protected virtual ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
+        protected virtual ITransactionProcessor CreateTransactionProcessor(ICodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 

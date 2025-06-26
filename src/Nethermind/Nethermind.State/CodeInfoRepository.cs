@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.Precompiles;
@@ -19,7 +20,7 @@ using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.Evm.State;
 
-namespace Nethermind.Evm;
+namespace Nethermind.State;
 
 public class CodeInfoRepository : ICodeInfoRepository
 {
@@ -118,8 +119,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
         else
         {
-            // TODO
-            // Db.Metrics.IncrementCodeDbCache();
+            Db.Metrics.IncrementCodeDbCache();
         }
 
         return cachedCodeInfo;

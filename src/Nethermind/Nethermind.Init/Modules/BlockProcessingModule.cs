@@ -21,6 +21,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Simulate;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
