@@ -11,7 +11,7 @@ public sealed class CodeInfo(ReadOnlyMemory<byte> code) : ICodeInfo, IThreadPool
     private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
     public static CodeInfo Empty { get; } = new(ReadOnlyMemory<byte>.Empty);
     public ReadOnlyMemory<byte> MachineCode { get; } = code;
-    public ReadOnlySpan<byte> CodeSpan => MachineCode.Span;
+    ReadOnlySpan<byte> ICodeInfo.CodeSpan => MachineCode.Span;
 
     private readonly JumpDestinationAnalyzer _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
 
