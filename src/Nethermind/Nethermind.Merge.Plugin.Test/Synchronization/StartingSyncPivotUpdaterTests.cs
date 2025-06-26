@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using NUnit.Framework;
 using NSubstitute;
@@ -43,15 +44,15 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             specProvider.TerminalTotalDifficulty = 0;
             _externalPeerBlockTree = Build.A.BlockTree(genesisBlock, specProvider)
                 .WithoutSettingHead
-                .OfChainLength(100)
+                .OfChainLength(128 + 64)
                 .TestObject;
 
             ISyncPeer? fakePeer = Substitute.For<ISyncPeer>();
             fakePeer.GetHeadBlockHeader(default, default).ReturnsForAnyArgs(x => _externalPeerBlockTree!.Head!.Header);
 
             // for unsafe pivot updator
-            Hash256 pivotHash = _externalPeerBlockTree!.FindLevel(35)!.BlockInfos[0].BlockHash;
-            fakePeer.GetBlockHeaders(35, 1, 0, default).ReturnsForAnyArgs(x => _externalPeerBlockTree!.FindHeaders(pivotHash, 1, 0, default));
+            Hash256 pivotHash = _externalPeerBlockTree!.FindLevel(63)!.BlockInfos[0].BlockHash;
+            fakePeer.GetBlockHeaders(65, 1, 0, default).ReturnsForAnyArgs(x => _externalPeerBlockTree!.FindHeaders(pivotHash, 1, 0, default));
 
             NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, 100L);
             fakePeer.Node.Returns(new Node(node));
@@ -102,7 +103,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         }
 
         [Test]
-        public void TrySetFreshPivot_for_unsafe_updator_saves_pivot_64_blocks_behind_HeadBlockHash_in_db()
+        public void TrySetFreshPivot_for_unsafe_updator_saves_pivot_N_blocks_behind_HeadBlockHash_in_db()
         {
             _ = new UnsafeStartingSyncPivotUpdater(
                 _blockTree!,
@@ -116,7 +117,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
             Hash256 expectedHeadBlockHash = _externalPeerBlockTree!.HeadHash;
-            long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number - 64;
+            long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number - Reorganization.MaxDepth;
             Hash256 expectedPivotBlockHash = _externalPeerBlockTree!.FindLevel(expectedPivotBlockNumber)!.BlockInfos[0].BlockHash;
             _beaconSyncStrategy!.GetHeadBlockHash().Returns(expectedHeadBlockHash);
 

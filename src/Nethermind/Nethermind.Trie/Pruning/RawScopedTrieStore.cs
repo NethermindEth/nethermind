@@ -59,8 +59,7 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
             }
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
     }
 }

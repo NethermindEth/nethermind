@@ -30,10 +30,11 @@ namespace Nethermind.Blockchain
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public Hash256? GetBlockhash(BlockHeader currentBlock, in long number)
-        {
-            IReleaseSpec? spec = _specProvider.GetSpec(currentBlock);
+        public Hash256? GetBlockhash(BlockHeader currentBlock, long number)
+            => GetBlockhash(currentBlock, number, _specProvider.GetSpec(currentBlock));
 
+        public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec)
+        {
             if (spec.IsBlockHashInStateAvailable)
             {
                 return _blockhashStore.GetBlockHashFromState(currentBlock, number);

@@ -62,7 +62,7 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _stats;
         private readonly IProtocolValidator _protocolValidator;
         private readonly INetworkStorage _peerStorage;
-        private readonly ForkInfo _forkInfo;
+        private readonly IForkInfo _forkInfo;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ITxGossipPolicy _txGossipPolicy;
         private readonly ILogManager _logManager;
@@ -83,7 +83,7 @@ namespace Nethermind.Network
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
-            ForkInfo forkInfo,
+            IForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
             IWorldStateManager worldStateManager,
             ILogManager logManager,

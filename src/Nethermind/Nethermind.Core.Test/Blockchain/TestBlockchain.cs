@@ -20,7 +20,6 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Crypto;
@@ -42,8 +41,6 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Blockchain;
@@ -56,6 +53,7 @@ public class TestBlockchain : IDisposable
     public IEthereumEcdsa EthereumEcdsa => _fromContainer.EthereumEcdsa;
     public INonceManager NonceManager => _fromContainer.NonceManager;
     public ITransactionProcessor TxProcessor => _fromContainer.MainProcessingContext.TransactionProcessor;
+    public IMainProcessingContext MainProcessingContext => _fromContainer.MainProcessingContext;
     public IReceiptStorage ReceiptStorage => _fromContainer.ReceiptStorage;
     public ITxPool TxPool => _fromContainer.TxPool;
     public IWorldStateManager WorldStateManager => _fromContainer.WorldStateManager;
@@ -77,7 +75,7 @@ public class TestBlockchain : IDisposable
     public IReadOnlyStateProvider ReadOnlyState => _fromContainer.ReadOnlyState;
     public IDb StateDb => DbProvider.StateDb;
     public IDb BlocksDb => DbProvider.BlocksDb;
-    public IBlockProducer BlockProducer { get; private set; } = null!;
+    public IBlockProducer BlockProducer { get; protected set; } = null!;
     public IBlockProducerRunner BlockProducerRunner { get; protected set; } = null!;
     public IDbProvider DbProvider => _fromContainer.DbProvider;
     public ISpecProvider SpecProvider => _fromContainer.SpecProvider;
@@ -383,7 +381,6 @@ public class TestBlockchain : IDisposable
         new BlockCachePreWarmer(
             ReadOnlyTxProcessingEnvFactory,
             WorldStateManager.GlobalWorldState,
-            SpecProvider,
             4,
             LogManager,
             (WorldStateManager.GlobalWorldState as IPreBlockCaches)?.Caches);

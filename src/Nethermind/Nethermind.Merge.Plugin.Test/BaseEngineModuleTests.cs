@@ -250,8 +250,6 @@ public abstract partial class BaseEngineModuleTests
     {
         public IMergeConfig MergeConfig { get; set; }
 
-        public PostMergeBlockProducer? PostMergeBlockProducer { get; set; }
-
         public IPayloadPreparationService? PayloadPreparationService { get; set; }
         public StoringBlockImprovementContextFactory? StoringBlockImprovementContextFactory { get; set; }
 
@@ -275,7 +273,7 @@ public abstract partial class BaseEngineModuleTests
 
         public BeaconSync? BeaconSync { get; set; }
 
-        public IWithdrawalProcessor? WithdrawalProcessor { get; set; }
+        public IWithdrawalProcessor WithdrawalProcessor => ((MainBlockProcessingContext)MainProcessingContext).LifetimeScope.Resolve<IWithdrawalProcessor>();
 
         public ISyncPeerPool SyncPeerPool { get; set; }
 
@@ -320,6 +318,7 @@ public abstract partial class BaseEngineModuleTests
 
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)
+                .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
                 .AddModule(new MergeModule(configProvider));
 
         protected override IBlockProducer CreateTestBlockProducer()
@@ -346,8 +345,8 @@ public abstract partial class BaseEngineModuleTests
 
             BlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
-            PostMergeBlockProducer = postMergeBlockProducer;
-            BlockImprovementContextFactory ??= new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
+            BlockProducer = postMergeBlockProducer;
+            BlockImprovementContextFactory ??= new BlockImprovementContextFactory(BlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
             PayloadPreparationService ??= new PayloadPreparationService(
                 postMergeBlockProducer,
                 BlockImprovementContextFactory,
@@ -361,8 +360,6 @@ public abstract partial class BaseEngineModuleTests
 
         protected override IBlockProcessor CreateBlockProcessor(IWorldState worldState)
         {
-            WithdrawalProcessor = new WithdrawalProcessor(worldState, LogManager);
-
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,

@@ -1,9 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO.Abstractions;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
+using Nethermind.Core;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Era1.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -146,7 +150,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new RpcModuleInfo(typeof(IEraAdminRpcModule), new SingletonModulePool<IEraAdminRpcModule>(Substitute.For<IEraAdminRpcModule>()))
             ], LimboLogs.Instance);
 
-            moduleProvider.RegisterSingle<IAdminRpcModule>(Substitute.For<IAdminRpcModule>());
+            moduleProvider.RegisterBounded<IAdminRpcModule>(new SingletonFactory<IAdminRpcModule>(Substitute.For<IAdminRpcModule>()), 1, Int32.MaxValue);
 
             moduleProvider.Check("admin_exportHistory", _context).Should().Be(ModuleResolution.Enabled);
             moduleProvider.Check("admin_addPeer", _context).Should().Be(ModuleResolution.Enabled);
@@ -155,6 +159,43 @@ namespace Nethermind.JsonRpc.Test.Modules
             (adminClass is IAdminRpcModule).Should().BeTrue();
             var historyClass = await moduleProvider.Rent("admin_exportHistory", true);
             (historyClass is IEraAdminRpcModule).Should().BeTrue();
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public async Task ModuleFactory_FromDI_IsLazy(bool preload)
+        {
+            await using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(new JsonRpcConfig()
+                {
+                    PreloadRpcModules = preload
+                }))
+                .AddSingleton<TestRpcModuleDependencies>()
+                .RegisterSingletonJsonRpcModule<ITestRpcModule, TestRpcModule>()
+                .Build();
+
+            _ = container.Resolve<IRpcModuleProvider>();
+
+            container.Resolve<TestRpcModuleDependencies>().WasRequested.Should().Be(preload);
+        }
+
+        [RpcModule(ModuleType.Eth)]
+        private interface ITestRpcModule : IRpcModule
+        {
+
+        }
+
+        private class TestRpcModuleDependencies
+        {
+            internal bool WasRequested = false;
+        }
+
+        private class TestRpcModule : ITestRpcModule
+        {
+            public TestRpcModule(TestRpcModuleDependencies dependencies)
+            {
+                dependencies.WasRequested = true;
+            }
         }
     }
 }

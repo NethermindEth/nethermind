@@ -206,8 +206,7 @@ public sealed class EvmState : IDisposable // TODO: rename to CallState
 #if DEBUG
         _creationStackTrace = new StackTrace();
 #endif
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowIsInUse()
         {
             throw new InvalidOperationException("Already in use");
