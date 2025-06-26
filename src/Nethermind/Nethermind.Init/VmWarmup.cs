@@ -66,7 +66,7 @@ public unsafe class VmWarmup
         using (var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, in env, new StackAccessTracker(), state.TakeSnapshot()))
         {
             FieldInfo evmStateField =
-                typeof(VirtualMachine).GetField(nameof(VirtualMachine.EvmState), BindingFlags.NonPublic | BindingFlags.Instance) ?? throw new ArgumentNullException();
+                typeof(VirtualMachine).GetField("_currentState", BindingFlags.NonPublic | BindingFlags.Instance) ?? throw new ArgumentNullException();
             FieldInfo worldStateField =
                 typeof(VirtualMachine).GetField("_worldState", BindingFlags.NonPublic | BindingFlags.Instance) ?? throw new ArgumentNullException();
             FieldInfo codeInfoRepositoryField =
