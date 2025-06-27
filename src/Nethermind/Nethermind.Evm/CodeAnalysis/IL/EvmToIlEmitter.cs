@@ -2277,8 +2277,8 @@ internal static class OpcodeEmitters
         Label happyPath = method.DefineLabel(locals.GetLabelName());
 
         envLoader.LoadVmState(method, locals, false);
-
         envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadCodeInfoRepository(method, locals, false);
         method.LoadLocalAddress(locals.gasAvailable);
         envLoader.LoadSpec(method, locals, false);
 
