@@ -267,12 +267,11 @@ public class EnvirementLoader
         }
     }
 
-    public void LoadHeader<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadHeader<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
     {
         LoadBlockContext(il, locals, true);
-        il.Call(typeof(BlockExecutionContext).GetProperty(nameof(BlockExecutionContext.Header), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
+        il.LoadField(typeof(BlockExecutionContext).GetField(nameof(BlockExecutionContext.Header), BindingFlags.Public | BindingFlags.Instance));
     }
-
 
     public void LoadSpecProvider<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {

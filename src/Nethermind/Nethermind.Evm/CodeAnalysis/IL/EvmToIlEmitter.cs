@@ -531,10 +531,10 @@ internal static class OpcodeEmitters
         method.StoreLocal(locals.int64A);
 
         envLoader.LoadBlockhashProvider(method, locals, false);
-        envLoader.LoadHeader(method, locals, false);
+        envLoader.LoadHeader(method, locals);
 
-        method.LoadLocalAddress(locals.int64A);
-        method.CallVirtual(typeof(IBlockhashProvider).GetMethod(nameof(IBlockhashProvider.GetBlockhash), [typeof(BlockHeader), typeof(long).MakeByRefType()]));
+        method.LoadLocal(locals.int64A);
+        method.CallVirtual(typeof(IBlockhashProvider).GetMethod(nameof(IBlockhashProvider.GetBlockhash), [typeof(BlockHeader), typeof(long)]));
         method.Duplicate();
         method.StoreLocal(locals.hash256);
         method.LoadNull();
@@ -565,7 +565,7 @@ internal static class OpcodeEmitters
 
         using Local byteMatrix = method.DeclareLocal(typeof(byte[][]), locals.GetLocalName());
         envLoader.LoadTxContext(method, locals, true);
-        method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes), false, out _));
+        method.LoadFieldAddress(GetFieldInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes)));
         method.StoreLocal(byteMatrix);
 
         method.LoadLocal(byteMatrix);
@@ -598,7 +598,6 @@ internal static class OpcodeEmitters
         method.MarkLabel(indexTooLarge);
         method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.MarkLabel(endOfOpcode);
-        return;
     }
 
     internal static void EmitPrevRandaoInstruction<TDelegateType>(

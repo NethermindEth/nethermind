@@ -93,13 +93,18 @@ public struct Word
         }
     }
 
-    public unsafe byte[] Array
+    public unsafe byte[]? Array
     {
         get => MemoryMarshal.Cast<Word, byte>(MemoryMarshal.CreateSpan(ref this, 1)).ToArray();
         set
         {
             ref byte bytes = ref _buffer[0];
-            if (value.Length != Size)
+
+            if (value is null)
+            {
+                Unsafe.As<byte, Word>(ref bytes) = default;
+            }
+            else if (value.Length != Size)
             {
                 // Not full entry, clear first
                 Unsafe.As<byte, Word>(ref bytes) = default;
