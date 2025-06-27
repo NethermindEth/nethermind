@@ -233,7 +233,7 @@ public class JsonRpcService : IJsonRpcService
 
     private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)
     {
-        if (!_methodsLoggingFiltering.Contains(methodName))
+        if _logger.IsTrace &&(!_methodsLoggingFiltering.Contains(methodName))
         {
             StringBuilder builder = new StringBuilder();
             builder.Append("Executing JSON RPC call ");
