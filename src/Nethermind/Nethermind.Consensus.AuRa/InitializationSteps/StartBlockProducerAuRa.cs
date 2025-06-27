@@ -266,13 +266,7 @@ public class StartBlockProducerAuRa(
                 scope.WorldState,
                 blockchainProcessor);
 
-            return new BlockProducerEnv()
-            {
-                BlockTree = readOnlyBlockTree,
-                ChainProcessor = chainProcessor,
-                ReadOnlyStateProvider = scope.WorldState,
-                TxSource = CreateTxSourceForProducer(additionalTxSource),
-            };
+            return new BlockProducerEnv(readOnlyBlockTree, chainProcessor, scope.WorldState, CreateTxSourceForProducer(additionalTxSource));
         }
 
         return _blockProducerContext ??= Create();
