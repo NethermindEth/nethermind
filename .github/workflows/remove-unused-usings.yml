@@ -3,8 +3,6 @@ name: Remove unused usings
 on:
   push:
     branches: [master]
-  pull_request:
-    branches: [master]
   workflow_dispatch:
 
 jobs:
@@ -38,7 +36,7 @@ jobs:
           # Format each solution to remove unused usings (IDE0005 is the diagnostic ID for unused usings)
           for solution in $solutions; do
             echo "Processing solution: $solution"
-            dotnet format "$solution" --include IDE0005 --verbosity normal || {
+            dotnet format "$solution" --diagnostics IDE0005 --verbosity normal || {
               echo "Warning: Failed to format $solution, continuing with next solution"
               continue
             }
