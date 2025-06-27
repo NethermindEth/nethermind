@@ -225,7 +225,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 // Handles a single JSON RPC request.
                 if (model is not null)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"JSON RPC request {model}");
+                    if (_logger.IsDebug) _logger.Debug($"JSON RPC request {model.Method}");
 
                     // Processes the individual request.
                     JsonRpcResult.Entry result = await HandleSingleRequest(model, context);
@@ -265,7 +265,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     errorResponse.AddDisposable(() => jsonDocument.Dispose());
 
                     TraceResult(errorResponse);
-                    if (_logger.IsDebug) _logger.Debug($"  Failed request handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+                    if (_logger.IsTrace) _logger.Trace($"  Failed request handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
                     deserializationFailureResult = JsonRpcResult.Single(RecordResponse(errorResponse, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds, false)));
                     yield return deserializationFailureResult.Value;
                     break;
@@ -349,12 +349,12 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                         RpcReport.Error)
                     : await HandleSingleRequest(jsonRpcRequest, context);
 
-                if (_logger.IsDebug) _logger.Debug($"  {++requestIndex}/{requests.Count} JSON RPC request - {jsonRpcRequest} handled after {response.Report.HandlingTimeMicroseconds}");
+                if (_logger.IsTrace) _logger.Trace($"  {++requestIndex}/{requests.Count} JSON RPC request - {jsonRpcRequest} handled after {response.Report.HandlingTimeMicroseconds}");
                 TraceResult(response);
                 yield return RecordResponse(response);
             }
 
-            if (_logger.IsDebug) _logger.Debug($"  {requests.Count} requests handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            if (_logger.IsTrace) _logger.Trace($"  {requests.Count} requests handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
         finally
         {
@@ -381,7 +381,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         }
         else
         {
-            if (_logger.IsDebug) _logger.Debug($"Responded to Id:{request.Id} Method:{request.Method} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            if (_logger.IsTrace) _logger.Trace($"Responded to Id:{request.Id} Method:{request.Method} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             Metrics.JsonRpcSuccesses++;
         }
 

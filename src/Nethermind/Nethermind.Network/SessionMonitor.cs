@@ -148,7 +148,7 @@ namespace Nethermind.Network
 
         private void StartPingTimer()
         {
-            if (_logger.IsDebug) _logger.Debug("Starting session monitor");
+            if (_logger.IsTrace) _logger.Trace("Starting session monitor");
 
             _cancellationTokenSource = new CancellationTokenSource();
             _pingTimer = new PeriodicTimer(_pingInterval);
@@ -159,7 +159,7 @@ namespace Nethermind.Network
         {
             try
             {
-                if (_logger.IsDebug) _logger.Debug("Stopping session monitor");
+                if (_logger.IsTrace) _logger.Trace("Stopping session monitor");
                 CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
             }
             catch (Exception e)
