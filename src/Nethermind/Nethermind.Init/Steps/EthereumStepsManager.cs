@@ -90,12 +90,7 @@ namespace Nethermind.Init.Steps
                 }
             }
 
-            if (_logger.IsDebug)
-            {
-                string dot = BuildStepDependencyTree(stepInfoMap);
-                _logger.Debug("Ethereum steps dependency tree:\n" + dot);
-            }
-
+            if (_logger.IsDebug) _logger.Debug($"Ethereum steps dependency tree:\n{BuildStepDependencyTree(stepInfoMap}");
             List<Task> allRequiredSteps = new();
             foreach (StepWrapper stepWrapper in stepInfoMap.Values)
             {
