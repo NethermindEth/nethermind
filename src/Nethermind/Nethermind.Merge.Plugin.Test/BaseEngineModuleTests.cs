@@ -324,7 +324,7 @@ public abstract partial class BaseEngineModuleTests
                 .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
                 .AddModule(new MergeModule(configProvider));
 
-            if (ExecutionRequestsProcessorOverride != null)
+            if (ExecutionRequestsProcessorOverride is not null)
             {
                 builder.AddSingleton<IExecutionRequestsProcessor>(ExecutionRequestsProcessorOverride);
             }
