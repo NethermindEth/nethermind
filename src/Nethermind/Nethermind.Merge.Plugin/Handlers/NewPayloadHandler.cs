@@ -333,7 +333,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
-        TaskCompletionSource<ValidationResult?> blockProcessed = new();
+        TaskCompletionSource<ValidationResult?> blockProcessed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
         {
