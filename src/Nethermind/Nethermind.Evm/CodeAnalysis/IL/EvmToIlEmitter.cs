@@ -1083,7 +1083,7 @@ internal static class OpcodeEmitters
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         envLoader.LoadBlockContext(method, locals, true);
-        method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
+        method.LoadField(GetFieldInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header)));
 
         method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.Number), false, out _));
         method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
