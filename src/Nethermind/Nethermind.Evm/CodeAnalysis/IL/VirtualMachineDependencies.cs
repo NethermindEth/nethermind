@@ -212,7 +212,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             // If contract is large, charge for access
             if (spec.IsEip7907Enabled)
             {
-                uint excessContractSize = (uint)Math.Max(0, codeInfo.MachineCode.Length - CodeSizeConstants.MaxCodeSizeEip170);
+                uint excessContractSize = (uint)Math.Max(0, codeInfo.Code.Length - CodeSizeConstants.MaxCodeSizeEip170);
                 if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, codeSource, in vmState.AccessTracker, ref gasAvailable))
                     goto OutOfGas;
             }

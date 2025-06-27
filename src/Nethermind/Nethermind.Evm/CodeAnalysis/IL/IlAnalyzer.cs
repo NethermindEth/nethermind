@@ -177,7 +177,7 @@ public static class IlAnalyzer
     {
         Metrics.IncrementIlvmCurrentlyAnalysing();
 
-        byte[] codeAsSpan = codeInfo.MachineCode.ToArray();
+        byte[] codeAsSpan = codeInfo.Code.ToArray();
         Dictionary<int, short> stackOffsets = [];
         Dictionary<int, long> gasOffsets = [];
         Dictionary<int, SubSegmentMetadata> subSegmentData = [];
@@ -259,7 +259,7 @@ public static class IlAnalyzer
                     hasJumpdest |= op is Instruction.JUMPDEST;
                     requiresAvailabilityCheck |= op.RequiresAvailabilityCheck();
                     requiresStaticEnvCheck |= opcodeMetadata.IsNotStaticOpcode;
-                    // handle stack analysis 
+                    // handle stack analysis
                     currentStackSize -= opcodeMetadata.StackBehaviorPop;
                     if (currentStackSize < subSegment.RequiredStack)
                     {

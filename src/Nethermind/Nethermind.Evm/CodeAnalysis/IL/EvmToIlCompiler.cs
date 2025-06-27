@@ -176,7 +176,7 @@ public static class Precompiler
 
     public static Emit<ILEmittedMethod> EmitInternalMethod(Emit<ILEmittedMethod> method, int pc, ICodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
     {
-        var machineCodeAsSpan = codeInfo.MachineCode.Span;
+        var machineCodeAsSpan = codeInfo.Code.Span;
 
         SubSegmentMetadata currentSubsegment = contractMetadata.SubSegments[pc];
         using var locals = new Locals<ILEmittedMethod>(method);
@@ -269,7 +269,7 @@ public static class Precompiler
 
     public static Emit<ILEmittedMethod> EmitEntryPoint(Emit<ILEmittedMethod> method, TypeBuilder typeBuilder,  ICodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
     {
-        var machineCodeAsSpan = codeInfo.MachineCode.Span;
+        var machineCodeAsSpan = codeInfo.Code.Span;
 
         using var locals = new Locals<ILEmittedMethod>(method);
         var envLoader = EnvirementLoader.Instance;
@@ -290,7 +290,7 @@ public static class Precompiler
         method.LoadConstant((int)ContractState.Halted);
         method.BranchIfEqual(isContinuation);
 
-        int endOfSegment = codeInfo.MachineCode.Length;
+        int endOfSegment = codeInfo.Code.Length;
 
         foreach (var (programCounter, currentSubsegment) in contractMetadata.SubSegments)
         {
@@ -348,7 +348,7 @@ public static class Precompiler
                 method.EmitIsJumping(envLoader, locals, jumpTable);
             }
         }
-        
+
         envLoader.LoadResult(method, locals, true);
         method.LoadConstant((int)ContractState.Finished);
         method.StoreField(GetFieldInfo(typeof(ILChunkExecutionState), nameof(ILChunkExecutionState.ContractState)));
@@ -371,7 +371,7 @@ public static class Precompiler
         method.StoreField(typeof(ILChunkExecutionState).GetField(nameof(ILChunkExecutionState.ContractState)));
 
         method.LoadLocal(locals.jmpDestination);
-        method.LoadConstant(codeInfo.MachineCode.Length);
+        method.LoadConstant(codeInfo.Code.Length);
         method.BranchIfGreaterOrEqual(ret);
 
         foreach (KeyValuePair<int, Label> continuationSites in entryPoints)

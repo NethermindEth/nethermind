@@ -745,7 +745,7 @@ public sealed unsafe partial class VirtualMachine(
     }
 
     /// <summary>
-    /// Executes a precompiled contract operation based on the current execution state. 
+    /// Executes a precompiled contract operation based on the current execution state.
     /// If tracing is enabled, reports the precompile action. It then runs the precompile operation,
     /// checks for failure conditions, and adjusts the execution state accordingly.
     /// </summary>
@@ -1141,7 +1141,7 @@ public sealed unsafe partial class VirtualMachine(
             }
 
             int programCounter = vmState.ProgramCounter;
-            var codeAsSpan = env.CodeInfo.MachineCode.Span;
+            var codeAsSpan = env.CodeInfo.Code.Span;
             ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
 
             ILChunkExecutionArguments chunkArguments = new(

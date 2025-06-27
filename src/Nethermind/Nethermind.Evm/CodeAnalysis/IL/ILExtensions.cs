@@ -36,6 +36,7 @@ public static class ReleaseSpecEmit
     private static string GetSegmentId(SubSegmentMetadata subsegment) => subsegment.Instructions
             .Aggregate(new StringBuilder(), (acc, op) => acc.Append(op.ToString()))
             .ToString();
+
     public static void DeclareOpcodeValidityCheckVariables<T>(Emit<T> method, ContractCompilerMetadata metadata, Locals<T> locals)
     {
         foreach (var subSegment in metadata.SubSegments.Values.Where(subs => subs.IsReachable))

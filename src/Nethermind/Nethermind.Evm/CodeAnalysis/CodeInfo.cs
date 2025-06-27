@@ -68,8 +68,8 @@ public sealed class CodeInfo(ReadOnlyMemory<byte> code, ValueHash256? codeHash =
         // avoid falling back to dynamic dynamic AOT if all whitelisted contracts are processed
         if (vmConfig.IlEvmAllowedContracts.Length > 0) return;
 
-        if (MachineCode.Length < vmConfig.IlEvmBytecodeMinLength
-            || MachineCode.Length > (vmConfig.IlEvmBytecodeMaxLength ?? spec.MaxCodeSize)) return;
+        if (Code.Length < vmConfig.IlEvmBytecodeMinLength
+            || Code.Length > (vmConfig.IlEvmBytecodeMaxLength ?? spec.MaxCodeSize)) return;
 
 
         if (Interlocked.Increment(ref _callCount) != vmConfig.IlEvmAnalysisThreshold)

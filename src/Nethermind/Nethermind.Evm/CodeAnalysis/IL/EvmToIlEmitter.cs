@@ -828,7 +828,7 @@ internal static class OpcodeEmitters
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         envLoader.LoadMachineCode(method, locals, true);
-        method.LoadConstant(codeinfo.MachineCode.Length);
+        method.LoadConstant(codeinfo.Code.Length);
         method.LoadLocalAddress(locals.uint256B);
         method.LoadLocalAddress(locals.uint256C);
         method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
@@ -1278,7 +1278,7 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        method.LoadConstant(codeinfo.MachineCode.Length);
+        method.LoadConstant(codeinfo.Code.Length);
         method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
         return;
     }
@@ -1653,7 +1653,7 @@ internal static class OpcodeEmitters
         envLoader.LoadSpec(method, locals, false);
         method.LoadConstant(false);
         method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec), typeof(bool)]));
-        method.CallVirtual(GetPropertyInfo<ICodeInfo>(nameof(ICodeInfo.MachineCode), false, out _));
+        method.CallVirtual(GetPropertyInfo<ICodeInfo>(nameof(ICodeInfo.Code), false, out _));
         method.StoreLocal(locals.localReadOnlyMemory);
         method.LoadLocalAddress(locals.localReadOnlyMemory);
         method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
@@ -1723,7 +1723,7 @@ internal static class OpcodeEmitters
         envLoader.LoadSpec(method, locals, false);
         method.LoadConstant(false);
         method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec), typeof(bool)]));
-        method.CallVirtual(GetPropertyInfo<ICodeInfo>(nameof(ICodeInfo.MachineCode), false, out _));
+        method.CallVirtual(GetPropertyInfo<ICodeInfo>(nameof(ICodeInfo.Code), false, out _));
 
         method.LoadLocalAddress(locals.uint256B);
         method.LoadLocal(locals.uint256C);
@@ -2009,8 +2009,8 @@ internal static class OpcodeEmitters
     internal static void EmitPush_bInstructions<TDelegateType>(
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
-        int length = Math.Min(codeinfo.MachineCode.Length - pc - 1, op - Instruction.PUSH0);
-        var immediateBytes = codeinfo.MachineCode.Slice(pc + 1, length).Span;
+        int length = Math.Min(codeinfo.Code.Length - pc - 1, op - Instruction.PUSH0);
+        var immediateBytes = codeinfo.Code.Slice(pc + 1, length).Span;
         if (immediateBytes.IsZero())
             method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         else
@@ -2047,8 +2047,8 @@ internal static class OpcodeEmitters
         }
         else
         {
-            int length = Math.Min(codeinfo.MachineCode.Length - pc - 1, op - Instruction.PUSH0);
-            var immediateBytes = codeinfo.MachineCode.Slice(pc + 1, length).Span;
+            int length = Math.Min(codeinfo.Code.Length - pc - 1, op - Instruction.PUSH0);
+            var immediateBytes = codeinfo.Code.Slice(pc + 1, length).Span;
             if (immediateBytes.IsZero())
                 method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
             else
@@ -2240,7 +2240,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(newStateToExe);
 
         method.Call(callMethod);
-         
+
         method.StoreLocal(locals.uint32A);
         method.LoadLocal(locals.uint32A);
         method.LoadConstant((int)EvmExceptionType.None);
@@ -2425,7 +2425,7 @@ internal static class OpcodeEmitters
         method.BranchIfLess(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.InvalidJumpDestination));
 
         method.LoadLocal(locals.jmpDestination);
-        method.LoadConstant(codeinfo.MachineCode.Length);
+        method.LoadConstant(codeinfo.Code.Length);
         method.BranchIfGreaterOrEqual(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.InvalidJumpDestination));
 
         envLoader.LoadResult(method, locals, true);

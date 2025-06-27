@@ -11,14 +11,14 @@ using System;
 namespace Nethermind.Evm.CodeAnalysis;
 
 /// <summary>
-/// Represents common code information for EVM execution. 
-/// Implementations include <see cref="CodeInfo"/>, <see cref="EofCodeInfo"/> (EVM Object Format), 
+/// Represents common code information for EVM execution.
+/// Implementations include <see cref="CodeInfo"/>, <see cref="EofCodeInfo"/> (EVM Object Format),
 /// and <see cref="PrecompileInfo"/> for precompiled contracts.
 /// </summary>
 public interface ICodeInfo
 {
     /// <summary>
-    /// Gets the version of the code format. 
+    /// Gets the version of the code format.
     /// The default implementation returns 0, representing a legacy code format or non-EOF code.
     /// </summary>
     int Version => 0;
@@ -41,7 +41,7 @@ public interface ICodeInfo
     bool IsPrecompile => false;
 
     /// <summary>
-    /// Gets the code section. 
+    /// Gets the code section.
     /// By default, this returns the same contents as <see cref="Code"/>.
     /// </summary>
     ReadOnlyMemory<byte> CodeSection => Code;
