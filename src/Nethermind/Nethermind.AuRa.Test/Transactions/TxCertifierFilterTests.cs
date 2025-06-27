@@ -44,14 +44,14 @@ public class TxCertifierFilterTests
         _notCertifiedFilter = Substitute.For<ITxFilter>();
         _specProvider = Substitute.For<ISpecProvider>();
 
-        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
+        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
             .Returns(AcceptTxResult.Invalid);
 
         _certifierContract.Certified(Arg.Any<BlockHeader>(),
             Arg.Is<Address>(static a => TestItem.Addresses.Take(3).Contains(a)))
             .Returns(true);
 
-        _filter = new TxCertifierFilter(_certifierContract, _notCertifiedFilter, _specProvider, LimboLogs.Instance);
+        _filter = new TxCertifierFilter(_certifierContract, _notCertifiedFilter, LimboLogs.Instance);
     }
 
     [Test]
@@ -87,7 +87,7 @@ public class TxCertifierFilterTests
     [TestCase(true)]
     public void should_default_to_inner_contract_on_non_zero_transactions(bool expected)
     {
-        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>())
+        _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
             .Returns(expected ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);
 
         ShouldAllowAddress(TestItem.Addresses.First(), 1ul, expected);
@@ -97,7 +97,7 @@ public class TxCertifierFilterTests
     {
         _filter.IsAllowed(
             Build.A.Transaction.WithGasPrice(gasPrice).WithSenderAddress(address).TestObject,
-            Build.A.BlockHeader.TestObject).Equals(AcceptTxResult.Accepted).Should().Be(expected);
+            Build.A.BlockHeader.TestObject, Substitute.For<IReleaseSpec>()).Equals(AcceptTxResult.Accepted).Should().Be(expected);
     }
 
     [Test]

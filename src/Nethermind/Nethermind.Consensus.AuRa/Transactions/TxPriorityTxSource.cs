@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.Comparers;
@@ -25,14 +26,14 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public TxPriorityTxSource(
             ITxPool transactionPool,
-            IStateReader stateReader,
             ILogManager logManager,
             ITxFilterPipeline txFilterPipeline,
             IContractDataStore<Address> sendersWhitelist, // expected HashSet based
             IDictionaryContractDataStore<TxPriorityContract.Destination> priorities,
             ISpecProvider specProvider,
-            ITransactionComparerProvider transactionComparerProvider) // expected SortedList based
-            : base(transactionPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline)
+            ITransactionComparerProvider transactionComparerProvider,
+            IBlocksConfig blocksConfig) // expected SortedList based
+            : base(transactionPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline, blocksConfig)
         {
             _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));

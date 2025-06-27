@@ -210,20 +210,20 @@ public class StartBlockProducerAuRa(
                 apiTxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(_minGasPricesContractDataStore);
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(logManager)
                 .WithCustomTxFilter(auraTxFilter)
-                .WithBaseFeeFilter(specProvider)
+                .WithBaseFeeFilter()
                 .WithNullTxFilter()
                 .Build;
 
 
             return new TxPriorityTxSource(
                 txPool,
-                apiStateReader,
                 logManager,
                 txFilterPipeline,
                 whitelistContractDataStore,
                 prioritiesContractDataStore,
                 specProvider,
-                transactionComparerProvider);
+                transactionComparerProvider,
+                blocksConfig);
         }
         else
         {
@@ -236,9 +236,11 @@ public class StartBlockProducerAuRa(
         ITxFilter txSourceFilter = apiTxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(_minGasPricesContractDataStore);
         ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(logManager)
             .WithCustomTxFilter(txSourceFilter)
-            .WithBaseFeeFilter(specProvider)
+            .WithBaseFeeFilter()
+            .WithCustomTxFilter(HeadTxValidator.Instance)
             .Build;
-        return new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline);
+
+        return new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline, blocksConfig);
     }
 
 
@@ -350,7 +352,7 @@ public class StartBlockProducerAuRa(
         if (txPermissionFilter is not null)
         {
             // we now only need to filter generated transactions here, as regular ones are filtered on TxPoolTxSource filter based on CreateTxSourceFilter method
-            txSource = new FilteredTxSource<GeneratedTransaction>(txSource, txPermissionFilter, logManager);
+            txSource = new FilteredTxSource<GeneratedTransaction>(txSource, txPermissionFilter, logManager, specProvider, blocksConfig);
         }
 
         return txSource;
