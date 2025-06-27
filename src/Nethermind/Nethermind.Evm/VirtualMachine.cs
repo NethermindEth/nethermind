@@ -20,6 +20,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 
+using static System.Runtime.CompilerServices.Unsafe;
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
 #if DEBUG
@@ -29,24 +30,33 @@ using Nethermind.Evm.Tracing.Debugger;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.Evm;
 
-using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
+using Nethermind.Evm.CodeAnalysis.IL;
+using Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle;
+using Nethermind.Evm.Config;
+
+using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
+using Word = Vector256<byte>;
 
 public sealed unsafe partial class VirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    ILogManager? logManager) : IVirtualMachine
+    ILogManager? logManager,
+    IVMConfig? vmConfig = null) : IVirtualMachine
 {
+    private readonly IVMConfig _vmConfig = vmConfig ?? new VMConfig();
+
     public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
-    private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
-    internal readonly static byte[] EofHash256 = KeccakHash.ComputeHashBytes(MAGIC);
+    private static readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    internal static readonly byte[] EofHash256 = KeccakHash.ComputeHashBytes(MAGIC);
+
     internal static ref readonly UInt256 P255 => ref P255Int;
     internal static readonly UInt256 BigInt256 = 256;
-    internal static readonly UInt256 BigInt32 = 32;
+    public static readonly UInt256 BigInt32 = 32;
 
     internal static readonly byte[] BytesZero = [0];
 
-    internal static readonly byte[] BytesZero32 =
+    public static readonly byte[] BytesZero32 =
     {
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
@@ -54,7 +64,7 @@ public sealed unsafe partial class VirtualMachine(
         0, 0, 0, 0, 0, 0, 0, 0
     };
 
-    internal static readonly byte[] BytesMax32 =
+    public static readonly byte[] BytesMax32 =
     {
         255, 255, 255, 255, 255, 255, 255, 255,
         255, 255, 255, 255, 255, 255, 255, 255,
@@ -736,7 +746,7 @@ public sealed unsafe partial class VirtualMachine(
     }
 
     /// <summary>
-    /// Executes a precompiled contract operation based on the current execution state. 
+    /// Executes a precompiled contract operation based on the current execution state.
     /// If tracing is enabled, reports the precompile action. It then runs the precompile operation,
     /// checks for failure conditions, and adjusts the execution state accordingly.
     /// </summary>
@@ -1064,6 +1074,14 @@ public sealed unsafe partial class VirtualMachine(
             {
                 _worldState.IncrementNonce(env.ExecutingAccount);
             }
+
+            if (_vmConfig.IlEvmEnabledMode is ILMode.AOT_MODE)
+            {
+                if (vmState.Env.CodeInfo.IlMetadata.IsNotProcessed)
+                {
+                    env.CodeInfo.NoticeExecution(_vmConfig, _logger, Spec);
+                }
+            }
         }
 
         // If no machine code is present, treat the call as empty.
@@ -1114,6 +1132,61 @@ public sealed unsafe partial class VirtualMachine(
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
 
+        if (env.CodeInfo.IlMetadata.IsPrecompiled)
+        {
+            Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls
+
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"{env.CodeInfo.CodeHash} precompile is being called");
+            }
+
+            int programCounter = vmState.ProgramCounter;
+            ReadOnlySpan<byte> codeAsSpan = env.CodeInfo.Code.Span;
+            ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
+
+            // TODO: now VirtualMachine provides BlockExecutionContext, TxExecutionContext, Spec, _specProvider, WorldState
+            // We could pass it to minimize the overhead and the size of ILChunkExecutionArguments
+            ILChunkExecutionArguments chunkArguments = new(
+                ref MemoryMarshal.GetReference(codeAsSpan),
+                ref gasAvailable,
+                ref programCounter,
+                ref stack.Head,
+                ref Add(ref As<byte, CodeAnalysis.IL.Word>(ref MemoryMarshal.GetReference(stack.UnderlyingSpan)), stack.Head),
+                in TxExecutionContext,
+                in BlockExecutionContext,
+                vmState,
+                Spec, _specProvider,
+                _blockHashProvider,
+                CodeInfoRepository,
+                _worldState,
+                ReturnDataBuffer,
+                _txTracer,
+                _logger
+            );
+
+            if (env.CodeInfo.IlMetadata.PrecompiledContract(
+                ref chunkArguments,
+                ref chunkExecutionState)
+               )
+            {
+                UpdateCurrentState(++programCounter, gasAvailable, stack.Head - 1);
+                Metrics.IlvmAotPrecompiledCalls--; // this will treat continuations as new calls
+                return new CallResult(chunkExecutionState.CallResult);
+            }
+
+            UpdateCurrentState(programCounter, gasAvailable, stack.Head);
+
+            switch (chunkExecutionState.ContractState)
+            {
+                case ContractState.Return or ContractState.Revert:
+                    return new CallResult(null, chunkExecutionState.ReturnData.ToArray(), null, 0, shouldRevert: chunkExecutionState.ContractState is ContractState.Revert);
+                case ContractState.Failed:
+                    return GetFailureReturn(gasAvailable, chunkExecutionState.ExceptionType);
+                default:
+                    return CallResult.Empty(0);
+            }
+        }
         // Dispatch the bytecode interpreter.
         // The second generic parameter is selected based on whether the transaction tracer is cancelable:
         // - OffFlag is used when cancelation is not needed.

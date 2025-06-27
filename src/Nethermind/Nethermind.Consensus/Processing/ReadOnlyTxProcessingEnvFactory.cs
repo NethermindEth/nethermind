@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -30,7 +31,8 @@ public class ReadOnlyTxProcessingEnvFactory(
             worldStateManager,
             readOnlyBlockTree,
             specProvider,
-            logManager);
+            logManager,
+            new VMConfig());
     }
 
     public IReadOnlyTxProcessorSource CreateForWarmingUp(IWorldState worldStateToWarmUp)
@@ -40,6 +42,7 @@ public class ReadOnlyTxProcessingEnvFactory(
             readOnlyBlockTree,
             specProvider,
             logManager,
-            worldStateToWarmUp);
+            worldStateToWarmUp,
+            new VMConfig());
     }
 }
