@@ -225,7 +225,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 // Handles a single JSON RPC request.
                 if (model is not null)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"JSON RPC request {model}");
+                    if (_logger.IsDebug) _logger.Debug($"JSON RPC request {model.Method}");
 
                     // Processes the individual request.
                     JsonRpcResult.Entry result = await HandleSingleRequest(model, context);
@@ -238,7 +238,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 // Processes a collection of JSON RPC requests.
                 if (collection is not null)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"{collection.Count} JSON RPC requests");
+                    if (_logger.IsDebug) _logger.Debug($"{collection.Count} JSON RPC requests");
 
                     // Checks for authentication and batch size limit.
                     if (!context.IsAuthenticated && collection.Count > _jsonRpcConfig.MaxBatchSize)
