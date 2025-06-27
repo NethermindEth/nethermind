@@ -23,18 +23,6 @@ namespace Nethermind.Evm.CodeAnalysis.IL
 {
     public static class VirtualMachineDependencies
     {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static long Div32Ceiling(in UInt256 length, out bool outOfGas)
-        {
-            if (length.IsLargerThanULong())
-            {
-                outOfGas = true;
-                return 0;
-            }
-
-            return Div32Ceiling(length.u0, out outOfGas);
-        }
-
         public static bool UpdateGas(long gasCost, ref long gasAvailable)
         {
             if (gasAvailable < gasCost)
@@ -69,7 +57,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL
         {
             if (accessTracer.WarmUpLargeContract(codeAddress))
             {
-                long largeContractCost = GasCostOf.InitCodeWord * Div32Ceiling(excessContractSize, out bool outOfGas);
+                long largeContractCost = GasCostOf.InitCodeWord * EvmInstructions.Div32Ceiling(excessContractSize, out bool outOfGas);
                 if (outOfGas || !UpdateGas(largeContractCost, ref gasAvailable)) return false;
             }
 
@@ -420,9 +408,9 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             // Calculate the gas cost for the creation, including fixed cost and per-word cost for init code.
             // Also include an extra cost for CREATE2 if applicable.
             long gasCost = GasCostOf.Create +
-                           (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
+                           (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmInstructions.Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
                            (instruction == Instruction.CREATE2
-                               ? GasCostOf.Sha3Word * Div32Ceiling(in initCodeLength, out outOfGas)
+                               ? GasCostOf.Sha3Word * EvmInstructions.Div32Ceiling(in initCodeLength, out outOfGas)
                                : 0);
 
             // Check gas sufficiency: if outOfGas flag was set during gas division or if gas update fails.

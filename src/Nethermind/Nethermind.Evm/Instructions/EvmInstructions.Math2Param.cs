@@ -11,7 +11,7 @@ using static System.Runtime.CompilerServices.Unsafe;
 namespace Nethermind.Evm;
 using Int256;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Interface for two-parameter mathematical operations on 256-bit unsigned integers.

@@ -632,7 +632,7 @@ internal static class OpcodeEmitters
         using Local uint256Nullable = method.DeclareLocal(typeof(UInt256?), locals.GetLocalName());
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         envLoader.LoadBlockContext(method, locals, true);
-        method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.BlobBaseFee), false, out _));
+        method.LoadFieldAddress(GetFieldInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.BlobBaseFee)));
         method.StoreLocal(uint256Nullable);
         method.LoadLocalAddress(uint256Nullable);
         method.Call(GetPropertyInfo(typeof(UInt256?), nameof(Nullable<UInt256>.Value), false, out _));
@@ -723,7 +723,7 @@ internal static class OpcodeEmitters
         method.LoadLocal(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256C);
         method.LoadLocalAddress(locals.lbool);
-        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
+        method.Call(typeof(EvmInstructions).GetMethod(nameof(EvmInstructions.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
         method.LoadConstant(GasCostOf.Memory);
         method.Multiply();
         method.Subtract();
@@ -794,7 +794,7 @@ internal static class OpcodeEmitters
         method.LoadLocal(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256C);
         method.LoadLocalAddress(locals.lbool);
-        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
+        method.Call(typeof(EvmInstructions).GetMethod(nameof(EvmInstructions.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
         method.LoadConstant(GasCostOf.Memory);
         method.Multiply();
         method.Subtract();
@@ -903,7 +903,7 @@ internal static class OpcodeEmitters
         method.LoadLocal(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256B);
         method.LoadLocalAddress(locals.lbool);
-        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
+        method.Call(typeof(EvmInstructions).GetMethod(nameof(EvmInstructions.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
         method.LoadConstant(GasCostOf.Sha3Word);
         method.Multiply();
         method.Subtract();
@@ -948,7 +948,7 @@ internal static class OpcodeEmitters
         method.LoadLocal(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256C);
         method.LoadLocalAddress(locals.lbool);
-        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
+        method.Call(typeof(EvmInstructions).GetMethod(nameof(EvmInstructions.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
         method.LoadConstant(GasCostOf.VeryLow);
         method.Multiply();
         method.Subtract();
@@ -1161,7 +1161,7 @@ internal static class OpcodeEmitters
         method.LoadLocal(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256C);
         method.LoadLocalAddress(locals.lbool);
-        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
+        method.Call(typeof(EvmInstructions).GetMethod(nameof(EvmInstructions.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
         method.LoadConstant(GasCostOf.Memory);
         method.Multiply();
         method.Subtract();
@@ -1668,7 +1668,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
         method.LoadLocalAddress(locals.uint256C);
         method.LoadLocalAddress(locals.lbool);
-        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
+        method.Call(typeof(EvmInstructions).GetMethod(nameof(EvmInstructions.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
         method.LoadConstant(GasCostOf.Memory);
         method.Multiply();
         method.Add();
@@ -1814,17 +1814,14 @@ internal static class OpcodeEmitters
         method.Call(Word.GetAddress);
         method.StoreLocal(locals.address);
 
-        method.LoadLocalAddress(locals.gasAvailable);
-        envLoader.LoadVmState(method, locals, false);
-
         EmitChargeAccountAccessGas(method, envLoader, locals);
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         envLoader.LoadWorldState(method, locals, false);
         method.LoadLocal(locals.address);
-        method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
-        method.Call(Word.SetUInt256ByVal);
+        method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.GetBalance)));
+        method.Call(Word.SetUInt256ByRef);
     }
 
     internal static void EmitDivInstruction<TDelegateType>(

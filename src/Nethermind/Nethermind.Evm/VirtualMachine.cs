@@ -52,7 +52,7 @@ public sealed unsafe partial class VirtualMachine(
 
     internal static ref readonly UInt256 P255 => ref P255Int;
     internal static readonly UInt256 BigInt256 = 256;
-    internal static readonly UInt256 BigInt32 = 32;
+    public static readonly UInt256 BigInt32 = 32;
 
     internal static readonly byte[] BytesZero = [0];
 
