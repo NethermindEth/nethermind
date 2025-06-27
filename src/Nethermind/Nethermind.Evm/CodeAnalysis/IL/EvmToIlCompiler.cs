@@ -101,7 +101,7 @@ public static class Precompiler
             return @delegate;
 
         }
-        catch(Exception e)
+        catch (Exception e)
         {
             if (!runtimeTarget)
             {
@@ -267,7 +267,7 @@ public static class Precompiler
         return method;
     }
 
-    public static Emit<ILEmittedMethod> EmitEntryPoint(Emit<ILEmittedMethod> method, TypeBuilder typeBuilder,  ICodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
+    public static Emit<ILEmittedMethod> EmitEntryPoint(Emit<ILEmittedMethod> method, TypeBuilder typeBuilder, ICodeInfo codeInfo, ContractCompilerMetadata contractMetadata, IVMConfig config)
     {
         var machineCodeAsSpan = codeInfo.Code.Span;
 
@@ -324,7 +324,7 @@ public static class Precompiler
 
             if (currentSubsegment.RequiresStaticEnvCheck)
             {
-                method.EmitAmortizedStaticEnvCheck(envLoader, currentSubsegment,  locals, evmExceptionLabels);
+                method.EmitAmortizedStaticEnvCheck(envLoader, currentSubsegment, locals, evmExceptionLabels);
             }
 
             if (currentSubsegment.RequiresOpcodeCheck)
@@ -343,7 +343,7 @@ public static class Precompiler
                 method.EmitIsHalting(envLoader, locals, ret);
             }
 
-            if(currentSubsegment.IsEphemeralJump)
+            if (currentSubsegment.IsEphemeralJump)
             {
                 method.EmitIsJumping(envLoader, locals, jumpTable);
             }

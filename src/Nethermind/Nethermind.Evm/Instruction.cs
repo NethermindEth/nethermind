@@ -201,7 +201,7 @@ public enum Instruction : byte
     REVERT = 0xfd,
     INVALID = 0xfe,
     SELFDESTRUCT = 0xff
- 
+
 }
 public struct OpcodeMetadata(long gasCost, byte additionalBytes, byte stackBehaviorPop, byte stackBehaviorPush, bool requiresStaticEnvToBeFalse = false)
 {

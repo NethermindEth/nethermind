@@ -374,7 +374,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.uint256B); // length
         method.Call(Word.GetUInt256ByRef);
 
-                                            // UpdateMemoryCost
+        // UpdateMemoryCost
         envLoader.LoadVmState(method, locals, false);
 
 

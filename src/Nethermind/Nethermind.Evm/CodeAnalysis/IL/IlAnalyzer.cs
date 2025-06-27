@@ -273,13 +273,13 @@ public static class IlAnalyzer
                     }
 
                     subSegment.LeftOutStack = currentStackSize;
-                    if(op is Instruction.GAS)
+                    if (op is Instruction.GAS)
                     {
                         gasOffsets[costStart] = coststack;
                         costStart = pc + 1;             // start with the next again
                         coststack = 0;
                     }
-                    else if(op.IsJump() || IlvmInstructionExtensions.IsTerminating(op))
+                    else if (op.IsJump() || IlvmInstructionExtensions.IsTerminating(op))
                     {
                         subSegment.Start = subsegmentStart;
                         subSegment.RequiredStack = -subSegment.RequiredStack;
@@ -306,7 +306,8 @@ public static class IlAnalyzer
 
                         notStart = true;
                         continue;
-                    } else if(op.IsCreate() || op.IsCall())
+                    }
+                    else if (op.IsCreate() || op.IsCall())
                     {
                         // create will be trated like a JUMPI but with a special gas handling like GAS
 

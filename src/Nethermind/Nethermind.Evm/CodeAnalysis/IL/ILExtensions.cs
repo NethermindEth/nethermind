@@ -52,7 +52,7 @@ public static class ReleaseSpecEmit
         method.BranchIfTrue(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.StaticCallViolation));
     }
 
-    public static void EmitAmortizedOpcodeCheck<T>(this Emit<T> method, EnvirementLoader envirementLoader,  SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
+    public static void EmitAmortizedOpcodeCheck<T>(this Emit<T> method, EnvirementLoader envirementLoader, SubSegmentMetadata segmentMetadata, Locals<T> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels)
     {
         // can be made better to save more memory using vectorized (think BitVectors)
         Label alreadyCheckedLabel = method.DefineLabel(locals.GetLabelName());

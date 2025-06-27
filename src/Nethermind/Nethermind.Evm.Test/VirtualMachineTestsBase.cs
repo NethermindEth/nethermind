@@ -48,7 +48,7 @@ public abstract class VirtualMachineTestsBase
     protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
     protected virtual ForkActivation Activation => (BlockNumber, Timestamp);
-    
+
     private ISpecProvider _specProvider = MainnetSpecProvider.Instance;
     protected virtual ISpecProvider SpecProvider
     {

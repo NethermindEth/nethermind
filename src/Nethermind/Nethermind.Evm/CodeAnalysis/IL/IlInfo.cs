@@ -15,7 +15,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 
 public enum ILMode
 {
-    NO_ILVM  = 0b00000001,
+    NO_ILVM = 0b00000001,
     AOT_MODE = 0b00000010,
 }
 

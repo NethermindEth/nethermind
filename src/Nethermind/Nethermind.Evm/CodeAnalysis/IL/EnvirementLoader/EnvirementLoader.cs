@@ -15,7 +15,7 @@ using Nethermind.Evm.Tracing;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
-public class EnvirementLoader 
+public class EnvirementLoader
 {
     public static readonly EnvirementLoader Instance = new();
 
@@ -231,7 +231,7 @@ public class EnvirementLoader
     public void LoadVmState<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        if(loadAddress)
+        if (loadAddress)
         {
             il.LoadFieldAddress(OBJ_EVMSTATE_FIELD);
         }

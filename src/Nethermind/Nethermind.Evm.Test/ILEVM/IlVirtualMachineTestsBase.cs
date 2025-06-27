@@ -47,7 +47,7 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
     {
         UseIlEvm = useIlEVM;
 
-        if(useIlEVM)
+        if (useIlEVM)
         {
             _config = new VMConfig
             {
@@ -57,7 +57,8 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
                 IlEvmContractsPerDllCount = 1,
                 IlEvmPersistPrecompiledContractsOnDisk = false,
             };
-        } else
+        }
+        else
         {
             _config = new VMConfig();
         }

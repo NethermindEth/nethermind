@@ -143,9 +143,9 @@ namespace Nethermind.Evm.Benchmark
                 inputData: default
             );
 
-            if(vmConfig.IsILEvmEnabled)
+            if (vmConfig.IsILEvmEnabled)
             {
-                if(driverCodeInfo.IlInfo.IsNotProcessed)
+                if (driverCodeInfo.IlInfo.IsNotProcessed)
                 {
                     IlAnalyzer.Analyse(driverCodeInfo, vmConfig.IlEvmEnabledMode, vmConfig, NullLogger.Instance);
                 }

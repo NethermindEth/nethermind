@@ -47,7 +47,7 @@ public sealed unsafe partial class VirtualMachine(
     private readonly IVMConfig _vmConfig = vmConfig ?? new VMConfig();
 
     public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
-    private  static readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    private static readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
     internal static readonly byte[] EofHash256 = KeccakHash.ComputeHashBytes(MAGIC);
 
     internal static ref readonly UInt256 P255 => ref P255Int;

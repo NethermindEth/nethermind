@@ -122,12 +122,13 @@ namespace Nethermind.Benchmark.Runner
 
             if (mode == (ILMode.NO_ILVM | ILMode.AOT_MODE))
             {
-               BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.WrapedEthBenchmarks), config);
-            } else if (mode == ILMode.AOT_MODE)
+                BenchmarkRunner.Run(typeof(Nethermind.Evm.Benchmark.WrapedEthBenchmarks), config);
+            }
+            else if (mode == ILMode.AOT_MODE)
             {
                 BenchmarkRunner.Run<WrapedEthBenchmarksSetup<VirtualMachine.IsPrecompiling>>(config);
             }
-            else if(mode == ILMode.NO_ILVM)
+            else if (mode == ILMode.NO_ILVM)
             {
                 BenchmarkRunner.Run<WrapedEthBenchmarksSetup<VirtualMachine.NotOptimizing>>(config);
             }

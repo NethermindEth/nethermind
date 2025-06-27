@@ -11,6 +11,6 @@ using System;
 namespace Nethermind.Evm.CodeAnalysis.IL.Delegates;
 
 public delegate bool ILEmittedMethod(
-    ref ILChunkExecutionArguments envArg, 
+    ref ILChunkExecutionArguments envArg,
     ref ILChunkExecutionState result);
 

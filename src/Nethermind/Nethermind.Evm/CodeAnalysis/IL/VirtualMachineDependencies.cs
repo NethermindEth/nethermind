@@ -76,7 +76,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             return true;
         }
 
-        public static bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address,  IReleaseSpec spec,  bool chargeForWarm = true)
+        public static bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, bool chargeForWarm = true)
         {
             bool result = true;
             if (spec.UseHotAndColdStorage)
