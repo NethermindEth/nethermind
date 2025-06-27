@@ -994,7 +994,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
 
-        method.LoadField(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BigInt32)));
+        method.LoadField(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BigInt32), BindingFlags.NonPublic | BindingFlags.Static));
         method.StoreLocal(locals.uint256B);
 
         method.LoadLocalAddress(locals.uint256B);
@@ -1098,7 +1098,7 @@ internal static class OpcodeEmitters
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         envLoader.LoadBlockContext(method, locals, true);
-        method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
+        method.LoadFieldAddress(GetFieldInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header)));
 
         method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.GasLimit), false, out _));
         method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
@@ -1236,8 +1236,8 @@ internal static class OpcodeEmitters
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         envLoader.LoadTxContext(method, locals, true);
-        method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.GasPrice), false, out _));
-        method.Call(Word.SetUInt256ByVal);
+        method.LoadFieldAddress(GetFieldInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.GasPrice)));
+        method.Call(Word.SetUInt256ByRef);
         return;
     }
 
@@ -1635,30 +1635,27 @@ internal static class OpcodeEmitters
         method.Call(Word.GetAddress);
         method.StoreLocal(locals.address);
 
-        method.LoadLocalAddress(locals.gasAvailable);
-        envLoader.LoadVmState(method, locals, false);
-        method.LoadLocal(locals.address);
-        method.LoadConstant(false);
-        envLoader.LoadWorldState(method, locals, false);
-        envLoader.LoadSpec(method, locals, false);
-        method.LoadConstant(true);
-        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeAccountAccessGas)));
+        EmitChargeAccountAccessGas(method, envLoader, locals);
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
 
-        envLoader.LoadCodeInfoRepository(method, locals, false);
-        envLoader.LoadWorldState(method, locals, false);
-        method.LoadLocal(locals.address);
-        envLoader.LoadSpec(method, locals, false);
-        method.LoadConstant(false);
-        method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec), typeof(bool)]));
+        EmitGetCachedCodeInfo(method, envLoader, locals);
         method.CallVirtual(GetPropertyInfo<ICodeInfo>(nameof(ICodeInfo.Code), false, out _));
         method.StoreLocal(locals.localReadOnlyMemory);
         method.LoadLocalAddress(locals.localReadOnlyMemory);
         method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
 
         method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
+    }
+
+    private static void EmitGetCachedCodeInfo<TDelegateType>(Emit<TDelegateType> method, EnvirementLoader envLoader, Locals<TDelegateType> locals)
+    {
+        envLoader.LoadCodeInfoRepository(method, locals, false);
+        envLoader.LoadWorldState(method, locals, false);
+        method.LoadLocal(locals.address);
+        envLoader.LoadSpec(method, locals, false);
+        method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
     }
 
     internal static Label EmitExtcodeCopyInstruction<TDelegateType>(
@@ -1695,14 +1692,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.uint256B);
         method.Call(Word.GetUInt256ByRef);
 
-        method.LoadLocalAddress(locals.gasAvailable);
-        envLoader.LoadVmState(method, locals, false);
-        method.LoadLocal(locals.address);
-        method.LoadConstant(false);
-        envLoader.LoadWorldState(method, locals, false);
-        envLoader.LoadSpec(method, locals, false);
-        method.LoadConstant(true);
-        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeAccountAccessGas)));
+        EmitChargeAccountAccessGas(method, envLoader, locals);
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         method.LoadLocalAddress(locals.uint256C);
@@ -1717,12 +1707,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        envLoader.LoadCodeInfoRepository(method, locals, false);
-        envLoader.LoadWorldState(method, locals, false);
-        method.LoadLocal(locals.address);
-        envLoader.LoadSpec(method, locals, false);
-        method.LoadConstant(false);
-        method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec), typeof(bool)]));
+        EmitGetCachedCodeInfo(method, envLoader, locals);
         method.CallVirtual(GetPropertyInfo<ICodeInfo>(nameof(ICodeInfo.Code), false, out _));
 
         method.LoadLocalAddress(locals.uint256B);
@@ -1760,14 +1745,7 @@ internal static class OpcodeEmitters
         method.Call(Word.GetAddress);
         method.StoreLocal(locals.address);
 
-        method.LoadLocalAddress(locals.gasAvailable);
-        envLoader.LoadVmState(method, locals, false);
-        method.LoadLocal(locals.address);
-        method.LoadConstant(false);
-        envLoader.LoadWorldState(method, locals, false);
-        envLoader.LoadSpec(method, locals, false);
-        method.LoadConstant(true);
-        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeAccountAccessGas)));
+        EmitChargeAccountAccessGas(method, envLoader, locals);
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         Label pushZeroLabel = method.DefineLabel(locals.GetLabelName());
@@ -1788,7 +1766,8 @@ internal static class OpcodeEmitters
         envLoader.LoadCodeInfoRepository(method, locals, false);
         envLoader.LoadWorldState(method, locals, false);
         method.LoadLocal(locals.address);
-        method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.GetExecutableCodeHash), [typeof(IWorldState), typeof(Address)]));
+        envLoader.LoadSpec(method, locals, false);
+        method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.GetExecutableCodeHash), [typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
         method.Call(Word.SetKeccak);
         method.Branch(endOfOpcode);
 
@@ -1797,6 +1776,17 @@ internal static class OpcodeEmitters
         method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
 
         method.MarkLabel(endOfOpcode);
+    }
+
+    private static void EmitChargeAccountAccessGas<TDelegateType>(Emit<TDelegateType> method, EnvirementLoader envLoader, Locals<TDelegateType> locals)
+    {
+        // ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, bool chargeForWarm = true
+        method.LoadLocalAddress(locals.gasAvailable);
+        envLoader.LoadVmState(method, locals, false);
+        method.LoadLocal(locals.address);
+        envLoader.LoadSpec(method, locals, false);
+        method.LoadConstant(true);
+        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeAccountAccessGas)));
     }
 
     internal static void EmitSelfBalanceInstruction<TDelegateType>(
@@ -1830,12 +1820,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.gasAvailable);
         envLoader.LoadVmState(method, locals, false);
 
-        method.LoadLocal(locals.address);
-        method.LoadConstant(false);
-        envLoader.LoadWorldState(method, locals, false);
-        envLoader.LoadSpec(method, locals, false);
-        method.LoadConstant(true);
-        method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeAccountAccessGas)));
+        EmitChargeAccountAccessGas(method, envLoader, locals);
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
