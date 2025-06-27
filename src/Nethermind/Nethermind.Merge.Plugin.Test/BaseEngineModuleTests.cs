@@ -267,7 +267,7 @@ public abstract partial class BaseEngineModuleTests
 
         public IWithdrawalProcessor WithdrawalProcessor => ((MainBlockProcessingContext)MainProcessingContext).LifetimeScope.Resolve<IWithdrawalProcessor>();
 
-        public ISyncPeerPool SyncPeerPool { get; set; }
+        public ISyncPeerPool SyncPeerPool => Container.Resolve<ISyncPeerPool>();
 
         protected int _blockProcessingThrottle = 0;
 
@@ -288,12 +288,11 @@ public abstract partial class BaseEngineModuleTests
             GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
             MergeConfig = mergeConfig ?? new MergeConfig();
             if (MergeConfig.TerminalTotalDifficulty is null) MergeConfig.TerminalTotalDifficulty = "0";
-            SyncPeerPool = Substitute.For<ISyncPeerPool>();
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-        public IEthSyncingInfo? EthSyncingInfo { get; protected set; }
+        public sealed override ILogManager LogManager => Container.Resolve<ILogManager>();
 
         protected override ChainSpec CreateChainSpec()
         {
@@ -325,7 +324,12 @@ public abstract partial class BaseEngineModuleTests
                             timer,
                             logManager,
                             TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
-                            50000)); // by default we want to avoid cleanup payload effects in testing                    )
+                            50000)) // by default we want to avoid cleanup payload effects in testing                    )
+                .AddSingleton<IEngineRequestsTracker>(Substitute.For<IEngineRequestsTracker>())
+                .AddSingleton<ISyncPeerPool>(Substitute.For<ISyncPeerPool>())
+                .AddSingleton<ISyncPointers>(Substitute.For<ISyncPointers>())
+                .AddSingleton<ISyncProgressResolver>(Substitute.For<ISyncProgressResolver>())
+                .AddSingleton<ISyncModeSelector>(new StaticSelector(SyncMode.All))
             ;
 
             return builder;
@@ -338,8 +342,6 @@ public abstract partial class BaseEngineModuleTests
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
             ISyncConfig syncConfig = new SyncConfig();
-            EthSyncingInfo = new EthSyncingInfo(BlockTree, Substitute.For<ISyncPointers>(), syncConfig,
-                new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), LogManager);
             PostMergeBlockProducerFactory? blockProducerFactory = new(
                 SpecProvider,
                 SealEngine,
@@ -374,7 +376,7 @@ public abstract partial class BaseEngineModuleTests
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
 
-        public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
+        public IManualBlockFinalizationManager BlockFinalizationManager => Container.Resolve<IManualBlockFinalizationManager>();
 
         public IBlockImprovementContextFactory BlockImprovementContextFactory =>
             Container.Resolve<IBlockImprovementContextFactory>();
