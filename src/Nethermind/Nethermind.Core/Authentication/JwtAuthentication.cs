@@ -104,21 +104,21 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         }
     }
 
-    public Task<bool> Authenticate(string? authToken)
+    public Task<bool> Authenticate(string? token)
     {
-        if (string.IsNullOrEmpty(authToken))
+        if (string.IsNullOrEmpty(token))
         {
             if (_logger.IsWarn) WarnTokenNotFound();
             return False;
         }
 
-        if (!authToken.StartsWith(JwtMessagePrefix, StringComparison.Ordinal))
+        if (!token.StartsWith(JwtMessagePrefix, StringComparison.Ordinal))
         {
             if (_logger.IsWarn) TokenMalformed();
             return False;
         }
 
-        return AuthenticateCore(authToken);
+        return AuthenticateCore(token);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void WarnTokenNotFound() => _logger.Warn("Message authentication error: The token cannot be found.");
@@ -127,7 +127,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         void TokenMalformed() => _logger.Warn($"Message authentication error: The token must start with '{JwtMessagePrefix}'.");
     }
 
-    private async Task<bool> AuthenticateCore(string authToken)
+    private async Task<bool> AuthenticateCore(string token)
     {
         try
         {
@@ -141,8 +141,8 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
                 LifetimeValidator = LifetimeValidator
             };
 
-            ReadOnlyMemory<char> token = authToken.AsMemory(JwtMessagePrefix.Length);
-            JsonWebToken jwtToken = _handler.ReadJsonWebToken(token);
+            ReadOnlyMemory<char> tokenSlice = token.AsMemory(JwtMessagePrefix.Length);
+            JsonWebToken jwtToken = _handler.ReadJsonWebToken(tokenSlice);
             TokenValidationResult result = await _handler.ValidateTokenAsync(jwtToken, tokenValidationParameters);
 
             if (!result.IsValid)
@@ -154,7 +154,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             DateTime now = _timestamper.UtcNow;
             if (Math.Abs(jwtToken.IssuedAt.ToUnixTimeSeconds() - now.ToUnixTimeSeconds()) <= JwtTokenTtl)
             {
-                if (_logger.IsTrace) Trace(jwtToken, now, token);
+                if (_logger.IsTrace) Trace(jwtToken, now, tokenSlice);
                 return true;
             }
 
