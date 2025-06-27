@@ -12,7 +12,6 @@ public class L1OriginDecoder : IRlpStreamDecoder<L1Origin>
     public L1Origin Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         (int _, int contentLength) = rlpStream.ReadPrefixAndContentLength();
-
         int itemsCount = rlpStream.PeekNumberOfItemsRemaining(maxSearch: contentLength);
 
         UInt256 blockId = rlpStream.DecodeUInt256();
@@ -45,7 +44,6 @@ public class L1OriginDecoder : IRlpStreamDecoder<L1Origin>
         if (item.BuildPayloadArgsId is not null)
         {
             stream.Encode(item.BuildPayloadArgsId);
-
         }
     }
 
