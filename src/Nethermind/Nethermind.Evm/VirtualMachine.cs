@@ -47,8 +47,9 @@ public sealed unsafe partial class VirtualMachine(
     private readonly IVMConfig _vmConfig = vmConfig ?? new VMConfig();
 
     public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
-    private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
-    internal readonly static byte[] EofHash256 = KeccakHash.ComputeHashBytes(MAGIC);
+    private  static readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    internal static readonly byte[] EofHash256 = KeccakHash.ComputeHashBytes(MAGIC);
+
     internal static ref readonly UInt256 P255 => ref P255Int;
     internal static readonly UInt256 BigInt256 = 256;
     internal static readonly UInt256 BigInt32 = 32;
@@ -1078,7 +1079,7 @@ public sealed unsafe partial class VirtualMachine(
             {
                 if (vmState.Env.CodeInfo.IlMetadata.IsNotProcessed)
                 {
-                    env.CodeInfo.NoticeExecution(_vmConfig, _logger, _spec);
+                    env.CodeInfo.NoticeExecution(_vmConfig, _logger, Spec);
                 }
             }
         }
@@ -1141,9 +1142,11 @@ public sealed unsafe partial class VirtualMachine(
             }
 
             int programCounter = vmState.ProgramCounter;
-            var codeAsSpan = env.CodeInfo.Code.Span;
+            ReadOnlySpan<byte> codeAsSpan = env.CodeInfo.Code.Span;
             ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
 
+            // TODO: now VirtualMachine provides BlockExecutionContext, TxExecutionContext, Spec, _specProvider, WorldState
+            // We could pass it to minimize the overhead and the size of ILChunkExecutionArguments
             ILChunkExecutionArguments chunkArguments = new(
                 ref MemoryMarshal.GetReference(codeAsSpan),
                 ref gasAvailable,
@@ -1153,7 +1156,7 @@ public sealed unsafe partial class VirtualMachine(
                 in TxExecutionContext,
                 in BlockExecutionContext,
                 vmState,
-                _spec, _specProvider,
+                Spec, _specProvider,
                 _blockHashProvider,
                 CodeInfoRepository,
                 _worldState,
