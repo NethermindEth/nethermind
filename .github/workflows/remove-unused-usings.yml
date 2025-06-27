@@ -1,0 +1,54 @@
+name: Remove unused usings
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  remove-unused-usings:
+    name: Remove unused usings from C# files
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Find and format all solutions  
+        run: |
+          # Find all solution files (.slnx and .sln) in the repository
+          solutions=$(find . \( -name "*.slnx" -o -name "*.sln" \) -type f)
+          
+          if [ -z "$solutions" ]; then
+            echo "No solution files found"
+            exit 0
+          fi
+          
+          echo "Found solution files:"
+          echo "$solutions"
+          
+          # Format each solution to remove unused usings (IDE0005 is the diagnostic ID for unused usings)
+          for solution in $solutions; do
+            echo "Processing solution: $solution"
+            dotnet format "$solution" --include IDE0005 --verbosity normal || {
+              echo "Warning: Failed to format $solution, continuing with next solution"
+              continue
+            }
+          done
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'Remove unused usings from C# files'
+          file_pattern: '*.cs'
+          commit_user_name: 'github-actions[bot]'
+          commit_user_email: 'github-actions[bot]@users.noreply.github.com'
+          skip_dirty_check: false
+          skip_checkout: true
