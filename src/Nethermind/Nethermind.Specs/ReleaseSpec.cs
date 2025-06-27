@@ -101,6 +101,7 @@ namespace Nethermind.Specs
         public bool IsEip7918Enabled { get; set; }
         public bool IsEip7934Enabled { get; set; }
         public int Eip7934MaxRlpBlockSize { get; set; }
+        public bool IsEip7907Enabled { get; set; }
 
         public ulong TargetBlobCount { get; set; }
         public ulong MaxBlobCount { get; set; }

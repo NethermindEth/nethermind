@@ -1,22 +1,25 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.IO;
 using Nethermind.Api;
+using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Evm;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -27,9 +30,6 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.TxPool;
-using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Processing;
-using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -118,7 +118,15 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         IEnumerable<Transaction> allTxs = pendingTxs.SelectMany(txs => txs.Value).Where(tx => !tx.SupportsBlobs && tx.CanPayBaseFee(baseFee));
 
-        Transaction[] txQueue = [.. minTip is 0 ? allTxs : allTxs.Where(tx => tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas) && premiumPerGas >= minTip)];
+        IEnumerable<Transaction> filteredTx =
+            allTxs.Where(tx => (tx.Supports1559 ? tx.MaxFeePerGas : tx.GasPrice) >= baseFee);
+
+        if (minTip is not 0)
+        {
+            filteredTx = filteredTx.Where(tx => tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas) && premiumPerGas >= minTip);
+        }
+
+        Transaction[] txQueue = filteredTx.ToArray();
 
         BlockHeader? head = blockFinder.Head?.Header;
 
@@ -219,19 +227,17 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                         while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
                         continue;
                     }
-                    else
+
+                    CommitAndDisposeBatch(batch);
+
+                    if (maxBatchCount == Batches.Count)
                     {
-                        CommitAndDisposeBatch(batch);
-
-                        if (maxBatchCount == Batches.Count)
-                        {
-                            return [.. Batches];
-                        }
-
-                        batch = new(maxBytesPerTxList, txSource.Length - i, txDecoder);
-
-                        continue;
+                        return [.. Batches];
                     }
+
+                    batch = new(maxBytesPerTxList, txSource.Length - i, txDecoder);
+
+                    continue;
                 }
 
                 i++;

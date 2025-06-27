@@ -70,11 +70,6 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    public IEnumerable<StepInfo> GetSteps()
-    {
-        yield return typeof(RunShutterP2P);
-    }
-
     public IModule? Module => new ShutterPluginModule();
 }
 
@@ -83,6 +78,8 @@ public class ShutterPluginModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
+            .AddStep(typeof(RunShutterP2P)) // Where it start the p2p
+
             .AddSingleton(CreateShutterApi)
             .Bind<IShutterApi, ShutterApi>()
             .AddDecorator<IBlockProducerTxSourceFactory, ShutterAdditionalBlockProductionTxSource>()

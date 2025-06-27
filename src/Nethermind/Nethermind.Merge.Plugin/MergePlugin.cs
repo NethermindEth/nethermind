@@ -262,7 +262,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             ArgumentNullException.ThrowIfNull(_api.SpecProvider);
             ArgumentNullException.ThrowIfNull(_api.StateReader);
             ArgumentNullException.ThrowIfNull(_api.EngineRequestsTracker);
-            ArgumentNullException.ThrowIfNull(_postMergeBlockProducer);
 
             // Single block shouldn't take a full slot to run
             // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
@@ -282,7 +281,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             IBlockImprovementContextFactory improvementContextFactory = _api.BlockImprovementContextFactory ??= CreateBlockImprovementContextFactory();
 
             PayloadPreparationService payloadPreparationService = new(
-                _postMergeBlockProducer,
+                _api.BlockProducer!,
                 improvementContextFactory,
                 _api.TimerFactory,
                 _api.LogManager,
@@ -370,8 +369,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     }
 
     public bool MustInitialize { get => true; }
-
-    public virtual IEnumerable<StepInfo> GetSteps() => [];
 
     public virtual IModule Module => new MergePluginModule();
 }
