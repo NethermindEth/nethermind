@@ -41,7 +41,7 @@ namespace Nethermind.Evm
         // See https://eips.ethereum.org/EIPS/eip-7610
         public static bool IsNonZeroAccount(this Address contractAddress, IReleaseSpec spec, ICodeInfoRepository codeInfoRepository, IWorldState state)
         {
-            return codeInfoRepository.GetCachedCodeInfo(state, contractAddress, spec, out _).MachineCode.Length != 0 ||
+            return codeInfoRepository.GetCachedCodeInfo(state, contractAddress, spec).CodeSpan.Length != 0 ||
                    state.GetNonce(contractAddress) != 0 ||
                    state.GetStorageRoot(contractAddress) != Keccak.EmptyTreeHash;
         }

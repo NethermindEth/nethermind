@@ -1741,6 +1741,8 @@ namespace Nethermind.Blockchain
             }
         }
 
+        public bool IsProcessingBlock { get; set; }
+
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
             FinalizedHash = finalizedBlockHash;

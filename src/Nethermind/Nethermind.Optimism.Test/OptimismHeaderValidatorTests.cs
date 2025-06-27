@@ -32,6 +32,7 @@ public class OptimismHeaderValidatorTests
             .TestObject;
         var header = Build.A.BlockHeader
             .WithNumber(1)
+            .WithParent(genesis)
             .WithTimestamp(Spec.HoloceneTimeStamp)
             .WithDifficulty(0)
             .WithNonce(0)
@@ -60,6 +61,7 @@ public class OptimismHeaderValidatorTests
             .TestObject;
         var header = Build.A.BlockHeader
             .WithNumber(1)
+            .WithParent(genesis)
             .WithTimestamp(Spec.HoloceneTimeStamp - 1)
             .WithDifficulty(0)
             .WithNonce(0)
@@ -107,6 +109,7 @@ public class OptimismHeaderValidatorTests
 
         var header = Build.A.BlockHeader
             .WithNumber(1)
+            .WithParent(genesis)
             .WithTimestamp(timestamp)
             .WithDifficulty(0)
             .WithNonce(0)

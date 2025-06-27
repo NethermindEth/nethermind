@@ -101,7 +101,6 @@ namespace Nethermind.Init.Steps
                 ? new(
                     _api.ReadOnlyTxProcessingEnvFactory,
                     mainWorldState,
-                    _api.SpecProvider!,
                     blocksConfig,
                     _api.LogManager,
                     preBlockCaches)

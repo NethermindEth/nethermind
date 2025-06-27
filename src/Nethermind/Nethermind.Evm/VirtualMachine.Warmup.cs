@@ -65,7 +65,6 @@ public unsafe partial class VirtualMachine
         {
             vm.EvmState = evmState;
             vm._worldState = state;
-            vm._spec = spec;
             vm._codeInfoRepository = codeInfoRepository;
             evmState.InitializeStacks();
 
@@ -196,9 +195,11 @@ public unsafe partial class VirtualMachine
 
     private class WarmupBlockhashProvider(ISpecProvider specProvider) : IBlockhashProvider
     {
-        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
+        public Hash256 GetBlockhash(BlockHeader currentBlock, long number)
+            => GetBlockhash(currentBlock, number, specProvider.GetSpec(currentBlock));
+
+        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
         {
-            IReleaseSpec spec = specProvider.GetSpec(currentBlock);
             return Keccak.Compute(spec.IsBlockHashInStateAvailable
                 ? (Eip2935Constants.RingBufferSize + number).ToString()
                 : (number).ToString());

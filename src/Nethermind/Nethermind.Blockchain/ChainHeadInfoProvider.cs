@@ -74,6 +74,8 @@ namespace Nethermind.Blockchain
             }
         }
 
+        public bool IsProcessingBlock => _blockTree.IsProcessingBlock;
+
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
