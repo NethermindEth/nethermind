@@ -24,10 +24,14 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.ServiceStopper;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -78,7 +82,7 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
-            VmWarmup.WarmUpEvmInstructions();
+            WarmupEvm();
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
@@ -153,6 +157,14 @@ namespace Nethermind.Init.Steps
             }
 
             return Task.CompletedTask;
+        }
+
+        private void WarmupEvm()
+        {
+            IKeyValueStoreWithBatching db = new MemDb();
+            TrieStore trieStore = new(new NodeStorage(db), No.Pruning, Persist.EveryBlock, new PruningConfig(), NullLogManager.Instance);
+            WorldState state = new(trieStore, db, NullLogManager.Instance);
+            VirtualMachine.WarmUpEvmInstructions(state, new CodeInfoRepository());
         }
 
         protected virtual ITransactionProcessor CreateTransactionProcessor(ICodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)

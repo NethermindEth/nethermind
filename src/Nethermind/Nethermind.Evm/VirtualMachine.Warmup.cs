@@ -3,13 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
-using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -18,25 +15,19 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Init;
+namespace Nethermind.Evm;
 
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 
-public unsafe class VmWarmup
+public unsafe partial class VirtualMachine
 {
-    public static void WarmUpEvmInstructions()
+    public static void WarmUpEvmInstructions(IWorldState state, ICodeInfoRepository codeInfoRepository)
     {
         IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
         VirtualMachine vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
-
-        IKeyValueStoreWithBatching db = new MemDb();
-        TrieStore trieStore = new(new NodeStorage(db), No.Pruning, Persist.EveryBlock, new PruningConfig(), lm);
 
         byte[] bytecode = new byte[64];
         bytecode.AsSpan().Fill((byte)Instruction.JUMPDEST);
@@ -44,10 +35,8 @@ public unsafe class VmWarmup
         address[^1] = 0x1;
         Address addressOne = new(address);
 
-        WorldState state = new(trieStore, db, lm);
         state.CreateAccount(addressOne, 1000.Ether());
         state.Commit(spec);
-        CodeInfoRepository codeInfoRepository = new();
         BlockHeader _header = new(Keccak.Zero, Keccak.Zero, addressOne, UInt256.One, MainnetSpecProvider.PragueActivation.BlockNumber, Int64.MaxValue, 1UL, Bytes.Empty, 0, 0);
 
         vm.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
@@ -65,15 +54,9 @@ public unsafe class VmWarmup
 
         using (var evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, in env, new StackAccessTracker(), state.TakeSnapshot()))
         {
-            FieldInfo evmStateField =
-                typeof(VirtualMachine).GetField("_currentState", BindingFlags.NonPublic | BindingFlags.Instance) ?? throw new ArgumentNullException();
-            FieldInfo worldStateField =
-                typeof(VirtualMachine).GetField("_worldState", BindingFlags.NonPublic | BindingFlags.Instance) ?? throw new ArgumentNullException();
-            FieldInfo codeInfoRepositoryField =
-                typeof(VirtualMachine).GetField("_codeInfoRepository", BindingFlags.NonPublic | BindingFlags.Instance) ?? throw new ArgumentNullException();
-            evmStateField.SetValue(vm, evmState);
-            worldStateField.SetValue(vm, state);
-            codeInfoRepositoryField.SetValue(vm, codeInfoRepository);
+            vm.EvmState = evmState;
+            vm._worldState = state;
+            vm._codeInfoRepository = codeInfoRepository;
             evmState.InitializeStacks();
 
             RunOpCodes<OnFlag>(vm, state, evmState, spec);
@@ -169,9 +152,7 @@ public unsafe class VmWarmup
 
         OpCode[] opcodes = EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
         ITxTracer txTracer = new FeesTracer();
-        FieldInfo txTracerField =
-            typeof(VirtualMachine).GetField("_txTracer", BindingFlags.NonPublic | BindingFlags.Instance) ?? throw new ArgumentNullException();
-        txTracerField.SetValue(vm, txTracer);
+        vm._txTracer = txTracer;
         EvmStack stack = new(0, txTracer, evmState.DataStack);
         long gas = long.MaxValue;
         int pc = 0;
