@@ -19,7 +19,7 @@ namespace Nethermind.Evm.Precompiles
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 60L;
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 12L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 12L * EvmInstructions.Div32Ceiling((ulong)inputData.Length);
 
         public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {

@@ -3,8 +3,9 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using Nethermind.Core.Specs;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm;
@@ -61,7 +62,7 @@ internal static partial class EvmInstructions
 
         // Deduct gas for the operation plus the cost for memory expansion.
         // Gas cost is calculated as a fixed "VeryLow" cost plus a per-32-bytes cost.
-        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result, out bool outOfGas);
+        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * Div32Ceiling(in result, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
 
         // Only perform the copy if length (result) is non-zero.
@@ -106,7 +107,7 @@ internal static partial class EvmInstructions
     public struct OpCodeCopy : IOpCodeCopy
     {
         public static ReadOnlySpan<byte> GetCode(VirtualMachine vm)
-            => vm.EvmState.Env.CodeInfo.MachineCode.Span;
+            => vm.EvmState.Env.CodeInfo.CodeSpan;
     }
 
     /// <summary>
@@ -143,7 +144,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
-        gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result, out bool outOfGas);
+        gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * Div32Ceiling(in result, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
 
         // Charge gas for account access (considering hot/cold storage costs).
@@ -156,10 +157,18 @@ internal static partial class EvmInstructions
             if (!UpdateMemoryCost(vm.EvmState, ref gasAvailable, in a, result))
                 goto OutOfGas;
 
+            ICodeInfo codeInfo = vm.CodeInfoRepository
+                .GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _);
+
             // Get the external code from the repository.
-            ReadOnlySpan<byte> externalCode = vm.CodeInfoRepository
-                .GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _)
-                .MachineCode.Span;
+            ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
+            // If contract is large, charge for access
+            if (spec.IsEip7907Enabled)
+            {
+                uint excessContractSize = (uint)Math.Max(0, externalCode.Length - CodeSizeConstants.MaxCodeSizeEip170);
+                if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, address, in vm.EvmState.AccessTracker, ref gasAvailable))
+                    goto OutOfGas;
+            }
 
             // If EOF is enabled and the code is an EOF contract, use a predefined magic value.
             if (spec.IsEofEnabled && EofValidator.IsEof(externalCode, out _))
@@ -223,7 +232,7 @@ internal static partial class EvmInstructions
             goto OutOfGas;
 
         // Attempt a peephole optimization when tracing is not active and code is available.
-        ReadOnlySpan<byte> codeSection = vm.EvmState.Env.CodeInfo.MachineCode.Span;
+        ReadOnlySpan<byte> codeSection = vm.EvmState.Env.CodeInfo.CodeSpan;
         if (!TTracingInst.IsActive && programCounter < codeSection.Length)
         {
             bool optimizeAccess = false;
@@ -276,7 +285,7 @@ internal static partial class EvmInstructions
         // No optimization applied: load the account's code from storage.
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
             .GetCachedCodeInfo(vm.WorldState, address, followDelegation: false, spec, out _)
-            .MachineCode.Span;
+            .CodeSpan;
         // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
         if (spec.IsEofEnabled && EofValidator.IsEof(accountCode, out _))
         {
