@@ -97,12 +97,12 @@ public class StartBlockProducerAuRa(
         return onlyWhenNotProcessing;
     }
 
-    public IBlockProducer BuildProducer(ITxSource? additionalTxSource = null)
+    public IBlockProducer BuildProducer()
     {
         ILogger logger = logManager.GetClassLogger();
         if (logger.IsInfo) logger.Info("Starting AuRa block producer & sealer");
 
-        BlockProducerEnv producerEnv = GetProducerChain(additionalTxSource);
+        BlockProducerEnv producerEnv = GetProducerChain();
 
         IGasLimitCalculator gasLimitCalculator = CreateGasLimitCalculator();
 
@@ -157,19 +157,27 @@ public class StartBlockProducerAuRa(
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _parameters.RewriteBytecode;
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
-        var executorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, blocksConfig.BlockProductionMaxTxKilobytes, logManager);
+        ITransactionProcessor txProcessor = changeableTxProcessingEnv.TransactionProcessor;
+        IWorldState worldState = changeableTxProcessingEnv.WorldState;
+
+        var transactionExecutor = new BlockProcessor.BlockProductionTransactionsExecutor(
+            new BuildUpTransactionProcessorAdapter(txProcessor),
+            worldState,
+            new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes),
+            logManager);
+
         return new AuRaBlockProcessor(
             specProvider,
             blockValidator,
-            rewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
-            executorFactory.Create(changeableTxProcessingEnv),
-            changeableTxProcessingEnv.WorldState,
+            rewardCalculatorSource.Get(txProcessor),
+            transactionExecutor,
+            worldState,
             receiptStorage,
-            new BeaconBlockRootHandler(changeableTxProcessingEnv.TransactionProcessor, changeableTxProcessingEnv.WorldState),
+            new BeaconBlockRootHandler(txProcessor, worldState),
             logManager,
             blockTree,
             NullWithdrawalProcessor.Instance,
-            new ExecutionRequestsProcessor(changeableTxProcessingEnv.TransactionProcessor),
+            new ExecutionRequestsProcessor(txProcessor),
             _validator,
             auRaTxFilter,
             CreateGasLimitCalculator() as AuRaContractGasLimitOverride,
@@ -243,7 +251,7 @@ public class StartBlockProducerAuRa(
 
 
     // TODO: Use BlockProducerEnvFactory
-    private BlockProducerEnv GetProducerChain(ITxSource? additionalTxSource)
+    private BlockProducerEnv GetProducerChain()
     {
         BlockProducerEnv Create()
         {
@@ -266,7 +274,7 @@ public class StartBlockProducerAuRa(
                 scope.WorldState,
                 blockchainProcessor);
 
-            return new BlockProducerEnv(readOnlyBlockTree, chainProcessor, scope.WorldState, CreateTxSourceForProducer(additionalTxSource));
+            return new BlockProducerEnv(readOnlyBlockTree, chainProcessor, scope.WorldState, CreateTxSourceForProducer());
         }
 
         return _blockProducerContext ??= Create();
@@ -274,7 +282,7 @@ public class StartBlockProducerAuRa(
 
     private ITxSource CreateStandardTxSourceForProducer() => CreateTxPoolTxSource();
 
-    private ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource)
+    private ITxSource CreateTxSourceForProducer()
     {
         bool CheckAddPosdaoTransactions(IList<ITxSource> list, long auRaPosdaoTransition)
         {
@@ -325,10 +333,6 @@ public class StartBlockProducerAuRa(
         IList<ITxSource> txSources = new List<ITxSource> { CreateStandardTxSourceForProducer() };
         bool needSigner = false;
 
-        if (additionalTxSource is not null)
-        {
-            txSources.Insert(0, additionalTxSource);
-        }
         needSigner |= CheckAddPosdaoTransactions(txSources, _parameters.PosdaoTransition);
         needSigner |= CheckAddRandomnessTransactions(txSources, _parameters.RandomnessContractAddress, engineSigner);
 
