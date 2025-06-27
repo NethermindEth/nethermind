@@ -318,10 +318,19 @@ public abstract partial class BaseEngineModuleTests
             return base.CreateConfigs().Concat([MergeConfig, SyncConfig.Default]);
         }
 
-        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
-            base.ConfigureContainer(builder, configProvider)
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
+        {
+            builder = base.ConfigureContainer(builder, configProvider)
                 .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
                 .AddModule(new MergeModule(configProvider));
+
+            if (ExecutionRequestsProcessorOverride != null)
+            {
+                builder.AddSingleton<IExecutionRequestsProcessor>(ExecutionRequestsProcessorOverride);
+            }
+
+            return builder;
+        }
 
         protected override IBlockProducer CreateTestBlockProducer()
         {
@@ -339,11 +348,6 @@ public abstract partial class BaseEngineModuleTests
                 blocksConfig,
                 LogManager,
                 targetAdjustedGasLimitCalculator);
-
-            if (ExecutionRequestsProcessorOverride is not null)
-            {
-                ((BlockProducerEnvFactory)BlockProducerEnvFactory).ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
-            }
 
             IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
