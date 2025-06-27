@@ -73,9 +73,16 @@ public class WorldStateManager : IWorldStateManager
 
     public IWorldState CreateResettableWorldState()
     {
-        PreBlockCaches preBlockCaches = new PreBlockCaches();
+        PreBlockCaches preBlockCaches = null;
+        ITrieStore trieStore = _readOnlyTrieStore;
+        if (_blocksConfig.PreWarmStateOnBlockProcessing)
+        {
+            preBlockCaches = new PreBlockCaches();
+            trieStore = new PreCachedTrieStore(trieStore, preBlockCaches.RlpCache);
+        }
+
         return new WorldState(
-            new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache),
+            trieStore,
             _readaOnlyCodeCb,
             _logManager,
             preBlockCaches,
@@ -96,7 +103,22 @@ public class WorldStateManager : IWorldStateManager
 
     public IOverridableWorldScope CreateOverridableWorldScope()
     {
-        return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _blocksConfig, _logManager);
+        // The readonly db provider act like a temporary backing store
+        IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, true);
+
+        ITrieStore overlayTrieStore = new OverlayTrieStore(readOnlyDbProvider.StateDb, _readOnlyTrieStore);
+
+        PreBlockCaches? preBlockCaches = null;
+        if (_blocksConfig.PreWarmStateOnBlockProcessing)
+        {
+            preBlockCaches = new PreBlockCaches();
+            overlayTrieStore = new PreCachedTrieStore(overlayTrieStore, preBlockCaches.RlpCache);
+        }
+
+        StateReader stateReader = new(overlayTrieStore, readOnlyDbProvider.CodeDb, _logManager);
+        IWorldState worldState = new WorldState(overlayTrieStore, readOnlyDbProvider.CodeDb, _logManager, preBlockCaches, populatePreBlockCache: false);
+
+        return new OverridableWorldScope(readOnlyDbProvider, worldState, stateReader);
     }
 
     public IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStoreWithBatching overlayCode)
