@@ -2158,15 +2158,15 @@ internal static class OpcodeEmitters
     internal static void EmitCallInstructions<TDelegateType>(
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
-        Label happyPath;
         MethodInfo callMethod = typeof(VirtualMachineDependencies)
             .GetMethod(nameof(VirtualMachineDependencies.InstructionCall), BindingFlags.Static | BindingFlags.Public);
         using Local toPushToStack = method.DeclareLocal(typeof(UInt256?), locals.GetLocalName());
         using Local newStateToExe = method.DeclareLocal<object>(locals.GetLocalName());
 
-        happyPath = method.DefineLabel(locals.GetLabelName());
+        Label happyPath = method.DefineLabel(locals.GetLabelName());
 
         envLoader.LoadVmState(method, locals, false);
+        envLoader.LoadCodeInfoRepository(method, locals, false);
         envLoader.LoadWorldState(method, locals, false);
         method.LoadLocalAddress(locals.gasAvailable);
         envLoader.LoadSpec(method, locals, false);
