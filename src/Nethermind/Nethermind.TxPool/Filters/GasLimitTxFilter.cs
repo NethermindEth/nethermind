@@ -17,10 +17,10 @@ namespace Nethermind.TxPool.Filters
         private readonly long _configuredGasLimit;
 
         public GasLimitTxFilter(IChainHeadInfoProvider chainHeadInfoProvider, ITxPoolConfig txPoolConfig,
-            ILogger logger)
+            ILogManager logManager)
         {
             _chainHeadInfoProvider = chainHeadInfoProvider;
-            _logger = logger;
+            _logger = logManager.GetClassLogger();
             _configuredGasLimit = txPoolConfig.GasLimit ?? long.MaxValue;
         }
 

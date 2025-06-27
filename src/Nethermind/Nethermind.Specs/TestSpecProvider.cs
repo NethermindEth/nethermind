@@ -31,7 +31,7 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GenesisSpec { get; set; }
 
-        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => SpecToReturn;
+        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => forkActivation.BlockNumber == 0 ? GenesisSpec : SpecToReturn;
 
         public IReleaseSpec SpecToReturn { get; set; }
 

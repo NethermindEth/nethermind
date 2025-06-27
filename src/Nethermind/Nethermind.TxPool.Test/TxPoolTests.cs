@@ -21,7 +21,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -29,7 +28,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
@@ -384,7 +382,7 @@ namespace Nethermind.TxPool.Test
             {
                 MinGasPrice = 1.GWei()
             };
-            IIncomingTxFilter incomingTxFilter = new TxFilterAdapter(_blockTree, new MinGasPriceTxFilter(blocksConfig, specProvider), LimboLogs.Instance);
+            IIncomingTxFilter incomingTxFilter = new TxFilterAdapter(_blockTree, new MinGasPriceTxFilter(blocksConfig), LimboLogs.Instance, specProvider);
             _txPool = CreatePool(specProvider: specProvider, incomingTxFilter: incomingTxFilter);
             Transaction tx = Build.A.Transaction
                 .WithGasLimit(Transaction.BaseTxGasCost)
@@ -1836,7 +1834,7 @@ namespace Nethermind.TxPool.Test
         }
 
 
-        private static object[] NonceAndRemovedCases =
+        private static readonly object[] NonceAndRemovedCases =
         {
             new object[]{ true, 1, AcceptTxResult.Accepted },
             new object[]{ true, 0, AcceptTxResult.Accepted},
@@ -2207,6 +2205,7 @@ namespace Nethermind.TxPool.Test
                 transactionComparerProvider.GetDefaultComparer(),
                 ShouldGossip.Instance,
                 incomingTxFilter,
+                HeadTxValidator.Instance,
                 thereIsPriorityContract);
         }
 

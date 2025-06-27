@@ -15,12 +15,10 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -391,7 +389,7 @@ public abstract partial class BaseEngineModuleTests
         }
 
         public async Task<MergeTestBlockchain> Build(ISpecProvider specProvider) =>
-            (MergeTestBlockchain)await Build(configurer: (builder) => builder.AddSingleton<ISpecProvider>(specProvider));
+            (MergeTestBlockchain)await Build(configurer: (builder) => builder.AddSingleton(specProvider));
 
         public async Task<MergeTestBlockchain> BuildMergeTestBlockchain(Action<ContainerBuilder> configurer) =>
             (MergeTestBlockchain)await Build(configurer: configurer);
