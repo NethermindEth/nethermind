@@ -4,13 +4,14 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Consensus;
 
 namespace Nethermind.Core.Test.Modules;
 
 public record BlockProducerContext(
     ILifetimeScope LifetimeScope,
-    IBlockProducer BlockProducer,
+    [KeyFilter(IBlockProducer.Factory)] IBlockProducer BlockProducer,
     IBlockProducerRunner BlockProducerRunner
 ) : IAsyncDisposable
 {

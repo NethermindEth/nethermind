@@ -12,6 +12,8 @@ namespace Nethermind.Consensus;
 
 public interface IBlockProducer
 {
+    public const string Factory = "Factory"; // Used in test to denote factory registration instead of the global registration
+
     Task<Block?> BuildBlock(
         BlockHeader? parentHeader = null,
         IBlockTracer? blockTracer = null,
