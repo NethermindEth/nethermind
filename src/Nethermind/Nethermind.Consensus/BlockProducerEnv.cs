@@ -11,7 +11,7 @@ namespace Nethermind.Consensus
     public record BlockProducerEnv(
         IBlockTree BlockTree,
         IBlockchainProcessor ChainProcessor,
-        IWorldState ReadOnlyStateProvider ,
+        IWorldState ReadOnlyStateProvider,
         ITxSource TxSource) : IBlockProducerEnv;
 
     public interface IBlockProducerEnv
