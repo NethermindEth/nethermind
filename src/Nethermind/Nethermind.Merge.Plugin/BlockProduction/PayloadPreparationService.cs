@@ -200,6 +200,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             CancellationToken token = cts.Token;
             do
             {
+                Console.Error.WriteLine($"Pending tx added {TxPool.Metrics.PendingTransactionsAdded}");
                 if (token.IsCancellationRequested)
                 {
                     return;
