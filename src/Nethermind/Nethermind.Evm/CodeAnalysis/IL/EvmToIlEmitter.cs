@@ -645,11 +645,9 @@ internal static class OpcodeEmitters
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         envLoader.LoadBlockContext(method, locals, true);
-        method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
-
-        method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.BaseFeePerGas), false, out _));
-        method.Call(Word.SetUInt256ByVal);
-        return;
+        method.LoadFieldAddress(GetFieldInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header)));
+        method.LoadFieldAddress(GetFieldInfo(typeof(BlockHeader), nameof(BlockHeader.BaseFeePerGas)));
+        method.Call(Word.SetUInt256ByRef);
     }
 
     internal static void EmitReturnOrRevertInstruction<TDelegateType>(
@@ -994,7 +992,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
 
-        method.LoadField(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BigInt32), BindingFlags.NonPublic | BindingFlags.Static));
+        method.LoadField(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BigInt32), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static));
         method.StoreLocal(locals.uint256B);
 
         method.LoadLocalAddress(locals.uint256B);
