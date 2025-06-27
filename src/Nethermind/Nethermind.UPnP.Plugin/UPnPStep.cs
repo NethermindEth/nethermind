@@ -24,7 +24,7 @@ public class UPnPStep(
 
     public Task Execute(CancellationToken cancellationToken)
     {
-        Task.Factory.StartNew(RunRefreshLoop, TaskCreationOptions.LongRunning);
+        Task.Factory.StartNew(RunRefreshLoop);
 
         return Task.CompletedTask;
     }
