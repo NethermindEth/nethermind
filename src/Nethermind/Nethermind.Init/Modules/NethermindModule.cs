@@ -46,7 +46,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new EraModule())
             .AddSource(new ConfigRegistrationSource())
             .AddModule(new DbModule())
-            .AddModule(new BlockProcessingModule())
+            .AddModule(new BlockProcessingModule(configProvider.GetConfig<IBlocksConfig>()))
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
             .Bind<IBlockFinder, IBlockTree>()

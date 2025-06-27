@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Config;
 using Nethermind.Consensus.Validators;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -27,6 +28,6 @@ public static class TestWorldStateFactory
             LimboLogs.Instance);
         IWorldState worldState = new WorldState(trieStore, dbProvider.CodeDb, logManager);
 
-        return new WorldStateManager(worldState, trieStore, dbProvider, logManager);
+        return new WorldStateManager(worldState, trieStore, dbProvider, new BlocksConfig(), logManager);
     }
 }

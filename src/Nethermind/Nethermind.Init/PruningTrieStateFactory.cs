@@ -94,6 +94,7 @@ public class PruningTrieStateFactory(
             worldState,
             trieStore,
             dbProvider,
+            blockConfig,
             logManager,
             new LastNStateRootTracker(blockTree, 128));
 

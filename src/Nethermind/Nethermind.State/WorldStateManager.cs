@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -23,11 +24,13 @@ public class WorldStateManager : IWorldStateManager
     private readonly IDbProvider _dbProvider;
     private readonly BlockingVerifyTrie? _blockingVerifyTrie;
     private readonly ILastNStateRootTracker _lastNStateRootTracker;
+    private readonly IBlocksConfig _blocksConfig;
 
     public WorldStateManager(
         IWorldState worldState,
         IPruningTrieStore trieStore,
         IDbProvider dbProvider,
+        IBlocksConfig blocksConfig,
         ILogManager logManager,
         ILastNStateRootTracker lastNStateRootTracker = null
     )
@@ -35,6 +38,7 @@ public class WorldStateManager : IWorldStateManager
         _dbProvider = dbProvider;
         _worldState = worldState;
         _trieStore = trieStore;
+        _blocksConfig = blocksConfig;
         _readOnlyTrieStore = trieStore.AsReadOnly();
         _logManager = logManager;
 
@@ -69,10 +73,13 @@ public class WorldStateManager : IWorldStateManager
 
     public IWorldState CreateResettableWorldState()
     {
+        PreBlockCaches preBlockCaches = new PreBlockCaches();
         return new WorldState(
-            _readOnlyTrieStore,
+            new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache),
             _readaOnlyCodeCb,
-            _logManager);
+            _logManager,
+            preBlockCaches,
+            populatePreBlockCache: false);
     }
 
     public IWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup)
@@ -89,7 +96,7 @@ public class WorldStateManager : IWorldStateManager
 
     public IOverridableWorldScope CreateOverridableWorldScope()
     {
-        return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
+        return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _blocksConfig, _logManager);
     }
 
     public IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStoreWithBatching overlayCode)
