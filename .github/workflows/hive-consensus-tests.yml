@@ -163,7 +163,7 @@ jobs:
       - name: Check out Hive repository
         uses: actions/checkout@v4
         with:
-          repository: ethereum/hive
+          repository: flcl42/hive
           ref: master
           path: hive
 
