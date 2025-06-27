@@ -608,7 +608,7 @@ internal static class OpcodeEmitters
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
 
         envLoader.LoadBlockContext(method, locals, true);
-        method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
+        method.LoadField(GetFieldInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header)));
 
         method.Duplicate();
         method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.IsPostMerge), false, out _));
@@ -619,8 +619,8 @@ internal static class OpcodeEmitters
         method.Branch(endOfOpcode);
 
         method.MarkLabel(isPostMergeBranch);
-        method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.Difficulty), false, out _));
-        method.Call(Word.SetUInt256ByVal);
+        method.LoadFieldAddress(GetFieldInfo(typeof(BlockHeader), nameof(BlockHeader.Difficulty)));
+        method.Call(Word.SetUInt256ByRef);
 
         method.MarkLabel(endOfOpcode);
         return;
@@ -1128,7 +1128,7 @@ internal static class OpcodeEmitters
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         envLoader.LoadTxContext(method, locals, true);
-        method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.Origin), false, out _));
+        method.LoadField(GetFieldInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.Origin)));
         method.Call(Word.SetAddress);
     }
 
