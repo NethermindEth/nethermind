@@ -63,7 +63,7 @@ public class BlockProcessingModule : Module
             .AddSingleton<ISealEngine, SealEngine>()
 
             .AddSingleton<ISimulateTransactionProcessorFactory>(SimulateTransactionProcessorFactory.Instance)
-            .AddSingleton<IBlockProducerEnvFactory, AutoBlockProducerEnvFactory>()
+            .AddSingleton<IBlockProducerEnvFactory, BlockProducerEnvFactory>()
             .AddSingleton<IBlockProducerTxSourceFactory, TxPoolTxSourceFactory>()
 
             .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>

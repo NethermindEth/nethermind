@@ -33,7 +33,7 @@ public class AuRaMergeBlockProducerEnvFactory(
     IWorldStateManager worldStateManager,
     IBlockProducerTxSourceFactory blockProducerTxSourceFactory,
     ILogManager logManager)
-    : AutoBlockProducerEnvFactory(lifetimeScope, worldStateManager, blockProducerTxSourceFactory)
+    : BlockProducerEnvFactory(lifetimeScope, worldStateManager, blockProducerTxSourceFactory)
 {
     private readonly IReceiptStorage _receiptStorage = NullReceiptStorage.Instance;
 

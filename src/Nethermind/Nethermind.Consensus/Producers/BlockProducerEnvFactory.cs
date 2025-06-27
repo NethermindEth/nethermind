@@ -13,7 +13,7 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Producers
 {
-    public class AutoBlockProducerEnvFactory(
+    public class BlockProducerEnvFactory(
         ILifetimeScope rootLifetime,
         IWorldStateManager worldStateManager,
         IBlockProducerTxSourceFactory txSourceFactory
@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Producers
             .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
             .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
 
-            .AddScoped<IBlockProducerEnv, AutoBlockProducerEnv>();
+            .AddScoped<IBlockProducerEnv, BlockProducerEnv>();
 
         public IBlockProducerEnv Create()
         {
@@ -42,10 +42,4 @@ namespace Nethermind.Consensus.Producers
             return lifetimeScope.Resolve<IBlockProducerEnv>();
         }
     }
-
-    public record AutoBlockProducerEnv(
-        IBlockTree BlockTree,
-        IBlockchainProcessor ChainProcessor,
-        IWorldState ReadOnlyStateProvider ,
-        ITxSource TxSource) : IBlockProducerEnv;
 }
