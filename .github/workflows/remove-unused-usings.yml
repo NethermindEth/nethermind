@@ -1,9 +1,9 @@
 name: Remove unused usings
 
 on:
-  push:
-    branches: [master]
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 */14 * *'
 
 jobs:
   remove-unused-usings:
