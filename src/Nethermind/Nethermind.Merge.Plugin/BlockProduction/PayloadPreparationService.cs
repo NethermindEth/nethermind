@@ -53,6 +53,20 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         IBlockImprovementContextFactory blockImprovementContextFactory,
         ITimerFactory timerFactory,
         ILogManager logManager,
+        IBlocksConfig blockConfig) : this(
+        blockProducer,
+        blockImprovementContextFactory,
+        timerFactory,
+        logManager,
+        TimeSpan.FromSeconds(blockConfig.SecondsPerSlot))
+    {
+    }
+
+    public PayloadPreparationService(
+        IBlockProducer blockProducer,
+        IBlockImprovementContextFactory blockImprovementContextFactory,
+        ITimerFactory timerFactory,
+        ILogManager logManager,
         TimeSpan timePerSlot,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
         TimeSpan? improvementDelay = null)
