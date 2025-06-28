@@ -201,12 +201,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
-            if (ExecutionRequestsProcessorOverride is not null)
-            {
-                ((BlockProducerEnvFactory)BlockProducerEnvFactory).ExecutionRequestsProcessorOverride = ExecutionRequestsProcessorOverride;
-            }
-
-            BlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
+            IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             BlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(
