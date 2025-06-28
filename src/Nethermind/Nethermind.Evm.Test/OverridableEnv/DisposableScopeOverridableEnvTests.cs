@@ -16,7 +16,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.OverridableEnv;
 
-public class OverridableEnvTests
+public class DisposableScopeOverridableEnvTests
 {
     [Test]
     public void TestCreate()
@@ -57,11 +57,11 @@ public class OverridableEnvTests
         using ILifetimeScope childLifetime = rootLifetime.BeginLifetimeScope(builder => builder.AddModule(envModule));
 
         Components childComponents = childLifetime.Resolve<Components>();
-        IOverridableEnv<Components> env = childLifetime.Resolve<IOverridableEnv<Components>>();
+        IOverridableEnv<Scope<Components>> env = childLifetime.Resolve<IOverridableEnv<Scope<Components>>>();
 
         {
             childComponents.WorldState.StateRoot.Should().Be(Keccak.EmptyTreeHash);
-            using var _ = env.BuildAndOverride(Build.A.BlockHeader.TestObject,
+            using var scope = env.BuildAndOverride(Build.A.BlockHeader.TestObject,
                 new Dictionary<Address, AccountOverride>()
                 {
                     {
@@ -70,10 +70,10 @@ public class OverridableEnvTests
                             Balance = 123
                         }
                     }
-                }, out Components component);
+                });
 
             childComponents.WorldState.StateRoot.Should().NotBe(Keccak.EmptyTreeHash);
-            component.WorldState.GetBalance(TestItem.AddressA).Should().Be(123);
+            scope.Component.WorldState.GetBalance(TestItem.AddressA).Should().Be(123);
         }
 
         childComponents.WorldState.StateRoot.Should().Be(Keccak.EmptyTreeHash);

@@ -53,7 +53,7 @@ public class BlockProcessingModule : Module
             .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
 
             .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()
-            .AddScopedOpenGeneric(typeof(IOverridableEnv<>), typeof(OverridableEnv<>))
+            .AddScopedOpenGeneric(typeof(IOverridableEnv<>), typeof(DisposableScopeOverridableEnv<>))
 
             // Transaction executor used by main block validation and rpc.
             .AddScoped<IValidationTransactionExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()

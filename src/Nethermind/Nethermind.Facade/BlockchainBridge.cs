@@ -38,7 +38,7 @@ namespace Nethermind.Facade
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        private readonly IOverridableEnv<BlockProcessingComponents> _processingEnv;
+        private readonly IOverridableEnv<Scope<BlockProcessingComponents>> _processingEnv;
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
         private readonly ITxPool _txPool;
@@ -54,7 +54,7 @@ namespace Nethermind.Facade
         private readonly SimulateReadOnlyBlocksProcessingEnvFactory _simulateProcessingEnvFactory;
 
         public BlockchainBridge(
-            IOverridableEnv<BlockProcessingComponents> processingEnv,
+            IOverridableEnv<Scope<BlockProcessingComponents>> processingEnv,
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
             IBlockTree blockTree,
             IStateReader stateReader,
@@ -150,10 +150,10 @@ namespace Nethermind.Facade
 
         public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
-            using var scope = _processingEnv.BuildAndOverride(header, stateOverride, out BlockProcessingComponents component);
+            using var scope = _processingEnv.BuildAndOverride(header, stateOverride);
 
             CallOutputTracer callOutputTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(component, header, tx, false,
+            TransactionResult tryCallResult = TryCallAndRestore(scope.Component, header, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken));
 
             return new CallOutput
@@ -174,7 +174,8 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
-            using var scope = _processingEnv.BuildAndOverride(header, stateOverride, out BlockProcessingComponents components);
+            using var scope = _processingEnv.BuildAndOverride(header, stateOverride);
+            var components = scope.Component;
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, true,
@@ -207,9 +208,10 @@ namespace Nethermind.Facade
 
             CallOutputTracer callOutputTracer = new();
 
-            using var scope = _processingEnv.Build(header.StateRoot!, out BlockProcessingComponents component);
+            using var scope = _processingEnv.Build(header.StateRoot!);
+            var components = scope.Component;
 
-            TransactionResult tryCallResult = TryCallAndRestore(component, header, tx, false,
+            TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, false,
                 new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
 
             return new CallOutput
@@ -457,8 +459,8 @@ namespace Nethermind.Facade
                 .Add<BlockchainBridge.BlockProcessingComponents>());
 
             // Split it out to isolate the world state and processing components
-            IOverridableEnv<BlockchainBridge.BlockProcessingComponents> blockProcessingEnv = overridableScopeLifetime
-                .Resolve<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>();
+            IOverridableEnv<Scope<BlockchainBridge.BlockProcessingComponents>> blockProcessingEnv = overridableScopeLifetime
+                .Resolve<IOverridableEnv<Scope<BlockchainBridge.BlockProcessingComponents>>>();
 
             ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddScoped<BlockchainBridge>()
