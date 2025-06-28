@@ -32,6 +32,7 @@ using Nethermind.Benchmarks.State;
 using Nethermind.Precompiles.Benchmark;
 using System.Threading.Tasks;
 using System.Threading;
+using Perfolizer.Horology;
 using BenchmarkDotNet.Toolchains.CsProj;
 
 namespace Nethermind.Benchmark.Runner
@@ -105,6 +106,9 @@ namespace Nethermind.Benchmark.Runner
                 case "ilevm":
                     RunEvmBenchmarks(options.Value);
                     break;
+                case "evm-ilevm":
+                    RunIlEvmSuite(options.Value);
+                    break;
                 case "weth-bench":
                     // spawn a new process to run the WETH benchmarks
                     RunWethBenchmarksInIsolation(options.Value);
@@ -112,6 +116,19 @@ namespace Nethermind.Benchmark.Runner
                 default:
                     throw new Exception("Invalid mode");
             }
+        }
+
+        private static void RunIlEvmSuite(Options value)
+        {
+            var summary = BenchmarkRunner.Run([
+                            typeof(Nethermind.Evm.Benchmark.Fib),
+                            typeof(Nethermind.Evm.Benchmark.Prime),
+                            typeof(Nethermind.Evm.Benchmark.Weth)
+                        ], new DashboardConfig(Job.VeryLongRun
+                                .WithPlatform(Platform.X64)
+                                .WithJit(Jit.RyuJit)
+                                .WithRuntime(CoreRuntime.Core90)
+                                ));
         }
 
         private static void RunWethBenchmarksInIsolation(Options value)
