@@ -12,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Grpc;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Converters;
@@ -61,7 +62,7 @@ public class NethermindRunnerModule(
             .Bind<IApiWithStores, INethermindApi>()
             .Bind<IBasicApi, INethermindApi>()
 
-            .AddModule(new StartRpcStepsModule())
+            .AddModule(new StartRpcStepsModule(configProvider.GetConfig<IGrpcConfig>()))
             .AddModule(new NethermindInvariantChecks())
 
             .AddSingleton<EthereumRunner>()
