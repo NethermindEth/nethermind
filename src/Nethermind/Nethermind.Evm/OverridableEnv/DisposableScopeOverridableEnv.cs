@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Evm.OverridableEnv;
 
 /// <summary>
-/// A utility that provide `IOverridableEnv<DisposableScope<T>>`
+/// A utility that provide `IOverridableEnv<T>`
 /// Dont forget do dispose it!
 /// </summary>
 /// <param name="overridableEnv"></param>
@@ -18,7 +18,7 @@ namespace Nethermind.Evm.OverridableEnv;
 public class DisposableScopeOverridableEnv<T>(
     IOverridableEnv overridableEnv,
     T resolvedComponents
-) : IOverridableEnv<Scope<T>> where T : IDisposable
+) : IOverridableEnv<T>
 {
     public Scope<T> Build(Hash256 stateRoot)
     {

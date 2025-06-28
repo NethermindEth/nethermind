@@ -25,13 +25,13 @@ public interface IOverridableEnv : IModule
 /// I small wrapper around <see cref="IOverridableEnv"/> to help prevent accidentally using components that rely on
 /// the overridden env outside of the env scope. Ideally, no other components from the child lifetime is extracted
 /// aside from <see cref="IOverridableEnv{T}"/>. To use any components such as <see cref="ITransactionProcessor"/>, set the
-/// <see cref="T"/> here to a wrapper of that component, then call one of the method here to get it.
+/// <see cref="T"/> here to that component, then call one of the method here to get it.
 /// Always dispose the scope when finished.
 /// </summary>
 /// <typeparam name="T"></typeparam>
-public interface IOverridableEnv<T> where T : IDisposable
+public interface IOverridableEnv<T>
 {
-    T Build(Hash256 stateRoot);
-    T BuildAndOverride(BlockHeader header);
-    T BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride);
+    Scope<T> Build(Hash256 stateRoot);
+    Scope<T> BuildAndOverride(BlockHeader header);
+    Scope<T> BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride);
 }

@@ -34,7 +34,7 @@ public class GethStyleTracer(
     ISpecProvider specProvider,
     ChangeableTransactionProcessorAdapter transactionProcessorAdapter,
     IFileSystem fileSystem,
-    IOverridableEnv<Scope<GethStyleTracer.BlockProcessingComponents>> blockProcessingEnv
+    IOverridableEnv<GethStyleTracer.BlockProcessingComponents> blockProcessingEnv
 ) : IGethStyleTracer
 {
     public GethLikeTxTrace Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)

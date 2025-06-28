@@ -38,7 +38,7 @@ namespace Nethermind.Facade
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        private readonly IOverridableEnv<Scope<BlockProcessingComponents>> _processingEnv;
+        private readonly IOverridableEnv<BlockProcessingComponents> _processingEnv;
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
         private readonly ITxPool _txPool;
@@ -54,7 +54,7 @@ namespace Nethermind.Facade
         private readonly SimulateReadOnlyBlocksProcessingEnvFactory _simulateProcessingEnvFactory;
 
         public BlockchainBridge(
-            IOverridableEnv<Scope<BlockProcessingComponents>> processingEnv,
+            IOverridableEnv<BlockProcessingComponents> processingEnv,
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
             IBlockTree blockTree,
             IStateReader stateReader,
@@ -459,8 +459,8 @@ namespace Nethermind.Facade
                 .Add<BlockchainBridge.BlockProcessingComponents>());
 
             // Split it out to isolate the world state and processing components
-            IOverridableEnv<Scope<BlockchainBridge.BlockProcessingComponents>> blockProcessingEnv = overridableScopeLifetime
-                .Resolve<IOverridableEnv<Scope<BlockchainBridge.BlockProcessingComponents>>>();
+            IOverridableEnv<BlockchainBridge.BlockProcessingComponents> blockProcessingEnv = overridableScopeLifetime
+                .Resolve<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>();
 
             ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddScoped<BlockchainBridge>()

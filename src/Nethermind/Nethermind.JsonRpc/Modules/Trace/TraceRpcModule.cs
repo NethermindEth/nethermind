@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
     /// </summary>
     public class TraceRpcModule(
         IReceiptFinder receiptFinder,
-        IOverridableEnv<Scope<ITracer>> tracerEnv,
+        IOverridableEnv<ITracer> tracerEnv,
         IBlockFinder blockFinder,
         IJsonRpcConfig jsonRpcConfig,
         IStateReader stateReader,

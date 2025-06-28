@@ -57,7 +57,7 @@ public class DisposableScopeOverridableEnvTests
         using ILifetimeScope childLifetime = rootLifetime.BeginLifetimeScope(builder => builder.AddModule(envModule));
 
         Components childComponents = childLifetime.Resolve<Components>();
-        IOverridableEnv<Scope<Components>> env = childLifetime.Resolve<IOverridableEnv<Scope<Components>>>();
+        IOverridableEnv<Components> env = childLifetime.Resolve<IOverridableEnv<Components>>();
 
         {
             childComponents.WorldState.StateRoot.Should().Be(Keccak.EmptyTreeHash);

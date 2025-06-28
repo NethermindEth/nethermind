@@ -50,7 +50,7 @@ public class TraceModuleFactory(IOverridableEnvFactory overridableEnvFactory, IL
                 traceOptions: ProcessingOptions.TraceTransactions)));
 
         // Split out only the env to prevent accidental leak
-        IOverridableEnv<Scope<ITracer>> tracerEnv = tracerLifetimeScope.Resolve<IOverridableEnv<Scope<ITracer>>>();
+        IOverridableEnv<ITracer> tracerEnv = tracerLifetimeScope.Resolve<IOverridableEnv<ITracer>>();
 
         ILifetimeScope rpcLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddScoped(tracerEnv));
