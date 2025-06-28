@@ -79,14 +79,7 @@ public class BlockProcessingModule(IBlocksConfig blocksConfig) : Module
         if (blocksConfig.PreWarmStateOnBlockProcessing)
         {
             builder
-                .AddScoped<PreBlockCaches, IWorldState>(worldState =>
-                {
-                    if (worldState is IPreBlockCaches preBlockCaches && preBlockCaches.Caches is not null)
-                    {
-                        return preBlockCaches.Caches;
-                    }
-                    return new PreBlockCaches();
-                })
+                .AddScoped<PreBlockCaches, IWorldState>(worldState => (worldState as IPreBlockCaches)?.Caches ?? new PreBlockCaches())
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
                 ;
         }
