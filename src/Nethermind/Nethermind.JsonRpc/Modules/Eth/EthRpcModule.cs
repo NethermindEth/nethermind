@@ -108,9 +108,9 @@ public partial class EthRpcModule(
         return ResultWrapper<Address>.Success(Address.Zero);
     }
 
-    public ResultWrapper<UInt256?> eth_gasPrice()
+    public async Task<ResultWrapper<UInt256?>> eth_gasPrice()
     {
-        return ResultWrapper<UInt256?>.Success(_gasPriceOracle.GetGasPriceEstimate());
+        return ResultWrapper<UInt256?>.Success(await _gasPriceOracle.GetGasPriceEstimate());
     }
 
     public ResultWrapper<UInt256?> eth_blobBaseFee()

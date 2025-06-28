@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.Clique
                 throw new InvalidOperationException("Request to start block producer while mining disabled.");
             }
 
-            BlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create();
+            IBlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create();
 
             IBlockchainProcessor chainProcessor = env.ChainProcessor;
 

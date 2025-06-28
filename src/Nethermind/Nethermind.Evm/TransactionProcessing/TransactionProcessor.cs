@@ -139,7 +139,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-            IReleaseSpec spec = GetSpec(tx, header);
+            IReleaseSpec spec = GetSpec(header);
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
@@ -169,7 +169,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new();
 
-            int delegationRefunds = ProcessDelegations(tx, spec, accessTracker);
+            int delegationRefunds = (!spec.IsEip7702Enabled || !tx.HasAuthorizationList) ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
             long gasAvailable = tx.GasLimit - intrinsicGas.Standard;
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment env))) return result;
@@ -231,35 +231,34 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         private int ProcessDelegations(Transaction tx, IReleaseSpec spec, in StackAccessTracker accessTracker)
         {
-            int refunds = 0;
-            if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
-            {
-                foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
-                {
-                    Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple));
+            Debug.Assert(spec.IsEip7702Enabled && tx.HasAuthorizationList);
 
-                    if (!IsValidForExecution(authTuple, accessTracker, out string? error))
+            int refunds = 0;
+            foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
+            {
+                Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple));
+
+                if (!IsValidForExecution(authTuple, accessTracker, out string? error))
+                {
+                    if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
+                }
+                else
+                {
+                    if (!WorldState.AccountExists(authority))
                     {
-                        if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
+                        WorldState.CreateAccount(authority, 0, 1);
                     }
                     else
                     {
-                        if (!WorldState.AccountExists(authority))
-                        {
-                            WorldState.CreateAccount(authority, 0, 1);
-                        }
-                        else
-                        {
-                            refunds++;
-                            WorldState.IncrementNonce(authority);
-                        }
-
-                        _codeInfoRepository.SetDelegation(WorldState, authTuple.CodeAddress, authority, spec);
+                        refunds++;
+                        WorldState.IncrementNonce(authority);
                     }
-                }
 
+                    _codeInfoRepository.SetDelegation(WorldState, authTuple.CodeAddress, authority, spec);
+                }
             }
 
             return refunds;
@@ -311,7 +310,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        protected virtual IReleaseSpec GetSpec(Transaction tx, BlockHeader header) => SpecProvider.GetSpec(header);
+        protected virtual IReleaseSpec GetSpec(BlockHeader header) => VirtualMachine.BlockExecutionContext.Spec;
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
@@ -741,12 +740,12 @@ namespace Nethermind.Evm.TransactionProcessing
             ReadOnlySpan<byte> auxExtraData = substate.Output.Bytes.Span;
             EofCodeInfo deployCodeInfo = (EofCodeInfo)substate.Output.DeployCode;
 
-            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, deployCodeInfo.MachineCode.Length + auxExtraData.Length);
+            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, deployCodeInfo.Code.Length + auxExtraData.Length);
             if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
             {
                 return false;
             }
-            int codeLength = deployCodeInfo.MachineCode.Length + auxExtraData.Length;
+            int codeLength = deployCodeInfo.Code.Length + auxExtraData.Length;
             // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
             if (codeLength > spec.MaxCodeSize)
             {
@@ -755,9 +754,9 @@ namespace Nethermind.Evm.TransactionProcessing
             // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
             byte[] bytecodeResult = new byte[codeLength];
             // 2 - 1 - 1 - copy old container
-            deployCodeInfo.MachineCode.Span.CopyTo(bytecodeResult);
+            deployCodeInfo.Code.Span.CopyTo(bytecodeResult);
             // 2 - 1 - 2 - copy aux data to dataSection
-            auxExtraData.CopyTo(bytecodeResult.AsSpan(deployCodeInfo.MachineCode.Length));
+            auxExtraData.CopyTo(bytecodeResult.AsSpan(deployCodeInfo.Code.Length));
 
             // 2 - 2 - update data section size in the header u16
             int dataSubHeaderSectionStart =
@@ -795,7 +794,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
         {
-            UInt256 fees = (UInt256)spentGas * premiumPerGas;
+            UInt256 fees = premiumPerGas * (ulong)spentGas;
 
             // n.b. destroyed accounts already set to zero balance
             bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
@@ -804,7 +803,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
             }
 
-            UInt256 eip1559Fees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : UInt256.Zero;
+            UInt256 eip1559Fees = !tx.IsFree() ? header.BaseFeePerGas * (ulong)spentGas : UInt256.Zero;
             UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
 
             if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
@@ -881,6 +880,22 @@ namespace Nethermind.Evm.TransactionProcessing
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
+
+        public TransactionResult Execute(Transaction transaction, BlockHeader header, ITxTracer txTracer)
+        {
+            IReleaseSpec spec = SpecProvider.GetSpec(header);
+            BlockExecutionContext blockExecutionContext = new(header, spec);
+            SetBlockExecutionContext(in blockExecutionContext);
+            return Execute(transaction, txTracer);
+        }
+
+        public TransactionResult CallAndRestore(Transaction transaction, BlockHeader header, ITxTracer txTracer)
+        {
+            IReleaseSpec spec = SpecProvider.GetSpec(header);
+            BlockExecutionContext blockExecutionContext = new(header, spec);
+            SetBlockExecutionContext(in blockExecutionContext);
+            return CallAndRestore(transaction, txTracer);
+        }
     }
 
     public readonly struct TransactionResult(string? error) : IEquatable<TransactionResult>

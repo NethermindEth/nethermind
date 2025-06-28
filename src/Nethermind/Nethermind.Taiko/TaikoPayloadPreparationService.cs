@@ -39,7 +39,7 @@ public class TaikoPayloadPreparationService(
 
         string payloadId = payloadAttributes.GetPayloadId(parentHeader);
 
-        _payloadStorage.AddOrUpdate(payloadId, (payloadId) =>
+        _payloadStorage.AddOrUpdate(payloadId, payloadId =>
             {
                 Block block = BuildBlock(parentHeader, attrs);
                 Hash256 parentStateRoot = parentHeader.StateRoot ?? throw new InvalidOperationException("Parent state root is null");
@@ -127,7 +127,7 @@ public class TaikoPayloadPreparationService(
 
         while (rlpStream.Position < transactionsCheck)
         {
-            transactions[txIndex++] = txDecoder.Decode(rlpStream, RlpBehaviors.None)!;
+            transactions[txIndex++] = txDecoder.Decode(rlpStream)!;
         }
 
         rlpStream.Check(transactionsCheck);

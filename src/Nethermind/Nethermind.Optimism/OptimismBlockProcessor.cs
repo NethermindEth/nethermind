@@ -58,9 +58,9 @@ public class OptimismBlockProcessor : BlockProcessor
         ReceiptsTracer = new OptimismBlockReceiptTracer(opSpecHelper, stateProvider);
     }
 
-    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, CancellationToken token)
+    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
     {
         _contractRewriter?.RewriteContract(block.Header, _stateProvider);
-        return base.ProcessBlock(block, blockTracer, options, token);
+        return base.ProcessBlock(block, blockTracer, options, spec, token);
     }
 }
