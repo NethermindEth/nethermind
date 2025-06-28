@@ -27,7 +27,7 @@ public class WorldStateManagerTests
         IWorldState worldState = Substitute.For<IWorldState>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, new BlocksConfig(), LimboLogs.Instance);
 
         worldStateManager.GlobalWorldState.Should().Be(worldState);
     }
@@ -38,7 +38,7 @@ public class WorldStateManagerTests
         IWorldState worldState = Substitute.For<IWorldState>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, new BlocksConfig(), LimboLogs.Instance);
 
         bool gotEvent = false;
         worldStateManager.ReorgBoundaryReached += (sender, reached) => gotEvent = true;
@@ -57,7 +57,7 @@ public class WorldStateManagerTests
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
         trieStore.Scheme.Returns(keyScheme);
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, new BlocksConfig(), LimboLogs.Instance);
 
         if (hashSupported)
         {

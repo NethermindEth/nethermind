@@ -103,14 +103,6 @@ public class TestBlockProcessingModule : Module
                 .Bind<IBlockchainProcessor, BlockchainProcessor>()
                 .Bind<IBlockProcessingQueue, BlockchainProcessor>()
                 ;
-
-            if (blocksConfig.PreWarmStateOnBlockProcessing)
-            {
-                processingCtxBuilder
-                    .AddScoped<PreBlockCaches>((mainWorldState as IPreBlockCaches)!.Caches)
-                    .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
-                    ;
-            }
         });
 
         return innerScope.Resolve<MainBlockProcessingContext>();

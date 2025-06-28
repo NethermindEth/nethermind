@@ -21,11 +21,12 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Simulate;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
-public class BlockProcessingModule : Module
+public class BlockProcessingModule(IBlocksConfig blocksConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -74,5 +75,13 @@ public class BlockProcessingModule : Module
                     blocksConfig.MinGasPrice
                 ))
             ;
+
+        if (blocksConfig.PreWarmStateOnBlockProcessing)
+        {
+            builder
+                .AddScoped<PreBlockCaches, IWorldState>(worldState => (worldState as IPreBlockCaches)?.Caches ?? new PreBlockCaches())
+                .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
+                ;
+        }
     }
 }
