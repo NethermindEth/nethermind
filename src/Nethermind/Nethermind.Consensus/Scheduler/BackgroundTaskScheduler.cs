@@ -56,7 +56,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _blockProcessor.BlocksProcessing += BlockProcessorOnBlocksProcessing;
         _blockProcessor.BlockProcessed += BlockProcessorOnBlockProcessed;
 
-        _tasksExecutors = Enumerable.Range(0, concurrency).Select(_ => Task.Factory.StartNew(StartChannel, TaskCreationOptions.LongRunning)).ToArray();
+        _tasksExecutors = Enumerable.Range(0, concurrency).Select(_ => Task.Factory.StartNew(StartChannel)).ToArray();
     }
 
     private void BlockProcessorOnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
