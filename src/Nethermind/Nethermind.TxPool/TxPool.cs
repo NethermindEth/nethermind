@@ -343,7 +343,7 @@ namespace Nethermind.TxPool
                         blobTx.SenderAddress ??= _ecdsa.RecoverAddress(blobTx);
                         SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                     }
-                    if (_logger.IsDebug) _logger.Debug($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
+                    if (_logger.IsTrace) _logger.Trace($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
                     _blobTxStorage.DeleteBlobTransactionsFromBlock(previousBlock.Number);
                 }

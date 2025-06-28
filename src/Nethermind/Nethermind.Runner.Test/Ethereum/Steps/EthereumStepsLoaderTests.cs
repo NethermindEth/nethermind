@@ -13,6 +13,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Grpc;
 using Nethermind.Init;
 using Nethermind.Init.Snapshot;
 using Nethermind.Init.Steps;
@@ -44,7 +45,10 @@ public class EthereumStepsLoaderTests
 
         using IContainer container = new ContainerBuilder()
             .AddModule(new BuiltInStepsModule())
-            .AddModule(new StartRpcStepsModule())
+            .AddModule(new StartRpcStepsModule(new GrpcConfig()
+            {
+                Enabled = true
+            }))
             .Build();
 
         container.Resolve<IEnumerable<StepInfo>>().ToHashSet().Should().BeEquivalentTo(steps);

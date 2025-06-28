@@ -27,7 +27,7 @@ namespace Nethermind.Serialization.Json
             double value,
             JsonSerializerOptions options)
         {
-            writer.WriteRawValue(value.ToString("0.0#########", CultureInfo.InvariantCulture), skipInputValidation: true);
+            writer.WriteRawValue(value.ToString("0.##########", CultureInfo.InvariantCulture), skipInputValidation: true);
         }
     }
 

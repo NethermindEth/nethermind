@@ -53,7 +53,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ITxPool txPool,
         IBlockFinder blockFinder,
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
-        IRlpStreamDecoder<Transaction> txDecoder) :
+        IRlpStreamDecoder<Transaction> txDecoder,
+        IL1OriginStore l1OriginStore) :
             EngineRpcModule(getPayloadHandlerV1,
                 getPayloadHandlerV2,
                 getPayloadHandlerV3,
@@ -336,5 +337,17 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         {
             Transactions.Dispose();
         }
+    }
+
+    public ResultWrapper<UInt256> taikoAuth_setHeadL1Origin(UInt256 blockId)
+    {
+        l1OriginStore.WriteHeadL1Origin(blockId);
+        return ResultWrapper<UInt256>.Success(blockId);
+    }
+
+    public ResultWrapper<L1Origin> taikoAuth_updateL1Origin(L1Origin l1Origin)
+    {
+        l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
+        return ResultWrapper<L1Origin>.Success(l1Origin);
     }
 }

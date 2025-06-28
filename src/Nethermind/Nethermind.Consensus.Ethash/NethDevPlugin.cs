@@ -10,9 +10,6 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
-using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -46,7 +43,7 @@ namespace Nethermind.Consensus.Ethash
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
-            BlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create();
+            IBlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create();
             IBlockProducer blockProducer = new DevBlockProducer(
                 env.TxSource,
                 env.ChainProcessor,

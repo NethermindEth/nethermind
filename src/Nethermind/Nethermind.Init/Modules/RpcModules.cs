@@ -34,6 +34,7 @@ using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Sockets;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -50,6 +51,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .AddSingleton<IEthSyncingInfo, EthSyncingInfo>()
             .AddSingleton<IRpcModuleProvider, RpcModuleProvider>()
             .AddSingleton<IJsonRpcLocalStats, JsonRpcLocalStats>()
+            .AddSingleton<IWebSocketsManager, WebSocketsManager>()
 
             // Smallish RPCs
             .AddSingleton<INetBridge, NetBridge>()

@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
+using Nethermind.Api.Extensions;
+using Nethermind.Core;
+using Nethermind.Core.Test.Modules;
 using NUnit.Framework;
 
 namespace Nethermind.Hive.Tests
@@ -15,18 +19,22 @@ namespace Nethermind.Hive.Tests
         }
 
         [Test]
-        public void Throws_on_null_api_in_init()
+        public void Can_initialize()
         {
-            HivePlugin plugin = new(new HiveConfig() { Enabled = true });
-            Assert.Throws<ArgumentNullException>(() => plugin.Init(null));
+            INethermindPlugin plugin = new HivePlugin(new HiveConfig() { Enabled = true });
+            plugin.Init(Runner.Test.Ethereum.Build.ContextWithMocks());
+            plugin.InitRpcModules();
         }
 
         [Test]
-        public void Can_initialize()
+        public void Can_resolve_hive_step()
         {
-            HivePlugin plugin = new(new HiveConfig() { Enabled = true });
-            plugin.Init(Runner.Test.Ethereum.Build.ContextWithMocks());
-            plugin.InitRpcModules();
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddModule(new HiveModule())
+                .Build();
+
+            container.Resolve<HiveStep>();
         }
     }
 }
