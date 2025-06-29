@@ -58,7 +58,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         }.ToFrozenDictionary();
     }
 
-    public CodeInfoRepository(ConcurrentDictionary<PrecompileCacheKey, (byte[], bool)>? precompileCache = null)
+    public CodeInfoRepository(ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)>? precompileCache = null)
     {
         _localPrecompiles = precompileCache is null
             ? _precompiles
@@ -199,7 +199,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     private static PrecompileInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, PrecompileInfo> originalPrecompile,
-        ConcurrentDictionary<PrecompileCacheKey, (byte[], bool)> cache) =>
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) =>
         new PrecompileInfo(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
 
     public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
@@ -211,7 +211,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     private class CachedPrecompile(
         Address address,
         IPrecompile precompile,
-        ConcurrentDictionary<PrecompileCacheKey, (byte[], bool)> cache) : IPrecompile
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) : IPrecompile
     {
         public static Address Address => Address.Zero;
 
@@ -221,12 +221,12 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            PrecompileCacheKey key = new(address, inputData);
+            PreBlockCaches.PrecompileCacheKey key = new(address, inputData);
             if (!cache.TryGetValue(key, out (byte[], bool) result))
             {
                 result = precompile.Run(inputData, releaseSpec);
                 // we need to rebuild the key with data copy as the data can be changed by VM processing
-                key = new PrecompileCacheKey(address, inputData.ToArray());
+                key = new PreBlockCaches.PrecompileCacheKey(address, inputData.ToArray());
                 cache.TryAdd(key, result);
             }
 
