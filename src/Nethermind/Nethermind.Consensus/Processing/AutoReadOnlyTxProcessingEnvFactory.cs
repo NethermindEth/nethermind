@@ -5,6 +5,7 @@ using System;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 

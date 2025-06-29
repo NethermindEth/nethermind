@@ -20,12 +20,13 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using Nethermind.Config;
 using System.Collections.Generic;
 using Nethermind.Core.Test;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 

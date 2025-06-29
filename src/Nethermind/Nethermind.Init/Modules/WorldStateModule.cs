@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
@@ -66,6 +67,7 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             .RegisterSingletonJsonRpcModule<IPruningTrieStateAdminRpcModule>()
 
             .AddSingleton<IReadOnlyStateProvider, ChainHeadReadOnlyStateProvider>()
+            .AddSingleton<IVisitingWorldState>(ctx => ctx.Resolve<IWorldStateManager>().GlobalWorldState)
 
             // Prevent multiple concurrent verify trie.
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()

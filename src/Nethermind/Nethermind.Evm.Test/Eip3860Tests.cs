@@ -3,7 +3,7 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using Nethermind.Core;

@@ -5,7 +5,7 @@ using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 

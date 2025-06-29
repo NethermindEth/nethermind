@@ -23,13 +23,13 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 

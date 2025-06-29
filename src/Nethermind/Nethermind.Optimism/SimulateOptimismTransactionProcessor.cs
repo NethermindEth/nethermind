@@ -7,7 +7,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Facade.Simulate;
 
 namespace Nethermind.Optimism;

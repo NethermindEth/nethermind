@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Evm.State;
 using Nethermind.State.Healing;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
@@ -12,7 +13,7 @@ namespace Nethermind.State;
 
 public interface IWorldStateManager
 {
-    IWorldState GlobalWorldState { get; }
+    IVisitingWorldState GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
     ISnapServer? SnapServer { get; }
     IReadOnlyKeyValueStore? HashServer { get; }
@@ -55,7 +56,7 @@ public interface IWorldStateManager
 
 public interface IOverridableWorldScope
 {
-    IWorldState WorldState { get; }
+    IVisitingWorldState WorldState { get; }
     IStateReader GlobalStateReader { get; }
     void ResetOverrides();
 }

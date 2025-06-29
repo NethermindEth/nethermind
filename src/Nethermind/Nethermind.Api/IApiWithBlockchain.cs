@@ -3,9 +3,6 @@
 
 #nullable enable
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.FullPruning;
-using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;

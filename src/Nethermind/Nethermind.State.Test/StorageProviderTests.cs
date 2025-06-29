@@ -12,6 +12,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Specs.Forks;
 using Nethermind.Logging;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;

@@ -11,7 +11,6 @@ using Nethermind.Config;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
-using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Simulate;

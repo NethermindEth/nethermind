@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.TxPool.Filters;
 public class IsValidTxSender(IWorldState worldState, ICodeInfoRepository codeInfoRepository, IChainHeadSpecProvider specProvider)

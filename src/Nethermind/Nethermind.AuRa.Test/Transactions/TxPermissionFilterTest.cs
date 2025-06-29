@@ -28,7 +28,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;

@@ -14,7 +14,7 @@ using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.Test.Tracing;
 

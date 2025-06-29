@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;

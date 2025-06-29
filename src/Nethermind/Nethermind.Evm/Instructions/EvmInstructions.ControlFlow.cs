@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Specs;
 using Nethermind.Core;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 using Int256;

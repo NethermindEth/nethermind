@@ -3,20 +3,18 @@
 
 using System;
 using System.Collections.Generic;
-using System.Security.Cryptography;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Tracing
 {
     public class Tracer(
-        IWorldState worldState,
+        IVisitingWorldState worldState,
         IBlockchainProcessor traceProcessor,
         IBlockchainProcessor executeProcessor,
         ProcessingOptions executeOptions = ProcessingOptions.Trace,

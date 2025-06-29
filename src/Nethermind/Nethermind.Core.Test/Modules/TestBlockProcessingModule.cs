@@ -17,6 +17,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
 

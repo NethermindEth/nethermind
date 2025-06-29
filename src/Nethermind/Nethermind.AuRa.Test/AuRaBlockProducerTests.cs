@@ -21,7 +21,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NSubstitute;
 using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;

@@ -10,7 +10,7 @@ using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;

@@ -6,9 +6,9 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using static System.Buffers.Binary.BinaryPrimitives;
 
 namespace Nethermind.Optimism;

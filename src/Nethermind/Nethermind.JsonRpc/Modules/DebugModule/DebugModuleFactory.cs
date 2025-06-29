@@ -7,6 +7,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 

@@ -11,7 +11,7 @@ public record MainProcessingContext(
     ITransactionProcessor TransactionProcessor,
     IBlockProcessor BlockProcessor,
     IBlockchainProcessor BlockchainProcessor,
-    IWorldState WorldState
+    IVisitingWorldState WorldState
 ) : IMainProcessingContext
 {
 }

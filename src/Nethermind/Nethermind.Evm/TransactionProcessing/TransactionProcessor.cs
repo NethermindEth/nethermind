@@ -16,9 +16,8 @@ using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.State.Tracing;
-
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
 namespace Nethermind.Evm.TransactionProcessing

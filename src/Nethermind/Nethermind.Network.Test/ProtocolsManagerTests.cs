@@ -25,6 +25,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.State.SnapServer;
 using Nethermind.Stats;
