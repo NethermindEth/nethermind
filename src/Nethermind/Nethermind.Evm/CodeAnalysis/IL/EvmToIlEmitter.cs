@@ -2059,7 +2059,10 @@ internal static class OpcodeEmitters
     internal static void EmitSStoreInstruction<TDelegateType>(
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
-        Label endOfOpcode;
+        Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
+        Label metered = method.DefineLabel(locals.GetLabelName());
+        Label endOfOpcodeHandling = method.DefineLabel(locals.GetLabelName());
+
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.LoadLocalAddress(locals.uint256A);
         method.Call(Word.GetUInt256ByRef);
@@ -2068,23 +2071,48 @@ internal static class OpcodeEmitters
         method.Call(Word.GetReadOnlySpan);
         method.StoreLocal(locals.localReadonOnlySpan);
 
-        envLoader.LoadVmState(method, locals, false);
 
+        envLoader.LoadSpec(method, locals, false);
+        method.CallVirtual(typeof(IReleaseSpec).GetProperty(nameof(IReleaseSpec.UseNetGasMeteringWithAStipendFix)).GetGetMethod());
+        method.LoadConstant(true);
+        method.BranchIfEqual(metered);
+
+        envLoader.LoadVmState(method, locals, false);
         envLoader.LoadWorldState(method, locals, false);
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localReadonOnlySpan);
         envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, true);
 
 
-        MethodInfo SStoreMethod = typeof(VirtualMachineDependencies)
-                    .GetMethod(nameof(VirtualMachineDependencies.InstructionSStore), BindingFlags.Static | BindingFlags.Public);
+        MethodInfo SStoreMethodUnMetered = typeof(VirtualMachineDependencies)
+                    .GetMethod(nameof(VirtualMachineDependencies.InstructionSStoreUnmetered), BindingFlags.Static | BindingFlags.Public);
 
-        method.Call(SStoreMethod);
-
-        endOfOpcode = method.DefineLabel(locals.GetLabelName());
-        method.Duplicate();
+        method.Call(SStoreMethodUnMetered);
         method.StoreLocal(locals.uint32A);
+
+        method.Branch(endOfOpcodeHandling);
+
+        method.MarkLabel(metered);
+
+        envLoader.LoadVmState(method, locals, false);
+        envLoader.LoadWorldState(method, locals, false);
+        method.LoadLocalAddress(locals.gasAvailable);
+        method.LoadLocalAddress(locals.uint256A);
+        method.LoadLocalAddress(locals.localReadonOnlySpan);
+        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, true);
+
+
+        MethodInfo SStoreMethodMetered = typeof(VirtualMachineDependencies)
+                    .GetMethod(nameof(VirtualMachineDependencies.InstructionSStoreMetered), BindingFlags.Static | BindingFlags.Public);
+
+        method.Call(SStoreMethodMetered);
+        method.StoreLocal(locals.uint32A);
+
+        method.MarkLabel(endOfOpcodeHandling);
+        method.LoadLocal(locals.uint32A);
         method.LoadConstant((int)EvmExceptionType.None);
         method.BranchIfEqual(endOfOpcode);
 

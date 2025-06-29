@@ -96,27 +96,39 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             EvmState vmState,
             in StorageCell storageCell,
             StorageAccessType storageAccessType,
-            IReleaseSpec spec)
+            IReleaseSpec spec,
+            ref ITxTracer txTracer)
         {
-            // Console.WriteLine($"Accessing {storageCell} {storageAccessType}");
-
             bool result = true;
+
+            // If the spec requires hot/cold storage tracking, determine if extra gas should be charged.
             if (spec.UseHotAndColdStorage)
             {
-                if (vmState.AccessTracker.IsCold(in storageCell))
+                // When tracing access, ensure the storage cell is marked as warm to simulate inclusion in the access list.
+                ref readonly StackAccessTracker accessTracker = ref vmState.AccessTracker;
+
+                if (txTracer.IsTracingAccess)
+                {
+                    accessTracker.WarmUp(in storageCell);
+                }
+
+                // If the storage cell is still cold, apply the higher cold access cost and mark it as warm.
+                if (accessTracker.IsCold(in storageCell))
                 {
                     result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
-                    vmState.AccessTracker.WarmUp(in storageCell);
+                    accessTracker.WarmUp(in storageCell);
                 }
+                // For SLOAD operations on already warmed-up storage, apply a lower warm-read cost.
                 else if (storageAccessType == StorageAccessType.SLOAD)
                 {
-                    // we do not charge for WARM_STORAGE_READ_COST in SSTORE scenario
                     result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
                 }
             }
 
             return result;
+
         }
+
         public static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false) =>
             instruction switch
             {
@@ -542,123 +554,169 @@ namespace Nethermind.Evm.CodeAnalysis.IL
         }
 
         [SkipLocalsInit]
-        public static EvmExceptionType InstructionSStore(EvmState vmState, IWorldState state, ref long gasAvailable, ref UInt256 result, ref ReadOnlySpan<byte> bytes, IReleaseSpec spec)
+        public static EvmExceptionType InstructionSStoreUnmetered(EvmState vmState, IWorldState state, ref long gasAvailable, ref UInt256 result, ref ReadOnlySpan<byte> bytes, IReleaseSpec spec, ref ITxTracer txTracer)
         {
-            Metrics.IncrementSStoreOpcode();
+                    // Increment the SSTORE opcode metric.
+                    Metrics.IncrementSStoreOpcode();
 
-            // fail fast before the first storage read if gas is not enough even for reset
-            if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
+                    // For legacy metering: ensure there is enough gas for the SSTORE reset cost before reading storage.
+                    if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
+                        return EvmExceptionType.OutOfGas;
 
-            if (spec.UseNetGasMeteringWithAStipendFix)
-            {
-                if (gasAvailable <= GasCostOf.CallStipend) return EvmExceptionType.OutOfGas;
-            }
+                    // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
+                    bool newIsZero = bytes.IsZero();
+                    bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
 
-            bool newIsZero = bytes.IsZero();
-            bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
+                    // Construct the storage cell for the executing account.
+                    StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-            StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
+                    // Charge gas based on whether this is a cold or warm storage access.
+                    if (!ChargeStorageAccessGas(ref gasAvailable, vmState, in storageCell, StorageAccessType.SSTORE, spec, ref txTracer))
+                        return EvmExceptionType.OutOfGas;
+                    // Retrieve the current value from persistent storage.
+                    ReadOnlySpan<byte> currentValue = state.Get(in storageCell);
+                    bool currentIsZero = currentValue.IsZero();
 
-            if (!ChargeStorageAccessGas(
-                    ref gasAvailable,
-                    vmState,
-                    in storageCell,
-                    StorageAccessType.SSTORE,
-                    spec)) return EvmExceptionType.OutOfGas;
+                    // Determine whether the new value is identical to the current stored value.
+                    bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
-            ReadOnlySpan<byte> currentValue = state.Get(in storageCell);
-            // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
-            bool currentIsZero = currentValue.IsZero();
+                    // Retrieve the refund value associated with clearing storage.
+                    long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
 
-            bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
-            long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
+                    // Legacy metering: if storing zero and the value changes, grant a clearing refund.
+                    if (newIsZero)
+                    {
+                        if (!newSameAsCurrent)
+                        {
+                            vmState.Refund += sClearRefunds;
+                        }
+                    }
+                    // When setting a non-zero value over an existing zero, apply the difference in gas costs.
+                    else if (currentIsZero)
+                    {
+                        if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable))
+                            return EvmExceptionType.OutOfGas;
+                    }
 
-            if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
-            {
-                if (newIsZero)
-                {
+                    // Only update storage if the new value differs from the current value.
                     if (!newSameAsCurrent)
                     {
-                        vmState.Refund += sClearRefunds;
+                        state.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
                     }
-                }
-                else if (currentIsZero)
-                {
-                    if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable)) return EvmExceptionType.OutOfGas;
-                }
-            }
-            else // net metered
-            {
-                if (newSameAsCurrent)
-                {
-                    if (!UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
-                }
-                else // net metered, C != N
-                {
-                    Span<byte> originalValue = state.GetOriginal(in storageCell);
-                    bool originalIsZero = originalValue.IsZero();
 
-                    bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
-                    if (currentSameAsOriginal)
+                    return EvmExceptionType.None;
+        }
+
+        [SkipLocalsInit]
+        public static EvmExceptionType InstructionSStoreMetered(EvmState vmState, IWorldState state, ref long gasAvailable, ref UInt256 result, ref ReadOnlySpan<byte> bytes, IReleaseSpec spec, ref ITxTracer txTracer)
+        {
+                    // Increment the SSTORE opcode metric.
+                    Metrics.IncrementSStoreOpcode();
+
+
+
+                    // In net metering with stipend fix, ensure extra gas pressure is reported and that sufficient gas remains.
+                    if (spec.UseNetGasMeteringWithAStipendFix)
                     {
-                        if (currentIsZero)
-                        {
-                            if (!UpdateGas(GasCostOf.SSet, ref gasAvailable)) return EvmExceptionType.OutOfGas;
-                        }
-                        else // net metered, current == original != new, !currentIsZero
-                        {
-                            if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
-
-                            if (newIsZero)
-                            {
-                                vmState.Refund += sClearRefunds;
-                            }
-                        }
+                        if (gasAvailable <= GasCostOf.CallStipend)
+                            return EvmExceptionType.OutOfGas;
                     }
-                    else // net metered, new != current != original
-                    {
-                        long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
-                        if (!UpdateGas(netMeteredStoreCost, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-                        if (!originalIsZero) // net metered, new != current != original != 0
+
+                    // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
+                    bool newIsZero = bytes.IsZero();
+                    bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
+
+                    // Construct the storage cell for the executing account.
+                    StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
+
+                    // Charge gas based on whether this is a cold or warm storage access.
+                    if (!ChargeStorageAccessGas(ref gasAvailable, vmState, in storageCell, StorageAccessType.SSTORE, spec, ref txTracer))
+                        return EvmExceptionType.OutOfGas;
+
+                    // Retrieve the current value from persistent storage.
+                    ReadOnlySpan<byte> currentValue = state.Get(in storageCell);
+                    bool currentIsZero = currentValue.IsZero();
+
+                    // Determine whether the new value is identical to the current stored value.
+                    bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
+
+                    // Retrieve the refund value associated with clearing storage.
+                    long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
+
+                    if (newSameAsCurrent)
+                    {
+                        if (!UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable))
+                            return EvmExceptionType.OutOfGas;
+                    }
+                    else
+                    {
+                        // Retrieve the original storage value to determine if this is a reversal.
+                        Span<byte> originalValue = state.GetOriginal(in storageCell);
+                        bool originalIsZero = originalValue.IsZero();
+                        bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
+
+                        if (currentSameAsOriginal)
                         {
                             if (currentIsZero)
                             {
-                                vmState.Refund -= sClearRefunds;
-                            }
-
-                            if (newIsZero)
-                            {
-                                vmState.Refund += sClearRefunds;
-                            }
-                        }
-
-                        bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
-                        if (newSameAsOriginal)
-                        {
-                            long refundFromReversal;
-                            if (originalIsZero)
-                            {
-                                refundFromReversal = spec.GetSetReversalRefund();
+                                if (!UpdateGas(GasCostOf.SSet, ref gasAvailable))
+                                   return EvmExceptionType.OutOfGas;
                             }
                             else
                             {
-                                refundFromReversal = spec.GetClearReversalRefund();
+                                if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
+                                    return EvmExceptionType.OutOfGas;
+
+                                if (newIsZero)
+                                {
+                                    vmState.Refund += sClearRefunds;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
+                            if (!UpdateGas(netMeteredStoreCost, ref gasAvailable))
+                                return EvmExceptionType.OutOfGas;
+
+                            if (!originalIsZero)
+                            {
+                                // Adjust refunds based on a change from or to a zero value.
+                                if (currentIsZero)
+                                {
+                                    vmState.Refund -= sClearRefunds;
+                                }
+
+                                if (newIsZero)
+                                {
+                                    vmState.Refund += sClearRefunds;
+                                }
                             }
 
-                            vmState.Refund += refundFromReversal;
+                            // If the new value reverts to the original, grant a reversal refund.
+                            bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
+                            if (newSameAsOriginal)
+                            {
+                                long refundFromReversal = originalIsZero
+                                    ? spec.GetSetReversalRefund()
+                                    : spec.GetClearReversalRefund();
+
+                                vmState.Refund += refundFromReversal;
+                            }
                         }
                     }
-                }
-            }
 
-            if (!newSameAsCurrent)
-            {
-                state.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
-            }
+                    // Only update storage if the new value differs from the current value.
+                    if (!newSameAsCurrent)
+                    {
+                        state.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
+                    }
 
-            return EvmExceptionType.None;
+
+                    return EvmExceptionType.None;
         }
+
 
         public static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
         {
