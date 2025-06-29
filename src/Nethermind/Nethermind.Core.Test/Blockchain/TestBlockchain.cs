@@ -299,7 +299,7 @@ public class TestBlockchain : IDisposable
 
     protected virtual IBlockProducer CreateTestBlockProducer()
     {
-        BlockProducerEnv env = BlockProducerEnvFactory.Create();
+        IBlockProducerEnv env = BlockProducerEnvFactory.Create();
         return new TestBlockProducer(
             env.TxSource,
             env.ChainProcessor,

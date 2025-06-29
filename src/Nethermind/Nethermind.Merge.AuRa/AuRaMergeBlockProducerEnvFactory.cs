@@ -1,16 +1,18 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Config;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -20,62 +22,53 @@ using Nethermind.State;
 
 namespace Nethermind.Merge.AuRa;
 
-public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
+public class AuRaMergeBlockProducerEnvFactory(
+    ChainSpec chainSpec,
+    IAbiEncoder abiEncoder,
+    IBlockTree blockTree,
+    ISpecProvider specProvider,
+    IBlockValidator blockValidator,
+    IRewardCalculatorSource rewardCalculatorSource,
+    ILifetimeScope lifetimeScope,
+    IWorldStateManager worldStateManager,
+    IBlockProducerTxSourceFactory blockProducerTxSourceFactory,
+    ILogManager logManager)
+    : BlockProducerEnvFactory(lifetimeScope, worldStateManager, blockProducerTxSourceFactory)
 {
-    private readonly ChainSpec _chainSpec;
-    private readonly IAbiEncoder _abiEncoder;
+    private readonly IReceiptStorage _receiptStorage = NullReceiptStorage.Instance;
 
-    public AuRaMergeBlockProducerEnvFactory(
-        ChainSpec chainSpec,
-        IAbiEncoder abiEncoder,
-        IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
-        IWorldStateManager worldStateManager,
-        IBlockTree blockTree,
-        ISpecProvider specProvider,
-        IBlockValidator blockValidator,
-        IRewardCalculatorSource rewardCalculatorSource,
-        IBlockPreprocessorStep blockPreprocessorStep,
-        IBlocksConfig blocksConfig,
-        IBlockProducerTxSourceFactory blockProducerTxSourceFactory,
-        ILogManager logManager) : base(
-            worldStateManager,
-            txProcessingEnvFactory,
-            blockTree,
-            specProvider,
-            blockValidator,
-            rewardCalculatorSource,
-            blockPreprocessorStep,
-            blocksConfig,
-            blockProducerTxSourceFactory,
-            logManager)
-    {
-        _chainSpec = chainSpec;
-        _abiEncoder = abiEncoder;
-    }
+    protected override ContainerBuilder ConfigureBuilder(ContainerBuilder builder) =>
+        base.ConfigureBuilder(builder)
+            .AddScoped(CreateBlockProcessor);
 
-    protected override BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv)
+    private IBlockProcessor CreateBlockProcessor(
+        ITransactionProcessor txProcessor,
+        IWorldState worldState,
+        IBlockProcessor.IBlockTransactionsExecutor txExecutor,
+        IExecutionRequestsProcessor executionRequestsProcessor
+    )
     {
         var withdrawalContractFactory = new WithdrawalContractFactory(
-            _chainSpec.EngineChainSpecParametersProvider
-                .GetChainSpecParameters<AuRaChainSpecEngineParameters>(), _abiEncoder);
+            chainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<AuRaChainSpecEngineParameters>(), abiEncoder);
 
         return new AuRaMergeBlockProcessor(
-            _specProvider,
-            _blockValidator,
-            _rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-            TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
-            readOnlyTxProcessingEnv.WorldState,
+            specProvider,
+            blockValidator,
+            rewardCalculatorSource.Get(txProcessor),
+            txExecutor,
+            worldState,
             _receiptStorage,
-            new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor, readOnlyTxProcessingEnv.WorldState),
-            _logManager,
-            _blockTree,
+            new BeaconBlockRootHandler(txProcessor, worldState),
+            logManager,
+            blockTree,
             new Consensus.Withdrawals.BlockProductionWithdrawalProcessor(
                 new AuraWithdrawalProcessor(
-                    withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
-                    _logManager
+                    withdrawalContractFactory.Create(txProcessor),
+                    logManager
                 )
             ),
-            ExecutionRequestsProcessorOverride ?? new ExecutionRequestsProcessor(readOnlyTxProcessingEnv.TransactionProcessor),
+            executionRequestsProcessor,
             null);
     }
 }

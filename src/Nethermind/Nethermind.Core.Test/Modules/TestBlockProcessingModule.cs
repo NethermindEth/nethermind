@@ -44,6 +44,7 @@ public class TestBlockProcessingModule : Module
             })
 
             .AddSingleton<ITxPool, TxPool.TxPool>()
+            .AddSingleton<CompositeTxGossipPolicy>()
             .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
 
             // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
@@ -120,7 +121,7 @@ public class TestBlockProcessingModule : Module
     private BlockProducerContext ConfigureBlockProducerContext(ILifetimeScope ctx)
     {
         // Note: This is modelled after TestBlockchain, not prod
-        BlockProducerEnv env = ctx.Resolve<IBlockProducerEnvFactory>().Create();
+        IBlockProducerEnv env = ctx.Resolve<IBlockProducerEnvFactory>().Create();
         ILifetimeScope innerScope = ctx.BeginLifetimeScope((producerCtx) =>
         {
             producerCtx

@@ -1,112 +1,45 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Producers
 {
-    public class BlockProducerEnvFactory : IBlockProducerEnvFactory
+    public class BlockProducerEnvFactory(
+        ILifetimeScope rootLifetime,
+        IWorldStateManager worldStateManager,
+        IBlockProducerTxSourceFactory txSourceFactory
+    ) : IBlockProducerEnvFactory
     {
-        protected readonly IWorldStateManager _worldStateManager;
-        protected readonly IBlockTree _blockTree;
-        protected readonly ISpecProvider _specProvider;
-        protected readonly IBlockValidator _blockValidator;
-        protected readonly IRewardCalculatorSource _rewardCalculatorSource;
-        protected readonly IReceiptStorage _receiptStorage;
-        protected readonly IBlockPreprocessorStep _blockPreprocessorStep;
-        protected readonly IBlocksConfig _blocksConfig;
-        protected readonly ILogManager _logManager;
-        private readonly IReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
-        private readonly IBlockProducerTxSourceFactory _blockProducerTxSourceFactory;
+        protected virtual ContainerBuilder ConfigureBuilder(ContainerBuilder builder) => builder
+            .AddScoped<ITxSource>(txSourceFactory.Create())
+            .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
+            .AddScoped(BlockchainProcessor.Options.NoReceipts)
+            .AddScoped<ITransactionProcessorAdapter, BuildUpTransactionProcessorAdapter>()
+            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
+            .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
+            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
 
-        public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
-        public IExecutionRequestsProcessor? ExecutionRequestsProcessorOverride { get; set; }
+            .AddScoped<IBlockProducerEnv, BlockProducerEnv>();
 
-        public BlockProducerEnvFactory(
-            IWorldStateManager worldStateManager,
-            IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
-            IBlockTree blockTree,
-            ISpecProvider specProvider,
-            IBlockValidator blockValidator,
-            IRewardCalculatorSource rewardCalculatorSource,
-            IBlockPreprocessorStep blockPreprocessorStep,
-            IBlocksConfig blocksConfig,
-            IBlockProducerTxSourceFactory blockProducerTxSourceFactory,
-            ILogManager logManager)
+        public IBlockProducerEnv Create()
         {
-            _worldStateManager = worldStateManager;
-            _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
-            _blockTree = blockTree;
-            _specProvider = specProvider;
-            _blockValidator = blockValidator;
-            _rewardCalculatorSource = rewardCalculatorSource;
-            _receiptStorage = NullReceiptStorage.Instance;
-            _blockPreprocessorStep = blockPreprocessorStep;
-            _blocksConfig = blocksConfig;
-            _blockProducerTxSourceFactory = blockProducerTxSourceFactory;
-            _logManager = logManager;
+            IWorldState worldState = worldStateManager.CreateResettableWorldState();
+            ILifetimeScope lifetimeScope = rootLifetime.BeginLifetimeScope(builder =>
+                ConfigureBuilder(builder)
+                    .AddScoped(worldState));
 
-            TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, _blocksConfig.BlockProductionMaxTxKilobytes, logManager);
+            rootLifetime.Disposer.AddInstanceForAsyncDisposal(lifetimeScope);
+
+            return lifetimeScope.Resolve<IBlockProducerEnv>();
         }
-
-        public virtual BlockProducerEnv Create()
-        {
-            ReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
-
-            IReadOnlyTxProcessorSource txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
-
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
-
-            BlockProcessor blockProcessor = CreateBlockProcessor(scope);
-
-            IBlockchainProcessor blockchainProcessor =
-                new BlockchainProcessor(
-                    readOnlyBlockTree,
-                    blockProcessor,
-                    _blockPreprocessorStep,
-                    _worldStateManager.GlobalStateReader,
-                    _logManager,
-                    BlockchainProcessor.Options.NoReceipts);
-
-            OneTimeChainProcessor chainProcessor = new(
-                scope.WorldState,
-                blockchainProcessor);
-
-            return new BlockProducerEnv
-            {
-                BlockTree = readOnlyBlockTree,
-                ChainProcessor = chainProcessor,
-                ReadOnlyStateProvider = scope.WorldState,
-                TxSource = _blockProducerTxSourceFactory.Create()
-            };
-        }
-
-        protected virtual BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv) =>
-            new BlockProcessor(
-                _specProvider,
-                _blockValidator,
-                _rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
-                readOnlyTxProcessingEnv.WorldState,
-                _receiptStorage,
-                new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor, readOnlyTxProcessingEnv.WorldState),
-                new BlockhashStore(_specProvider, readOnlyTxProcessingEnv.WorldState),
-                _logManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, _logManager)),
-                executionRequestsProcessor: ExecutionRequestsProcessorOverride ?? new ExecutionRequestsProcessor(readOnlyTxProcessingEnv.TransactionProcessor));
     }
 }

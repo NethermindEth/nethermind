@@ -19,7 +19,7 @@
     <PackageReference Include="Nethermind.Crypto.Pairings" />
     <PackageReference Include="Nethermind.Crypto.Bls" />
     <PackageReference Include="Nethermind.Crypto.SecP256r1" />
-    <PackageReference Include="Nethermind.Gmp" />
+    <PackageReference Include="Nethermind.GmpBindings" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Data\JSTracers\*.js">

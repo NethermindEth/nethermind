@@ -6,7 +6,6 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.Net;
@@ -25,15 +24,18 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
@@ -191,7 +193,7 @@ public class EthereumRunnerTests
 
         ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), testCase.configProvider, LimboLogs.Instance);
         IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(testCase.configProvider, builder.ChainSpec);
-        plugins.Add(new RunnerTestPlugin());
+        plugins.Add(new RunnerTestPlugin(true));
         EthereumRunner runner = builder.CreateEthereumRunner(plugins);
 
         INethermindApi api = runner.Api;
@@ -210,6 +212,11 @@ public class EthereumRunnerTests
         api.DbFactory = new MemDbFactory();
         api.DbProvider = await TestMemDbProvider.InitAsync();
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
+
+        if (api is AuRaNethermindApi auRaNethermindApi)
+        {
+            auRaNethermindApi.FinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
+        }
 
         try
         {
@@ -262,6 +269,7 @@ public class EthereumRunnerTests
             api.Context.Resolve<IUnclesValidator>();
             api.Context.Resolve<ITxValidator>();
             api.Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
+            api.Context.Resolve<IBlockProducerEnvFactory>().Create();
 
             // A root registration should not have both keyed and unkeyed registration. This is confusing and may
             // cause unexpected registration. Either have a single non-keyed registration or all keyed-registration,
@@ -412,7 +420,7 @@ public class EthereumRunnerTests
         }
     }
 
-    private class RunnerTestPlugin : INethermindPlugin
+    private class RunnerTestPlugin(bool forStepTest = false) : INethermindPlugin
     {
         public string Name { get; } = "Runner test plugin";
         public string Description { get; } = "A plugin to pass runner test and make it faster";
@@ -421,9 +429,9 @@ public class EthereumRunnerTests
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-        public IModule Module => new RunnerTestModule();
+        public IModule Module => new RunnerTestModule(forStepTest);
 
-        private class RunnerTestModule : Autofac.Module
+        private class RunnerTestModule(bool forStepTest) : Autofac.Module
         {
             protected override void Load(ContainerBuilder builder)
             {
@@ -432,19 +440,31 @@ public class EthereumRunnerTests
                 var ipResolver = Substitute.For<IIPResolver>();
                 ipResolver.ExternalIp.Returns(IPAddress.Parse("127.0.0.1"));
                 ipResolver.LocalIp.Returns(IPAddress.Parse("127.0.0.1"));
-                builder.AddSingleton(ipResolver);
 
-                builder.AddDecorator<IInitConfig>((ctx, initConfig) =>
+                builder
+                    .AddSingleton(ipResolver)
+                    .AddDecorator<IInitConfig>((ctx, initConfig) =>
+                    {
+                        initConfig.DiagnosticMode = DiagnosticMode.MemDb;
+                        initConfig.InRunnerTest = true;
+                        return initConfig;
+                    })
+                    .AddDecorator<IJsonRpcConfig>((ctx, jsonRpcConfig) =>
+                    {
+                        jsonRpcConfig.PreloadRpcModules = true; // So that rpc is resolved early so that we know if something is wrong in test
+                        return jsonRpcConfig;
+                    });
+
+                if (forStepTest)
                 {
-                    initConfig.DiagnosticMode = DiagnosticMode.MemDb;
-                    initConfig.InRunnerTest = true;
-                    return initConfig;
-                });
-                builder.AddDecorator<IJsonRpcConfig>((ctx, jsonRpcConfig) =>
-                {
-                    jsonRpcConfig.PreloadRpcModules = true; // So that rpc is resolved early so that we know if something is wrong in test
-                    return jsonRpcConfig;
-                });
+                    // Special case for aura where by default it try to cast the main blockchain processor
+                    // to extract the reporting validator. The blockchain processor is not DI so it fail in step test but
+                    // pass in runner test.
+                    builder
+                        .AddSingleton(Substitute.For<IReportingValidator>())
+                        ;
+                }
+
             }
         }
     }
