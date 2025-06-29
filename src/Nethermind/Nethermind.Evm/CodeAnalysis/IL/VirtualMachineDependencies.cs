@@ -39,18 +39,18 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             gasAvailable += refund;
         }
 
-        private static bool ChargeAccountAccessGasWithDelegation(ref long gasAvailable, ICodeInfoRepository codeInfoRepository, IWorldState state, EvmState vmState, Address address, IReleaseSpec spec, bool chargeForWarm = true)
+        private static bool ChargeAccountAccessGasWithDelegation(ref long gasAvailable, ICodeInfoRepository codeInfoRepository, IWorldState state, EvmState vmState, Address address, IReleaseSpec spec, ref ITxTracer txTracer, bool chargeForWarm = true)
         {
             if (!spec.UseHotAndColdStorage)
             {
                 // No extra cost if hot/cold storage is not used.
                 return true;
             }
-            bool notOutOfGas = ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, chargeForWarm);
+            bool notOutOfGas = ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, ref txTracer, chargeForWarm);
             return notOutOfGas
                    && (!codeInfoRepository.TryGetDelegation(state, address, spec, out Address delegated)
                        // Charge additional gas for the delegated account if it exists.
-                       || ChargeAccountAccessGas(ref gasAvailable, vmState, delegated, spec, chargeForWarm));
+                       || ChargeAccountAccessGas(ref gasAvailable, vmState, delegated, spec, ref txTracer,  chargeForWarm));
         }
 
         private static bool ChargeForLargeContractAccess(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref long gasAvailable)
@@ -64,25 +64,31 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             return true;
         }
 
-        public static bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, bool chargeForWarm = true)
+        public static bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, ref ITxTracer txTracer, bool chargeForWarm = true)
         {
-            bool result = true;
-            if (spec.UseHotAndColdStorage)
-            {
-                // If the account is cold (and not a precompile), charge the cold access cost.
-                if (vmState.AccessTracker.IsCold(address) && !address.IsPrecompile(spec))
+                bool result = true;
+                if (spec.UseHotAndColdStorage)
                 {
-                    result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
-                    vmState.AccessTracker.WarmUp(address);
-                }
-                else if (chargeForWarm)
-                {
-                    // Otherwise, if warm access should be charged, apply the warm read cost.
-                    result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
-                }
-            }
+                    if (txTracer.IsTracingAccess)
+                    {
+                        // Ensure that tracing simulates access-list behavior.
+                        vmState.AccessTracker.WarmUp(address);
+                    }
 
-            return result;
+                    // If the account is cold (and not a precompile), charge the cold access cost.
+                    if (vmState.AccessTracker.IsCold(address) && !address.IsPrecompile(spec))
+                    {
+                        result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
+                        vmState.AccessTracker.WarmUp(address);
+                    }
+                    else if (chargeForWarm)
+                    {
+                        // Otherwise, if warm access should be charged, apply the warm read cost.
+                        result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
+                    }
+                }
+
+                return result;
         }
 
         public enum StorageAccessType
@@ -91,13 +97,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             SSTORE
         }
 
-        public static bool ChargeStorageAccessGas(
-            ref long gasAvailable,
-            EvmState vmState,
-            in StorageCell storageCell,
-            StorageAccessType storageAccessType,
-            IReleaseSpec spec,
-            ref ITxTracer txTracer)
+        public static bool ChargeStorageAccessGas( ref long gasAvailable, EvmState vmState, in StorageCell storageCell, StorageAccessType storageAccessType, IReleaseSpec spec, ref ITxTracer txTracer)
         {
             bool result = true;
 
@@ -129,6 +129,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL
 
         }
 
+
         public static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false) =>
             instruction switch
             {
@@ -155,6 +156,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             UInt256 outputLength,
             out UInt256? toPushInStack,
             ref ReadOnlyMemory<byte> returnBuffer,
+            ref ITxTracer txTracer,
             out object returnData)
         {
             returnData = null;
@@ -163,7 +165,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             Metrics.IncrementCalls();
 
             // Charge gas for accessing the account's code (including delegation logic if applicable).
-            if (!ChargeAccountAccessGasWithDelegation(ref gasAvailable, codeInfoRepository, state, vmState, codeSource, spec)) goto OutOfGas;
+            if (!ChargeAccountAccessGasWithDelegation(ref gasAvailable, codeInfoRepository, state, vmState, codeSource, spec, ref txTracer)) goto OutOfGas;
 
             ref readonly ExecutionEnvironment env = ref vmState.Env;
             // Determine the call value based on the call type.
@@ -311,22 +313,18 @@ namespace Nethermind.Evm.CodeAnalysis.IL
         }
 
         [SkipLocalsInit]
-        public static EvmExceptionType InstructionSelfDestruct(EvmState vmState, IWorldState state, Address inheritor, ref long gasAvailable, IReleaseSpec spec)
+        public static EvmExceptionType InstructionSelfDestruct(EvmState vmState, IWorldState state, Address inheritor, ref long gasAvailable, IReleaseSpec spec, ref ITxTracer txTracer)
         {
+
+            Console.WriteLine($"IlEvm Entry Gas : {gasAvailable}");
             Metrics.IncrementSelfDestructs();
 
             // SELFDESTRUCT is forbidden during static calls.
             if (vmState.IsStatic)
                 goto StaticCallViolation;
 
-            // If Shanghai DDoS protection is active, charge the appropriate gas cost.
-            if (spec.UseShanghaiDDosProtection)
-            {
-                gasAvailable -= GasCostOf.SelfDestructEip150;
-            }
-
             // Charge gas for account access; if insufficient, signal out-of-gas.
-            if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, chargeForWarm: false))
+            if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, ref txTracer, chargeForWarm: false))
                 goto OutOfGas;
 
             Address executingAccount = vmState.Env.ExecutingAccount;
@@ -370,6 +368,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             // Subtract the balance from the executing account.
             state.SubtractFromBalance(executingAccount, result, spec);
 
+        Console.WriteLine($"ILEVM Gas : {gasAvailable}, Executing Account: {executingAccount}, Inheritor: {inheritor}, Balance: {result}");
         // Jump forward to be unpredicted by the branch predictor.
         Stop:
             return EvmExceptionType.Stop;
