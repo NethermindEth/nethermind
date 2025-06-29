@@ -20,9 +20,6 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
     protected readonly Random _rnd = rnd;
     protected readonly ITimestamper? _timestamper = timestamper;
 
-    protected override IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IBlockProducer blockProducer)
-        => Api.GetBlockImprovementContextFactory(blockProducer);
-
     protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
     {
         base.ConfigureContainer(builder, configProvider)
@@ -39,7 +36,10 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
 
             // It seems that it does not work with bloom.
             // This or use a separate bloom storage for LogFinder and BlockTree.
-            .AddSingleton<IBloomStorage>(NullBloomStorage.Instance);
+            .AddSingleton<IBloomStorage>(NullBloomStorage.Instance)
+
+            .AddSingleton<IBlockImprovementContextFactory, ShutterApi, IBlockProducer>((api, blockProducer) => api.GetBlockImprovementContextFactory(blockProducer))
+            ;
 
         if (eventSimulator is not null)
         {

@@ -140,6 +140,9 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                     .AddScoped<IWithdrawalContract, WithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))
                     .AddScoped<IWithdrawalProcessor, AuraWithdrawalProcessor>()
 
+                    .AddSingleton<IBlockImprovementContextFactory, IBlockProducer, IMergeConfig>((blockProducer,
+                        mergeConfig) => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot)))
+
                     .AddDecorator<AuRaNethermindApi>((ctx, api) =>
                     {
                         // Yes getting from `TestBlockchain` itself, since steps are not run
@@ -206,7 +209,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             BlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(
                 postMergeBlockProducer,
-                StoringBlockImprovementContextFactory = new StoringBlockImprovementContextFactory(CreateBlockImprovementContextFactory(BlockProducer)),
+                StoringBlockImprovementContextFactory,
                 TimerFactory.Default,
                 LogManager,
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
@@ -235,8 +238,5 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
-
-        protected virtual IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IBlockProducer blockProducer)
-            => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
     }
 }

@@ -253,7 +253,7 @@ public abstract partial class BaseEngineModuleTests
         public IMergeConfig MergeConfig { get; set; }
 
         public IPayloadPreparationService? PayloadPreparationService { get; set; }
-        public StoringBlockImprovementContextFactory? StoringBlockImprovementContextFactory { get; set; }
+        public StoringBlockImprovementContextFactory StoringBlockImprovementContextFactory => (StoringBlockImprovementContextFactory) BlockImprovementContextFactory;
 
         public Task WaitForImprovedBlock(Hash256? parentHash = null)
         {
@@ -322,7 +322,14 @@ public abstract partial class BaseEngineModuleTests
         {
             builder = base.ConfigureContainer(builder, configProvider)
                 .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
-                .AddModule(new MergeModule(configProvider));
+                .AddModule(new TestMergeModule(configProvider))
+                .AddDecorator<IBlockImprovementContextFactory>((ctx, factory) =>
+                {
+                    if (factory is StoringBlockImprovementContextFactory) return factory;
+                    return new StoringBlockImprovementContextFactory(factory);
+                })
+                .AddSingleton<IBlockProducer>(ctx => this.BlockProducer)
+                ;
 
             if (ExecutionRequestsProcessorOverride is not null)
             {
@@ -352,7 +359,6 @@ public abstract partial class BaseEngineModuleTests
             IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             BlockProducer = postMergeBlockProducer;
-            BlockImprovementContextFactory ??= new BlockImprovementContextFactory(BlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
             PayloadPreparationService ??= new PayloadPreparationService(
                 postMergeBlockProducer,
                 BlockImprovementContextFactory,
@@ -385,14 +391,8 @@ public abstract partial class BaseEngineModuleTests
 
         public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
 
-        public IBlockImprovementContextFactory BlockImprovementContextFactory
-        {
-            get => StoringBlockImprovementContextFactory!;
-            set
-            {
-                StoringBlockImprovementContextFactory = value as StoringBlockImprovementContextFactory ?? new StoringBlockImprovementContextFactory(value);
-            }
-        }
+        public IBlockImprovementContextFactory BlockImprovementContextFactory =>
+            Container.Resolve<IBlockImprovementContextFactory>();
 
         public async Task<MergeTestBlockchain> Build(ISpecProvider specProvider) =>
             (MergeTestBlockchain)await Build(configurer: (builder) => builder.AddSingleton<ISpecProvider>(specProvider));
