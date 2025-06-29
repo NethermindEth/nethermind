@@ -2136,7 +2136,7 @@ internal static class OpcodeEmitters
 
         method.StoreLocal(locals.uint32A);
         method.LoadLocal(locals.uint32A);
-        method.LoadConstant((int)EvmExceptionType.None);
+        method.LoadConstant((int)EvmExceptionType.Stop);
         method.BranchIfEqual(happyPath);
 
         envLoader.LoadResult(method, locals, true);
