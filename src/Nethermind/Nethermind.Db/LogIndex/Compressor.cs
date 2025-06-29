@@ -24,32 +24,46 @@ public partial class LogIndexStorage
         // TODO: find a better way to guarantee uniqueness?
         private readonly ConcurrentDictionary<byte[], bool> _compressQueue = new(Bytes.EqualityComparer);
         private readonly LogIndexStorage _storage;
-        private readonly ActionBlock<byte[]> _processingBlock;
+        private readonly ILogger _logger;
+        private readonly ActionBlock<(byte[] key, byte[] value)> _processingBlock;
         private readonly ManualResetEventSlim _queueEmptyEvent = new(true);
 
         private PostMergeProcessingStats _stats = new();
-        public PostMergeProcessingStats GetAndResetStats() => Interlocked.Exchange(ref _stats, new());
+        public PostMergeProcessingStats GetAndResetStats()
+        {
+            _stats.QueueLength = _processingBlock.InputCount;
+            return Interlocked.Exchange(ref _stats, new());
+        }
 
         public Compressor(LogIndexStorage storage, ILogger logger, int ioParallelism)
         {
             _storage = storage;
+            _logger = logger;
 
             if (ioParallelism < 1) throw new ArgumentException("IO parallelism degree must be a positive value.", nameof(ioParallelism));
-            _processingBlock = new(CompressValue, new() { MaxDegreeOfParallelism = ioParallelism });
+            _processingBlock = new(CompressValue, new() { MaxDegreeOfParallelism = ioParallelism, BoundedCapacity = 10_000 });
         }
 
-        public bool TryEnqueue(ReadOnlySpan<byte> dbKey, int length)
+        public bool TryEnqueue(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue)
         {
-            if (length < MinLengthToCompress || !_compressQueue.TryAdd(dbKey.ToArray(), true))
+            if (dbValue.Length < MinLengthToCompress)
                 return false;
 
-            Enqueue(dbKey);
-            return true;
+            var dbKeyArr = dbKey.ToArray();
+            if (_compressQueue.TryAdd(dbKeyArr, true))
+                return false;
+
+            var dbValueArr = dbValue.ToArray();
+            if (_processingBlock.Post((dbKeyArr, dbValueArr)))
+                return true;
+
+            _compressQueue.TryRemove(dbKeyArr, out _);
+            return false;
         }
 
-        public void Enqueue(ReadOnlySpan<byte> dbKey)
+        public async Task EnqueueAsync(byte[] dbKey, byte[] dbValue)
         {
-            _processingBlock.Post(dbKey.ToArray());
+            await _processingBlock.SendAsync((dbKey, dbValue));
             _queueEmptyEvent.Reset();
         }
 
@@ -64,8 +78,11 @@ public partial class LogIndexStorage
         // TODO: log errors
         // TODO: optimize allocations
         // TODO: use WriteBatch for atomicity
-        private void CompressValue(byte[] dbKey)
+        private void CompressValue((byte[] key, byte[] value) arg)
         {
+            Span<byte> dbKey = arg.key;
+            Span<byte> dbValue = arg.value;
+
             try
             {
                 var execTimestamp = Stopwatch.GetTimestamp();
@@ -73,7 +90,6 @@ public partial class LogIndexStorage
                 IDb db = _storage.GetDbByKeyLength(dbKey.Length, out var prefixLength);
 
                 var timestamp = Stopwatch.GetTimestamp();
-                Span<byte> dbValue = db.Get(dbKey) ?? throw ValidationException("Empty value in the post-merge compression queue.");
 
                 _stats.GettingValue.Include(Stopwatch.GetElapsedTime(timestamp));
 
@@ -84,12 +100,12 @@ public partial class LogIndexStorage
                 if (dbValue.Length < MinLengthToCompress)
                     return; // TODO: check back later
 
-                var firstBlock = ReadValBlockNum(dbValue);
-                var truncateBlock = ReadValLastBlockNum(dbValue);
+                var firstBlock = GetValBlockNum(dbValue);
+                var truncateBlock = GetValLastBlockNum(dbValue);
                 ReverseBlocksIfNeeded(dbValue);
 
                 var dbKeyComp = new byte[prefixLength + BlockNumSize];
-                dbKey.AsSpan(..prefixLength).CopyTo(dbKeyComp);
+                dbKey[..prefixLength].CopyTo(dbKeyComp);
                 SetKeyBlockNum(dbKeyComp, firstBlock);
 
                 timestamp = Stopwatch.GetTimestamp();
@@ -98,8 +114,12 @@ public partial class LogIndexStorage
 
                 // Put compressed value at a new key and clear the uncompressed one
                 timestamp = Stopwatch.GetTimestamp();
-                db.PutSpan(dbKeyComp, dbValue);
-                db.Merge(dbKey, MergeOps.Create(MergeOp.TruncateOp, truncateBlock));
+                using (IWriteBatch batch = db.StartWriteBatch())
+                {
+                    batch.PutSpan(dbKeyComp, dbValue);
+                    batch.Merge(dbKey, MergeOps.Create(MergeOp.TruncateOp, truncateBlock));
+                }
+
                 _stats.PuttingValues.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 if (prefixLength == Address.Size)
@@ -109,9 +129,13 @@ public partial class LogIndexStorage
 
                 _stats.Execution.Include(Stopwatch.GetElapsedTime(execTimestamp));
             }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error("Error during post-merge compression.", ex);
+            }
             finally
             {
-                _compressQueue.TryRemove(dbKey, out _);
+                _compressQueue.TryRemove(arg.key, out _);
 
                 if (_processingBlock.InputCount == 0)
                     _queueEmptyEvent.Set();

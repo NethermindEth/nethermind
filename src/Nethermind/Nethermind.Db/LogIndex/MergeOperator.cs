@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using Nethermind.Core.Collections;
 
@@ -14,8 +15,8 @@ public partial class LogIndexStorage
     // TODO: tests for MergeOperator specifically?
     private class MergeOperator(Compressor compressor) : IMergeOperator
     {
-        private SetReceiptsStats _stats = new();
-        public SetReceiptsStats GetAndResetStats() => Interlocked.Exchange(ref _stats, new());
+        private LogIndexUpdateStats _stats = new();
+        public LogIndexUpdateStats GetAndResetStats() => Interlocked.Exchange(ref _stats, new());
 
         public string Name => $"{nameof(LogIndexStorage)}.{nameof(MergeOperator)}";
 
@@ -25,6 +26,9 @@ public partial class LogIndexStorage
         public ArrayPoolList<byte>? PartialMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator) =>
             Merge(key, enumerator, isPartial: true);
 
+        private static bool IsBlockNewer(int next, int? last, bool isBackwardSync) =>
+            LogIndexStorage.IsBlockNewer(next, last, last, isBackwardSync);
+
         // Validate we are merging non-intersecting segments - to prevent data corruption
         // TODO: remove as it's just a time-consuming validation?
         private static void AddEnsureSorted(ArrayPoolList<byte> result, ReadOnlySpan<byte> value, bool isBackwards)
@@ -32,10 +36,10 @@ public partial class LogIndexStorage
             if (value.Length == 0)
                 return;
 
-            var nextBlock = value.Length > 0 ? ReadValBlockNum(value) : -1;
-            var lastBlock = result.Count > 0 ? ReadValLastBlockNum(result.AsSpan()) : -1;
+            var nextBlock = GetValBlockNum(value);
+            var lastBlock = result.Count > 0 ? GetValLastBlockNum(result.AsSpan()) : (int?)null;
 
-            if (!IsNextBlockNewer(next: nextBlock, last: lastBlock, isBackwards))
+            if (!IsBlockNewer(next: nextBlock, last: lastBlock, isBackwards))
                 throw ValidationException($"Invalid order during merge: {lastBlock} -> {nextBlock} (backwards: {isBackwards}).");
 
             result.AddRange(value);
@@ -44,6 +48,8 @@ public partial class LogIndexStorage
         // TODO: avoid array copying in case of a single value?
         private ArrayPoolList<byte>? Merge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator, bool isPartial)
         {
+            var success = false;
+            ArrayPoolList<byte>? result = null;
             var timestamp = Stopwatch.GetTimestamp();
 
             try
@@ -71,7 +77,7 @@ public partial class LogIndexStorage
                     resultLength += operand.Length;
                 }
 
-                var result = new ArrayPoolList<byte>(resultLength);
+                result = new(resultLength);
 
                 var (iReorg, iTruncate) = (0, 0);
                 for (var i = 0; i < enumerator.TotalCount; i++)
@@ -94,12 +100,15 @@ public partial class LogIndexStorage
                 if (result.Count % BlockNumSize != 0)
                     throw ValidationException("Invalid data length post-merge.");
 
-                compressor.TryEnqueue(key, result.Count);
+                compressor.TryEnqueue(key, result.AsSpan());
 
+                success = true;
                 return result;
             }
             finally
             {
+                if (!success) result?.Dispose();
+
                 _stats.InMemoryMerging.Include(Stopwatch.GetElapsedTime(timestamp));
             }
         }

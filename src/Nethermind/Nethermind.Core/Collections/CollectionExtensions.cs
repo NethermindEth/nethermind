@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq.Expressions;
@@ -102,8 +101,6 @@ namespace Nethermind.Core.Collections
                 return value;
             }
         }
-
-        public static Span<T> RentSpan<T>(this ArrayPool<T> pool, int length) => pool.Rent(length).AsSpan(length);
 
         private static class ClearCache<TKey, TValue> where TKey : notnull
         {

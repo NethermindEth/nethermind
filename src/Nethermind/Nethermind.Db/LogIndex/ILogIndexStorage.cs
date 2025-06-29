@@ -14,16 +14,17 @@ public readonly record struct BlockReceipts(int BlockNumber, TxReceipt[] Receipt
 
 public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
 {
-    int GetLastKnownBlockNumber();
+    int? GetMaxBlockNumber();
+    int? GetMinBlockNumber();
     IEnumerable<int> GetBlockNumbersFor(Address address, int from, int to);
 
     IEnumerable<int> GetBlockNumbersFor(Hash256 topic, int from, int to);
     Task CheckMigratedData();
-    Task<SetReceiptsStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync);
-    Task<SetReceiptsStats> SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync);
+    Task<LogIndexUpdateStats> SetReceiptsAsync(int blockNumber, TxReceipt[] receipts, bool isBackwardSync);
+    Task<LogIndexUpdateStats> SetReceiptsAsync(BlockReceipts[] batch, bool isBackwardSync);
     Task ReorgFrom(BlockReceipts block);
-    SetReceiptsStats Compact(bool waitForCompression);
-    SetReceiptsStats Recompact(int maxUncompressedLength = -1);
+    LogIndexUpdateStats Compact(bool waitForCompression);
+    Task<LogIndexUpdateStats> RecompactAsync(int maxUncompressedLength = -1);
 
     PagesStats PagesStats => default;
     string TempFilePath => "";

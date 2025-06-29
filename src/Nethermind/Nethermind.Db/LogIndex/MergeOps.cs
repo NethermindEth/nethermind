@@ -33,7 +33,7 @@ public partial class LogIndexStorage
         {
             if (operand.Length == BlockNumSize + 1 && operand[0] == (byte)op)
             {
-                fromBlock = ReadValLastBlockNum(operand);
+                fromBlock = GetValLastBlockNum(operand);
                 return true;
             }
 
@@ -49,7 +49,7 @@ public partial class LogIndexStorage
         {
             Span<byte> dbValue = buffer[..(BlockNumSize + 1)];
             dbValue[0] = (byte)op;
-            WriteValBlockNum(dbValue[1..], fromBlock);
+            SetValBlockNum(dbValue[1..], fromBlock);
             return dbValue;
         }
 

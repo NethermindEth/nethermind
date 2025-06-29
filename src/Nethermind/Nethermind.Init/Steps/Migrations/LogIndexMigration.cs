@@ -49,8 +49,8 @@ namespace Nethermind.Init.Steps.Migrations
 
         private long _totalBlocks;
 
-        private readonly SetReceiptsStats _totalStats = new();
-        private SetReceiptsStats _lastStats = new();
+        private readonly LogIndexUpdateStats _totalStats = new();
+        private LogIndexUpdateStats _lastStats = new();
 
         public LogIndexMigration(IApiWithNetwork api) : this(
             api.LogIndexStorage!,
@@ -157,15 +157,15 @@ namespace Nethermind.Init.Steps.Migrations
 
             if (_logger.IsInfo)
             {
-                (SetReceiptsStats last, SetReceiptsStats total) = (_lastStats, _totalStats);
+                (LogIndexUpdateStats last, LogIndexUpdateStats total) = (_lastStats, _totalStats);
                 _lastStats = new();
 
-                if (total.LastBlockNumber < 0)
-                    total.LastBlockNumber = _logIndexStorage.GetLastKnownBlockNumber();
+                if (total.MaxBlockNumber < 0)
+                    total.MaxBlockNumber = _logIndexStorage.GetMaxBlockNumber() ?? -1;
 
                 _logger.Info($"LogIndexMigration" +
 
-                    $"\n\t\tBlocks: {total.LastBlockNumber:N0} / {_totalBlocks:N0} ( {(decimal)total.LastBlockNumber / _totalBlocks * 100:F2} % ) ( +{last.BlocksAdded:N0} ) ( {_blocksChannel.Reader.Count} * {BatchSize} in queue )" +
+                    $"\n\t\tBlocks: {total.MaxBlockNumber:N0} / {_totalBlocks:N0} ( {(decimal)total.MinBlockNumber / _totalBlocks * 100:F2} % ) ( +{last.BlocksAdded:N0} ) ( {_blocksChannel.Reader.Count} * {BatchSize} in queue )" +
                     $"\n\t\tTxs: {total.TxAdded:N0} ( +{last.TxAdded:N0} )" +
                     $"\n\t\tLogs: {total.LogsAdded:N0} ( +{last.LogsAdded:N0} )" +
                     $"\n\t\tTopics: {total.TopicsAdded:N0} ( +{last.TopicsAdded:N0} )" +
@@ -266,7 +266,7 @@ namespace Nethermind.Init.Steps.Migrations
                 // TODO: move to chain configuration
                 startFrom = Math.Max(startFrom, 52_029); // Ethereum: fist block with logs
 
-                startFrom = Math.Max(startFrom, _logIndexStorage.GetLastKnownBlockNumber() + 1);
+                startFrom = Math.Max(startFrom, (_logIndexStorage.GetMaxBlockNumber() ?? -1) + 1);
 
                 _totalBlocks = _blockTree.BestKnownNumber;
                 //_totalBlocks = startFrom + 1_000_000;
@@ -306,7 +306,7 @@ namespace Nethermind.Init.Steps.Migrations
                     if (token.IsCancellationRequested)
                         return;
 
-                    SetReceiptsStats runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false);
+                    LogIndexUpdateStats runStats = await _logIndexStorage.SetReceiptsAsync(batch, isBackwardSync: false);
                     runStats.WaitingBatch.Include(readElapsed);
                     migrated += batch.Length;
 
