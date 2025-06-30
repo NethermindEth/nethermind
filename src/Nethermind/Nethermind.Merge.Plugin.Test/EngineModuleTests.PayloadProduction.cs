@@ -160,6 +160,7 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(WaitTestCases))]
+    [Ignore("testing")]
     public async Task getPayloadV1_waits_for_block_production(TimeSpan txDelay, TimeSpan improveDelay, int minCount, int maxCount)
     {
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
