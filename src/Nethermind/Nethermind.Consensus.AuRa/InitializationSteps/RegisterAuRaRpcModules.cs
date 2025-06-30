@@ -20,6 +20,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -28,7 +29,7 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
-public class AuRaTraceModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : TraceModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)
+public class AuRaTraceModuleFactory(IOverridableEnvFactory envFactory, ILifetimeScope rootLifetimeScope) : TraceModuleFactory(envFactory, rootLifetimeScope)
 {
     protected override ContainerBuilder ConfigureCommonBlockProcessing<T>(ContainerBuilder builder)
     {
@@ -64,7 +65,7 @@ public class AuRaRpcBlockProcessorFactory(
     }
 }
 
-public class AuRaDebugModuleFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ILifetimeScope rootLifetimeScope) : DebugModuleFactory(worldStateManager, codeInfoRepositoryFunc, rootLifetimeScope)
+public class AuRaDebugModuleFactory(IOverridableEnvFactory envFactory, ILifetimeScope rootLifetimeScope) : DebugModuleFactory(envFactory, rootLifetimeScope)
 {
     protected override ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder)
     {
