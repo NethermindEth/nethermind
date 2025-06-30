@@ -131,6 +131,36 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder AddSingleton<T, TArg0, TArg1, TArg2, TArg3, TArg4>(this ContainerBuilder builder, Func<TArg0, TArg1, TArg2, TArg3, TArg4, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull where TArg2 : notnull where TArg3 : notnull where TArg4 : notnull
+    {
+        builder.Register((ctx) =>
+            {
+                MethodInfo factoryMethodInfo = factoryMethod.Method;
+
+                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter
+                    ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
+                    : ctx.Resolve<TArg0>();
+                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter1
+                    ? ctx.ResolveKeyed<TArg1>(keyFilter1.Key)
+                    : ctx.Resolve<TArg1>();
+                TArg2 arg2 = factoryMethodInfo.GetParameters()[2].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter2
+                    ? ctx.ResolveKeyed<TArg2>(keyFilter2.Key)
+                    : ctx.Resolve<TArg2>();
+                TArg3 arg3 = factoryMethodInfo.GetParameters()[3].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter3
+                    ? ctx.ResolveKeyed<TArg3>(keyFilter3.Key)
+                    : ctx.Resolve<TArg3>();
+                TArg4 arg4 = factoryMethodInfo.GetParameters()[4].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter4
+                    ? ctx.ResolveKeyed<TArg4>(keyFilter4.Key)
+                    : ctx.Resolve<TArg4>();
+
+                return factoryMethod(arg0, arg1, arg2, arg3, arg4);
+            })
+            .As<T>()
+            .SingleInstance();
+
+        return builder;
+    }
+
     public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, Func<IComponentContext, T> factory) where T : class
     {
         builder.Register(factory)

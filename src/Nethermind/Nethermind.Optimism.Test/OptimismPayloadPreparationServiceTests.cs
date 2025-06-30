@@ -25,6 +25,7 @@ using Nethermind.Blockchain;
 using FluentAssertions;
 using Nethermind.Crypto;
 using System.Threading;
+using Nethermind.TxPool;
 
 namespace Nethermind.Optimism.Test;
 
@@ -75,9 +76,13 @@ public class OptimismPayloadPreparationServiceTests
                 miningConfig: Substitute.For<IBlocksConfig>(),
                 logManager: TestLogManager.Instance
             ),
+            txPool: Substitute.For<ITxPool>(),
             specProvider: specProvider,
             blockImprovementContextFactory: NoBlockImprovementContextFactory.Instance,
-            timePerSlot: TimeSpan.FromSeconds(1),
+            blocksConfig: new BlocksConfig()
+            {
+                SecondsPerSlot = 1
+            },
             timerFactory: Substitute.For<ITimerFactory>(),
             logManager: TestLogManager.Instance
         );

@@ -132,7 +132,7 @@ public partial class ForwardHeaderProviderTests
         return CreateNode((builder) =>
         {
             builder
-                .AddModule(new MergeModule(configProvider))
+                .AddModule(new TestMergeModule(configProvider))
                 .AddSingleton<PostMergeContext>();
             configurer?.Invoke(builder);
         }, configProvider);

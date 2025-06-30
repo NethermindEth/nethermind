@@ -140,7 +140,6 @@ namespace Nethermind.Api
         public IBlockFinalizationManager? FinalizationManager { get; set; }
 
         public IBlockProducerEnvFactory BlockProducerEnvFactory => Context.Resolve<IBlockProducerEnvFactory>();
-        public IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
         public IGasPriceOracle GasPriceOracle => Context.Resolve<IGasPriceOracle>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;

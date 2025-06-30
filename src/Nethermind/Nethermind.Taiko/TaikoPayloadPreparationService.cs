@@ -151,6 +151,11 @@ public class TaikoPayloadPreparationService(
         return ValueTask.FromResult<IBlockProductionContext?>(null);
     }
 
+    public void CancelBlockProductionForParent(object? sender, BlockHeader parentHeader)
+    {
+        // Used for merge's _api.Config<IMergeConfig>().SimulateBlockProduction
+    }
+
 
     public event EventHandler<BlockEventArgs>? BlockImproved { add { } remove { } }
 }
