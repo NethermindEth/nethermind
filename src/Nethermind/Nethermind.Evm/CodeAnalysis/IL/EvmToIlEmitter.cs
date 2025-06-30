@@ -1782,7 +1782,7 @@ internal static class OpcodeEmitters
         envLoader.LoadVmState(method, locals, false);
         method.LoadLocal(locals.address);
         envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, true);
+        envLoader.LoadTxTracer(method, locals, false);
         method.LoadConstant(true);
         method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeAccountAccessGas)));
     }
@@ -2083,7 +2083,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localReadonOnlySpan);
         envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, true);
+        envLoader.LoadTxTracer(method, locals, false);
 
 
         MethodInfo SStoreMethodUnMetered = typeof(VirtualMachineDependencies)
@@ -2102,7 +2102,7 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localReadonOnlySpan);
         envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, true);
+        envLoader.LoadTxTracer(method, locals, false);
 
 
         MethodInfo SStoreMethodMetered = typeof(VirtualMachineDependencies)
@@ -2160,7 +2160,7 @@ internal static class OpcodeEmitters
         method.Call(Word.GetAddress);
         method.LoadLocalAddress(locals.gasAvailable);
         envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, true);
+        envLoader.LoadTxTracer(method, locals, false);
 
         method.Call(selfDestruct);
 
