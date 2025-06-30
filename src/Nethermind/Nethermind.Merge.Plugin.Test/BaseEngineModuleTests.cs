@@ -249,7 +249,7 @@ public abstract partial class BaseEngineModuleTests
     {
         public IMergeConfig MergeConfig { get; init; }
         public IPayloadPreparationService? PayloadPreparationService => Container.Resolve<IPayloadPreparationService>();
-        public StoringBlockImprovementContextFactory StoringBlockImprovementContextFactory => (StoringBlockImprovementContextFactory) BlockImprovementContextFactory;
+        public StoringBlockImprovementContextFactory StoringBlockImprovementContextFactory => (StoringBlockImprovementContextFactory)BlockImprovementContextFactory;
 
         public Task WaitForImprovedBlock(Hash256? parentHash = null)
         {
@@ -322,7 +322,7 @@ public abstract partial class BaseEngineModuleTests
                             logManager,
                             TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
                             50000)); // by default we want to avoid cleanup payload effects in testing                    )
-                ;
+            ;
 
             return builder;
         }

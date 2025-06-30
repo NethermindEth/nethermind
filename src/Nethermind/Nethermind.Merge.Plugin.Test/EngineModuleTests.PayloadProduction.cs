@@ -173,7 +173,7 @@ public partial class EngineModuleTests
     public async Task getPayloadV1_waits_for_block_production(TimeSpan txDelay, TimeSpan improveDelay, bool hasTx)
     {
         TaskCompletionSource yieldedTransaction = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using MergeTestBlockchain chain = await CreateBlockchain( configurer: builder => builder
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
             .AddSingleton<IBlockImprovementContextFactory, IBlockProducer>((producer) => new DelayBlockImprovementContextFactory(producer, TimeSpan.FromSeconds(10), improveDelay))
             .AddSingleton(ConfigurePayloadPreparationService(TimeSpan.FromSeconds(10), null))
             .AddSingleton<IBlockProducerTxSourceFactory>(ctx =>
@@ -196,7 +196,8 @@ public partial class EngineModuleTests
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })).Data.PayloadId!;
 
-        if (hasTx) {
+        if (hasTx)
+        {
             await yieldedTransaction.Task; // Need to make sure it reached this point
             await Task.Yield();
         }
