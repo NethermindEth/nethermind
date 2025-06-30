@@ -81,8 +81,12 @@ public partial class DebugRpcModuleTests
         var transaction = factory(context.Blockchain);
         await context.Blockchain.AddBlock(transaction);
 
-        var blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
-        var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByHash", blockRlp, transaction.Hash, options);
+        var block = context.Blockchain.BlockTree.Head!;
+        var blockRlp = Rlp.Encode(block).ToString();
+        
+        // Use the transaction hash as it exists in the block, not the original transaction hash
+        var blockTransaction = block.Transactions[^1]; // Get the last transaction (the one we just added)
+        var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByHash", blockRlp, blockTransaction.Hash, options);
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(response).RootElement,
@@ -99,8 +103,12 @@ public partial class DebugRpcModuleTests
         var transaction = factory(context.Blockchain);
         await context.Blockchain.AddBlock(transaction);
 
-        var blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
-        var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByIndex", blockRlp, 0, options);
+        var block = context.Blockchain.BlockTree.Head!;
+        var blockRlp = Rlp.Encode(block).ToString();
+        
+        // Use the correct transaction index - the transaction we added should be the last one in the block
+        var txIndex = block.Transactions.Length - 1;
+        var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByIndex", blockRlp, txIndex, options);
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(response).RootElement,
