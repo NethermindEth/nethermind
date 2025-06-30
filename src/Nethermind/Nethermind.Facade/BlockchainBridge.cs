@@ -252,10 +252,7 @@ namespace Nethermind.Facade
             transaction.SenderAddress ??= Address.SystemUser;
             Hash256 stateRoot = blockHeader.StateRoot!;
 
-            if (transaction.Nonce == 0)
-            {
-                transaction.Nonce = components.StateReader.GetNonce(stateRoot, transaction.SenderAddress);
-            }
+            transaction.Nonce = components.StateReader.GetNonce(stateRoot, transaction.SenderAddress);
 
             BlockHeader callHeader = treatBlockHeaderAsParentBlock
                 ? new(
