@@ -120,17 +120,14 @@ public class TestBlockProcessingModule : Module
         public IBlockProducer InitBlockProducer()
         {
             IBlockProducerEnv env = producerEnvFactory.Create();
-            ILifetimeScope innerScope = rootLifetime.BeginLifetimeScope((producerCtx) =>
-            {
-                producerCtx
-                    // Block producer specific things is in `IBlockProducerEnvFactory`.
-                    // Yea, it can be added as `AddScoped` too and then mapped out, but its clearer this way.
-                    .AddScoped<IWorldState>(env.ReadOnlyStateProvider)
-                    .AddScoped<IBlockchainProcessor>(env.ChainProcessor)
-                    .AddScoped<ITxSource>(env.TxSource)
+            ILifetimeScope innerScope = rootLifetime.BeginLifetimeScope((builder) => builder
+                // Block producer specific things is in `IBlockProducerEnvFactory`.
+                // Yea, it can be added as `AddScoped` too and then mapped out, but its clearer this way.
+                .AddScoped<IWorldState>(env.ReadOnlyStateProvider)
+                .AddScoped<IBlockchainProcessor>(env.ChainProcessor)
+                .AddScoped<ITxSource>(env.TxSource)
 
-                    .AddScoped<IBlockProducer, T>();
-            });
+                .AddScoped<IBlockProducer, T>());
 
             return innerScope.Resolve<IBlockProducer>();
         }

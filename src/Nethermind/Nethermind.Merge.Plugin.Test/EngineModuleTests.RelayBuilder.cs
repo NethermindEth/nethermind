@@ -53,18 +53,14 @@ public partial class EngineModuleTests
                 };
             });
 
-        using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig, configurer: builder =>
-        {
-            builder
-                .AddSingleton<IBlocksConfig>(blocksConfig)
-                .AddSingleton<IBlockImprovementContextFactory>((ctx) =>
-                {
-                    BoostBlockImprovementContextFactory improvementContextFactory = new(ctx.Resolve<IBlockProducer>(),
-                        TimeSpan.FromSeconds(5), boostRelay, ctx.Resolve<IStateReader>());
-                    return improvementContextFactory;
-                });
-        });
-
+        using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig, configurer: builder => builder
+            .AddSingleton<IBlocksConfig>(blocksConfig)
+            .AddSingleton<IBlockImprovementContextFactory>((ctx) =>
+            {
+                BoostBlockImprovementContextFactory improvementContextFactory = new(ctx.Resolve<IBlockProducer>(),
+                    TimeSpan.FromSeconds(5), boostRelay, ctx.Resolve<IStateReader>());
+                return improvementContextFactory;
+            }));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
