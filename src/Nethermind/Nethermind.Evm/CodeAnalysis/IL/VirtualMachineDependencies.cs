@@ -316,7 +316,6 @@ namespace Nethermind.Evm.CodeAnalysis.IL
         public static EvmExceptionType InstructionSelfDestruct(EvmState vmState, IWorldState state, Address inheritor, ref long gasAvailable, IReleaseSpec spec, ITxTracer txTracer)
         {
 
-            Console.WriteLine($"IlEvm Entry Gas : {gasAvailable}");
             Metrics.IncrementSelfDestructs();
 
             // SELFDESTRUCT is forbidden during static calls.
@@ -368,7 +367,6 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             // Subtract the balance from the executing account.
             state.SubtractFromBalance(executingAccount, result, spec);
 
-        Console.WriteLine($"ILEVM Gas : {gasAvailable}, Executing Account: {executingAccount}, Inheritor: {inheritor}, Balance: {result}");
         // Jump forward to be unpredicted by the branch predictor.
         Stop:
             return EvmExceptionType.Stop;
@@ -558,6 +556,9 @@ namespace Nethermind.Evm.CodeAnalysis.IL
                     // Increment the SSTORE opcode metric.
                     Metrics.IncrementSStoreOpcode();
 
+                    if(vmState.IsStatic)
+                        return EvmExceptionType.StaticCallViolation;
+
                     // For legacy metering: ensure there is enough gas for the SSTORE reset cost before reading storage.
                     if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
                         return EvmExceptionType.OutOfGas;
@@ -612,7 +613,8 @@ namespace Nethermind.Evm.CodeAnalysis.IL
                     // Increment the SSTORE opcode metric.
                     Metrics.IncrementSStoreOpcode();
 
-
+                    if(vmState.IsStatic)
+                        return EvmExceptionType.StaticCallViolation;
 
                     // In net metering with stipend fix, ensure extra gas pressure is reported and that sufficient gas remains.
                     if (spec.UseNetGasMeteringWithAStipendFix)
