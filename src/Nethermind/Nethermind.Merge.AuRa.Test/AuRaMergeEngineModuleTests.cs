@@ -112,49 +112,47 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             SealEngineType = Core.SealEngineType.AuRa;
         }
 
-        protected override Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null) =>
-            base.Build(builder =>
-            {
-                builder
-                    .AddDecorator<ISpecProvider>((ctx, specProvider) =>
-                    {
-                        // I guess ideally, just make a wrapper for `ISpecProvider` that replace only SealEngine.
-                        ISpecProvider unwrappedSpecProvider = specProvider;
-                        while (unwrappedSpecProvider is OverridableSpecProvider overridableSpecProvider)
-                            unwrappedSpecProvider = overridableSpecProvider.SpecProvider;
-                        if (unwrappedSpecProvider is TestSingleReleaseSpecProvider provider)
-                            provider.SealEngine = SealEngineType;
-                        return specProvider;
-                    })
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
+        {
+            return base.ConfigureContainer(builder, configProvider)
+                .AddDecorator<ISpecProvider>((ctx, specProvider) =>
+                {
+                    // I guess ideally, just make a wrapper for `ISpecProvider` that replace only SealEngine.
+                    ISpecProvider unwrappedSpecProvider = specProvider;
+                    while (unwrappedSpecProvider is OverridableSpecProvider overridableSpecProvider)
+                        unwrappedSpecProvider = overridableSpecProvider.SpecProvider;
+                    if (unwrappedSpecProvider is TestSingleReleaseSpecProvider provider)
+                        provider.SealEngine = SealEngineType;
+                    return specProvider;
+                })
 
-                    // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
-                    // as normally, test blockchain don't use INethermindApi at all. Note: This test does not
-                    // seems to use aura block processor which means a lot of aura things is not available here.
-                    .AddModule(new AuRaModule(ChainSpec))
-                    .AddModule(new AuRaMergeModule())
-                    .AddSingleton<NethermindApi.Dependencies>()
-                    .AddSingleton<IReportingValidator>(NullReportingValidator.Instance)
-                    .AddSingleton<ISealer>(NullSealEngine.Instance) // Test not originally made with aura sealer
+                // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
+                // as normally, test blockchain don't use INethermindApi at all. Note: This test does not
+                // seems to use aura block processor which means a lot of aura things is not available here.
+                .AddModule(new AuRaModule(ChainSpec))
+                .AddModule(new AuRaMergeModule())
+                .AddSingleton<NethermindApi.Dependencies>()
+                .AddSingleton<IReportingValidator>(NullReportingValidator.Instance)
+                .AddSingleton<ISealer>(NullSealEngine.Instance) // Test not originally made with aura sealer
 
-                    .AddScoped<WithdrawalContractFactory>()
-                    .AddScoped<IWithdrawalContract, WithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))
-                    .AddScoped<IWithdrawalProcessor, AuraWithdrawalProcessor>()
+                .AddScoped<WithdrawalContractFactory>()
+                .AddScoped<IWithdrawalContract, WithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))
+                .AddScoped<IWithdrawalProcessor, AuraWithdrawalProcessor>()
 
-                    .AddSingleton<IBlockImprovementContextFactory, IBlockProducer, IMergeConfig>((blockProducer,
-                        mergeConfig) => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot)))
+                .AddSingleton<IBlockImprovementContextFactory, IBlockProducer, IMergeConfig>((blockProducer,
+                    mergeConfig) => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot)))
 
-                    .AddDecorator<AuRaNethermindApi>((ctx, api) =>
-                    {
-                        // Yes getting from `TestBlockchain` itself, since steps are not run
-                        // and some of these are not from DI. you know... chicken and egg, but dont forgot about rooster.
-                        api.DbProvider = DbProvider;
-                        api.TxPool = TxPool;
-                        api.TransactionComparerProvider = TransactionComparerProvider;
-                        api.FinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
-                        return api;
-                    });
-                configurer?.Invoke(builder);
-            });
+                .AddDecorator<AuRaNethermindApi>((ctx, api) =>
+                {
+                    // Yes getting from `TestBlockchain` itself, since steps are not run
+                    // and some of these are not from DI. you know... chicken and egg, but dont forgot about rooster.
+                    api.DbProvider = DbProvider;
+                    api.TxPool = TxPool;
+                    api.TransactionComparerProvider = TransactionComparerProvider;
+                    api.FinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
+                    return api;
+                });
+        }
 
         protected override ChainSpec CreateChainSpec()
         {
