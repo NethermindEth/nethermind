@@ -44,7 +44,7 @@ public partial class EngineModuleTests
         {
             NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
         });
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
         List<byte[]> request = new List<byte[]>(requestSize);
         for (int i = 0; i < requestSize; i++)
@@ -73,7 +73,7 @@ public partial class EngineModuleTests
         {
             NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
         });
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
         ResultWrapper<IEnumerable<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2([]);
 
@@ -88,7 +88,7 @@ public partial class EngineModuleTests
         {
             NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
         });
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)
@@ -116,7 +116,7 @@ public partial class EngineModuleTests
         {
             NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
         });
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
         // we are not adding this tx
         Transaction blobTx = Build.A.Transaction
@@ -142,7 +142,7 @@ public partial class EngineModuleTests
         {
             NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
         });
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)

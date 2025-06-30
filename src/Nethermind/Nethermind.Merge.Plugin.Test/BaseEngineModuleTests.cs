@@ -96,10 +96,10 @@ public abstract partial class BaseEngineModuleTests
     protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider)
         => await CreateBaseBlockchain().Build(specProvider);
 
-    protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, int newPayloadCacheSize = 50)
+    protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, int newPayloadCacheSize = 50)
     {
         IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
-        var synchronizationConfig = syncConfig ?? new SyncConfig();
+        var synchronizationConfig = chain.Container.Resolve<ISyncConfig>();
 
         chain.BlockTree.SyncPivot = (
             LongConverter.FromString(synchronizationConfig.PivotNumber),
@@ -287,7 +287,7 @@ public abstract partial class BaseEngineModuleTests
         {
             GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
             MergeConfig = mergeConfig ?? new MergeConfig();
-            MergeConfig.TerminalTotalDifficulty = "0";
+            if (MergeConfig.TerminalTotalDifficulty is null) MergeConfig.TerminalTotalDifficulty = "0";
             SyncPeerPool = Substitute.For<ISyncPeerPool>();
         }
 

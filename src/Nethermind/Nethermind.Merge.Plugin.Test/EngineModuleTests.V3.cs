@@ -521,7 +521,7 @@ public partial class EngineModuleTests
         {
             NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
         });
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
         for (var i = 1; i < BlockCount; i++)
         {
@@ -544,7 +544,7 @@ public partial class EngineModuleTests
         {
             NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
         });
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
         List<byte[]> request = new List<byte[]>(requestSize);
         for (int i = 0; i < requestSize; i++)
@@ -573,7 +573,7 @@ public partial class EngineModuleTests
         {
             NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
         });
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
         ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1([]);
 
@@ -588,7 +588,7 @@ public partial class EngineModuleTests
         {
             NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
         });
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs)
@@ -613,7 +613,7 @@ public partial class EngineModuleTests
         {
             NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
         });
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
         // we are not adding this tx
         Transaction blobTx = Build.A.Transaction
@@ -639,7 +639,7 @@ public partial class EngineModuleTests
         {
             NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
         });
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs)
@@ -691,7 +691,7 @@ public partial class EngineModuleTests
         {
             NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
         });
-        IEngineRpcModule rpcModuleA = CreateEngineModule(chainA, null);
+        IEngineRpcModule rpcModuleA = CreateEngineModule(chainA);
         await rpcModuleA.engine_forkchoiceUpdatedV3(new(chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!), null);
 
         // main fork B
@@ -699,7 +699,7 @@ public partial class EngineModuleTests
         {
             NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
         });
-        IEngineRpcModule rpcModuleB = CreateEngineModule(chainB, null);
+        IEngineRpcModule rpcModuleB = CreateEngineModule(chainB);
         await rpcModuleB.engine_forkchoiceUpdatedV3(new(chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!), null);
 
         // syncing chain
@@ -707,7 +707,7 @@ public partial class EngineModuleTests
         {
             NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
         });
-        IEngineRpcModule rpcModuleC = CreateEngineModule(chainC, null);
+        IEngineRpcModule rpcModuleC = CreateEngineModule(chainC);
         await rpcModuleC.engine_forkchoiceUpdatedV3(new(chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!), null);
 
         ExecutionPayloadV3 payloadResultA1 = await AddNewBlockV3(rpcModuleA, chainA, 1);
@@ -939,7 +939,7 @@ public partial class EngineModuleTests
         {
             NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds,
         });
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
         Transaction[] txs = [];
 
         Task blockImprovementWait = transactionCount != 0

@@ -737,10 +737,10 @@ public partial class EngineModuleTests
             .WithDifficulty(0)
             .WithTransactions(
                 Build.A.Transaction
-                .WithTo(TestItem.AddressD)
-                .WithValue(100.GWei())
-                .SignedAndResolved(TestItem.PrivateKeyA)
-                .TestObject
+                    .WithTo(TestItem.AddressD)
+                    .WithValue(100.GWei())
+                    .SignedAndResolved(TestItem.PrivateKeyA)
+                    .TestObject
             )
             .WithGasUsed(21000)
             .WithStateRoot(head.StateRoot!) // after processing transaction, this state root is wrong
@@ -1162,8 +1162,12 @@ public partial class EngineModuleTests
     [TestCase(1000001, "0x191dc9697d77129ee5b6f6d57074d2c854a38129913e3fdd3d9f0ebc930503a6")]
     public async Task exchangeTransitionConfiguration_return_with_empty_Nethermind_configuration(long clTtd, string terminalBlockHash)
     {
-        using MergeTestBlockchain chain =
-            await CreateBlockchain(null, new MergeConfig() { });
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
+            .AddDecorator<IMergeConfig>((ctx, mergeConfig) =>
+            {
+                mergeConfig.TerminalTotalDifficulty = null; // Clear default test config that set a TTD
+                return mergeConfig;
+            }));
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         TransitionConfigurationV1 result = rpc.engine_exchangeTransitionConfigurationV1(new TransitionConfigurationV1()
@@ -1466,8 +1470,8 @@ public partial class EngineModuleTests
 
             Hash256 currentBlockHash = chain.BlockTree.Head!.Hash!;
             Assert.That(currentBlockHash != forkChoiceState3.HeadBlockHash ||
-                         currentBlockHash == forkChoiceState3.SafeBlockHash ||
-                         currentBlockHash == forkChoiceState3.FinalizedBlockHash, Is.False);
+                        currentBlockHash == forkChoiceState3.SafeBlockHash ||
+                        currentBlockHash == forkChoiceState3.FinalizedBlockHash, Is.False);
         }
     }
 
@@ -1558,7 +1562,7 @@ public partial class EngineModuleTests
 
         chain.LogManager.GetClassLogger().UnderlyingLogger.Received().Warn(
             Arg.Is<string>(static a =>
-                    a.Contains(nameof(IEngineRpcModule.engine_getPayloadV4), StringComparison.Ordinal)));
+                a.Contains(nameof(IEngineRpcModule.engine_getPayloadV4), StringComparison.Ordinal)));
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(
