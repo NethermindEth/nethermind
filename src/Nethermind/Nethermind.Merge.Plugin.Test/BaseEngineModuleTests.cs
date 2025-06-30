@@ -68,19 +68,18 @@ public abstract partial class BaseEngineModuleTests
     }
 
     protected virtual MergeTestBlockchain CreateBaseBlockchain(
-        IMergeConfig? mergeConfig = null, ILogManager? logManager = null) =>
-        new(mergeConfig, logManager);
+        IMergeConfig? mergeConfig = null) =>
+        new(mergeConfig);
 
 
     protected async Task<MergeTestBlockchain> CreateBlockchain(
         IReleaseSpec? releaseSpec = null,
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,
-        ILogManager? logManager = null,
         IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null,
         Action<ContainerBuilder>? configurer = null)
     {
-        var bc = CreateBaseBlockchain(mergeConfig, logManager);
+        var bc = CreateBaseBlockchain(mergeConfig);
         bc.ExecutionRequestsProcessorOverride = mockedExecutionRequestsProcessor;
         return await bc
             .BuildMergeTestBlockchain(configurer: (builder) =>
@@ -94,9 +93,8 @@ public abstract partial class BaseEngineModuleTests
             });
     }
 
-    protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
-        ILogManager? logManager = null)
-        => await CreateBaseBlockchain(logManager: logManager).Build(specProvider);
+    protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider)
+        => await CreateBaseBlockchain().Build(specProvider);
 
     protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
     {
@@ -292,17 +290,14 @@ public abstract partial class BaseEngineModuleTests
             return this;
         }
 
-        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, ILogManager? logManager = null)
+        public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
         {
             GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
             MergeConfig = mergeConfig ?? new MergeConfig() { TerminalTotalDifficulty = "0" };
             SyncPeerPool = Substitute.For<ISyncPeerPool>();
-            LogManager = logManager ?? LogManager;
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
-
-        public sealed override ILogManager LogManager { get; set; } = LimboLogs.Instance;
 
         public IEthSyncingInfo? EthSyncingInfo { get; protected set; }
 

@@ -5,8 +5,6 @@ using System;
 using Autofac;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Db.Blooms;
 using Nethermind.Shutter.Config;
@@ -14,7 +12,7 @@ using static Nethermind.Merge.AuRa.Test.AuRaMergeEngineModuleTests;
 
 namespace Nethermind.Shutter.Test;
 
-public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null) : MergeAuRaTestBlockchain(null, null)
+public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null) : MergeAuRaTestBlockchain(null)
 {
     public ShutterApiSimulator Api => Container.Resolve<ShutterApiSimulator>();
     protected readonly Random _rnd = rnd;

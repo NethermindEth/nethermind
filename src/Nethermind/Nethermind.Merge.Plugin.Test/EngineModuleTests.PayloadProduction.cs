@@ -196,7 +196,10 @@ public partial class EngineModuleTests
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })).Data.PayloadId!;
 
-        if (minCount > 0) await yieldedTransaction.Task; // Need to make sure it reached this point
+        if (minCount > 0) {
+            await yieldedTransaction.Task; // Need to make sure it reached this point
+            await Task.Yield();
+        }
         await Task.Delay(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay);
 
         Assert.That(() => rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId)).Result.Data!.Transactions,
@@ -409,7 +412,7 @@ public partial class EngineModuleTests
             "0x02f89383aa36a70284b2d05e00850e7e2cc28c830106fc94785ea063ece4493f7995da4f9ef3661cac2da9c380a40652b57a0000000000000000000000008d1b673b7db916f3d9a59bbf997dda34ea69243ac001a0e6a2c179857e74052fc12a4441f317671bc4fbdda56f6466d2fa1a190b7cf326a05434bec9eb23531ce0186a64b1e7fca6ef13486c0b8196a52762bf48dc3ed798";
         Transaction tx2 = TxDecoder.Instance.Decode(new RlpStream(Bytes.FromHexString(tx2Hex)), RlpBehaviors.SkipTypedWrapping)!;
 
-        MergeTestBlockchain blockchain = CreateBaseBlockchain(logManager: LimboLogs.Instance);
+        MergeTestBlockchain blockchain = CreateBaseBlockchain();
         blockchain.InitialStateMutator = state =>
         {
             state.CreateAccount(new Address("0xBC2Fd1637C49839aDB7Bb57F9851EAE3194A90f7"), (UInt256)1200482917041833040, 1);

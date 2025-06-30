@@ -17,6 +17,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -1524,15 +1525,16 @@ public partial class EngineModuleTests
     [Test]
     public async Task Should_warn_for_missing_capabilities()
     {
-        using MergeTestBlockchain chain = await CreateBaseBlockchain()
-            .Build(new TestSingleReleaseSpecProvider(Prague.Instance));
         var loggerManager = Substitute.For<ILogManager>();
         var iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
         var logger = new ILogger(iLogger);
         loggerManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
 
-        chain.LogManager = loggerManager;
+        using MergeTestBlockchain chain = await CreateBaseBlockchain()
+            .BuildMergeTestBlockchain(configurer: builder => builder
+                .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(Prague.Instance))
+                .AddSingleton<ILogManager>(loggerManager));
 
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         string[] list = new[]

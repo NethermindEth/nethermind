@@ -47,9 +47,8 @@ namespace Nethermind.Merge.AuRa.Test;
 public class AuRaMergeEngineModuleTests : EngineModuleTests
 {
     protected override MergeTestBlockchain CreateBaseBlockchain(
-        IMergeConfig? mergeConfig = null,
-        ILogManager? logManager = null)
-        => new MergeAuRaTestBlockchain(mergeConfig, logManager);
+        IMergeConfig? mergeConfig = null)
+        => new MergeAuRaTestBlockchain(mergeConfig);
 
     protected override Hash256 ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
 
@@ -105,8 +104,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     {
         private AuRaNethermindApi? _api;
 
-        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, ILogManager? logManager = null)
-            : base(mergeConfig, logManager)
+        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null)
+            : base(mergeConfig)
         {
             SealEngineType = Core.SealEngineType.AuRa;
         }
