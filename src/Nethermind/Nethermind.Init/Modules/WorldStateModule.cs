@@ -67,7 +67,6 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             .RegisterSingletonJsonRpcModule<IPruningTrieStateAdminRpcModule>()
 
             .AddSingleton<IReadOnlyStateProvider, ChainHeadReadOnlyStateProvider>()
-            .AddSingleton<IVisitingWorldState>(ctx => ctx.Resolve<IWorldStateManager>().GlobalWorldState)
 
             // Prevent multiple concurrent verify trie.
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
