@@ -17,6 +17,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Simulate;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -52,6 +53,9 @@ public class BlockProcessingModule : Module
             .AddScoped<BlockProcessor.IBlockProductionTransactionPicker, ISpecProvider, IBlocksConfig>((specProvider, blocksConfig) =>
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
             .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
+
+            .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()
+            .AddScopedOpenGeneric(typeof(IOverridableEnv<>), typeof(DisposableScopeOverridableEnv<>))
 
             // Transaction executor used by main block validation and rpc.
             .AddScoped<IValidationTransactionExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()

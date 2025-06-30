@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
+using Nethermind.Evm.OverridableEnv;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Facade;
@@ -37,7 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
     /// </summary>
     public class TraceRpcModule(
         IReceiptFinder receiptFinder,
-        ITracerEnv tracerEnv,
+        IOverridableEnv<ITracer> tracerEnv,
         IBlockFinder blockFinder,
         IJsonRpcConfig jsonRpcConfig,
         IStateReader stateReader,
@@ -121,10 +122,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
             BlockHeader header = headerSearch.Object!.Clone();
             Block block = new(header, [tx], []);
 
-            var env = tracerEnv.RunInProcessingScope(header, stateOverride);
+            using var env = tracerEnv.BuildAndOverride(header, stateOverride);
+            ITracer tracer = env.Component;
 
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
-            IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlockDirect(env.Tracer, block, new(traceTypes1));
+            IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlockDirect(tracer, block, new(traceTypes1));
             return ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(result.SingleOrDefault()));
         }
 
@@ -289,9 +291,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityLikeBlockTracer tracer)
         {
-            using var env = tracerEnv.RunInProcessingScope(block.Header);
+            using var env = tracerEnv.BuildAndOverride(block.Header);
+            ITracer tracer2 = env.Component;
 
-            return TraceBlockDirect(env.Tracer, block, tracer);
+            return TraceBlockDirect(tracer2, block, tracer);
         }
 
         private IReadOnlyCollection<ParityLikeTxTrace> TraceBlockDirect(ITracer tracer, Block block, ParityLikeBlockTracer parityTracer)
@@ -304,11 +307,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(Block block, ParityLikeBlockTracer tracer)
         {
-            using var env = tracerEnv.RunInProcessingScope(block.Header);
+            using var env = tracerEnv.BuildAndOverride(block.Header);
+            ITracer tracer2 = env.Component;
 
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
             CancellationToken cancellationToken = timeout.Token;
-            env.Tracer.Execute(block, tracer.WithCancellation(cancellationToken));
+            tracer2.Execute(block, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
         }
 
