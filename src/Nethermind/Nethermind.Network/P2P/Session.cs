@@ -410,7 +410,17 @@ namespace Nethermind.Network.P2P
                 State = SessionState.DisconnectingProtocols;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"{this} initiating disconnect because {disconnectReason}, details: {details}");
+            if (_logger.IsDebug)
+            {
+                if (disconnectReason is DisconnectReason.InvalidNetworkId)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"{this} initiating disconnect because {disconnectReason}, details: {details}");
+                }
+                else
+                {
+                    _logger.Debug($"{this} initiating disconnect because {disconnectReason}, details: {details}");
+                }
+            }
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
             if (!_protocols.IsEmpty)
             {
