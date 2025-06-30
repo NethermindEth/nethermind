@@ -82,10 +82,32 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
-
-                return result.Error is null
-                    ? ResultWrapper<string>.Success(result.OutputData.ToHexString(true))
-                    : TryGetInputError(result) ?? ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
+                
+                if (result.Error is null)
+                {
+                    return ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
+                }
+                
+                // Check for input validation errors first
+                var inputError = TryGetInputError(result);
+                if (inputError != null)
+                {
+                    return inputError;
+                }
+                
+                // Standardize error response to match Geth's behavior
+                // Always use "execution reverted" as the message and error code 3
+                // For empty output data or non-revert errors, use "0x" as data
+                string errorData = "0x";
+                
+                // If we have output data and this is an actual revert (not another error type),
+                // include the output data
+                if (result.OutputData.Length > 0 && result.Error == "execution reverted")
+                {
+                    errorData = result.OutputData.ToHexString(true);
+                }
+                
+                return ResultWrapper<string>.Fail("execution reverted", ErrorCodes.ExecutionError, errorData);
             }
         }
 

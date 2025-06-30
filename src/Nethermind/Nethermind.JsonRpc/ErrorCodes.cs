@@ -70,7 +70,7 @@ namespace Nethermind.JsonRpc
         /// <summary>
         ///
         /// </summary>
-        public const int ExecutionError = -32015;
+        public const int ExecutionError = 3;
 
         /// <summary>
         /// Request exceeds defined timeout limit
