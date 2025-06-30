@@ -48,9 +48,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 {
     protected override MergeTestBlockchain CreateBaseBlockchain(
         IMergeConfig? mergeConfig = null,
-        IPayloadPreparationService? mockedPayloadService = null,
         ILogManager? logManager = null)
-        => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService, logManager);
+        => new MergeAuRaTestBlockchain(mergeConfig, logManager);
 
     protected override Hash256 ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
 
@@ -106,8 +105,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     {
         private AuRaNethermindApi? _api;
 
-        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null)
-            : base(mergeConfig, mockedPayloadPreparationService, logManager)
+        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, ILogManager? logManager = null)
+            : base(mergeConfig, logManager)
         {
             SealEngineType = Core.SealEngineType.AuRa;
         }
@@ -205,14 +204,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             BlockProducer = postMergeBlockProducer;
-            PayloadPreparationService ??= new PayloadPreparationService(
-                postMergeBlockProducer,
-                StoringBlockImprovementContextFactory,
-                TimerFactory.Default,
-                LogManager,
-                TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
-                50000 // by default we want to avoid cleanup payload effects in testing
-            );
 
             IAuRaStepCalculator auraStepCalculator = Substitute.For<IAuRaStepCalculator>();
             auraStepCalculator.TimeToNextStep.Returns(TimeSpan.FromMilliseconds(0));

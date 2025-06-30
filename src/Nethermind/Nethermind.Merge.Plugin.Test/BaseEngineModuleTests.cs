@@ -67,10 +67,8 @@ public abstract partial class BaseEngineModuleTests
     }
 
     protected virtual MergeTestBlockchain CreateBaseBlockchain(
-        IMergeConfig? mergeConfig = null,
-        IPayloadPreparationService? mockedPayloadService = null,
-        ILogManager? logManager = null) =>
-        new(mergeConfig, mockedPayloadService, logManager);
+        IMergeConfig? mergeConfig = null, ILogManager? logManager = null) =>
+        new(mergeConfig, logManager);
 
 
     protected async Task<MergeTestBlockchain> CreateBlockchain(
@@ -81,7 +79,7 @@ public abstract partial class BaseEngineModuleTests
         IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null,
         Action<ContainerBuilder>? configurer = null)
     {
-        var bc = CreateBaseBlockchain(mergeConfig, mockedPayloadService, logManager);
+        var bc = CreateBaseBlockchain(mergeConfig, logManager);
         bc.ExecutionRequestsProcessorOverride = mockedExecutionRequestsProcessor;
         return await bc
             .BuildMergeTestBlockchain(configurer: (builder) =>
@@ -89,6 +87,7 @@ public abstract partial class BaseEngineModuleTests
                 builder.AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
                 if (mockedExecutionRequestsProcessor is not null) builder.AddScoped<IExecutionRequestsProcessor>(mockedExecutionRequestsProcessor);
+                if (mockedPayloadService is not null) builder.AddSingleton<IPayloadPreparationService>(mockedPayloadService);
 
                 configurer?.Invoke(builder);
             });
@@ -251,8 +250,7 @@ public abstract partial class BaseEngineModuleTests
     public class MergeTestBlockchain : TestBlockchain
     {
         public IMergeConfig MergeConfig { get; set; }
-
-        public IPayloadPreparationService? PayloadPreparationService { get; set; }
+        public IPayloadPreparationService? PayloadPreparationService => Container.Resolve<IPayloadPreparationService>();
         public StoringBlockImprovementContextFactory StoringBlockImprovementContextFactory => (StoringBlockImprovementContextFactory) BlockImprovementContextFactory;
 
         public Task WaitForImprovedBlock(Hash256? parentHash = null)
@@ -293,11 +291,10 @@ public abstract partial class BaseEngineModuleTests
             return this;
         }
 
-        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null)
+        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, ILogManager? logManager = null)
         {
             GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
             MergeConfig = mergeConfig ?? new MergeConfig() { TerminalTotalDifficulty = "0" };
-            PayloadPreparationService = mockedPayloadPreparationService;
             SyncPeerPool = Substitute.For<ISyncPeerPool>();
             LogManager = logManager ?? LogManager;
         }
@@ -329,6 +326,15 @@ public abstract partial class BaseEngineModuleTests
                     return new StoringBlockImprovementContextFactory(factory);
                 })
                 .AddSingleton<IBlockProducer>(ctx => this.BlockProducer)
+                .AddSingleton<IPayloadPreparationService, IBlockProducer, IBlockImprovementContextFactory, ITimerFactory, ILogManager>(
+                    (producer, ctxFactory, timer, logManager) =>
+                        new PayloadPreparationService(
+                            producer,
+                            ctxFactory,
+                            timer,
+                            logManager,
+                            TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
+                            50000)); // by default we want to avoid cleanup payload effects in testing                    )
                 ;
 
             if (ExecutionRequestsProcessorOverride is not null)
@@ -359,13 +365,6 @@ public abstract partial class BaseEngineModuleTests
             IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             BlockProducer = postMergeBlockProducer;
-            PayloadPreparationService ??= new PayloadPreparationService(
-                postMergeBlockProducer,
-                BlockImprovementContextFactory,
-                TimerFactory.Default,
-                LogManager,
-                TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
-                50000); // by default we want to avoid cleanup payload effects in testing
 
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }

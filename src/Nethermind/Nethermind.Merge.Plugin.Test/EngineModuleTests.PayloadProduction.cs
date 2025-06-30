@@ -410,11 +410,13 @@ public partial class EngineModuleTests
                         skipDuplicatedContext: true
                     );
                     return improvementContextFactory;
-                });
+                })
+                .AddSingleton(ConfigureBlockchainWithImprovementContextFactory(timePerSlot, delay))
+                ;
 
         });
 
-        ConfigureBlockchainWithImprovementContextFactory(chain, timePerSlot, delay);
+        ;
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
@@ -495,9 +497,9 @@ public partial class EngineModuleTests
             .AddSingleton<IBlockImprovementContextFactory>(ctx =>
                 new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(
                     ctx.Resolve<IBlockProducer>(),
-                    TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot)))));
-
-        ConfigureBlockchainWithImprovementContextFactory(chain, timePerSlot, delay);
+                    TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot))))
+            .AddSingleton(ConfigureBlockchainWithImprovementContextFactory(timePerSlot, delay))
+        );
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
@@ -697,26 +699,29 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig, configurer: (builder) =>
         {
-            builder.AddSingleton<IBlockImprovementContextFactory>(factoryFactory);
+            builder
+                .AddSingleton<IBlockImprovementContextFactory>(factoryFactory)
+                .AddSingleton(ConfigureBlockchainWithImprovementContextFactory(timePerSlot, delay));
             configurer?.Invoke(builder);
         });
 
-        ConfigureBlockchainWithImprovementContextFactory(chain, timePerSlot, delay);
         return chain;
     }
 
-    private void ConfigureBlockchainWithImprovementContextFactory(
-        MergeTestBlockchain chain,
+    private Func<IBlockProducer, IBlockImprovementContextFactory, ITimerFactory, ILogManager, IPayloadPreparationService> ConfigureBlockchainWithImprovementContextFactory(
         TimeSpan timePerSlot,
         TimeSpan? delay = null
     )
     {
-        chain.PayloadPreparationService = new PayloadPreparationService(
-            chain.BlockProducer!,
-            chain.BlockImprovementContextFactory,
-            TimerFactory.Default,
-            chain.LogManager,
-            timePerSlot,
-            improvementDelay: delay);
+        return (producer, ctxFactory, timer, logManager) =>
+        {
+            return new PayloadPreparationService(
+                producer,
+                ctxFactory,
+                timer,
+                logManager,
+                timePerSlot,
+                improvementDelay: delay);
+        };
     }
 }
