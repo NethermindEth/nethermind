@@ -29,7 +29,7 @@ using Nethermind.Evm.Tracing.Debugger;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.Evm;
 
-using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
+using unsafe OpCode = delegate*<VirtualMachineBase, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
 public unsafe partial class VirtualMachineBase(
