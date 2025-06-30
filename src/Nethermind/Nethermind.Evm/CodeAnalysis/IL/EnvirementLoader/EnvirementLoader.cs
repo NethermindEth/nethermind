@@ -14,6 +14,8 @@ using Nethermind.State;
 using Nethermind.Evm.Tracing;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
+
 namespace Nethermind.Evm.CodeAnalysis.IL;
 public class EnvirementLoader
 {
@@ -265,6 +267,12 @@ public class EnvirementLoader
         {
             il.LoadField(OBJ_RETURNDATABUFFER_FIELD);
         }
+    }
+
+    public void LoadHeaderFieldByRef<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, string fieldName, BindingFlags bindingFlags = BindingFlags.Public | BindingFlags.Instance)
+    {
+        LoadHeader(il, locals);
+        il.LoadFieldAddress(GetFieldInfo(typeof(BlockHeader), fieldName, bindingFlags));
     }
 
     public void LoadHeader<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
