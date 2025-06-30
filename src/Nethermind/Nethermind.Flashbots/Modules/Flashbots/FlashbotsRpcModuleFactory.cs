@@ -34,7 +34,7 @@ namespace Nethermind.Flashbots.Modules.Flashbots
         {
             IOverridableEnv overridableEnv = overridableEnvFactory.Create();
 
-            ILifetimeScope moduleLifetime =  rootLifetime.BeginLifetimeScope((builder) => builder
+            ILifetimeScope moduleLifetime = rootLifetime.BeginLifetimeScope((builder) => builder
                 .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
                 .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
                 .AddSingleton<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
