@@ -14,7 +14,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
-using Nethermind.Evm.State;
+using Nethermind.State;
 using Nethermind.State.Proofs;
 using System;
 using System.Collections.Generic;
@@ -22,7 +22,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Nethermind.State;
+using Nethermind.Evm.OverridableEnv;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;

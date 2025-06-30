@@ -10,7 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 
-namespace Nethermind.Evm;
+namespace Nethermind.Evm.OverridableEnv;
 
 public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository) : IOverridableCodeInfoRepository
 {

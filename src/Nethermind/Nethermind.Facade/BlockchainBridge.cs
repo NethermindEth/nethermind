@@ -23,7 +23,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
-using Nethermind.Evm.State;
+using Nethermind.State;
 using Nethermind.Config;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -31,14 +31,14 @@ using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
 using Autofac;
 using Nethermind.Consensus;
-using Nethermind.State;
+using Nethermind.Evm.OverridableEnv;
 
 namespace Nethermind.Facade
 {
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        private readonly IOverridableTxProcessorSource _processingEnv;
+        private readonly IOverridableEnv<BlockProcessingComponents> _processingEnv;
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
         private readonly ITxPool _txPool;
@@ -54,7 +54,7 @@ namespace Nethermind.Facade
         private readonly SimulateReadOnlyBlocksProcessingEnvFactory _simulateProcessingEnvFactory;
 
         public BlockchainBridge(
-            IOverridableTxProcessorSource processingEnv,
+            IOverridableEnv<BlockProcessingComponents> processingEnv,
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
             IBlockTree blockTree,
             IStateReader stateReader,
@@ -150,10 +150,10 @@ namespace Nethermind.Facade
 
         public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
-            using IOverridableTxProcessingScope scope = _processingEnv.BuildAndOverride(header, stateOverride);
+            using var scope = _processingEnv.BuildAndOverride(header, stateOverride);
 
             CallOutputTracer callOutputTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(scope, header, tx, false,
+            TransactionResult tryCallResult = TryCallAndRestore(scope.Component, header, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken));
 
             return new CallOutput
@@ -174,13 +174,14 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
-            using IOverridableTxProcessingScope scope = _processingEnv.BuildAndOverride(header, stateOverride);
+            using var scope = _processingEnv.BuildAndOverride(header, stateOverride);
+            var components = scope.Component;
 
             EstimateGasTracer estimateGasTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(scope, header, tx, true,
+            TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState, _specProvider, _blocksConfig);
+            GasEstimator gasEstimator = new(components.TransactionProcessor, components.WorldState, _specProvider, _blocksConfig);
 
             string? error = ConstructError(tryCallResult, estimateGasTracer.Error, tx.GasLimit);
 
@@ -206,7 +207,11 @@ namespace Nethermind.Facade
                 : new(header.GasBeneficiary);
 
             CallOutputTracer callOutputTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(_processingEnv.Build(header.StateRoot!), header, tx, false,
+
+            using var scope = _processingEnv.Build(header.StateRoot!);
+            var components = scope.Component;
+
+            TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, false,
                 new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
 
             return new CallOutput
@@ -221,7 +226,7 @@ namespace Nethermind.Facade
         }
 
         private TransactionResult TryCallAndRestore(
-            IOverridableTxProcessingScope scope,
+            BlockProcessingComponents components,
             BlockHeader blockHeader,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
@@ -229,7 +234,7 @@ namespace Nethermind.Facade
         {
             try
             {
-                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, scope);
+                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, components);
             }
             catch (InsufficientBalanceException ex)
             {
@@ -242,14 +247,14 @@ namespace Nethermind.Facade
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer,
-            IOverridableTxProcessingScope scope)
+            BlockProcessingComponents components)
         {
             transaction.SenderAddress ??= Address.SystemUser;
             Hash256 stateRoot = blockHeader.StateRoot!;
 
             if (transaction.Nonce == 0)
             {
-                transaction.Nonce = scope.StateReader.GetNonce(stateRoot, transaction.SenderAddress);
+                transaction.Nonce = components.StateReader.GetNonce(stateRoot, transaction.SenderAddress);
             }
 
             BlockHeader callHeader = treatBlockHeaderAsParentBlock
@@ -293,7 +298,7 @@ namespace Nethermind.Facade
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
             BlockExecutionContext blockExecutionContext = new(callHeader, releaseSpec, releaseSpec.BlobBaseFeeUpdateFraction);
-            return scope.TransactionProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
+            return components.TransactionProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
         }
 
         public ulong GetChainId()
@@ -427,6 +432,12 @@ namespace Nethermind.Facade
 
             return error is null ? null : $"err: {error} (supplied gas {gasLimit})";
         }
+
+        public record BlockProcessingComponents(
+            IStateReader StateReader,
+            ITransactionProcessor TransactionProcessor,
+            IWorldState WorldState
+        );
     }
 
     public interface IBlockchainBridgeFactory
@@ -435,33 +446,25 @@ namespace Nethermind.Facade
     }
 
     public class BlockchainBridgeFactory(
-        IWorldStateManager worldStateManager,
-        Func<ICodeInfoRepository> codeInfoRepositoryFunc,
+        IOverridableEnvFactory envFactory,
         ILifetimeScope rootLifetimeScope
     ) : IBlockchainBridgeFactory
     {
         public IBlockchainBridge CreateBlockchainBridge()
         {
-            IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
-            IOverridableCodeInfoRepository codeInfoRepository = new OverridableCodeInfoRepository(codeInfoRepositoryFunc());
+            IOverridableEnv env = envFactory.Create();
 
-            ILifetimeScope overridableScopeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            {
-                builder
-                    .AddScoped<IWorldState>(overridableScope.WorldState)
-                    .AddScoped<ICodeInfoRepository>(codeInfoRepository)
-                    .AddScoped<IOverridableWorldScope>(overridableScope)
-                    .AddScoped<IOverridableCodeInfoRepository>(codeInfoRepository)
-                    .AddScoped<IOverridableTxProcessorSource, OverridableTxProcessingEnv>();
-            });
+            ILifetimeScope overridableScopeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
+                .AddModule(env)
+                .Add<BlockchainBridge.BlockProcessingComponents>());
 
             // Split it out to isolate the world state and processing components
-            ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            {
-                builder
-                    .AddScoped<BlockchainBridge>()
-                    .AddScoped<IOverridableTxProcessorSource>(overridableScopeLifetime.Resolve<IOverridableTxProcessorSource>());
-            });
+            IOverridableEnv<BlockchainBridge.BlockProcessingComponents> blockProcessingEnv = overridableScopeLifetime
+                .Resolve<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>();
+
+            ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
+                .AddScoped<BlockchainBridge>()
+                .AddScoped(blockProcessingEnv));
 
             blockchainBridgeLifetime.Disposer.AddInstanceForAsyncDisposal(overridableScopeLifetime);
             rootLifetimeScope.Disposer.AddInstanceForDisposal(blockchainBridgeLifetime);

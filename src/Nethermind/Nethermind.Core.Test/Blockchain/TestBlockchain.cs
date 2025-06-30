@@ -104,13 +104,15 @@ public class TestBlockchain : IDisposable
 
     protected AutoCancelTokenSource _cts;
     public CancellationToken CancellationToken => _cts.Token;
-    private TestBlockchainUtil _testUtil = null!;
+
+    private TestBlockchainUtil TestUtil => _fromContainer.TestBlockchainUtil.Value;
+    private PoWTestBlockchainUtil PoWTestUtil => _fromContainer.PoWTestBlockchainUtil.Value;
 
     public IBlockValidator BlockValidator => _fromContainer.BlockValidator;
 
-    public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
+    public IManualBlockProductionTrigger BlockProductionTrigger => _fromContainer.BlockProductionTrigger;
 
-    public ManualTimestamper Timestamper { get; private set; } = null!;
+    public ManualTimestamper Timestamper => _fromContainer.ManualTimestamper;
     public IBlocksConfig BlocksConfig => Container.Resolve<IBlocksConfig>();
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
@@ -153,6 +155,10 @@ public class TestBlockchain : IDisposable
         IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory,
         IBlockProducerEnvFactory BlockProducerEnvFactory,
         Configuration Configuration,
+        Lazy<TestBlockchainUtil> TestBlockchainUtil,
+        Lazy<PoWTestBlockchainUtil> PoWTestBlockchainUtil,
+        ManualTimestamper ManualTimestamper,
+        IManualBlockProductionTrigger BlockProductionTrigger,
         ISealer Sealer
     )
     {
@@ -171,7 +177,6 @@ public class TestBlockchain : IDisposable
     // Try to use plugin's module where possible to make sure prod and test components are wired similarly.
     protected virtual async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
     {
-        Timestamper = new ManualTimestamper(InitialTimestamp);
         JsonSerializer = new EthereumJsonSerializer();
 
         IConfigProvider configProvider = new ConfigProvider(CreateConfigs().ToArray());
@@ -239,14 +244,6 @@ public class TestBlockchain : IDisposable
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
 
         _cts = AutoCancelTokenSource.ThatCancelAfter(TimeSpan.FromMilliseconds(TestTimout));
-        _testUtil = new TestBlockchainUtil(
-            BlockProducerRunner,
-            BlockProductionTrigger,
-            Timestamper,
-            BlockTree,
-            TxPool,
-            testConfiguration.SlotTime
-        );
 
         if (testConfiguration.SuggestGenesisOnStart)
         {
@@ -273,6 +270,7 @@ public class TestBlockchain : IDisposable
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
             .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
             .AddDecorator<ISpecProvider>((ctx, specProvider) => WrapSpecProvider(specProvider))
+            .AddSingleton<ManualTimestamper>(new ManualTimestamper(InitialTimestamp))
             .AddSingleton<Configuration>()
             .AddSingleton<FromContainer>()
 
@@ -280,7 +278,28 @@ public class TestBlockchain : IDisposable
             .AddSingleton<ISealValidator>(Always.Valid)
             .AddSingleton<IUnclesValidator>(Always.Valid)
             .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD))
-        ;
+
+            .AddSingleton<IBlockProducer>((_) => this.BlockProducer)
+            .AddSingleton<IBlockProducerRunner>((_) => this.BlockProducerRunner)
+
+            .AddSingleton<TestBlockchainUtil>((ctx) => new TestBlockchainUtil(
+                ctx.Resolve<IBlockProducer>(),
+                ctx.Resolve<ManualTimestamper>(),
+                ctx.Resolve<IBlockTree>(),
+                ctx.Resolve<ITxPool>(),
+                ctx.Resolve<Configuration>().SlotTime
+            ))
+
+            .AddSingleton<PoWTestBlockchainUtil>((ctx) => new PoWTestBlockchainUtil(
+                ctx.Resolve<IBlockProducerRunner>(),
+                ctx.Resolve<IManualBlockProductionTrigger>(),
+                ctx.Resolve<ManualTimestamper>(),
+                ctx.Resolve<IBlockTree>(),
+                ctx.Resolve<ITxPool>(),
+                ctx.Resolve<Configuration>().SlotTime
+            ))
+
+    ;
 
     protected virtual IEnumerable<IConfig> CreateConfigs()
     {
@@ -402,12 +421,17 @@ public class TestBlockchain : IDisposable
 
     public async Task AddBlock(params Transaction[] transactions)
     {
-        await _testUtil.AddBlockAndWaitForHead(_cts.Token, transactions);
+        await TestUtil.AddBlockAndWaitForHead(_cts.Token, transactions);
+    }
+
+    public async Task AddBlockThroughPoW(params Transaction[] transactions)
+    {
+        await PoWTestUtil.AddBlockAndWaitForHead(_cts.Token, transactions);
     }
 
     public async Task AddBlockDoNotWaitForHead(params Transaction[] transactions)
     {
-        await _testUtil.AddBlockDoNotWaitForHead(_cts.Token, transactions);
+        await TestUtil.AddBlockDoNotWaitForHead(_cts.Token, transactions);
     }
 
     public void AddTransactions(params Transaction[] txs)

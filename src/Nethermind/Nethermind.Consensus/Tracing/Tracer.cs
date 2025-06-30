@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -14,7 +12,7 @@ using Nethermind.Trie;
 namespace Nethermind.Consensus.Tracing
 {
     public class Tracer(
-        IVisitingWorldState worldState,
+        IWorldState worldState,
         IBlockchainProcessor traceProcessor,
         IBlockchainProcessor executeProcessor,
         ProcessingOptions executeOptions = ProcessingOptions.Trace,
@@ -41,39 +39,6 @@ namespace Nethermind.Consensus.Tracing
             ArgumentNullException.ThrowIfNull(stateRoot);
 
             worldState.Accept(visitor, stateRoot);
-        }
-    }
-
-    public interface ITracerEnv
-    {
-        ITracerScope RunInProcessingScope(BlockHeader block);
-        ITracerScope RunInProcessingScope(BlockHeader block, Dictionary<Address, AccountOverride>? stateOverride);
-    }
-
-    public interface ITracerScope : IDisposable
-    {
-        ITracer Tracer { get; }
-    }
-
-    /// <summary>
-    /// Wrapper around an <see cref="ITracer"> and <see cref="IOverridableTxProcessorSource"/> that owns the states
-    /// that the tracer is using. Used to hide the state neatly.
-    /// </summary>
-    /// <param name="theTracer"></param>
-    /// <param name="envSource"></param>
-    public class TracerEnv(ITracer theTracer, IOverridableTxProcessorSource envSource) : ITracerEnv
-    {
-        public ITracerScope RunInProcessingScope(BlockHeader block) => new TracerScope(theTracer, envSource.Build(block.StateRoot));
-
-        public ITracerScope RunInProcessingScope(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride) => new TracerScope(theTracer, envSource.BuildAndOverride(header, stateOverride));
-
-        private class TracerScope(ITracer theTracer, IOverridableTxProcessingScope scope) : ITracerScope
-        {
-            public ITracer Tracer => theTracer;
-            public void Dispose()
-            {
-                scope.Dispose();
-            }
         }
     }
 }
