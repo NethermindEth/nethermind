@@ -34,6 +34,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -302,9 +303,16 @@ public partial class EngineModuleTests
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 10 * delay;
-        using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
-            static chain => new StoringBlockImprovementContextFactory(new MockBlockImprovementContextFactory()),
-            timePerSlot, mergeConfig, delay);
+        long txPoolPendingTransactionsAdded = 0;
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.PendingTransactionsAdded.Returns((_) => txPoolPendingTransactionsAdded);
+
+        using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig, configurer: (builder) => builder
+            .AddSingleton<IBlockImprovementContextFactory>(static chain => new StoringBlockImprovementContextFactory(new MockBlockImprovementContextFactory()))
+            .AddSingleton(ConfigurePayloadPreparationService(timePerSlot, delay))
+            .AddSingleton(txPool)
+        );
+
         StoringBlockImprovementContextFactory improvementContextFactory = chain.StoringBlockImprovementContextFactory!;
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -318,7 +326,7 @@ public partial class EngineModuleTests
         {
             while (!cts.IsCancellationRequested)
             {
-                Interlocked.Increment(ref TxPool.Metrics.PendingTransactionsAdded);
+                Interlocked.Increment(ref txPoolPendingTransactionsAdded);
                 await Task.Delay(10);
             }
         });
@@ -403,19 +411,10 @@ public partial class EngineModuleTests
         {
             builder
                 .AddSingleton<ISpecProvider>(SepoliaSpecProvider.Instance)
-                .AddSingleton<IBlockImprovementContextFactory>((ctx) =>
-                {
-                    StoringBlockImprovementContextFactory improvementContextFactory = new(
-                        new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>(), TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot)),
-                        skipDuplicatedContext: true
-                    );
-                    return improvementContextFactory;
-                })
-                .AddSingleton(ConfigureBlockchainWithImprovementContextFactory(timePerSlot, delay))
+                .AddSingleton(ConfigurePayloadPreparationService(timePerSlot, delay))
                 ;
 
         });
-
         ;
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -498,7 +497,7 @@ public partial class EngineModuleTests
                 new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(
                     ctx.Resolve<IBlockProducer>(),
                     TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot))))
-            .AddSingleton(ConfigureBlockchainWithImprovementContextFactory(timePerSlot, delay))
+            .AddSingleton(ConfigurePayloadPreparationService(timePerSlot, delay))
         );
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -701,27 +700,25 @@ public partial class EngineModuleTests
         {
             builder
                 .AddSingleton<IBlockImprovementContextFactory>(factoryFactory)
-                .AddSingleton(ConfigureBlockchainWithImprovementContextFactory(timePerSlot, delay));
+                .AddSingleton(ConfigurePayloadPreparationService(timePerSlot, delay));
             configurer?.Invoke(builder);
         });
 
         return chain;
     }
 
-    private Func<IBlockProducer, IBlockImprovementContextFactory, ITimerFactory, ILogManager, IPayloadPreparationService> ConfigureBlockchainWithImprovementContextFactory(
+    private Func<IBlockProducer, ITxPool, IBlockImprovementContextFactory, ITimerFactory, ILogManager, IPayloadPreparationService> ConfigurePayloadPreparationService(
         TimeSpan timePerSlot,
         TimeSpan? delay = null
     )
     {
-        return (producer, ctxFactory, timer, logManager) =>
-        {
-            return new PayloadPreparationService(
-                producer,
-                ctxFactory,
-                timer,
-                logManager,
-                timePerSlot,
-                improvementDelay: delay);
-        };
+        return (producer, txPool, ctxFactory, timer, logManager) => new PayloadPreparationService(
+            producer,
+            txPool,
+            ctxFactory,
+            timer,
+            logManager,
+            timePerSlot,
+            improvementDelay: delay);
     }
 }

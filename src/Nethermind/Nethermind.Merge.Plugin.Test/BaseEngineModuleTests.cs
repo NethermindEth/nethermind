@@ -51,6 +51,7 @@ using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -326,10 +327,11 @@ public abstract partial class BaseEngineModuleTests
                     return new StoringBlockImprovementContextFactory(factory);
                 })
                 .AddSingleton<IBlockProducer>(ctx => this.BlockProducer)
-                .AddSingleton<IPayloadPreparationService, IBlockProducer, IBlockImprovementContextFactory, ITimerFactory, ILogManager>(
-                    (producer, ctxFactory, timer, logManager) =>
+                .AddSingleton<IPayloadPreparationService, IBlockProducer, ITxPool, IBlockImprovementContextFactory, ITimerFactory, ILogManager>(
+                    (producer, txPool, ctxFactory, timer, logManager) =>
                         new PayloadPreparationService(
                             producer,
+                            txPool,
                             ctxFactory,
                             timer,
                             logManager,
