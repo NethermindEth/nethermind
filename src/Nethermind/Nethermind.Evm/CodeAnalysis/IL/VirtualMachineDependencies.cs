@@ -392,7 +392,11 @@ namespace Nethermind.Evm.CodeAnalysis.IL
         public static EvmExceptionType InstructionCreate<TOpCreate>(
             EvmState vmState, IWorldState state, ICodeInfoRepository codeInfoRepository, ref long gasAvailable,
             IReleaseSpec spec,
-            UInt256 value, UInt256 memoryPositionOfInitCode, UInt256 initCodeLength, Span<byte> salt,
+            ITxTracer tx,
+            UInt256 value,
+            UInt256 memoryPositionOfInitCode,
+            UInt256 initCodeLength,
+            Span<byte> salt,
             out UInt256? statusReturn,
             ref ReadOnlyMemory<byte> returnDataBuffer,
             out object callState)
@@ -474,8 +478,8 @@ namespace Nethermind.Evm.CodeAnalysis.IL
                 goto None;
             }
 
+            // TODO: fix tracing!
             // End tracing if enabled, prior to switching to the new call frame.
-            // TODO: tracing!
             // if (tx.IsActive)
             //     vm.EndInstructionTrace(gasAvailable);
 

@@ -2327,6 +2327,8 @@ internal static class OpcodeEmitters
 
         int index = 1;
 
+        // TODO: fix loading by value and replace fixing by ref
+
         // load value
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), index++);
         method.Call(Word.GetUInt256ByVal);
