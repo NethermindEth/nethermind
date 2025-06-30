@@ -15,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
+[assembly: InternalsVisibleTo("Nethermind.State")]
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
@@ -121,6 +122,7 @@ namespace Nethermind.Core
         }
 
         private Memory<byte> _preHash;
+        internal ref readonly Memory<byte> PreHash => ref _preHash;
         private IMemoryOwner<byte>? _preHashMemoryOwner;
         public void SetPreHash(ReadOnlySpan<byte> transactionSequence)
         {
