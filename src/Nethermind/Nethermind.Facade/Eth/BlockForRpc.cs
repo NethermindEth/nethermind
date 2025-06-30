@@ -73,7 +73,7 @@ public class BlockForRpc
         Size = _blockDecoder.GetLength(block, RlpBehaviors.None);
         StateRoot = block.StateRoot;
         Timestamp = block.Timestamp;
-        TotalDifficulty = _isAuRaBlock ? block.TotalDifficulty ?? 0 : null;
+        TotalDifficulty = block.Difficulty.IsZero ? null : block.TotalDifficulty ?? UInt256.Zero;
         if (!skipTxs)
         {
             Transactions = includeFullTransactionData
