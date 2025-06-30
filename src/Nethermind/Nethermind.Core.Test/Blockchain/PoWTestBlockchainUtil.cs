@@ -5,34 +5,38 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
+using Nethermind.Core.Events;
 using Nethermind.Core.Test.Builders;
 using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Blockchain;
 
-public class TestBlockchainUtil(
-    IBlockProducer blockProducer,
+public class PoWTestBlockchainUtil(
+    IBlockProducerRunner blockProducerRunner,
+    IManualBlockProductionTrigger blockProductionTrigger,
     ManualTimestamper timestamper,
     IBlockTree blockTree,
     ITxPool txPool,
-    long slotTime
-)
+    long slotTime)
 {
     private Task _previousAddBlock = Task.CompletedTask;
 
     public async Task<AcceptTxResult[]> AddBlockDoNotWaitForHead(CancellationToken cancellationToken, params Transaction[] transactions)
     {
-        _previousAddBlock.IsCompleted.Should().BeTrue("Multiple block produced at once. Please make sure this does not happen for test consistency.");
+        await WaitAsync(_previousAddBlock, "Multiple block produced at once.").ConfigureAwait(false);
         TaskCompletionSource tcs = new();
         _previousAddBlock = tcs.Task;
 
+        Task waitForNewBlock = WaitAsync(WaitForBlockProducerBlockProduced(cancellationToken), "timeout waiting for block producer");
+
         AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
         timestamper.Add(TimeSpan.FromSeconds(slotTime));
-        Block? block = await blockProducer.BuildBlock(parentHeader: blockTree.GetProducedBlockParent(null), cancellationToken: cancellationToken);
-        blockTree.SuggestBlock(block!).Should().Be(AddBlockResult.Added);
+        await blockProductionTrigger.BuildBlock().ConfigureAwait(false);
+
+        await waitForNewBlock.ConfigureAwait(false);
 
         tcs.TrySetResult();
         return txResults;
@@ -45,6 +49,14 @@ public class TestBlockchainUtil(
         await AddBlockDoNotWaitForHead(cancellationToken, transactions);
 
         await waitforHead;
+    }
+
+    private Task WaitForBlockProducerBlockProduced(CancellationToken cancellationToken = default)
+    {
+        return Wait.ForEventCondition<BlockEventArgs>(cancellationToken,
+            e => blockProducerRunner.BlockProduced += e,
+            e => blockProducerRunner.BlockProduced -= e,
+            b => true);
     }
 
     private static async Task WaitAsync(Task task, string error)
