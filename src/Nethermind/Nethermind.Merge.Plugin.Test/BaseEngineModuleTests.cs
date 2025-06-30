@@ -80,7 +80,6 @@ public abstract partial class BaseEngineModuleTests
         Action<ContainerBuilder>? configurer = null)
     {
         var bc = CreateBaseBlockchain(mergeConfig);
-        bc.ExecutionRequestsProcessorOverride = mockedExecutionRequestsProcessor;
         return await bc
             .BuildMergeTestBlockchain(configurer: (builder) =>
             {
@@ -276,8 +275,6 @@ public abstract partial class BaseEngineModuleTests
 
         public ISyncPeerPool SyncPeerPool { get; set; }
 
-        public IExecutionRequestsProcessor? ExecutionRequestsProcessorOverride { get; set; }
-
         protected int _blockProcessingThrottle = 0;
 
         public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
@@ -334,11 +331,6 @@ public abstract partial class BaseEngineModuleTests
                             50000)); // by default we want to avoid cleanup payload effects in testing                    )
                 ;
 
-            if (ExecutionRequestsProcessorOverride is not null)
-            {
-                builder.AddSingleton<IExecutionRequestsProcessor>(ExecutionRequestsProcessorOverride);
-            }
-
             return builder;
         }
 
@@ -379,7 +371,7 @@ public abstract partial class BaseEngineModuleTests
                 new BlockhashStore(SpecProvider, worldState),
                 LogManager,
                 WithdrawalProcessor,
-                ExecutionRequestsProcessorOverride ?? MainExecutionRequestsProcessor,
+                MainExecutionRequestsProcessor,
                 CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);

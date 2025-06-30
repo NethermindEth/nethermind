@@ -177,7 +177,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 ReceiptStorage,
                 new BeaconBlockRootHandler(TxProcessor, state),
                 TxProcessor,
-                ExecutionRequestsProcessorOverride ?? new ExecutionRequestsProcessor(TxProcessor),
+                MainExecutionRequestsProcessor,
                 null,
                 preWarmer: CreateBlockCachePreWarmer());
 
