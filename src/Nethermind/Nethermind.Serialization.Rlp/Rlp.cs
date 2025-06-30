@@ -12,6 +12,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -77,7 +78,15 @@ namespace Nethermind.Serialization.Rlp
 
         private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
         private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decoders;
-        public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders => _decoders ??= _decoderBuilder.ToFrozenDictionary();
+        private static Lock _decoderLock = new Lock();
+        public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders
+        {
+            get
+            {
+                using Lock.Scope _ = _decoderLock.EnterScope();
+                return _decoders ??= _decoderBuilder.ToFrozenDictionary();
+            }
+        }
 
         public static void ResetDecoders()
         {

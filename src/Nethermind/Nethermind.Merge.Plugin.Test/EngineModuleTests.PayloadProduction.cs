@@ -138,7 +138,13 @@ public partial class EngineModuleTests
         }
     }
 
-    private class TxDelayedSource(IBlockTree blockTree, ISpecProvider specProvider, IStateReader stateReader, ITimestamper timestamper, TimeSpan delay) : ITxSource
+    private class TxDelayedSource(
+        IBlockTree blockTree,
+        ISpecProvider specProvider,
+        IStateReader stateReader,
+        ITimestamper timestamper,
+        TaskCompletionSource getTransactionsCalled,
+        TimeSpan delay) : ITxSource
     {
         public bool SupportsBlobs { get; }
 
@@ -151,6 +157,8 @@ public partial class EngineModuleTests
             PrivateKey sender = TestItem.PrivateKeyB;
             Transaction[] transactions = BuildTransactions(blockTree, specProvider, stateReader, timestamper, startingHead, sender, recipient, count, value, out _, out _);
 
+            getTransactionsCalled.TrySetResult();
+
             foreach (var item in transactions)
             {
                 if (delay.TotalMilliseconds > 0)
@@ -161,23 +169,25 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(WaitTestCases))]
+    [Parallelizable(ParallelScope.None)] // Timing sensitive
     public async Task getPayloadV1_waits_for_block_production(TimeSpan txDelay, TimeSpan improveDelay, int minCount, int maxCount)
     {
-        using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
-            ctx => new DelayBlockImprovementContextFactory(ctx.Resolve<IBlockProducer>(), TimeSpan.FromSeconds(10), improveDelay),
-            TimeSpan.FromSeconds(10),
-            configurer: builder => builder
-                .AddSingleton<IBlockProducerTxSourceFactory>(ctx =>
-                {
-                    IBlockProducerTxSourceFactory factory = Substitute.For<IBlockProducerTxSourceFactory>();
-                    factory.Create().Returns(new TxDelayedSource(
-                        ctx.Resolve<IBlockTree>(),
-                        ctx.Resolve<ISpecProvider>(),
-                        ctx.Resolve<IStateReader>(),
-                        ctx.Resolve<ITimestamper>(),
-                        txDelay));
-                    return factory;
-                }));
+        TaskCompletionSource yieldedTransaction = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using MergeTestBlockchain chain = await CreateBlockchain( configurer: builder => builder
+            .AddSingleton<IBlockImprovementContextFactory, IBlockProducer>((producer) => new DelayBlockImprovementContextFactory(producer, TimeSpan.FromSeconds(10), improveDelay))
+            .AddSingleton(ConfigurePayloadPreparationService(TimeSpan.FromSeconds(10), null))
+            .AddSingleton<IBlockProducerTxSourceFactory>(ctx =>
+            {
+                IBlockProducerTxSourceFactory factory = Substitute.For<IBlockProducerTxSourceFactory>();
+                factory.Create().Returns(new TxDelayedSource(
+                    ctx.Resolve<IBlockTree>(),
+                    ctx.Resolve<ISpecProvider>(),
+                    ctx.Resolve<IStateReader>(),
+                    ctx.Resolve<ITimestamper>(),
+                    yieldedTransaction,
+                    txDelay));
+                return factory;
+            }));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
@@ -186,6 +196,7 @@ public partial class EngineModuleTests
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })).Data.PayloadId!;
 
+        if (minCount > 0) await yieldedTransaction.Task; // Need to make sure it reached this point
         await Task.Delay(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay);
 
         Assert.That(() => rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId)).Result.Data!.Transactions,
@@ -464,19 +475,12 @@ public partial class EngineModuleTests
                 new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
 
+        Task<IBlockImprovementContext> cancelledContextTask = improvementContextFactory.WaitForNextImprovementContext(chain.CancellationToken);
         await blockImprovement;
+
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
 
-        IBlockImprovementContext? cancelledContext = null;
-        await Wait.ForEventCondition<ImprovementStartedEventArgs>(chain.CancellationToken,
-            e => improvementContextFactory!.ImprovementStarted += e,
-            e => improvementContextFactory!.ImprovementStarted -= e,
-            e =>
-            {
-                cancelledContext = e.BlockImprovementContext;
-                return true;
-            });
-
+        IBlockImprovementContext cancelledContext = await cancelledContextTask;
         improvementContextFactory.CreatedContexts.Should().HaveCount(2);
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
