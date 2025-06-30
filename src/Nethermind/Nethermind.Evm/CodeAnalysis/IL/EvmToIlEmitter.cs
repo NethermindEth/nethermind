@@ -1603,6 +1603,8 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.storageCell);
         method.LoadConstant((int)VirtualMachineDependencies.StorageAccessType.SLOAD);
         envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, false);
+
         method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.Public));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
