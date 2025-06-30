@@ -96,7 +96,7 @@ public abstract partial class BaseEngineModuleTests
     protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider)
         => await CreateBaseBlockchain().Build(specProvider);
 
-    protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
+    protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, int newPayloadCacheSize = 50)
     {
         IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
         var synchronizationConfig = syncConfig ?? new SyncConfig();
@@ -148,7 +148,7 @@ public abstract partial class BaseEngineModuleTests
                 chain.BlockProcessingQueue,
                 invalidChainTracker,
                 chain.BeaconSync,
-                new MergeConfig() { NewPayloadTimeout = newPayloadTimeout?.TotalSeconds ?? 7.0 },
+                chain.Container.Resolve<IMergeConfig>(),
                 chain.Container.Resolve<IReceiptConfig>(),
                 chain.LogManager,
                 newPayloadCacheSize),
@@ -286,7 +286,8 @@ public abstract partial class BaseEngineModuleTests
         public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
         {
             GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
-            MergeConfig = mergeConfig ?? new MergeConfig() { TerminalTotalDifficulty = "0" };
+            MergeConfig = mergeConfig ?? new MergeConfig();
+            MergeConfig.TerminalTotalDifficulty = "0";
             SyncPeerPool = Substitute.For<ISyncPeerPool>();
         }
 

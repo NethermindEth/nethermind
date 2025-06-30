@@ -656,9 +656,12 @@ public partial class EngineModuleTests
     [Test, NonParallelizable]
     public async Task forkChoiceUpdatedV1_block_still_processing()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain();
+        using MergeTestBlockchain chain = await CreateBlockchain(mergeConfig: new MergeConfig()
+        {
+            NewPayloadTimeout = 0.1
+        });
 
-        IEngineRpcModule rpc = CreateEngineModule(chain, newPayloadTimeout: TimeSpan.FromMilliseconds(100));
+        IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Block blockTreeHead = chain.BlockTree.Head!;
         Block block = Build.A.Block.WithNumber(blockTreeHead.Number + 1).WithParent(blockTreeHead).WithNonce(0).WithDifficulty(0).TestObject;
@@ -679,9 +682,12 @@ public partial class EngineModuleTests
     [Test, NonParallelizable]
     public async Task AlreadyKnown_not_cached_block_should_return_valid()
     {
-        using MergeTestBlockchain? chain = await CreateBlockchain();
+        using MergeTestBlockchain? chain = await CreateBlockchain(mergeConfig: new MergeConfig()
+        {
+            NewPayloadTimeout = 0.1
+        });
 
-        IEngineRpcModule? rpc = CreateEngineModule(chain, newPayloadTimeout: TimeSpan.FromMilliseconds(100), newPayloadCacheSize: 0);
+        IEngineRpcModule? rpc = CreateEngineModule(chain, newPayloadCacheSize: 0);
         Block? head = chain.BlockTree.Head!;
 
         Block? b4 = Build.A.Block
@@ -710,9 +716,12 @@ public partial class EngineModuleTests
     [Test, NonParallelizable]
     public async Task Invalid_block_on_processing_wont_be_accepted_if_sent_twice_in_a_row_when_block_processing_queue_is_not_empty()
     {
-        using MergeTestBlockchain? chain = await CreateBlockchain();
+        using MergeTestBlockchain? chain = await CreateBlockchain(mergeConfig: new MergeConfig()
+        {
+            NewPayloadTimeout = 0.1
+        });
 
-        IEngineRpcModule? rpc = CreateEngineModule(chain, newPayloadTimeout: TimeSpan.FromMilliseconds(100), newPayloadCacheSize: 10);
+        IEngineRpcModule? rpc = CreateEngineModule(chain, newPayloadCacheSize: 10);
         Block? head = chain.BlockTree.Head!;
 
         // make sure AddressA has enough balance to send tx
