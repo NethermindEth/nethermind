@@ -392,7 +392,6 @@ namespace Nethermind.Evm.CodeAnalysis.IL
         public static EvmExceptionType InstructionCreate<TOpCreate>(
             EvmState vmState, IWorldState state, ICodeInfoRepository codeInfoRepository, ref long gasAvailable,
             IReleaseSpec spec,
-            ITxTracer tx,
             UInt256 value,
             UInt256 memoryPositionOfInitCode,
             UInt256 initCodeLength,
