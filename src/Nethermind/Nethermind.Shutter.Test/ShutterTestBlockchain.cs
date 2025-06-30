@@ -5,8 +5,6 @@ using System;
 using Autofac;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Db.Blooms;
 using Nethermind.Shutter.Config;
@@ -14,14 +12,11 @@ using static Nethermind.Merge.AuRa.Test.AuRaMergeEngineModuleTests;
 
 namespace Nethermind.Shutter.Test;
 
-public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null) : MergeAuRaTestBlockchain(null, null)
+public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null) : MergeAuRaTestBlockchain(null)
 {
     public ShutterApiSimulator Api => Container.Resolve<ShutterApiSimulator>();
     protected readonly Random _rnd = rnd;
     protected readonly ITimestamper? _timestamper = timestamper;
-
-    protected override IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IBlockProducer blockProducer)
-        => Api.GetBlockImprovementContextFactory(blockProducer);
 
     protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
     {
@@ -39,7 +34,8 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
 
             // It seems that it does not work with bloom.
             // This or use a separate bloom storage for LogFinder and BlockTree.
-            .AddSingleton<IBloomStorage>(NullBloomStorage.Instance);
+            .AddSingleton<IBloomStorage>(NullBloomStorage.Instance)
+            ;
 
         if (eventSimulator is not null)
         {

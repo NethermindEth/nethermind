@@ -49,6 +49,21 @@ public partial class BaseEngineModuleTests
             return blockImprovementContext;
         }
 
+        public async Task<IBlockImprovementContext> WaitForNextImprovementContext(CancellationToken cancellationToken)
+        {
+            IBlockImprovementContext? theContext = null;
+            await Wait.ForEventCondition<ImprovementStartedEventArgs>(cancellationToken,
+                e => ImprovementStarted += e,
+                e => ImprovementStarted -= e,
+                e =>
+                {
+                    theContext = e.BlockImprovementContext;
+                    return true;
+                });
+
+            return theContext!;
+        }
+
         private Block? LogProductionResult(Task<Block?> t)
         {
             if (t.IsCompletedSuccessfully)

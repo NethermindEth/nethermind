@@ -65,4 +65,16 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
         IsSharable = true,
         IsImplemented = true)]
     ResultWrapper<PreBuiltTxList[]?> taikoAuth_txPoolContentWithMinTip(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit, ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists, ulong minTip);
+
+    [JsonRpcMethod(
+        Description = "Updates head L1 origin.",
+        IsSharable = true,
+        IsImplemented = true)]
+    ResultWrapper<UInt256> taikoAuth_setHeadL1Origin(UInt256 blockId);
+
+    [JsonRpcMethod(
+        Description = "Updates L1 origin.",
+        IsSharable = true,
+        IsImplemented = true)]
+    ResultWrapper<L1Origin> taikoAuth_updateL1Origin(L1Origin l1Origin);
 }

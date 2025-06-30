@@ -56,10 +56,6 @@ public class ClefSignerPlugin(IMiningConfig miningConfig) : INethermindPlugin
         return Task.CompletedTask;
     }
 
-    public Task InitNetworkProtocol() => Task.CompletedTask;
-
-    public Task InitRpcModules() => Task.CompletedTask;
-
     private ClefSigner SetupExternalSigner(ClefWallet clefWallet, string blockAuthorAccount)
     {
         try
