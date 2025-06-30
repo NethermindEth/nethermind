@@ -181,12 +181,12 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, EvmExceptionType evmException, Hash256? stateRoot = null)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingReceipt)
         {
-            innerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+            innerTracer.MarkAsFailed(recipient, gasSpent, output, error, evmException, stateRoot);
         }
     }
 

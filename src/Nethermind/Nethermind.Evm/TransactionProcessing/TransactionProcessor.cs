@@ -219,7 +219,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (statusCode == StatusCode.Failure)
                 {
                     byte[] output = substate.ShouldRevert ? substate.Output.Bytes.ToArray() : [];
-                    tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate.Error, stateRoot);
+                    tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate.Error, substate.EvmExceptionType, stateRoot);
                 }
                 else
                 {

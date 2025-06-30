@@ -139,14 +139,14 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, EvmExceptionType evmException, Hash256? stateRoot = null)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingReceipt)
             {
-                innerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+                innerTracer.MarkAsFailed(recipient, gasSpent, output, error, evmException, stateRoot);
             }
         }
     }
