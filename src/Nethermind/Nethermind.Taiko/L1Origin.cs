@@ -15,4 +15,12 @@ public class L1Origin(UInt256 blockId, ValueHash256? l2BlockHash, long l1BlockHe
 
     // Taiko uses int-like serializer
     public int[]? BuildPayloadArgsId { get; set; } = buildPayloadArgsId;
+
+    /// <summary>
+    /// IsPreconfBlock returns true if the L1Origin is for a preconfirmation block.
+    /// </summary>    
+    public bool IsPreconfBlock()
+    {
+        return L1BlockHeight == 0;
+    }
 }
