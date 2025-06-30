@@ -32,6 +32,6 @@
     "Enabled": true
   },
   "Optimism": {
-    "SequencerUrl": "https://dev-secure.rpc.theradius.xyz"
+    "SequencerUrl": "dev-secure.rpc.theradius.xyz"
   }
 }
