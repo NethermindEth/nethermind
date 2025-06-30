@@ -195,5 +195,6 @@ namespace Nethermind.Blockchain
         /// Before sync pivot, there is no guarantee that blocks and receipts are available or continuous.
         /// </summary>
         (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
+        bool IsProcessingBlock { get; set; }
     }
 }

@@ -31,7 +31,7 @@ namespace Nethermind.Merge.AuRa
         }
 
         public override PostMergeBlockProducer Create(
-            BlockProducerEnv producerEnv,
+            IBlockProducerEnv producerEnv,
             ITxSource? txSource = null)
         {
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator =

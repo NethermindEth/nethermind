@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using System;
 
 namespace Nethermind.Blockchain.Receipts
@@ -11,6 +12,7 @@ namespace Nethermind.Blockchain.Receipts
     {
         void Insert(Block block, params TxReceipt[]? txReceipts) => Insert(block, txReceipts, true);
         void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null);
+        void Insert(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null);
         long MigratedBlockNumber { get; set; }
         bool HasBlock(long blockNumber, Hash256 hash);
         void EnsureCanonical(Block block);

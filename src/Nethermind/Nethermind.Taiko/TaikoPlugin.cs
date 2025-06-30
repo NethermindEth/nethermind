@@ -4,42 +4,45 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Api;
-using Nethermind.Api.Extensions;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.Config;
-using Nethermind.Logging;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain;
-using Nethermind.Taiko.Rpc;
-using Nethermind.HealthChecks;
-using Nethermind.Db;
-using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Merge.Plugin;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Processing;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Consensus.Withdrawals;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Merge.Plugin.GC;
-using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Core;
 using Autofac;
 using Autofac.Core;
-using Nethermind.Taiko.BlockTransactionExecutors;
+using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
+using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.HealthChecks;
+using Nethermind.JsonRpc.Client;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.GC;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Taiko.BlockTransactionExecutors;
+using Nethermind.Taiko.Config;
+using Nethermind.Taiko.Rpc;
 using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
@@ -108,11 +111,11 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         TaikoPayloadPreparationService payloadPreparationService = CreatePayloadPreparationService(_api, txDecoder);
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
-        var poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
-        var invalidChainTracker = _api.Context.Resolve<IInvalidChainTracker>();
-        var peerRefresher = _api.Context.Resolve<IPeerRefresher>();
-        var beaconPivot = _api.Context.Resolve<IBeaconPivot>();
-        var beaconSync = _api.Context.Resolve<BeaconSync>();
+        IPoSSwitcher poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
+        IInvalidChainTracker invalidChainTracker = _api.Context.Resolve<IInvalidChainTracker>();
+        IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
+        IBeaconPivot beaconPivot = _api.Context.Resolve<IBeaconPivot>();
+        BeaconSync beaconSync = _api.Context.Resolve<BeaconSync>();
 
         ITaikoEngineRpcModule engine = new TaikoEngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -164,7 +167,8 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _api.TxPool,
             readonlyBlockTree,
             _api.ReadOnlyTxProcessingEnvFactory,
-            txDecoder
+            txDecoder,
+            _api.L1OriginStore
         );
 
         _api.RpcModuleProvider.RegisterSingle(engine);
@@ -258,7 +262,7 @@ public class TaikoModule : Module
 
             // L1 origin store
             .AddSingleton<IRlpStreamDecoder<L1Origin>, L1OriginDecoder>()
-            .AddKeyedSingleton<IDb>(L1OriginStore.L1OriginDbName, (ctx) => ctx
+            .AddKeyedSingleton<IDb>(L1OriginStore.L1OriginDbName, ctx => ctx
                 .Resolve<IDbFactory>().CreateDb(new DbSettings(L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName.ToLower())))
             .AddSingleton<IL1OriginStore, L1OriginStore>()
 
@@ -281,14 +285,49 @@ public class TaikoModule : Module
             .AddScoped<IValidationTransactionExecutor, TaikoBlockValidationTransactionExecutor>()
             .AddScoped<ITransactionProcessor, TaikoTransactionProcessor>()
 
-            .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>
+            .AddSingleton<IHealthHintService, IBlocksConfig>(blocksConfig =>
                 new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint))
+
+            // Conditionally register SurgeGasPriceOracle if UseSurgeGasPriceOracle is enabled
+            .AddDecorator<IGasPriceOracle>((ctx, defaultGasPriceOracle) =>
+            {
+                ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
+                var taikoSpec = (TaikoReleaseSpec)specProvider.GenesisSpec;
+
+                if (!taikoSpec.UseSurgeGasPriceOracle)
+                    return defaultGasPriceOracle;
+
+                ISurgeConfig surgeConfig = ctx.Resolve<ISurgeConfig>();
+
+                if (string.IsNullOrEmpty(surgeConfig.L1EthApiEndpoint))
+                {
+                    throw new ArgumentException("L1EthApiEndpoint must be provided in the Surge configuration to compute the gas price");
+                }
+
+                if (string.IsNullOrEmpty(surgeConfig.TaikoInboxAddress))
+                {
+                    throw new ArgumentException("TaikoInboxAddress must be provided in the Surge configuration to compute the gas price");
+                }
+
+                var l1RpcClient = new BasicJsonRpcClient(
+                    new Uri(surgeConfig.L1EthApiEndpoint),
+                    ctx.Resolve<IJsonSerializer>(),
+                    ctx.Resolve<ILogManager>());
+
+                return new SurgeGasPriceOracle(
+                    ctx.Resolve<IBlockFinder>(),
+                    ctx.Resolve<ILogManager>(),
+                    specProvider,
+                    ctx.Resolve<IBlocksConfig>().MinGasPrice,
+                    l1RpcClient,
+                    surgeConfig);
+            })
 
             // Rpc
             .RegisterSingletonJsonRpcModule<ITaikoExtendedEthRpcModule, TaikoExtendedEthModule>()
 
             // Need to set the rlp globally
-            .OnBuild((ctx) =>
+            .OnBuild(ctx =>
             {
                 Rlp.RegisterDecoder(typeof(L1Origin), ctx.Resolve<IRlpStreamDecoder<L1Origin>>());
             })

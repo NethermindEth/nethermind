@@ -15,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
+[assembly: InternalsVisibleTo("Nethermind.State")]
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
@@ -42,10 +43,11 @@ namespace Nethermind.Core
         // Field indicating if this transaction is exempt from the L2 gas limit.
         public bool IsOPSystemTransaction { get; set; }
 
+        private UInt256 _gasPrice;
         public UInt256 Nonce { get; set; }
-        public UInt256 GasPrice { get; set; }
+        public UInt256 GasPrice { get => _gasPrice; set => _gasPrice = value; }
         public UInt256? GasBottleneck { get; set; }
-        public UInt256 MaxPriorityFeePerGas => GasPrice;
+        public ref readonly UInt256 MaxPriorityFeePerGas => ref _gasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
         public UInt256 MaxFeePerGas => Supports1559 ? DecodedMaxFeePerGas : GasPrice;
         public bool SupportsAccessList => Type.SupportsAccessList();
@@ -120,6 +122,7 @@ namespace Nethermind.Core
         }
 
         private Memory<byte> _preHash;
+        internal ref readonly Memory<byte> PreHash => ref _preHash;
         private IMemoryOwner<byte>? _preHashMemoryOwner;
         public void SetPreHash(ReadOnlySpan<byte> transactionSequence)
         {

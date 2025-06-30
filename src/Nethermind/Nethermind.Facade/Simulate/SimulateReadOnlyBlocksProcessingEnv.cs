@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.OverridableEnv;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -31,11 +32,11 @@ public class SimulateBlockValidationTransactionsExecutor(
     UInt256? blobBaseFeeOverride)
     : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
 {
-    protected override void EnhanceBlockExecutionContext(Block block)
+    protected override void EnhanceBlockExecutionContext(Block block, IReleaseSpec spec)
     {
         if (blobBaseFeeOverride is not null)
         {
-            SetBlockExecutionContext(new BlockExecutionContext(block.Header, blobBaseFeeOverride.Value));
+            SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec, blobBaseFeeOverride.Value));
         }
     }
 
