@@ -156,7 +156,7 @@ jobs:
           sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
 
       - name: Set up Go environment
-        uses: actions/setup-go@v3.0.0
+        uses: actions/setup-go@v5.5.0
         with:
           go-version: '>=1.17.0'
 
