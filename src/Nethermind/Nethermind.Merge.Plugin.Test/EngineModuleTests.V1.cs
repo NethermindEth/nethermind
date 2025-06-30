@@ -764,7 +764,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         // adding PoW block
-        await chain.AddBlock();
+        await chain.AddBlockThroughPoW();
 
         // creating PoS block
         Block? head = chain.BlockTree.Head;

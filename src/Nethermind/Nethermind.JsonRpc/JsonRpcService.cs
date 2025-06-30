@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -38,59 +39,71 @@ public class JsonRpcService : IJsonRpcService
 
     public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
+        (int? errorCode, string errorMessage) = Validate(rpcRequest, context);
+        if (errorCode.HasValue)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Validation error when handling request: {rpcRequest}");
+            return GetErrorResponse(rpcRequest.Method, errorCode.Value, errorMessage, null, rpcRequest.Id);
+        }
+
+        Exception error;
         try
         {
-            (int? errorCode, string errorMessage) = Validate(rpcRequest, context);
-            if (errorCode.HasValue)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Validation error when handling request: {rpcRequest}");
-                return GetErrorResponse(rpcRequest.Method, errorCode.Value, errorMessage, null, rpcRequest.Id);
-            }
-
-            try
-            {
-                return await ExecuteRequestAsync(rpcRequest, context);
-            }
-            catch (TargetInvocationException ex)
-            {
-                if (_logger.IsError)
-                    _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
-                return GetErrorResponse(rpcRequest.Method, ErrorCodes.InternalError, "Internal error",
-                    ex.InnerException?.ToString(), rpcRequest.Id);
-            }
-            catch (LimitExceededException ex)
-            {
-                if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-                return GetErrorResponse(rpcRequest.Method, ErrorCodes.LimitExceeded, "Too many requests", ex.ToString(), rpcRequest.Id);
-            }
-            catch (ModuleRentalTimeoutException ex)
-            {
-                if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-                return GetErrorResponse(rpcRequest.Method, ErrorCodes.ModuleTimeout, "Timeout", ex.ToString(), rpcRequest.Id);
-            }
+            return await ExecuteRequestAsync(rpcRequest, context);
         }
         catch (Exception ex)
+        {
+            error = ex;
+        }
+
+        return ReturnErrorResponse(rpcRequest, error);
+    }
+
+    private JsonRpcErrorResponse ReturnErrorResponse(JsonRpcRequest rpcRequest, Exception ex)
+    {
+        int errorCode;
+        string errorText;
+        if (ex is TargetInvocationException tx)
+        {
+            errorCode = ErrorCodes.InternalError;
+            ex = tx.InnerException;
+            errorText = "Internal error";
+        }
+        else if (ex is LimitExceededException)
+        {
+            errorCode = ErrorCodes.LimitExceeded;
+            errorText = "Too many requests";
+        }
+        else if (ex is ModuleRentalTimeoutException)
+        {
+            errorCode = ErrorCodes.ModuleTimeout;
+            errorText = "Timeout";
+        }
+        else
         {
             if (_logger.IsError) _logger.Error($"Error during validation, request: {rpcRequest}", ex);
             return GetErrorResponse(ErrorCodes.ParseError, "Parse error", rpcRequest.Id, rpcRequest.Method);
         }
+
+        if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
+        return GetErrorResponse(rpcRequest.Method, errorCode, errorText, ex.ToString(), rpcRequest.Id);
     }
 
-    private async Task<JsonRpcResponse> ExecuteRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
+    private Task<JsonRpcResponse> ExecuteRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
         string methodName = rpcRequest.Method.Trim();
 
         ResolvedMethodInfo? result = _rpcModuleProvider.Resolve(methodName);
         return result?.MethodInfo is not null
-            ? await ExecuteAsync(rpcRequest, methodName, result, context)
-            : GetErrorResponse(methodName, ErrorCodes.MethodNotFound, "Method not found", $"{rpcRequest.Method}", rpcRequest.Id);
+            ? ExecuteAsync(rpcRequest, methodName, result, context)
+            : Task.FromResult<JsonRpcResponse>(GetErrorResponse(methodName, ErrorCodes.MethodNotFound, "Method not found", $"{rpcRequest.Method}", rpcRequest.Id));
     }
 
     private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
         JsonElement providedParameters = request.Params;
 
-        LogRequest(methodName, providedParameters, method.ExpectedParameters);
+        if (_logger.IsTrace) LogRequest(methodName, providedParameters, method.ExpectedParameters);
 
         var providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
         int missingParamsCount = method.ExpectedParameters.Length - providedParametersLength;
@@ -233,7 +246,7 @@ public class JsonRpcService : IJsonRpcService
 
     private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)
     {
-        if (_logger.IsDebug && !_methodsLoggingFiltering.Contains(methodName))
+        if (_logger.IsTrace && !_methodsLoggingFiltering.Contains(methodName))
         {
             StringBuilder builder = new StringBuilder();
             builder.Append("Executing JSON RPC call ");
@@ -273,7 +286,7 @@ public class JsonRpcService : IJsonRpcService
             }
             builder.Append(']');
             string log = builder.ToString();
-            _logger.Debug(log);
+            _logger.Trace(log);
         }
     }
 
@@ -310,7 +323,7 @@ public class JsonRpcService : IJsonRpcService
             if (providedParameter.ValueKind == JsonValueKind.String)
             {
                 JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
-                executionParam = converter.GetType().FullName.StartsWith("System.")
+                executionParam = converter.GetType().Namespace.StartsWith("System.", StringComparison.Ordinal)
                     ? JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions)
                     : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
             }
@@ -448,15 +461,26 @@ public class JsonRpcService : IJsonRpcService
         methodName = methodName.Trim();
 
         ModuleResolution result = _rpcModuleProvider.Check(methodName, context, out string? module);
-        return result switch
+        if (result == ModuleResolution.Enabled)
         {
-            ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, $"The method '{methodName}' is not supported."),
-            ModuleResolution.Disabled => (ErrorCodes.InvalidRequest,
-                $"The method '{methodName}' is found but the namespace '{module}' is disabled for {context.Url?.ToString() ?? "n/a"}. Consider adding the namespace '{module}' to JsonRpc.AdditionalRpcUrls for an additional URL, or to JsonRpc.EnabledModules for the default URL."),
-            ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest,
-                $"The method '{methodName}' is found in namespace '{module}' for {context.Url?.ToString() ?? "n/a"}' but is disabled for {context.RpcEndpoint}."),
-            ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated."),
-            _ => (null, null)
-        };
+            return (null, null);
+        }
+
+        return GetErrorResult(methodName, context, result, module);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static (int? ErrorType, string ErrorMessage) GetErrorResult(string methodName, JsonRpcContext context, ModuleResolution result, string module)
+        {
+            return result switch
+            {
+                ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, $"The method '{methodName}' is not supported."),
+                ModuleResolution.Disabled => (ErrorCodes.InvalidRequest,
+                    $"The method '{methodName}' is found but the namespace '{module}' is disabled for {context.Url?.ToString() ?? "n/a"}. Consider adding the namespace '{module}' to JsonRpc.AdditionalRpcUrls for an additional URL, or to JsonRpc.EnabledModules for the default URL."),
+                ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest,
+                    $"The method '{methodName}' is found in namespace '{module}' for {context.Url?.ToString() ?? "n/a"}' but is disabled for {context.RpcEndpoint}."),
+                ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated."),
+                _ => (null, null)
+            };
+        }
     }
 }

@@ -3,24 +3,35 @@
 
 using Autofac;
 using Nethermind.Api.Steps;
+using Nethermind.Core;
+using Nethermind.Core.PubSub;
+using Nethermind.Grpc;
+using Nethermind.Grpc.Producers;
+using Nethermind.Grpc.Servers;
 using Nethermind.Runner.Ethereum.Steps;
 
 namespace Nethermind.Runner.Ethereum.Modules;
 
-public class StartRpcStepsModule : Module
+public class StartRpcStepsModule(IGrpcConfig grpcConfig) : Module
 {
-    // These cant be referred in `Nethermind.Init`.
-    public static readonly StepInfo[] BuiltInSteps =
-    [
-        typeof(StartGrpc),
-        typeof(StartRpc),
-    ];
-
     protected override void Load(ContainerBuilder builder)
     {
-        foreach (var builtInStep in BuiltInSteps)
+        builder
+            .AddStep(typeof(StartRpc));
+
+        if (grpcConfig.Enabled)
         {
-            builder.AddStep(builtInStep);
+
+            builder
+                .AddStep(typeof(StartGrpc))
+
+                // Grpc server components.
+                .AddSingleton<GrpcServer>()
+                    .Bind<NethermindService.NethermindServiceBase, GrpcServer>()
+                    .Bind<IGrpcServer, GrpcServer>()
+
+                .AddSingleton<IPublisher, GrpcPublisher>()
+                .AddSingleton<GrpcRunner>();
         }
     }
 }

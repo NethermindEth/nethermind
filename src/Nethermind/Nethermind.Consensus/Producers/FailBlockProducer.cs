@@ -19,6 +19,7 @@ public class FailBlockProducer : IBlockProducer
         BlockHeader? parentHeader = null,
         IBlockTracer? blockTracer = null,
         PayloadAttributes? payloadAttributes = null,
+        IBlockProducer.Flags flags = IBlockProducer.Flags.None,
         CancellationToken cancellationToken = default)
     {
         throw new InvalidOperationException("FailBlockProducer is not supposed to produce blocks.");

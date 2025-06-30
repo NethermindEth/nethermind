@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -22,7 +23,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
 
     public OptimismPayloadPreparationService(
         ISpecProvider specProvider,
-        PostMergeBlockProducer blockProducer,
+        IBlockProducer blockProducer,
         IBlockImprovementContextFactory blockImprovementContextFactory,
         ITimerFactory timerFactory,
         ILogManager logManager,
