@@ -1782,6 +1782,7 @@ internal static class OpcodeEmitters
         envLoader.LoadVmState(method, locals, false);
         method.LoadLocal(locals.address);
         envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, false);
         method.LoadConstant(true);
         method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeAccountAccessGas)));
     }
@@ -2059,7 +2060,10 @@ internal static class OpcodeEmitters
     internal static void EmitSStoreInstruction<TDelegateType>(
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
-        Label endOfOpcode;
+        Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
+        Label metered = method.DefineLabel(locals.GetLabelName());
+        Label endOfOpcodeHandling = method.DefineLabel(locals.GetLabelName());
+
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.LoadLocalAddress(locals.uint256A);
         method.Call(Word.GetUInt256ByRef);
@@ -2068,23 +2072,47 @@ internal static class OpcodeEmitters
         method.Call(Word.GetReadOnlySpan);
         method.StoreLocal(locals.localReadonOnlySpan);
 
-        envLoader.LoadVmState(method, locals, false);
 
+        envLoader.LoadSpec(method, locals, false);
+        method.CallVirtual(typeof(IReleaseSpec).GetProperty(nameof(IReleaseSpec.UseNetGasMeteringWithAStipendFix)).GetGetMethod());
+        method.BranchIfTrue(metered);
+
+        envLoader.LoadVmState(method, locals, false);
         envLoader.LoadWorldState(method, locals, false);
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localReadonOnlySpan);
         envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, false);
 
 
-        MethodInfo SStoreMethod = typeof(VirtualMachineDependencies)
-                    .GetMethod(nameof(VirtualMachineDependencies.InstructionSStore), BindingFlags.Static | BindingFlags.Public);
+        MethodInfo SStoreMethodUnMetered = typeof(VirtualMachineDependencies)
+                    .GetMethod(nameof(VirtualMachineDependencies.InstructionSStoreUnmetered), BindingFlags.Static | BindingFlags.Public);
 
-        method.Call(SStoreMethod);
-
-        endOfOpcode = method.DefineLabel(locals.GetLabelName());
-        method.Duplicate();
+        method.Call(SStoreMethodUnMetered);
         method.StoreLocal(locals.uint32A);
+
+        method.Branch(endOfOpcodeHandling);
+
+        method.MarkLabel(metered);
+
+        envLoader.LoadVmState(method, locals, false);
+        envLoader.LoadWorldState(method, locals, false);
+        method.LoadLocalAddress(locals.gasAvailable);
+        method.LoadLocalAddress(locals.uint256A);
+        method.LoadLocalAddress(locals.localReadonOnlySpan);
+        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, false);
+
+
+        MethodInfo SStoreMethodMetered = typeof(VirtualMachineDependencies)
+                    .GetMethod(nameof(VirtualMachineDependencies.InstructionSStoreMetered), BindingFlags.Static | BindingFlags.Public);
+
+        method.Call(SStoreMethodMetered);
+        method.StoreLocal(locals.uint32A);
+
+        method.MarkLabel(endOfOpcodeHandling);
+        method.LoadLocal(locals.uint32A);
         method.LoadConstant((int)EvmExceptionType.None);
         method.BranchIfEqual(endOfOpcode);
 
@@ -2132,11 +2160,13 @@ internal static class OpcodeEmitters
         method.Call(Word.GetAddress);
         method.LoadLocalAddress(locals.gasAvailable);
         envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadTxTracer(method, locals, false);
+
         method.Call(selfDestruct);
 
         method.StoreLocal(locals.uint32A);
         method.LoadLocal(locals.uint32A);
-        method.LoadConstant((int)EvmExceptionType.None);
+        method.LoadConstant((int)EvmExceptionType.Stop);
         method.BranchIfEqual(happyPath);
 
         envLoader.LoadResult(method, locals, true);
