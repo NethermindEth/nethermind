@@ -11,25 +11,28 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.State;
+using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
     public class ProofModuleFactory(
         ILifetimeScope rootLifetimeScope,
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory
+        IOverridableEnvFactory overridableEnvFactory
     ) : ModuleFactoryBase<IProofRpcModule>
     {
 
         public override IProofRpcModule Create()
         {
             // Note: No overridable world scope here. So there aren't any risk of leaking KV store.
-            IReadOnlyTxProcessingScope txProcessingEnv = readOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
+            var env = overridableEnvFactory.Create();
 
             ILifetimeScope tracerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             {
                 builder
 
                     // Standard read only chain setting
+                    .AddModule(env)
                     .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
                     .AddScoped<ITransactionProcessorAdapter, TraceTransactionProcessorAdapter>()
                     .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
@@ -40,7 +43,6 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     .AddScoped<IReceiptStorage>(new InMemoryReceiptStorage()) // Umm.... not `NullReceiptStorage`?
                     .AddScoped<IRewardCalculator>(NoBlockRewards.Instance)
 
-                    .AddScoped<IWorldState>(txProcessingEnv.WorldState)
                     .AddScoped<ITracer, Tracer>()
                     ;
             });
