@@ -2246,6 +2246,8 @@ internal static class OpcodeEmitters
 
         envLoader.LoadReturnDataBuffer(method, locals, true);
 
+        envLoader.LoadTxTracer(method, locals, false);
+
         method.LoadLocalAddress(newStateToExe);
 
         method.Call(callMethod);
