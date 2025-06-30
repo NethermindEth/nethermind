@@ -273,6 +273,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             IBeaconPivot beaconPivot = _api.Context.Resolve<IBeaconPivot>();
 
             NewPayloadHandler newPayloadHandler = new(
+                    payloadPreparationService,
                     _api.BlockValidator,
                     _api.BlockTree,
                     _poSSwitcher,
@@ -282,15 +283,9 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     _api.BlockProcessingQueue,
                     _invalidChainTracker,
                     beaconSync,
-                    _api.LogManager,
-                    TimeSpan.FromSeconds(mergeConfig.NewPayloadTimeout),
-                    _api.Config<IReceiptConfig>().StoreReceipts);
-
-            bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
-            if (simulateBlockProduction)
-            {
-                newPayloadHandler.NewPayloadForParentReceived += payloadPreparationService.CancelBlockProductionForParent;
-            }
+                    mergeConfig,
+                    _api.Config<IReceiptConfig>(),
+                    _api.LogManager);
 
             IEngineRpcModule engineRpcModule = new EngineRpcModule(
                 new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -312,8 +307,8 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     peerRefresher,
                     _api.SpecProvider,
                     _api.SyncPeerPool!,
-                    _api.LogManager,
-                    simulateBlockProduction),
+                    mergeConfig,
+                    _api.LogManager),
                 new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
                 new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),

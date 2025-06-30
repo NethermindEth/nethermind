@@ -153,6 +153,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
         NewPayloadHandler newPayloadHandler = new(
+            payloadPreparationService,
             _api.BlockValidator,
             _api.BlockTree,
             posSwitcher,
@@ -162,14 +163,9 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _api.BlockProcessingQueue,
             _invalidChainTracker,
             beaconSync,
-            _api.LogManager,
-            TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
-            _api.Config<IReceiptConfig>().StoreReceipts);
-        bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
-        if (simulateBlockProduction)
-        {
-            newPayloadHandler.NewPayloadForParentReceived += payloadPreparationService.CancelBlockProductionForParent;
-        }
+            _mergeConfig,
+            _api.Config<IReceiptConfig>(),
+            _api.LogManager);
 
         IEngineRpcModule engineRpcModule = new EngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -191,8 +187,8 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 peerRefresher,
                 _api.SpecProvider,
                 _api.SyncPeerPool!,
-                _api.LogManager,
-                simulateBlockProduction),
+                _mergeConfig,
+                _api.LogManager),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(posSwitcher, _api.LogManager),

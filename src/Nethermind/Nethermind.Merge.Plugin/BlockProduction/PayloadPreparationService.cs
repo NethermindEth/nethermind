@@ -431,10 +431,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         _shutdown.Cancel();
     }
 
-    public void CancelBlockProductionForParent(object? sender, BlockHeader parentHeader)
+    public void CancelBlockProduction(string payloadId)
     {
-        PayloadAttributes payloadAttributes = parentHeader.GenerateSimulatedPayload();
-        string payloadId = payloadAttributes.GetPayloadId(parentHeader);
         // GetPayload cancels the request
         _ = GetPayload(payloadId);
     }

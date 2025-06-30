@@ -12,6 +12,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -137,6 +138,7 @@ public abstract partial class BaseEngineModuleTests
                 chain.SpecProvider!,
                 chain.LogManager),
             new NewPayloadHandler(
+                chain.PayloadPreparationService,
                 chain.BlockValidator,
                 chain.BlockTree,
                 chain.PoSSwitcher,
@@ -146,9 +148,9 @@ public abstract partial class BaseEngineModuleTests
                 chain.BlockProcessingQueue,
                 invalidChainTracker,
                 chain.BeaconSync,
+                new MergeConfig() { NewPayloadTimeout = newPayloadTimeout?.TotalSeconds ?? 7.0 },
+                chain.Container.Resolve<IReceiptConfig>(),
                 chain.LogManager,
-                newPayloadTimeout,
-                storeReceipts: true,
                 newPayloadCacheSize),
             new ForkchoiceUpdatedHandler(
                 chain.BlockTree,
@@ -163,6 +165,7 @@ public abstract partial class BaseEngineModuleTests
                 peerRefresher,
                 chain.SpecProvider,
                 chain.SyncPeerPool,
+                chain.Container.Resolve<IMergeConfig>(),
                 chain.LogManager),
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
@@ -248,7 +251,7 @@ public abstract partial class BaseEngineModuleTests
     public class MergeTestBlockchain : TestBlockchain
     {
         public IMergeConfig MergeConfig { get; init; }
-        public IPayloadPreparationService? PayloadPreparationService => Container.Resolve<IPayloadPreparationService>();
+        public IPayloadPreparationService PayloadPreparationService => Container.Resolve<IPayloadPreparationService>();
         public StoringBlockImprovementContextFactory StoringBlockImprovementContextFactory => (StoringBlockImprovementContextFactory)BlockImprovementContextFactory;
 
         public Task WaitForImprovedBlock(Hash256? parentHash = null)
