@@ -1757,7 +1757,7 @@ namespace Nethermind.Evm.Test.ILEVM
                     .Done, EvmExceptionType.StackUnderflow);
 
 
-                // big test to check if Bytecode current maxSize fails to compile or run 
+                // big test to check if Bytecode current maxSize fails to compile or run
                 long maxSize = 24.KiB();
 
                 byte[] bytecode = new byte[maxSize];
@@ -1865,7 +1865,7 @@ namespace Nethermind.Evm.Test.ILEVM
 
             for (int i = 0; i < RepeatCount; i++)
             {
-                enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, forceAnalysis: false);
+                enhancedChain.Execute(bytecode, NullTxTracer.Instance, forceAnalysis: false);
             }
 
             Assert.That(AotContractsRepository.TryGetIledCode(codehash, out var iledCode), Is.True);
@@ -1936,11 +1936,11 @@ namespace Nethermind.Evm.Test.ILEVM
             var address = standardChain.InsertCode(testcase.bytecode);
             enhancedChain.InsertCode(testcase.bytecode);
 
-            standardChain.Execute<ITxTracer>(testcase.bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes);
+            standardChain.Execute(testcase.bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes);
 
             Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(0));
 
-            enhancedChain.Execute<ITxTracer>(testcase.bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes, forceAnalysis: true);
+            enhancedChain.Execute(testcase.bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes, forceAnalysis: true);
 
             var actual = standardChain.StateRoot;
             var expected = enhancedChain.StateRoot;
@@ -1989,7 +1989,7 @@ namespace Nethermind.Evm.Test.ILEVM
             AotContractsRepository.AddIledCode(hashcode, method.CreateDelegate<ILEmittedMethod>());
             Assert.That(AotContractsRepository.TryGetIledCode(hashcode, out var iledCode), Is.True, "AOT code is not found in the repository");
 
-            enhancedChain.Execute<ITxTracer>(testcase.bytecode, NullTxTracer.Instance, forceAnalysis: false);
+            enhancedChain.Execute(testcase.bytecode, NullTxTracer.Instance, forceAnalysis: false);
         }
 
 
@@ -2066,13 +2066,13 @@ namespace Nethermind.Evm.Test.ILEVM
             Assert.That(isCode2Whitelisted, Is.False, "AOT code should not be whitelisted for non-whitelisted contract");
 
 
-            enhancedChain.Execute<ITxTracer>(bytecode1, NullTxTracer.Instance, forceAnalysis: false);
-            enhancedChain.Execute<ITxTracer>(bytecode2, NullTxTracer.Instance, forceAnalysis: false);
+            enhancedChain.Execute(bytecode1, NullTxTracer.Instance, forceAnalysis: false);
+            enhancedChain.Execute(bytecode2, NullTxTracer.Instance, forceAnalysis: false);
 
             Thread.Sleep(TimeSpan.FromSeconds(5));
 
-            enhancedChain.Execute<ITxTracer>(bytecode1, NullTxTracer.Instance, forceAnalysis: false);
-            enhancedChain.Execute<ITxTracer>(bytecode2, NullTxTracer.Instance, forceAnalysis: false);
+            enhancedChain.Execute(bytecode1, NullTxTracer.Instance, forceAnalysis: false);
+            enhancedChain.Execute(bytecode2, NullTxTracer.Instance, forceAnalysis: false);
 
             var codeInfo1 = enhancedChain.GetCodeInfo(address1) as CodeInfo;
             AotContractsRepository.TryGetIledCode(codeHash1, out var iledCodeAfter);

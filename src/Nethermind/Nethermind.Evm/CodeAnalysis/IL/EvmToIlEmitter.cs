@@ -2310,7 +2310,10 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         MethodInfo callMethod = typeof(VirtualMachineDependencies)
-            .GetMethod(nameof(VirtualMachineDependencies.InstructionCreate), BindingFlags.Static | BindingFlags.Public);
+            .GetMethod(nameof(VirtualMachineDependencies.InstructionCreate), BindingFlags.Static | BindingFlags.Public)
+            .MakeGenericMethod(op == Instruction.CREATE
+                ? typeof(EvmInstructions.OpCreate)
+                : typeof(EvmInstructions.OpCreate2));
 
         using Local toPushToStack = method.DeclareLocal(typeof(UInt256?), locals.GetLocalName());
         using Local newStateToExe = method.DeclareLocal<object>(locals.GetLocalName());
@@ -2321,8 +2324,6 @@ internal static class OpcodeEmitters
         envLoader.LoadCodeInfoRepository(method, locals, false);
         method.LoadLocalAddress(locals.gasAvailable);
         envLoader.LoadSpec(method, locals, false);
-
-        method.LoadConstant((int)op);
 
         int index = 1;
 

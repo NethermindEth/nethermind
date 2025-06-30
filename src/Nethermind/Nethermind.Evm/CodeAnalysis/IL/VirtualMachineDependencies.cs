@@ -39,32 +39,39 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             gasAvailable += refund;
         }
 
-        private static bool ChargeAccountAccessGasWithDelegation(ref long gasAvailable, ICodeInfoRepository codeInfoRepository, IWorldState state, EvmState vmState, Address address, IReleaseSpec spec, ITxTracer txTracer, bool chargeForWarm = true)
+        private static bool ChargeAccountAccessGasWithDelegation(ref long gasAvailable,
+            ICodeInfoRepository codeInfoRepository, IWorldState state, EvmState vmState, Address address,
+            IReleaseSpec spec, ITxTracer txTracer, bool chargeForWarm = true)
         {
             if (!spec.UseHotAndColdStorage)
             {
                 // No extra cost if hot/cold storage is not used.
                 return true;
             }
-            bool notOutOfGas = ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, txTracer, chargeForWarm);
+
+            bool notOutOfGas =
+                ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, txTracer, chargeForWarm);
             return notOutOfGas
                    && (!codeInfoRepository.TryGetDelegation(state, address, spec, out Address delegated)
                        // Charge additional gas for the delegated account if it exists.
                        || ChargeAccountAccessGas(ref gasAvailable, vmState, delegated, spec, txTracer, chargeForWarm));
         }
 
-        private static bool ChargeForLargeContractAccess(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref long gasAvailable)
+        private static bool ChargeForLargeContractAccess(uint excessContractSize, Address codeAddress,
+            in StackAccessTracker accessTracer, ref long gasAvailable)
         {
             if (accessTracer.WarmUpLargeContract(codeAddress))
             {
-                long largeContractCost = GasCostOf.InitCodeWord * EvmInstructions.Div32Ceiling(excessContractSize, out bool outOfGas);
+                long largeContractCost = GasCostOf.InitCodeWord *
+                                         EvmInstructions.Div32Ceiling(excessContractSize, out bool outOfGas);
                 if (outOfGas || !UpdateGas(largeContractCost, ref gasAvailable)) return false;
             }
 
             return true;
         }
 
-        public static bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, ITxTracer txTracer, bool chargeForWarm = true)
+        public static bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address,
+            IReleaseSpec spec, ITxTracer txTracer, bool chargeForWarm = true)
         {
             bool result = true;
             if (spec.UseHotAndColdStorage)
@@ -97,7 +104,8 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             SSTORE
         }
 
-        public static bool ChargeStorageAccessGas(ref long gasAvailable, EvmState vmState, in StorageCell storageCell, StorageAccessType storageAccessType, IReleaseSpec spec, ITxTracer txTracer)
+        public static bool ChargeStorageAccessGas(ref long gasAvailable, EvmState vmState, in StorageCell storageCell,
+            StorageAccessType storageAccessType, IReleaseSpec spec, ITxTracer txTracer)
         {
             bool result = true;
 
@@ -126,7 +134,6 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             }
 
             return result;
-
         }
 
 
@@ -137,7 +144,8 @@ namespace Nethermind.Evm.CodeAnalysis.IL
                 Instruction.DELEGATECALL => ExecutionType.DELEGATECALL,
                 Instruction.STATICCALL => ExecutionType.STATICCALL,
                 Instruction.CALLCODE => ExecutionType.CALLCODE,
-                _ => throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}")
+                _ => throw new NotSupportedException(
+                    $"Execution type is undefined for {instruction.GetName(isPostMerge)}")
             };
 
         [SkipLocalsInit]
@@ -165,7 +173,8 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             Metrics.IncrementCalls();
 
             // Charge gas for accessing the account's code (including delegation logic if applicable).
-            if (!ChargeAccountAccessGasWithDelegation(ref gasAvailable, codeInfoRepository, state, vmState, codeSource, spec, txTracer)) goto OutOfGas;
+            if (!ChargeAccountAccessGasWithDelegation(ref gasAvailable, codeInfoRepository, state, vmState, codeSource,
+                    spec, txTracer)) goto OutOfGas;
 
             ref readonly ExecutionEnvironment env = ref vmState.Env;
             // Determine the call value based on the call type.
@@ -215,9 +224,11 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             if (spec.IsEip7907Enabled)
             {
                 uint excessContractSize = (uint)Math.Max(0, codeInfo.Code.Length - CodeSizeConstants.MaxCodeSizeEip170);
-                if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, codeSource, in vmState.AccessTracker, ref gasAvailable))
+                if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, codeSource,
+                        in vmState.AccessTracker, ref gasAvailable))
                     goto OutOfGas;
             }
+
             // Apply the 63/64 gas rule if enabled.
             if (spec.Use63Over64Rule)
             {
@@ -298,7 +309,8 @@ namespace Nethermind.Evm.CodeAnalysis.IL
 
             // Fast-call path for non-contract calls:
             // Directly credit the target account and avoid constructing a full call frame.
-            static EvmExceptionType FastCall(IWorldState state, IReleaseSpec spec, in UInt256 transferValue, Address target, out ReadOnlyMemory<byte> returnBuffer)
+            static EvmExceptionType FastCall(IWorldState state, IReleaseSpec spec, in UInt256 transferValue,
+                Address target, out ReadOnlyMemory<byte> returnBuffer)
             {
                 state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
                 Metrics.IncrementEmptyCalls();
@@ -313,9 +325,9 @@ namespace Nethermind.Evm.CodeAnalysis.IL
         }
 
         [SkipLocalsInit]
-        public static EvmExceptionType InstructionSelfDestruct(EvmState vmState, IWorldState state, Address inheritor, ref long gasAvailable, IReleaseSpec spec, ITxTracer txTracer)
+        public static EvmExceptionType InstructionSelfDestruct(EvmState vmState, IWorldState state, Address inheritor,
+            ref long gasAvailable, IReleaseSpec spec, ITxTracer txTracer)
         {
-
             Metrics.IncrementSelfDestructs();
 
             // SELFDESTRUCT is forbidden during static calls.
@@ -377,18 +389,20 @@ namespace Nethermind.Evm.CodeAnalysis.IL
         }
 
         [SkipLocalsInit]
-        public static EvmExceptionType InstructionCreate(
-            EvmState vmState, IWorldState state, ICodeInfoRepository codeInfoRepository, ref long gasAvailable, IReleaseSpec spec, Instruction instruction,
+        public static EvmExceptionType InstructionCreate<TOpCreate>(
+            EvmState vmState, IWorldState state, ICodeInfoRepository codeInfoRepository, ref long gasAvailable,
+            IReleaseSpec spec,
             UInt256 value, UInt256 memoryPositionOfInitCode, UInt256 initCodeLength, Span<byte> salt,
             out UInt256? statusReturn,
             ref ReadOnlyMemory<byte> returnDataBuffer,
             out object callState)
+            where TOpCreate : IOpCreate
         {
-            callState = null;
-            statusReturn = null;
-
             // Increment metrics counter for contract creation operations.
             Metrics.IncrementCreates();
+
+            callState = null;
+            statusReturn = null;
 
             // Obtain the current EVM specification and check if the call is static (static calls cannot create contracts).
             if (vmState.IsStatic)
@@ -403,9 +417,6 @@ namespace Nethermind.Evm.CodeAnalysis.IL
                 state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
             }
 
-            // Pop parameters off the stack: value to transfer, memory position for the initialization code,
-            // and the length of the initialization code.
-
             // EIP-3860: Limit the maximum size of the initialization code.
             if (spec.IsEip3860Enabled)
             {
@@ -416,10 +427,12 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             bool outOfGas = false;
             // Calculate the gas cost for the creation, including fixed cost and per-word cost for init code.
             // Also include an extra cost for CREATE2 if applicable.
-            long gasCost = GasCostOf.Create +
-                           (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmInstructions.Div32Ceiling(in initCodeLength, out outOfGas) : 0) +
-                           (instruction == Instruction.CREATE2
-                               ? GasCostOf.Sha3Word * EvmInstructions.Div32Ceiling(in initCodeLength, out outOfGas)
+            long gasCost = //GasCostOf.Create + the initial cost is already applied before
+                           (spec.IsEip3860Enabled
+                               ? GasCostOf.InitCodeWord * Div32Ceiling(in initCodeLength, out outOfGas)
+                               : 0) +
+                           (typeof(TOpCreate) == typeof(OpCreate2)
+                               ? GasCostOf.Sha3Word * Div32Ceiling(in initCodeLength, out outOfGas)
                                : 0);
 
             // Check gas sufficiency: if outOfGas flag was set during gas division or if gas update fails.
@@ -434,7 +447,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             // This guard ensures we do not create nested contract calls beyond EVM limits.
             if (env.CallDepth >= MaxCallDepth)
             {
-                returnDataBuffer = default;
+                returnDataBuffer = Array.Empty<byte>();
                 statusReturn = UInt256.Zero;
                 goto None;
             }
@@ -461,6 +474,11 @@ namespace Nethermind.Evm.CodeAnalysis.IL
                 goto None;
             }
 
+            // End tracing if enabled, prior to switching to the new call frame.
+            // TODO: tracing!
+            // if (tx.IsActive)
+            //     vm.EndInstructionTrace(gasAvailable);
+
             // Calculate gas available for the contract creation call.
             // Use the 63/64 gas rule if specified in the current EVM specification.
             long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
@@ -470,7 +488,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             // Compute the contract address:
             // - For CREATE: based on the executing account and its current nonce.
             // - For CREATE2: based on the executing account, the provided salt, and the init code.
-            Address contractAddress = instruction is Instruction.CREATE
+            Address contractAddress = typeof(TOpCreate) == typeof(OpCreate)
                 ? ContractAddress.From(env.ExecutingAccount, state.GetNonce(env.ExecutingAccount))
                 : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
@@ -528,19 +546,20 @@ namespace Nethermind.Evm.CodeAnalysis.IL
                 callDepth: env.CallDepth + 1,
                 transferValue: in value,
                 value: in value,
-                inputData: in EvmInstructions._emptyMemory);
+                inputData: in _emptyMemory);
 
             // Rent a new frame to run the initialization code in the new execution environment.
             callState = EvmState.RentFrame(
                 gasAvailable: callGas,
                 outputDestination: 0,
                 outputLength: 0,
-                executionType: instruction is Instruction.CREATE ? ExecutionType.CREATE : ExecutionType.CREATE2,
+                executionType: TOpCreate.ExecutionType,
                 isStatic: vmState.IsStatic,
                 isCreateOnPreExistingAccount: accountExists,
                 env: in callEnv,
                 stateForAccessLists: in vmState.AccessTracker,
                 snapshot: in snapshot);
+
         None:
             return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
@@ -551,7 +570,9 @@ namespace Nethermind.Evm.CodeAnalysis.IL
         }
 
         [SkipLocalsInit]
-        public static EvmExceptionType InstructionSStoreUnmetered(EvmState vmState, IWorldState state, ref long gasAvailable, ref UInt256 result, ref ReadOnlySpan<byte> bytes, IReleaseSpec spec, ITxTracer txTracer)
+        public static EvmExceptionType InstructionSStoreUnmetered(EvmState vmState, IWorldState state,
+            ref long gasAvailable, ref UInt256 result, ref ReadOnlySpan<byte> bytes, IReleaseSpec spec,
+            ITxTracer txTracer)
         {
             // Increment the SSTORE opcode metric.
             Metrics.IncrementSStoreOpcode();
@@ -571,7 +592,8 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
             // Charge gas based on whether this is a cold or warm storage access.
-            if (!ChargeStorageAccessGas(ref gasAvailable, vmState, in storageCell, StorageAccessType.SSTORE, spec, txTracer))
+            if (!ChargeStorageAccessGas(ref gasAvailable, vmState, in storageCell, StorageAccessType.SSTORE, spec,
+                    txTracer))
                 return EvmExceptionType.OutOfGas;
             // Retrieve the current value from persistent storage.
             ReadOnlySpan<byte> currentValue = state.Get(in storageCell);
@@ -608,7 +630,9 @@ namespace Nethermind.Evm.CodeAnalysis.IL
         }
 
         [SkipLocalsInit]
-        public static EvmExceptionType InstructionSStoreMetered(EvmState vmState, IWorldState state, ref long gasAvailable, ref UInt256 result, ref ReadOnlySpan<byte> bytes, IReleaseSpec spec, ITxTracer txTracer)
+        public static EvmExceptionType InstructionSStoreMetered(EvmState vmState, IWorldState state,
+            ref long gasAvailable, ref UInt256 result, ref ReadOnlySpan<byte> bytes, IReleaseSpec spec,
+            ITxTracer txTracer)
         {
             // Increment the SSTORE opcode metric.
             Metrics.IncrementSStoreOpcode();
@@ -632,7 +656,8 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
             // Charge gas based on whether this is a cold or warm storage access.
-            if (!ChargeStorageAccessGas(ref gasAvailable, vmState, in storageCell, StorageAccessType.SSTORE, spec, txTracer))
+            if (!ChargeStorageAccessGas(ref gasAvailable, vmState, in storageCell, StorageAccessType.SSTORE, spec,
+                    txTracer))
                 return EvmExceptionType.OutOfGas;
 
             // Retrieve the current value from persistent storage.
@@ -719,7 +744,8 @@ namespace Nethermind.Evm.CodeAnalysis.IL
         }
 
 
-        public static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
+        public static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position,
+            in UInt256 length)
         {
             long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
             if (outOfGas) return false;
