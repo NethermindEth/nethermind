@@ -290,5 +290,11 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.ParentBeaconBlockRoot = parentBeaconBlockRoot;
             return this;
         }
+
+        public BlockBuilder WithEncodedSize(int? encodedSize)
+        {
+            TestObjectInternal.EncodedSize = encodedSize;
+            return this;
+        }
     }
 }

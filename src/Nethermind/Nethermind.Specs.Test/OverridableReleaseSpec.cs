@@ -121,6 +121,9 @@ namespace Nethermind.Specs.Test
 
         public bool IsEip7883Enabled => spec.IsEip7883Enabled;
 
+        public bool IsEip7934Enabled => spec.IsEip7934Enabled;
+        public int Eip7934MaxRlpBlockSize => spec.Eip7934MaxRlpBlockSize;
+
         public bool IsEip3607Enabled { get; set; } = spec.IsEip3607Enabled;
 
         public bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);

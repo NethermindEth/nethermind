@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State.Proofs;
@@ -16,12 +17,14 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class WithdrawalValidatorTests
 {
+    private static readonly BlockDecoder BlockDecoder = new();
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Not_null_withdrawals_are_invalid_pre_shanghai()
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, London.Instance));
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(new Withdrawal[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth }).TestObject);
+        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals([TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth]).TestObject);
         Assert.That(isValid, Is.False);
     }
 
