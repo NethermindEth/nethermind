@@ -247,7 +247,7 @@ public abstract partial class BaseEngineModuleTests
 
     public class MergeTestBlockchain : TestBlockchain
     {
-        public IMergeConfig MergeConfig { get; set; }
+        public IMergeConfig MergeConfig { get; init; }
         public IPayloadPreparationService? PayloadPreparationService => Container.Resolve<IPayloadPreparationService>();
         public StoringBlockImprovementContextFactory StoringBlockImprovementContextFactory => (StoringBlockImprovementContextFactory) BlockImprovementContextFactory;
 
@@ -259,13 +259,6 @@ public abstract partial class BaseEngineModuleTests
             }
             return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, b => b.Header.ParentHash == parentHash);
         }
-
-        public Task WaitForImprovedBlockWithCondition(Func<Block, bool> predicate)
-        {
-            return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, predicate);
-        }
-
-        public ISealValidator? SealValidator => Container.Resolve<ISealValidator>();
 
         public IBeaconPivot? BeaconPivot { get; set; }
 
