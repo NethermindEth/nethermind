@@ -629,14 +629,22 @@ internal static class OpcodeEmitters
     internal static void EmitBlobBaseFeeInstruction<TDelegateType>(
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
-        using Local uint256Nullable = method.DeclareLocal(typeof(UInt256?), locals.GetLocalName());
+        using Local ulongNullable = method.DeclareLocal(typeof(ulong?), locals.GetLocalName());
+
+        envLoader.LoadBlockContext(method, locals, true);
+        method.LoadFieldAddress(GetFieldInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header)));
+        method.CallVirtual(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.ExcessBlobGas), false, out _));
+        method.StoreLocal(ulongNullable);
+
+        method.LoadLocalAddress(ulongNullable);
+        method.Call(typeof(ulong?).GetProperty(nameof(Nullable<ulong>.HasValue)).GetGetMethod());
+        method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
+
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         envLoader.LoadBlockContext(method, locals, true);
-        method.LoadFieldAddress(GetFieldInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.BlobBaseFee)));
-        method.StoreLocal(uint256Nullable);
-        method.LoadLocalAddress(uint256Nullable);
-        method.Call(GetPropertyInfo(typeof(UInt256?), nameof(Nullable<UInt256>.Value), false, out _));
-        method.Call(Word.SetUInt256ByVal);
+        method.LoadField(GetFieldInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.BlobBaseFee)));
+
+        method.Call(Word.SetKeccak);
     }
 
     internal static void EmitBaseFeeInstruction<TDelegateType>(
