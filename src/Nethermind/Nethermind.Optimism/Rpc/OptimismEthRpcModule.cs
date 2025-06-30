@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -239,27 +240,40 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
             return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
-        BlockForRpc result = new BlockForRpc(block, false, _specProvider);
+        BlockForRpc result = new BlockForRpc(block, includeFullTransactionData: false, _specProvider, skipTxs: returnFullTransactionObjects);
 
         if (returnFullTransactionObjects)
         {
-            _blockchainBridge.RecoverTxSenders(block);
-            TxReceipt[] receipts = _receiptFinder.Get(block);
-            result.Transactions = result.Transactions.Select((hash, index) =>
+            if (block.Transactions.Length == 0)
             {
-                var transactionModel = TransactionForRpc.FromTransaction(
-                    transaction: block.Transactions[index],
-                    blockHash: block.Hash,
-                    blockNumber: block.Number,
-                    txIndex: index);
-                if (transactionModel is DepositTransactionForRpc depositTx)
+                result.Transactions = Array.Empty<TransactionForRpc>();
+            }
+            else
+            {
+                _blockchainBridge.RecoverTxSenders(block);
+                TxReceipt[] receipts = _receiptFinder.Get(block);
+                Transaction[] transactions = block.Transactions;
+                TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
+                for (int i = 0; i < txs.Length; i++)
                 {
-                    OptimismTxReceipt? receipt = receipts.FirstOrDefault(r => r.TxHash?.Equals(hash) ?? false) as OptimismTxReceipt;
-                    depositTx.DepositReceiptVersion = receipt?.DepositReceiptVersion;
+                    Transaction tx = transactions[i];
+                    TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(
+                        transaction: tx,
+                        blockHash: block.Hash,
+                        blockNumber: block.Number,
+                        txIndex: i);
+
+                    if (rpcTx is DepositTransactionForRpc depositTx)
+                    {
+                        OptimismTxReceipt? receipt = receipts.FirstOrDefault(r => r.TxHash?.Equals(tx.Hash) ?? false) as OptimismTxReceipt;
+                        depositTx.DepositReceiptVersion = receipt?.DepositReceiptVersion;
+                    }
+
+                    txs[i] = rpcTx;
                 }
 
-                return transactionModel;
-            });
+                result.Transactions = txs;
+            }
         }
 
         return ResultWrapper<BlockForRpc?>.Success(result);
