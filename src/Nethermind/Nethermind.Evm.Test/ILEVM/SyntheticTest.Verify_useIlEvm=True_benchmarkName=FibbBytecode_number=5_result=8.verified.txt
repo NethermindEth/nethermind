@@ -1,0 +1,103 @@
+﻿ldarg.1
+ldobj Nethermind.Evm.CodeAnalysis.IL.ILChunkExecutionState
+ldfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
+ldc.i4.2
+beq.s j2
+
+j4:
+
+j5:
+ldarg.0
+ldarg.1
+call Segment[0::10]
+brtrue.s j3
+
+j6:
+ldarg.0
+ldarg.1
+call Segment[11::16]
+brtrue.s j3
+ldarg.1
+call Boolean get_ShouldJump()
+brtrue.s j1
+
+j7:
+ldarg.0
+ldarg.1
+call Segment[17::31]
+brtrue.s j3
+ldarg.1
+call Boolean get_ShouldJump()
+brtrue.s j1
+
+j8:
+ldarg.0
+ldfld Nethermind.Evm.EvmState EvmState
+call Boolean get_IsStatic()
+brtrue.s StaticCallViolation
+ldarg.0
+ldarg.1
+call Segment[32::39]
+brtrue.s j3
+ldarg.1
+ldc.i4.4
+stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
+
+j3:
+ldarg.1
+ldfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
+ldc.i4.2
+ceq
+ret
+
+j2:
+ldarg.0
+ldfld Int32& ProgramCounter
+ldobj System.Int32
+stloc.0
+ldarg.1
+ldc.i4.1
+stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
+ldloc.0
+ldc.i4.s 40
+bge.s j3
+ldloc.0
+ldc.i4.0
+beq.s j4
+br.s InvalidJumpDestination
+
+j1:
+ldarg.1
+ldfld Int32 JumpDestination
+stloc.0
+ldloc.0
+ldc.i4.0
+beq.s j5
+ldloc.0
+ldc.i4.s 11
+beq.s j6
+ldloc.0
+ldc.i4.s 17
+beq.s j7
+ldloc.0
+ldc.i4.s 32
+beq.s j8
+br.s InvalidJumpDestination
+
+StaticCallViolation:
+ldarg.1
+dup
+ldc.i4.s 11
+stfld Nethermind.Evm.EvmExceptionType ExceptionType
+ldc.i4.8
+stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
+br.s j3
+
+InvalidJumpDestination:
+ldarg.1
+dup
+ldc.i4.8
+stfld Nethermind.Evm.EvmExceptionType ExceptionType
+ldc.i4.8
+stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
+br.s j3

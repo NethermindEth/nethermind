@@ -1,15 +1,4 @@
-﻿ldarg.s 10
-ldobj System.Int32
-stloc.s 28
-ldarg.s 11
-stloc.s 27
-ldarg.s 8
-ldobj System.Int64
-stloc.s 25
-ldarg.s 9
-ldobj System.Int32
-stloc.s 26
-ldarg.s 14
+﻿ldarg.1
 ldobj Nethermind.Evm.CodeAnalysis.IL.ILChunkExecutionState
 ldfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.2
@@ -20,303 +9,78 @@ j4:
 j5:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[0::12]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j6:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[13::64]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j7:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[65::75]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j8:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[76::86]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j9:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[87::97]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j10:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[98::108]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j11:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[109::116]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j12:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[117::118]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j13:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[119::126]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
@@ -324,7 +88,8 @@ j14:
 ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j15
-ldarg.1
+ldarg.0
+ldfld Nethermind.Core.Specs.IReleaseSpec Spec
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -335,195 +100,45 @@ stloc.s 36
 j15:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[127::130]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j17:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[131::183]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j18:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[184::185]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j19:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[186::261]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j20:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[262::263]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j21:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[264::271]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
@@ -531,7 +146,8 @@ j22:
 ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j23
-ldarg.1
+ldarg.0
+ldfld Nethermind.Core.Specs.IReleaseSpec Spec
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -542,130 +158,30 @@ stloc.s 36
 j23:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[272::275]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j25:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[276::284]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j26:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[285::350]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j27:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[351::358]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
@@ -673,7 +189,8 @@ j28:
 ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j29
-ldarg.1
+ldarg.0
+ldfld Nethermind.Core.Specs.IReleaseSpec Spec
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -684,130 +201,30 @@ stloc.s 36
 j29:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[359::362]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j31:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[363::415]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j32:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[416::417]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j33:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[418::425]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
@@ -815,7 +232,8 @@ j34:
 ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j35
-ldarg.1
+ldarg.0
+ldfld Nethermind.Core.Specs.IReleaseSpec Spec
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -826,603 +244,153 @@ stloc.s 36
 j35:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[426::429]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j37:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[430::438]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j38:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[439::504]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j39:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[505::512]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j40:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[513::523]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j41:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[524::528]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j42:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[529::530]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j43:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[531::538]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j44:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[539::590]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j45:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[591::598]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j46:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[599::603]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j47:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[604::611]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j48:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[612::612]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j49:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[613::615]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j50:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[616::623]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j51:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[624::675]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j52:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[676::683]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j53:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[684::742]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldHalt()
 brtrue j3
 
@@ -1431,34 +399,9 @@ j54:
 j55:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[743::752]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
@@ -1466,7 +409,8 @@ j56:
 ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j57
-ldarg.1
+ldarg.0
+ldfld Nethermind.Core.Specs.IReleaseSpec Spec
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -1477,501 +421,126 @@ stloc.s 36
 j57:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[753::756]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j59:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[757::761]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j60:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[762::769]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j61:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[770::770]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j62:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[771::775]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j63:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[776::785]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j64:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[786::837]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j65:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[838::844]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j66:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[845::851]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j67:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[852::859]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j68:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[860::860]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j69:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[861::863]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j70:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[864::871]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j71:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[872::923]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j72:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[924::978]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
@@ -1979,7 +548,8 @@ j73:
 ldloca.s 54
 call Boolean get_HasValue()
 brtrue.s j74
-ldarg.1
+ldarg.0
+ldfld Nethermind.Core.Specs.IReleaseSpec Spec
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -1990,538 +560,139 @@ stloc.s 54
 j74:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[979::1125]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j76:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1126::1166]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j77:
-ldarg.s 5
+ldarg.0
+ldfld Nethermind.Evm.EvmState EvmState
 call Boolean get_IsStatic()
 brtrue StaticCallViolation
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1167::1292]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j78:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1293::1297]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j79:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1298::1305]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j80:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1306::1306]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j81:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1307::1309]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j82:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1310::1319]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j83:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1320::1371]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j84:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1372::1378]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j85:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1379::1385]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j86:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1386::1393]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j87:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1394::1394]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j88:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1395::1397]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j89:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1398::1405]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j90:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1406::1459]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
@@ -2529,7 +700,8 @@ j91:
 ldloca.s 54
 call Boolean get_HasValue()
 brtrue.s j92
-ldarg.1
+ldarg.0
+ldfld Nethermind.Core.Specs.IReleaseSpec Spec
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -2540,133 +712,33 @@ stloc.s 54
 j92:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1460::1606]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j94:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1607::1614]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j95:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1615::1616]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j96:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1617::1665]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
@@ -2674,7 +746,8 @@ j97:
 ldloca.s 58
 call Boolean get_HasValue()
 brtrue.s j98
-ldarg.1
+ldarg.0
+ldfld Nethermind.Core.Specs.IReleaseSpec Spec
 ldc.i4 244
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -2685,34 +758,9 @@ stloc.s 58
 j98:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1666::1680]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldHalt()
 brtrue j3
 
@@ -2722,11 +770,13 @@ j101:
 ldloca.s 59
 call Boolean get_HasValue()
 brtrue.s j102
-ldarg.1
+ldarg.0
+ldfld Nethermind.Core.Specs.IReleaseSpec Spec
 ldc.i4.s 61
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
-ldarg.1
+ldarg.0
+ldfld Nethermind.Core.Specs.IReleaseSpec Spec
 ldc.i4.s 62
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -2737,34 +787,9 @@ stloc.s 59
 j102:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1681::1694]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
@@ -2772,7 +797,8 @@ j104:
 ldloca.s 60
 call Boolean get_HasValue()
 brtrue.s j105
-ldarg.1
+ldarg.0
+ldfld Nethermind.Core.Specs.IReleaseSpec Spec
 ldc.i4.s 61
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -2783,43 +809,20 @@ stloc.s 60
 j105:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1695::1698]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j107:
 ldloca.s 61
 call Boolean get_HasValue()
 brtrue.s j108
-ldarg.1
+ldarg.0
+ldfld Nethermind.Core.Specs.IReleaseSpec Spec
 ldc.i4.s 61
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
-ldarg.1
+ldarg.0
+ldfld Nethermind.Core.Specs.IReleaseSpec Spec
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -2830,275 +833,77 @@ stloc.s 61
 j108:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1699::1703]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
 
 j110:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1704::1752]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j111:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1753::1761]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j112:
-ldarg.s 5
+ldarg.0
+ldfld Nethermind.Evm.EvmState EvmState
 call Boolean get_IsStatic()
 brtrue StaticCallViolation
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1762::1863]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j113:
-ldarg.s 5
+ldarg.0
+ldfld Nethermind.Evm.EvmState EvmState
 call Boolean get_IsStatic()
 brtrue StaticCallViolation
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1864::1910]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j114:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1911::1912]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j115:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1913::1923]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
 j116:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1924::1930]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue j1
 
@@ -3106,7 +911,8 @@ j117:
 ldloca.s 54
 call Boolean get_HasValue()
 brtrue.s j118
-ldarg.1
+ldarg.0
+ldfld Nethermind.Core.Specs.IReleaseSpec Spec
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -3117,119 +923,47 @@ stloc.s 54
 j118:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[1931::2077]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
-brtrue j3
+brtrue.s j3
 
 j120:
-ldarg.s 5
+ldarg.0
+ldfld Nethermind.Evm.EvmState EvmState
 call Boolean get_IsStatic()
 brtrue StaticCallViolation
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[2078::2122]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue.s j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
-brtrue j1
+brtrue.s j1
 
 j121:
 ldarg.0
 ldarg.1
-ldarg.2
-ldarg.3
-ldarg.s 4
-ldarg.s 6
-ldarg.s 5
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldarg.s 5
-call Nethermind.Evm.ExecutionEnvironment& get_Env()
-ldflda Nethermind.Evm.TxExecutionContext TxExecutionContext
-ldflda Nethermind.Evm.BlockExecutionContext BlockExecutionContext
-ldarg.s 7
-ldarg.s 8
-ldarg.s 9
-ldarg.s 10
-ldloc.s 27
-ldarg.s 12
-ldarg.s 13
-ldarg.s 14
 call Segment[2123::2141]
-stloc.s 27
-ldarg.s 14
-call Boolean get_ShouldAbort()
 brtrue.s j3
-ldarg.s 14
+ldarg.1
 call Boolean get_ShouldJump()
 brtrue.s j1
-ldarg.s 14
+ldarg.1
 ldc.i4.4
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 
 j3:
-ldarg.s 14
+ldarg.1
 ldfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldc.i4.2
 ceq
 ret
 
 j2:
-ldloc.s 26
+ldarg.0
+ldfld Int32& ProgramCounter
+ldobj System.Int32
 stloc.0
-ldarg.s 14
+ldarg.1
 ldc.i4.1
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 ldloc.0
@@ -3247,7 +981,7 @@ beq j100
 br InvalidJumpDestination
 
 j1:
-ldarg.s 14
+ldarg.1
 ldfld Int32 JumpDestination
 stloc.0
 ldloc.0
@@ -3874,7 +1608,7 @@ beq j114
 br InvalidJumpDestination
 
 j242:
-br InvalidJumpDestination
+br.s InvalidJumpDestination
 
 j243:
 ldloc.0
@@ -3913,7 +1647,7 @@ beq j14
 br.s InvalidJumpDestination
 
 BadInstruction:
-ldarg.s 14
+ldarg.1
 dup
 ldc.i4.1
 stfld Nethermind.Evm.EvmExceptionType ExceptionType
@@ -3922,16 +1656,16 @@ stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 br j3
 
 StaticCallViolation:
-ldarg.s 14
+ldarg.1
 dup
-ldc.i4.s 10
+ldc.i4.s 11
 stfld Nethermind.Evm.EvmExceptionType ExceptionType
 ldc.i4.8
 stfld Nethermind.Evm.CodeAnalysis.IL.ContractState ContractState
 br j3
 
 InvalidJumpDestination:
-ldarg.s 14
+ldarg.1
 dup
 ldc.i4.8
 stfld Nethermind.Evm.EvmExceptionType ExceptionType
