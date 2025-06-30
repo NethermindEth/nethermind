@@ -25,6 +25,7 @@ namespace Nethermind.TxPool
 
         public int GetPendingTransactionsCount() => 0;
         public int GetPendingBlobTransactionsCount() => 0;
+        public long PendingTransactionsAdded => 0;
         public Transaction[] GetPendingTransactions() => [];
 
         public Transaction[] GetPendingTransactionsBySender(Address address) => [];
