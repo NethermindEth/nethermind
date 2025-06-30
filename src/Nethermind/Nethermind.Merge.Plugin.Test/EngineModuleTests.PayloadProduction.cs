@@ -132,9 +132,9 @@ public partial class EngineModuleTests
     {
         get
         {
-            yield return new TestCaseData(TimeSpan.Zero, TimeSpan.Zero, 50, 50) { TestName = "Production manages to finish" };
-            yield return new TestCaseData(TimeSpan.FromMilliseconds(10), PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay / 4, 2, 5) { TestName = "Production makes partial block" };
-            yield return new TestCaseData(TimeSpan.Zero, PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay * 2, 0, 0) { TestName = "Production takes too long" };
+            yield return new TestCaseData(TimeSpan.Zero, TimeSpan.Zero, true) { TestName = "Production manages to finish" };
+            yield return new TestCaseData(TimeSpan.FromMilliseconds(10), PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay / 4, true) { TestName = "Production makes partial block" };
+            yield return new TestCaseData(TimeSpan.Zero, PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay * 2, false) { TestName = "Production takes too long" };
         }
     }
 
@@ -170,7 +170,7 @@ public partial class EngineModuleTests
 
     [TestCaseSource(nameof(WaitTestCases))]
     [Parallelizable(ParallelScope.None)] // Timing sensitive
-    public async Task getPayloadV1_waits_for_block_production(TimeSpan txDelay, TimeSpan improveDelay, int minCount, int maxCount)
+    public async Task getPayloadV1_waits_for_block_production(TimeSpan txDelay, TimeSpan improveDelay, bool hasTx)
     {
         TaskCompletionSource yieldedTransaction = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using MergeTestBlockchain chain = await CreateBlockchain( configurer: builder => builder
@@ -196,14 +196,23 @@ public partial class EngineModuleTests
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })).Data.PayloadId!;
 
-        if (minCount > 0) {
+        if (hasTx) {
             await yieldedTransaction.Task; // Need to make sure it reached this point
             await Task.Yield();
         }
-        await Task.Delay(PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay);
+
+        TimeSpan timeBudget = PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay;
+        int expectedTxCount = 50;
+        if (txDelay != TimeSpan.Zero)
+        {
+            expectedTxCount = (int)((timeBudget - improveDelay) / txDelay);
+        }
+        if (improveDelay > timeBudget) expectedTxCount = 0;
+
+        await Task.Delay(timeBudget);
 
         Assert.That(() => rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId)).Result.Data!.Transactions,
-            Has.Length.InRange(minCount, maxCount).After(2000, 1)); // Polling interval need to be short or it might miss it.
+            Has.Length.InRange(expectedTxCount * 0.5, expectedTxCount * 2.0)); // get payload stop block improvement so retrying does nothing here.
     }
 
     [Test]
