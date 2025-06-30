@@ -19,9 +19,9 @@ public static class Configuration
         HttpHandler = new SocketsHttpHandler
         {
             EnableMultipleHttp2Connections = true,
-            KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always,
+            KeepAlivePingPolicy = HttpKeepAlivePingPolicy.WithActiveRequests,
             // TODO: For now we'll make this constants.
-            KeepAlivePingDelay = TimeSpan.FromMinutes(2),
+            KeepAlivePingDelay = TimeSpan.FromMinutes(5),
             KeepAlivePingTimeout = TimeSpan.FromSeconds(20),
         }
     };
