@@ -67,35 +67,12 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.AuRaSignature = decoderContext.DecodeByteArray();
             }
 
-            // if we didn't reach the end of the stream, assume we have basefee to decode
-            if (decoderContext.Position != headerCheck)
-            {
-                blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
-            }
-
-            int itemsRemaining = decoderContext.PeekNumberOfItemsRemaining(maxSearch: 5);
-            if (itemsRemaining > 0 &&
-                decoderContext.PeekPrefixAndContentLength().ContentLength == Hash256.Size)
-            {
-                blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
-
-                if (itemsRemaining >= 3 && decoderContext.Position != headerCheck)
-                {
-                    blockHeader.BlobGasUsed = decoderContext.DecodeULong();
-                    blockHeader.ExcessBlobGas = decoderContext.DecodeULong();
-                }
-
-                if (itemsRemaining >= 4 && decoderContext.Position != headerCheck)
-                {
-                    blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccak();
-                }
-
-                if (itemsRemaining >= 5 && decoderContext.Position != headerCheck)
-                {
-                    blockHeader.RequestsHash = decoderContext.DecodeKeccak();
-                }
-            }
-
+            if (decoderContext.Position != headerCheck) blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
+            if (decoderContext.Position != headerCheck) blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
+            if (decoderContext.Position != headerCheck) blockHeader.BlobGasUsed = decoderContext.DecodeULong();
+            if (decoderContext.Position != headerCheck) blockHeader.ExcessBlobGas = decoderContext.DecodeULong();
+            if (decoderContext.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccak();
+            if (decoderContext.Position != headerCheck) blockHeader.RequestsHash = decoderContext.DecodeKeccak();
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
@@ -160,33 +137,12 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.AuRaSignature = rlpStream.DecodeByteArray();
             }
 
-            if (rlpStream.Position != headerCheck)
-            {
-                blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
-            }
-
-            int itemsRemaining = rlpStream.PeekNumberOfItemsRemaining(null, 5);
-            if (itemsRemaining > 0 &&
-                rlpStream.PeekPrefixAndContentLength().ContentLength == Hash256.Size)
-            {
-                blockHeader.WithdrawalsRoot = rlpStream.DecodeKeccak();
-
-                if (itemsRemaining >= 3 && rlpStream.Position != headerCheck)
-                {
-                    blockHeader.BlobGasUsed = rlpStream.DecodeUlong();
-                    blockHeader.ExcessBlobGas = rlpStream.DecodeUlong();
-                }
-
-                if (itemsRemaining >= 4 && rlpStream.Position != headerCheck)
-                {
-                    blockHeader.ParentBeaconBlockRoot = rlpStream.DecodeKeccak();
-                }
-
-                if (itemsRemaining >= 5 && rlpStream.Position != headerCheck)
-                {
-                    blockHeader.RequestsHash = rlpStream.DecodeKeccak();
-                }
-            }
+            if (rlpStream.Position != headerCheck) blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
+            if (rlpStream.Position != headerCheck) blockHeader.WithdrawalsRoot = rlpStream.DecodeKeccak();
+            if (rlpStream.Position != headerCheck) blockHeader.BlobGasUsed = rlpStream.DecodeULong();
+            if (rlpStream.Position != headerCheck) blockHeader.ExcessBlobGas = rlpStream.DecodeULong();
+            if (rlpStream.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = rlpStream.DecodeKeccak();
+            if (rlpStream.Position != headerCheck) blockHeader.RequestsHash = rlpStream.DecodeKeccak();
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
@@ -235,31 +191,25 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            if (!header.BaseFeePerGas.IsZero)
+            Span<bool> requiredItems = stackalloc bool[6];
+            requiredItems[0] = !header.BaseFeePerGas.IsZero;
+            requiredItems[1] = (header.WithdrawalsRoot is not null);
+            requiredItems[2] = (header.BlobGasUsed is not null);
+            requiredItems[3] = (header.ExcessBlobGas is not null);
+            requiredItems[4] = (header.ParentBeaconBlockRoot is not null);
+            requiredItems[5] = (header.RequestsHash is not null);
+
+            for (int i = 4; i >= 0; i--)
             {
-                rlpStream.Encode(header.BaseFeePerGas);
+                requiredItems[i] |= requiredItems[i + 1];
             }
 
-            if (header.WithdrawalsRoot is not null || header.ExcessBlobGas is not null || header.BlobGasUsed is not null || header.ParentBeaconBlockRoot is not null)
-            {
-                rlpStream.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
-            }
-
-            if (header.BlobGasUsed is not null || header.ExcessBlobGas is not null || header.ParentBeaconBlockRoot is not null)
-            {
-                rlpStream.Encode(header.BlobGasUsed.GetValueOrDefault());
-                rlpStream.Encode(header.ExcessBlobGas.GetValueOrDefault());
-            }
-
-            if (header.ParentBeaconBlockRoot is not null)
-            {
-                rlpStream.Encode(header.ParentBeaconBlockRoot);
-            }
-
-            if (header.RequestsHash is not null)
-            {
-                rlpStream.Encode(header.RequestsHash);
-            }
+            if (requiredItems[0]) rlpStream.Encode(header.BaseFeePerGas);
+            if (requiredItems[1]) rlpStream.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
+            if (requiredItems[2]) rlpStream.Encode(header.BlobGasUsed.GetValueOrDefault());
+            if (requiredItems[3]) rlpStream.Encode(header.ExcessBlobGas.GetValueOrDefault());
+            if (requiredItems[4]) rlpStream.Encode(header.ParentBeaconBlockRoot);
+            if (requiredItems[5]) rlpStream.Encode(header.RequestsHash);
         }
 
         public Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -296,12 +246,7 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.GasLimit)
                                 + Rlp.LengthOf(item.GasUsed)
                                 + Rlp.LengthOf(item.Timestamp)
-                                + Rlp.LengthOf(item.ExtraData)
-                                + (item.BaseFeePerGas.IsZero ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
-                                + (item.WithdrawalsRoot is null && item.BlobGasUsed is null && item.ExcessBlobGas is null ? 0 : Rlp.LengthOfKeccakRlp)
-                                + (item.ParentBeaconBlockRoot is null ? 0 : Rlp.LengthOfKeccakRlp)
-                                + ((item.BlobGasUsed is not null || item.ExcessBlobGas is not null) ? Rlp.LengthOf(item.BlobGasUsed.GetValueOrDefault()) + Rlp.LengthOf(item.ExcessBlobGas.GetValueOrDefault()) : 0)
-                                + (item.RequestsHash is null ? 0 : Rlp.LengthOf(item.RequestsHash));
+                                + Rlp.LengthOf(item.ExtraData);
 
             if (notForSealing)
             {
@@ -318,6 +263,26 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
+
+            Span<bool> requiredItems = stackalloc bool[6];
+            requiredItems[0] = !item.BaseFeePerGas.IsZero;
+            requiredItems[1] = (item.WithdrawalsRoot is not null);
+            requiredItems[2] = (item.BlobGasUsed is not null);
+            requiredItems[3] = (item.ExcessBlobGas is not null);
+            requiredItems[4] = (item.ParentBeaconBlockRoot is not null);
+            requiredItems[5] = (item.RequestsHash is not null);
+
+            for (int i = 4; i >= 0; i--)
+            {
+                requiredItems[i] |= requiredItems[i + 1];
+            }
+
+            if (requiredItems[0]) contentLength += Rlp.LengthOf(item.BaseFeePerGas);
+            if (requiredItems[1]) contentLength += Rlp.LengthOf(item.WithdrawalsRoot ?? Keccak.Zero);
+            if (requiredItems[2]) contentLength += Rlp.LengthOf(item.BlobGasUsed.GetValueOrDefault());
+            if (requiredItems[3]) contentLength += Rlp.LengthOf(item.ExcessBlobGas.GetValueOrDefault());
+            if (requiredItems[4]) contentLength += Rlp.LengthOf(item.ParentBeaconBlockRoot);
+            if (requiredItems[5]) contentLength += Rlp.LengthOf(item.RequestsHash);
             return contentLength;
         }
 
