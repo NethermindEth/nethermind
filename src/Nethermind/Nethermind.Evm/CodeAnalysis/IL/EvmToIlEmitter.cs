@@ -354,8 +354,8 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        envLoader.LoadChainId(method, locals, false);
-        method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
+        envLoader.LoadChainId(method, locals);
+        method.Call(Word.SetKeccakByRef);
         return;
     }
     internal static void EmitLogInstructions<TDelegateType>(
@@ -533,7 +533,7 @@ internal static class OpcodeEmitters
         method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.Number), false, out _));
         method.BranchIfGreaterOrEqual(blockHashIsNull); // blockhash is assumed null if number >= current block number
 
-        envLoader.LoadBlockhashProvider(method, locals, false);
+        envLoader.LoadBlockhashProvider(method, locals);
         envLoader.LoadHeader(method, locals);
         method.LoadLocal(locals.int64A);
         envLoader.LoadSpec(method, locals);

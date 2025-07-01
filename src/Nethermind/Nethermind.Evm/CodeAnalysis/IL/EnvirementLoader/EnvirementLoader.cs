@@ -25,8 +25,6 @@ public class EnvirementLoader
 
     public static readonly FieldInfo REF_MACHINECODE_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.MachineCode), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo VM_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Vm), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo OBJ_SPECPROVIDER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.SpecProvider), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo OBJ_BLOCKHASHPROVIDER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.BlockhashProvider), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo OBJ_CODEINFOPROVIDER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.CodeInfoRepository), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo OBJ_EVMSTATE_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.EvmState), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo OBJ_WORLDSTATE_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.WorldState), BindingFlags.Public | BindingFlags.Instance);
@@ -43,6 +41,8 @@ public class EnvirementLoader
     private static readonly MethodInfo VmTxExecContextPropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.TxExecutionContext)).GetGetMethod(false);
     private static readonly MethodInfo VmBlkExecContextPropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.BlockExecutionContext)).GetGetMethod(false);
     private static readonly MethodInfo VmTxTracerPropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.TxTracer)).GetGetMethod(false);
+    private static readonly MethodInfo VmBlockHashProviderPropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.BlockHashProvider)).GetGetMethod(false);
+    private static readonly MethodInfo VmChainIdPropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.ChainId)).GetGetMethod(false);
 
     public const int REF_BUNDLED_ARGS_INDEX = 0;
     public const int REF_CURRENT_STATE_INDEX = REF_BUNDLED_ARGS_INDEX + 1;
@@ -67,17 +67,11 @@ public class EnvirementLoader
         }
     }
 
-    public void LoadBlockhashProvider<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadBlockhashProvider<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        if (loadAddress)
-        {
-            il.LoadFieldAddress(OBJ_BLOCKHASHPROVIDER_FIELD);
-        }
-        else
-        {
-            il.LoadField(OBJ_BLOCKHASHPROVIDER_FIELD);
-        }
+        il.LoadField(VM_FIELD);
+        il.Call(VmBlockHashProviderPropGet);
     }
 
     public void LoadCalldata<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
@@ -91,16 +85,12 @@ public class EnvirementLoader
         }
     }
 
-    public void LoadChainId<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadChainId<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
     {
-        LoadSpecProvider(il, locals, false);
-        il.CallVirtual(typeof(ISpecProvider).GetProperty(nameof(ISpecProvider.ChainId), BindingFlags.Public | BindingFlags.Instance).GetGetMethod());
-
-        if (loadAddress)
-        {
-            il.StoreLocal(locals.uint64A);
-            il.LoadLocalAddress(locals.uint64A);
-        }
+        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
+        il.LoadField(VM_FIELD);
+        // ref returning property
+        il.Call(VmChainIdPropGet);
     }
 
     public void LoadCodeInfoRepository<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
@@ -279,19 +269,6 @@ public class EnvirementLoader
     {
         LoadBlockContext(il, locals, true);
         il.LoadField(typeof(BlockExecutionContext).GetField(nameof(BlockExecutionContext.Header), BindingFlags.Public | BindingFlags.Instance));
-    }
-
-    public void LoadSpecProvider<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
-    {
-        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        if (loadAddress)
-        {
-            il.LoadFieldAddress(OBJ_SPECPROVIDER_FIELD);
-        }
-        else
-        {
-            il.LoadField(OBJ_SPECPROVIDER_FIELD);
-        }
     }
 
     public void LoadArguments<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)

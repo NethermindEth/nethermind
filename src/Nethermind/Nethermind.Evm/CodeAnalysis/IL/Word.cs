@@ -3,24 +3,14 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Trie;
-using Newtonsoft.Json.Linq;
-using Org.BouncyCastle.Utilities;
 using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
-using System.Text;
-using System.Threading.Tasks;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
@@ -173,6 +163,15 @@ public struct Word
                 ref byte bytes = ref Unsafe.AsRef<byte>(dest);
                 Unsafe.As<byte, ValueHash256>(ref bytes) = value;
             }
+        }
+    }
+
+    public unsafe void SetKeccakImpl(in ValueHash256 hash)
+    {
+        fixed (byte* dest = _buffer)
+        {
+            ref byte bytes = ref Unsafe.AsRef<byte>(dest);
+            Unsafe.As<byte, ValueHash256>(ref bytes) = hash;
         }
     }
 
@@ -365,6 +364,7 @@ public struct Word
 
     public static readonly MethodInfo GetKeccak = typeof(Word).GetProperty(nameof(Keccak))!.GetMethod;
     public static readonly MethodInfo SetKeccak = typeof(Word).GetProperty(nameof(Keccak))!.SetMethod;
+    public static readonly MethodInfo SetKeccakByRef = typeof(Word).GetMethod(nameof(SetKeccakImpl));
 
     public static readonly MethodInfo GetArray = typeof(Word).GetProperty(nameof(Array))!.GetMethod;
     public static readonly MethodInfo SetArray = typeof(Word).GetProperty(nameof(Array))!.SetMethod;

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -29,8 +28,6 @@ namespace Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle
 
         public EvmState EvmState;
         public readonly VirtualMachine Vm;
-        public ISpecProvider SpecProvider;
-        public IBlockhashProvider BlockhashProvider;
         public ICodeInfoRepository CodeInfoRepository;
         public IWorldState WorldState;
 
@@ -39,14 +36,11 @@ namespace Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle
         public ILChunkExecutionArguments(
             ref byte machineCode, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef,
             VirtualMachine vm,
-            EvmState evmState,
-            ISpecProvider specProvider, IBlockhashProvider blockhashProvider, ICodeInfoRepository codeInfoRepository,
+            EvmState evmState, ICodeInfoRepository codeInfoRepository,
             IWorldState worldState, ReadOnlyMemory<byte> returnDataBuffer, ILogger logger)
         {
             MachineCode = ref machineCode;
             Vm = vm;
-            SpecProvider = specProvider;
-            BlockhashProvider = blockhashProvider;
             CodeInfoRepository = codeInfoRepository;
             EvmState = evmState;
             WorldState = worldState;
