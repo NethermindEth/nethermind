@@ -27,10 +27,10 @@ namespace Nethermind.Db
             InitAll();
         }
 
-        public async Task InitStandardDbsAsync(bool useReceiptsDb, bool useBlobsDb = true)
+        public Task InitStandardDbsAsync(bool useReceiptsDb, bool useBlobsDb = true)
         {
             RegisterAll(useReceiptsDb, useBlobsDb);
-            await InitAllAsync();
+            return InitAllAsync();
         }
 
         private void RegisterAll(bool useReceiptsDb, bool useBlobsDb)

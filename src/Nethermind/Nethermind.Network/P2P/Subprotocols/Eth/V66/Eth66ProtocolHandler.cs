@@ -280,7 +280,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 token);
         }
 
-        private async Task<TResponse> SendRequestGenericEth66<T66, TResponse>(
+        private Task<TResponse> SendRequestGenericEth66<T66, TResponse>(
             MessageDictionary<T66, TResponse> messageQueue,
             T66 message,
             TransferSpeedType speedType,
@@ -292,7 +292,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             Request<T66, TResponse> request = new(message);
             messageQueue.Send(request);
 
-            return await HandleResponse(request, speedType, describeRequestFunc, token);
+            return HandleResponse(request, speedType, describeRequestFunc, token);
         }
     }
 }

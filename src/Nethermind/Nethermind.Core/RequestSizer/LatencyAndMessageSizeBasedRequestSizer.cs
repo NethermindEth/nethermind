@@ -55,9 +55,9 @@ public class LatencyAndMessageSizeBasedRequestSizer
     /// <typeparam name="TRequest">request type</typeparam>
     /// <typeparam name="TResponseItem">response item type</typeparam>
     /// <returns></returns>
-    public async Task<TResponse> Run<TResponse, TRequest, TResponseItem>(IReadOnlyList<TRequest> request, Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func) where TResponse : IReadOnlyList<TResponseItem>
+    public Task<TResponse> Run<TResponse, TRequest, TResponseItem>(IReadOnlyList<TRequest> request, Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func) where TResponse : IReadOnlyList<TResponseItem>
     {
-        return await _requestSizer.Run(async (adjustedRequestSize) =>
+        return _requestSizer.Run(async (adjustedRequestSize) =>
         {
             long startTime = Stopwatch.GetTimestamp();
             long affectiveRequestSize = Math.Min(adjustedRequestSize, request.Count);
