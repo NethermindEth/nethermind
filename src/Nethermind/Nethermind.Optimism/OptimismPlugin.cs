@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
@@ -57,12 +56,9 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
     private OptimismNethermindApi? _api;
     private ILogger _logger;
     private IMergeConfig _mergeConfig = null!;
-    private ISyncConfig _syncConfig = null!;
-    private IBlocksConfig _blocksConfig = null!;
     private IBlockCacheService? _blockCacheService;
     private InvalidChainTracker? _invalidChainTracker;
     private ManualBlockFinalizationManager? _blockFinalizationManager;
-    private OptimismPayloadPreparationService? _payloadPreparationService;
 
     private OptimismCL? _cl;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
@@ -109,8 +105,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         _api = (OptimismNethermindApi)api;
         _mergeConfig = _api.Config<IMergeConfig>();
-        _syncConfig = _api.Config<ISyncConfig>();
-        _blocksConfig = _api.Config<IBlocksConfig>();
         _logger = _api.LogManager.GetClassLogger();
 
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
@@ -148,22 +142,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         ArgumentNullException.ThrowIfNull(_invalidChainTracker);
         ArgumentNullException.ThrowIfNull(_blockFinalizationManager);
 
-        // Single block shouldn't take a full slot to run
-        // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
-        double maxSingleImprovementTimePerSlot = _blocksConfig.SecondsPerSlot * _blocksConfig.SingleBlockImprovementOfSlot;
-        BlockImprovementContextFactory improvementContextFactory = new(
-            _api.BlockProducer,
-            TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot));
-
-        OptimismPayloadPreparationService payloadPreparationService = new(
-            _api.SpecProvider,
-            _api.BlockProducer,
-            improvementContextFactory,
-            _api.TimerFactory,
-            _api.LogManager,
-            TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
-        _payloadPreparationService = payloadPreparationService;
-
+        IPayloadPreparationService payloadPreparationService = _api.Context.Resolve<IPayloadPreparationService>();
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
         var posSwitcher = _api.Context.Resolve<IPoSSwitcher>();
@@ -174,6 +153,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
         NewPayloadHandler newPayloadHandler = new(
+            payloadPreparationService,
             _api.BlockValidator,
             _api.BlockTree,
             posSwitcher,
@@ -183,14 +163,9 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _api.BlockProcessingQueue,
             _invalidChainTracker,
             beaconSync,
-            _api.LogManager,
-            TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
-            _api.Config<IReceiptConfig>().StoreReceipts);
-        bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
-        if (simulateBlockProduction)
-        {
-            newPayloadHandler.NewPayloadForParentReceived += payloadPreparationService.CancelBlockProductionForParent;
-        }
+            _mergeConfig,
+            _api.Config<IReceiptConfig>(),
+            _api.LogManager);
 
         IEngineRpcModule engineRpcModule = new EngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -212,8 +187,8 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
                 peerRefresher,
                 _api.SpecProvider,
                 _api.SyncPeerPool!,
-                _api.LogManager,
-                simulateBlockProduction),
+                _mergeConfig,
+                _api.LogManager),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(posSwitcher, _api.LogManager),
@@ -310,7 +285,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     public ValueTask DisposeAsync()
     {
-        _payloadPreparationService?.Dispose();
         return ValueTask.CompletedTask;
     }
 
@@ -359,6 +333,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddDecorator<IBlockProducerTxSourceFactory, OptimismBlockProducerTxSourceFactory>()
             .AddSingleton<ISimulateTransactionProcessorFactory, SimulateOptimismTransactionProcessorFactory>()
+            .AddSingleton<IPayloadPreparationService, OptimismPayloadPreparationService>()
 
             // Rpcs
             .AddSingleton<IHealthHintService, IBlocksConfig>((blocksConfig) =>

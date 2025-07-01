@@ -169,11 +169,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         if (isPostMerge)
         {
             builder
-                .AddModule(new MergeModule(
-                    configProvider.GetConfig<ITxPoolConfig>(),
-                    configProvider.GetConfig<IMergeConfig>(),
-                    configProvider.GetConfig<IBlocksConfig>()
-                ))
+                .AddModule(new TestMergeModule(configProvider.GetConfig<ITxPoolConfig>()))
                 .AddDecorator<ITestEnv, PostMergeTestEnv>()
                 ;
         }

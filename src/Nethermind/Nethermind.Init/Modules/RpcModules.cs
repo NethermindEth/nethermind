@@ -95,10 +95,12 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
             // Debug
             .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(Environment.ProcessorCount, jsonRpcConfig.Timeout)
-                .AddScoped<IDebugRpcModule, DebugRpcModule>()
+                .AddScoped<GethStyleTracer.BlockProcessingComponents>()
                 .AddScoped<IDebugBridge, DebugBridge>()
+                .AddScoped<IDebugRpcModule, DebugRpcModule>()
                 .AddScoped<IGethStyleTracer, GethStyleTracer>()
                 .AddScoped<IReceiptsMigration, ReceiptMigration>()
+
             ;
     }
 

@@ -36,4 +36,7 @@ public interface ISurgeConfig : IConfig
 
     [ConfigItem(Description = "Percentage of the base fee that is shared with the L2 batch submitter.", DefaultValue = "75")]
     int SharingPercentage { get; set; }
+
+    [ConfigItem(Description = "Maximum time in seconds to use cached gas price estimates before forcing a refresh.", DefaultValue = "30")]
+    int GasPriceRefreshTimeoutSeconds { get; set; }
 }
