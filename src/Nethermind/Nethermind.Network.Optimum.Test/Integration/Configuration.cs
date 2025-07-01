@@ -20,6 +20,7 @@ public static class Configuration
         {
             EnableMultipleHttp2Connections = true,
             KeepAlivePingPolicy = HttpKeepAlivePingPolicy.WithActiveRequests,
+            InitialHttp2StreamWindowSize = 0x1000000,
             // TODO: For now we'll make this constants.
             KeepAlivePingDelay = TimeSpan.FromMinutes(5),
             KeepAlivePingTimeout = TimeSpan.FromSeconds(20),
