@@ -58,8 +58,10 @@ public sealed class TxValidator : ITxValidator
             expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
+            MaxBlobCountBlobTxValidator.Instance,
             BlobFieldsTxValidator.Instance,
             MempoolBlobTxValidator.Instance,
+            MempoolBlobTxProofVersionValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
             GasLimitCapTxValidator.Instance
         ]));
@@ -94,7 +96,7 @@ public sealed class TxValidator : ITxValidator
             : TxErrorMessages.InvalidTxType(releaseSpec.Name);
 }
 
-public sealed class CompositeTxValidator(List<ITxValidator> validators) : ITxValidator
+public sealed class CompositeTxValidator(params ITxValidator[] validators) : ITxValidator
 {
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
@@ -227,6 +229,27 @@ public sealed class BlobFieldsTxValidator : ITxValidator
     }
 }
 
+public sealed class MaxBlobCountBlobTxValidator : ITxValidator
+{
+    public static readonly MaxBlobCountBlobTxValidator Instance = new();
+    private MaxBlobCountBlobTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction switch
+        {
+            { Type: not TxType.Blob } => ValidationResult.Success,
+            _ => ValidateBlobFields(transaction, releaseSpec)
+        };
+
+    private static ValidationResult ValidateBlobFields(Transaction transaction, IReleaseSpec spec)
+    {
+        int blobCount = transaction.BlobVersionedHashes?.Length ?? 0;
+        ulong totalDataGas = BlobGasCalculator.CalculateBlobGas(blobCount);
+        var maxBlobGasPerTx = spec.GetMaxBlobGasPerTx();
+        return totalDataGas > maxBlobGasPerTx ? TxErrorMessages.BlobTxGasLimitExceeded(totalDataGas, maxBlobGasPerTx) : ValidationResult.Success;
+    }
+}
+
 /// <summary>
 /// Validate Blob transactions in mempool version.
 /// </summary>
@@ -244,20 +267,38 @@ public sealed class MempoolBlobTxValidator : ITxValidator
             { Type: TxType.Blob } or { NetworkWrapper: not null } => TxErrorMessages.InvalidTransactionForm,
         };
 
-        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper, IReleaseSpec releaseSpec)
+        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper, IReleaseSpec _)
         {
-            if (wrapper.Version != releaseSpec.BlobProofVersion)
-            {
-                return TxErrorMessages.InvalidProofVersion;
-            }
-
             IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
 
             return !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
-                !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
+                transaction.BlobVersionedHashes is null || !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
                 !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
                 ValidationResult.Success;
         }
+    }
+}
+
+/// <summary>
+/// Validate Blob transactions in mempool version.
+/// </summary>
+public sealed class MempoolBlobTxProofVersionValidator : ITxValidator
+{
+    public static readonly MempoolBlobTxProofVersionValidator Instance = new();
+    private MempoolBlobTxProofVersionValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        return transaction switch
+        {
+            LightTransaction lightTx => ValidateProofVersion(lightTx.ProofVersion, releaseSpec),
+            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateProofVersion(wrapper.Version, releaseSpec),
+            { Type: TxType.Blob, NetworkWrapper: not null } => TxErrorMessages.InvalidTransactionForm,
+            _ => ValidationResult.Success,
+        };
+
+        static ValidationResult ValidateProofVersion(ProofVersion txProofVersion, IReleaseSpec spec) =>
+            txProofVersion != spec.BlobProofVersion ? TxErrorMessages.InvalidProofVersion : ValidationResult.Success;
     }
 }
 
