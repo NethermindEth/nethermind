@@ -58,6 +58,7 @@
     "eip7251TransitionTimestamp": "0x0",
     "eip7702TransitionTimestamp": "0x0",
     "eip7623TransitionTimestamp": "0x0",
+    "depositContractAddress": "0x00000000219ab540356cbb839cbe05303d7705fa",
     "blobSchedule": [
       {
         "name": "prague",
