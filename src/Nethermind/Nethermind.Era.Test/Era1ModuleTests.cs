@@ -153,7 +153,7 @@ public class Era1ModuleTests
                                     .WithParent(blocks[i]).TestObject);
         }
 
-        blocks = testBlockchain.BlockProcessor.Process(genesis.StateRoot!, blocks, ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts, new BlockReceiptsTracer()).ToList();
+        blocks = testBlockchain.BlockProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts, new BlockReceiptsTracer()).ToList();
         using EraWriter builder = new EraWriter(tmpFile.Path, testBlockchain.SpecProvider);
 
         foreach (var block in blocks)
@@ -248,7 +248,7 @@ public class Era1ModuleTests
                                     .WithGasLimit(30_000_000).TestObject);
         }
 
-        testBlockchain.BlockProcessor.Process(genesis.StateRoot!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
+        testBlockchain.BlockProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
 
         foreach (var block in blocks)
         {

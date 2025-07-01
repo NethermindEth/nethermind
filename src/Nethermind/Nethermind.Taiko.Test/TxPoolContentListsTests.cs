@@ -62,7 +62,7 @@ public class TxPoolContentListsTests
         scope.TransactionProcessor.Returns(transactionProcessor);
 
         IReadOnlyTxProcessorSource txProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        txProcessorSource.Build(Arg.Any<Hash256>()).Returns(scope);
+        txProcessorSource.Build(Arg.Any<BlockHeader>()).Returns(scope);
 
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         readOnlyTxProcessingEnvFactory.Create().Returns(txProcessorSource);

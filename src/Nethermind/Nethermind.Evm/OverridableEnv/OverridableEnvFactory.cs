@@ -60,6 +60,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<IC
             codeInfoRepository.ResetOverrides();
 
             _worldScopeCloser?.Dispose();
+            _worldScopeCloser = null;
         }
 
         protected override void Load(ContainerBuilder builder) =>

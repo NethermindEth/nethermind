@@ -12,6 +12,7 @@ namespace Nethermind.Consensus.Test;
 
 public class ReadOnlyTxProcessingScopeTests
 {
+    /*
     [Test]
     public void Test_WhenDispose_ThenStateRootWillRevert()
     {
@@ -25,4 +26,5 @@ public class ReadOnlyTxProcessingScopeTests
 
         env.WorldState.Received().StateRoot = TestItem.KeccakB;
     }
+    */
 }

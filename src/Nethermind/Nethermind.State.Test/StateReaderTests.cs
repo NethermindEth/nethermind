@@ -214,7 +214,7 @@ namespace Nethermind.Store.Test
             byte[] newValue = new byte[] { 1, 2, 3, 4, 5 };
 
             IWorldState processorStateProvider = state; // They are the same
-            processorStateProvider.StateRoot = state.StateRoot;
+            processorStateProvider.SetBaseBlock(Build.A.BlockHeader.WithNumber(2).WithStateRoot(state.StateRoot).TestObject);
 
             processorStateProvider.Set(storageCell, newValue);
             processorStateProvider.Commit(MuirGlacier.Instance);

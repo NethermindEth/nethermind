@@ -38,7 +38,7 @@ public class StateProviderTests
         frontierProvider.CommitTree(0);
 
         IWorldState provider = worldStateManager.GlobalWorldState;
-        provider.StateRoot = frontierProvider.StateRoot;
+        provider.SetBaseBlock(null);
 
         provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
         provider.Commit(SpuriousDragon.Instance);
