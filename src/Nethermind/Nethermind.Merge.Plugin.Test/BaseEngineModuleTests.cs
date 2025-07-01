@@ -292,8 +292,6 @@ public abstract partial class BaseEngineModuleTests
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-        public sealed override ILogManager LogManager => Container.Resolve<ILogManager>();
-
         protected override ChainSpec CreateChainSpec()
         {
             return new ChainSpec() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject };

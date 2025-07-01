@@ -324,12 +324,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             _api.RpcModuleProvider!.RegisterSingle(_api.Context.Resolve<IEngineRpcModule>());
             */
 
-            bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
-            if (simulateBlockProduction)
-            {
-                // TODO: WTF is this? Pass in the PPS into the NPH la!
-                _api.Context.Resolve<NewPayloadHandler>().NewPayloadForParentReceived += _api.Context.Resolve<PayloadPreparationService>().CancelBlockProductionForParent;
-            }
             if (_logger.IsInfo) _logger.Info("Engine Module has been enabled");
         }
 

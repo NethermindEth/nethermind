@@ -405,6 +405,7 @@ public partial class EngineModuleTests
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
+        var improvementContextFactory = (StoringBlockImprovementContextFactory) chain.Container.Resolve<IBlockImprovementContextFactory>();
         List<int?> transactionsLength = improvementContextFactory.CreatedContexts
             .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
 

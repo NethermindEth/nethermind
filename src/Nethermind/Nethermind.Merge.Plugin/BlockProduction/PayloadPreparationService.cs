@@ -72,16 +72,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         ITxPool txPool,
         IBlockImprovementContextFactory blockImprovementContextFactory,
         ITimerFactory timerFactory,
-        IBlocksConfig blocksConfig,
-        ILogManager logManager) : this(blockProducer, blockImprovementContextFactory, timerFactory, logManager,
-        TimeSpan.FromSeconds(blocksConfig.SecondsPerSlot))
-    {
-    }
-
-    public PayloadPreparationService(
-        IBlockProducer blockProducer,
-        IBlockImprovementContextFactory blockImprovementContextFactory,
-        ITimerFactory timerFactory,
         ILogManager logManager,
         TimeSpan timePerSlot,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
