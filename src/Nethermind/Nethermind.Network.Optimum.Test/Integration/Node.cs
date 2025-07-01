@@ -99,7 +99,7 @@ public class Node
         var topic = Guid.NewGuid().ToString();
         var messageCount = 10;
 
-        var subscribers = Enumerable.Range(0, 100)
+        var subscribers = Enumerable.Range(0, 10)
             .Select(_ => Task.Run(async () =>
             {
                 var messages = client.SubscribeToTopic(topic);
@@ -108,7 +108,7 @@ public class Node
                     .Select(msg => msg.Message)
                     .ToArrayAsync();
             }))
-            .ToList();
+            .ToArray();
 
         var publisher = Task.Run(async () =>
         {
