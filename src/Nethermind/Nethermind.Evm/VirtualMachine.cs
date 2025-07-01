@@ -1154,8 +1154,7 @@ public sealed unsafe partial class VirtualMachine(
                 ref Add(ref As<byte, CodeAnalysis.IL.Word>(ref MemoryMarshal.GetReference(stack.UnderlyingSpan)), stack.Head),
                 this,
                 vmState,
-                ReturnDataBuffer,
-                _logger
+                ReturnDataBuffer
             );
 
             if (env.CodeInfo.IlMetadata.PrecompiledContract(

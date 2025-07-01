@@ -31,8 +31,6 @@ public class EnvirementLoader
     public static readonly FieldInfo REF_PROGRAMCOUNTER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.ProgramCounter), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo REF_STACKHEAD_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.StackHead), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo REF_STACKHEADREF_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.StackHeadRef), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo REF_ENV_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Environment), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo OBJ_LOGGER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Logger), BindingFlags.Public | BindingFlags.Instance);
 
     private static readonly MethodInfo VmSpecPropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.Spec)).GetGetMethod(false);
     private static readonly MethodInfo VmTxExecContextPropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.TxExecutionContext)).GetGetMethod(false);
@@ -44,6 +42,7 @@ public class EnvirementLoader
     private static readonly MethodInfo VmCodeInfoRepositoryPropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.CodeInfoRepository)).GetGetMethod(false);
 
     private static readonly MethodInfo EvmStateMemoryPropGet = typeof(EvmState).GetProperty(nameof(EvmState.Memory)).GetGetMethod(false);
+    private static readonly MethodInfo EvmStateEnvPropGet = typeof(EvmState).GetProperty(nameof(EvmState.Env)).GetGetMethod(false);
 
     public const int REF_BUNDLED_ARGS_INDEX = 0;
     public const int REF_CURRENT_STATE_INDEX = REF_BUNDLED_ARGS_INDEX + 1;
@@ -77,7 +76,7 @@ public class EnvirementLoader
 
     public void LoadCalldata<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        LoadEnv(il, locals, true);
+        LoadEnvByRef(il, locals);
         il.LoadFieldAddress(FieldInputData);
 
         if (!loadAddress)
@@ -110,13 +109,13 @@ public class EnvirementLoader
         }
     }
 
-    public void LoadEnv<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadEnvByRef<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
     {
-        LoadRefField(il, REF_ENV_FIELD);
-        if (!loadAddress)
-        {
-            il.LoadObject<ExecutionEnvironment>();
-        }
+        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
+        il.LoadField(OBJ_EVMSTATE_FIELD);
+
+        // ref returning property
+        il.Call(EvmStateEnvPropGet);
     }
 
     public void LoadGasAvailable<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
@@ -125,19 +124,6 @@ public class EnvirementLoader
         if (!loadAddress)
         {
             il.LoadObject<ulong>();
-        }
-    }
-
-    public void LoadLogger<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
-    {
-        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        if (loadAddress)
-        {
-            il.LoadFieldAddress(OBJ_LOGGER_FIELD);
-        }
-        else
-        {
-            il.LoadField(OBJ_LOGGER_FIELD);
         }
     }
 
