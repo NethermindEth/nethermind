@@ -171,6 +171,75 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_sendBundle_success()
+    {
+        using Context ctx = await Context.Create();
+        
+        // Create a test bundle request with sample transaction data
+        var bundleRequest = new
+        {
+            txs = new[] { "0xf86c80850ba43b7400825208942a24f3ff88ad25d8a1e4b27d37f8e1b1b4a234567880de0b6b3a764000080" },
+            blockNumber = "0x100"
+        };
+        
+        string serialized = await ctx.Test.TestEthRpc("eth_sendBundle", bundleRequest);
+        
+        // Parse the response
+        var response = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(serialized);
+        
+        // Verify response structure
+        Assert.That(response.jsonrpc.ToString(), Is.EqualTo("2.0"));
+        Assert.That(response.id.ToString(), Is.EqualTo("67"));
+        Assert.That(response.result, Is.Not.Null);
+        Assert.That(response.result.bundleHash, Is.Not.Null);
+        
+        // Verify the bundle hash is a valid hex string
+        string bundleHash = response.result.bundleHash.ToString();
+        Assert.That(bundleHash, Does.StartWith("0x"));
+        Assert.That(bundleHash.Length, Is.EqualTo(66)); // 0x + 64 hex chars
+    }
+
+    [Test]
+    public async Task Eth_sendBundle_invalid_params()
+    {
+        using Context ctx = await Context.Create();
+        
+        // Test with empty transactions array
+        var emptyBundleRequest = new
+        {
+            txs = new string[0],
+            blockNumber = "0x100"
+        };
+        
+        string serialized = await ctx.Test.TestEthRpc("eth_sendBundle", emptyBundleRequest);
+        var response = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(serialized);
+        
+        Assert.That(response.error, Is.Not.Null);
+        Assert.That(response.error.code.ToString(), Is.EqualTo("-32602")); // InvalidParams
+        Assert.That(response.error.message.ToString(), Does.Contain("Bundle must contain at least one transaction"));
+    }
+
+    [Test]
+    public async Task Eth_sendBundle_missing_block_number()
+    {
+        using Context ctx = await Context.Create();
+        
+        // Test with missing block number
+        var invalidBundleRequest = new
+        {
+            txs = new[] { "0xf86c80850ba43b7400825208942a24f3ff88ad25d8a1e4b27d37f8e1b1b4a234567880de0b6b3a764000080" },
+            blockNumber = ""
+        };
+        
+        string serialized = await ctx.Test.TestEthRpc("eth_sendBundle", invalidBundleRequest);
+        var response = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(serialized);
+        
+        Assert.That(response.error, Is.Not.Null);
+        Assert.That(response.error.code.ToString(), Is.EqualTo("-32602")); // InvalidParams
+        Assert.That(response.error.message.ToString(), Does.Contain("Block number is required"));
+    }
+
+    [Test]
     public async Task Eth_get_transaction_by_block_number_and_index()
     {
         using Context ctx = await Context.Create();
