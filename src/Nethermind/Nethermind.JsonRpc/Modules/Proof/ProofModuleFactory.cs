@@ -10,7 +10,9 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
@@ -39,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     // Specific for proof rpc
                     .AddScoped<IReceiptStorage>(new InMemoryReceiptStorage()) // Umm.... not `NullReceiptStorage`?
                     .AddScoped<IRewardCalculator>(NoBlockRewards.Instance)
-                    .AddScopedAsImplementedInterfaces(txProcessingEnv.WorldState)
+                    .AddScoped<IVisitingWorldState>(txProcessingEnv.WorldState).AddScoped<IWorldState>(txProcessingEnv.WorldState)
 
                     .AddScoped<ITracer, Tracer>()
                     ;
