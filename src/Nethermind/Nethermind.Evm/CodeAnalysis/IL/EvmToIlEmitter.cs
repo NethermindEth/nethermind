@@ -519,7 +519,7 @@ internal static class OpcodeEmitters
     internal static void EmitBlockHashInstruction<TDelegateType>(
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
-        Label blockHashReturnedNull = method.DefineLabel(locals.GetLabelName());
+        Label blockHashIsNull = method.DefineLabel(locals.GetLabelName());
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
@@ -528,28 +528,33 @@ internal static class OpcodeEmitters
 
         method.LoadLocalAddress(locals.uint256A);
         method.Call(typeof(UInt256Extensions).GetMethod(nameof(UInt256Extensions.ToLong), BindingFlags.Static | BindingFlags.Public, [typeof(UInt256).MakeByRefType()]));
+        method.Duplicate();
         method.StoreLocal(locals.int64A);
+
+        envLoader.LoadHeader(method, locals);
+        method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.Number), false, out _));
+        method.BranchIfGreaterOrEqual(blockHashIsNull); // blockhash is assumed null if number >= current block number
 
         envLoader.LoadBlockhashProvider(method, locals, false);
         envLoader.LoadHeader(method, locals);
-
         method.LoadLocal(locals.int64A);
-        method.CallVirtual(typeof(IBlockhashProvider).GetMethod(nameof(IBlockhashProvider.GetBlockhash), [typeof(BlockHeader), typeof(long)]));
+        envLoader.LoadSpec(method, locals, false);
+        method.CallVirtual(typeof(IBlockhashProvider).GetMethod(nameof(IBlockhashProvider.GetBlockhash), [typeof(BlockHeader), typeof(long), typeof(IReleaseSpec)]));
         method.Duplicate();
         method.StoreLocal(locals.hash256);
         method.LoadNull();
-        method.BranchIfEqual(blockHashReturnedNull);
+        method.BranchIfEqual(blockHashIsNull);
 
-        // not equal
+        // blockHash is not null
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.LoadLocal(locals.hash256);
         method.Call(GetPropertyInfo(typeof(Hash256), nameof(Hash256.Bytes), false, out _));
         method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(Span<byte>)));
         method.Call(Word.SetReadOnlySpan);
         method.Branch(endOfOpcode);
-        // equal to null
 
-        method.MarkLabel(blockHashReturnedNull);
+        // is null
+        method.MarkLabel(blockHashIsNull);
         method.CleanWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
 
         method.MarkLabel(endOfOpcode);
