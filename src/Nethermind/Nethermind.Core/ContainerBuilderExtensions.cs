@@ -52,16 +52,12 @@ public static class ContainerBuilderExtensions
 
     public static ContainerBuilder AddSingleton<T, TArg0>(this ContainerBuilder builder, Func<TArg0, T> factoryMethod) where T : class where TArg0 : notnull
     {
-        builder.Register((ctx) =>
-            {
-                MethodInfo factoryMethodInfo = factoryMethod.Method;
+        Func<IComponentContext, TArg0> param0 = CreateArgResolver<TArg0>(factoryMethod.Method, 0);
 
-                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter
-                    ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
-                    : ctx.Resolve<TArg0>();
-
-                return factoryMethod(arg0);
-            })
+        builder
+            .Register((ctx) => factoryMethod(
+                param0(ctx)
+            ))
             .As<T>()
             .SingleInstance();
 
@@ -70,19 +66,14 @@ public static class ContainerBuilderExtensions
 
     public static ContainerBuilder AddSingleton<T, TArg0, TArg1>(this ContainerBuilder builder, Func<TArg0, TArg1, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull
     {
-        builder.Register((ctx) =>
-            {
-                MethodInfo factoryMethodInfo = factoryMethod.Method;
+        Func<IComponentContext, TArg0> param0 = CreateArgResolver<TArg0>(factoryMethod.Method, 0);
+        Func<IComponentContext, TArg1> param1 = CreateArgResolver<TArg1>(factoryMethod.Method, 1);
 
-                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter
-                    ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
-                    : ctx.Resolve<TArg0>();
-                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter1
-                    ? ctx.ResolveKeyed<TArg1>(keyFilter1.Key)
-                    : ctx.Resolve<TArg1>();
-
-                return factoryMethod(arg0, arg1);
-            })
+        builder
+            .Register((ctx) => factoryMethod(
+                param0(ctx),
+                param1(ctx)
+            ))
             .As<T>()
             .SingleInstance();
 
@@ -91,22 +82,16 @@ public static class ContainerBuilderExtensions
 
     public static ContainerBuilder AddSingleton<T, TArg0, TArg1, TArg2>(this ContainerBuilder builder, Func<TArg0, TArg1, TArg2, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull where TArg2 : notnull
     {
-        builder.Register((ctx) =>
-            {
-                MethodInfo factoryMethodInfo = factoryMethod.Method;
+        Func<IComponentContext, TArg0> param0 = CreateArgResolver<TArg0>(factoryMethod.Method, 0);
+        Func<IComponentContext, TArg1> param1 = CreateArgResolver<TArg1>(factoryMethod.Method, 1);
+        Func<IComponentContext, TArg2> param2 = CreateArgResolver<TArg2>(factoryMethod.Method, 2);
 
-                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter
-                    ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
-                    : ctx.Resolve<TArg0>();
-                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter1
-                    ? ctx.ResolveKeyed<TArg1>(keyFilter1.Key)
-                    : ctx.Resolve<TArg1>();
-                TArg2 arg2 = factoryMethodInfo.GetParameters()[2].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter2
-                    ? ctx.ResolveKeyed<TArg2>(keyFilter2.Key)
-                    : ctx.Resolve<TArg2>();
-
-                return factoryMethod(arg0, arg1, arg2);
-            })
+        builder
+            .Register((ctx) => factoryMethod(
+                param0(ctx),
+                param1(ctx),
+                param2(ctx)
+            ))
             .As<T>()
             .SingleInstance();
 
@@ -116,25 +101,40 @@ public static class ContainerBuilderExtensions
 
     public static ContainerBuilder AddSingleton<T, TArg0, TArg1, TArg2, TArg3>(this ContainerBuilder builder, Func<TArg0, TArg1, TArg2, TArg3, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull where TArg2 : notnull where TArg3 : notnull
     {
-        builder.Register((ctx) =>
-            {
-                MethodInfo factoryMethodInfo = factoryMethod.Method;
+        Func<IComponentContext, TArg0> param0 = CreateArgResolver<TArg0>(factoryMethod.Method, 0);
+        Func<IComponentContext, TArg1> param1 = CreateArgResolver<TArg1>(factoryMethod.Method, 1);
+        Func<IComponentContext, TArg2> param2 = CreateArgResolver<TArg2>(factoryMethod.Method, 2);
+        Func<IComponentContext, TArg3> param3 = CreateArgResolver<TArg3>(factoryMethod.Method, 3);
 
-                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter
-                    ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
-                    : ctx.Resolve<TArg0>();
-                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter1
-                    ? ctx.ResolveKeyed<TArg1>(keyFilter1.Key)
-                    : ctx.Resolve<TArg1>();
-                TArg2 arg2 = factoryMethodInfo.GetParameters()[2].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter2
-                    ? ctx.ResolveKeyed<TArg2>(keyFilter2.Key)
-                    : ctx.Resolve<TArg2>();
-                TArg3 arg3 = factoryMethodInfo.GetParameters()[3].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter3
-                    ? ctx.ResolveKeyed<TArg3>(keyFilter3.Key)
-                    : ctx.Resolve<TArg3>();
+        builder
+            .Register((ctx) => factoryMethod(
+                param0(ctx),
+                param1(ctx),
+                param2(ctx),
+                param3(ctx)
+            ))
+            .As<T>()
+            .SingleInstance();
 
-                return factoryMethod(arg0, arg1, arg2, arg3);
-            })
+        return builder;
+    }
+
+    public static ContainerBuilder AddSingleton<T, TArg0, TArg1, TArg2, TArg3, TArg4>(this ContainerBuilder builder, Func<TArg0, TArg1, TArg2, TArg3, TArg4, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull where TArg2 : notnull where TArg3 : notnull where TArg4 : notnull
+    {
+        Func<IComponentContext, TArg0> param0 = CreateArgResolver<TArg0>(factoryMethod.Method, 0);
+        Func<IComponentContext, TArg1> param1 = CreateArgResolver<TArg1>(factoryMethod.Method, 1);
+        Func<IComponentContext, TArg2> param2 = CreateArgResolver<TArg2>(factoryMethod.Method, 2);
+        Func<IComponentContext, TArg3> param3 = CreateArgResolver<TArg3>(factoryMethod.Method, 3);
+        Func<IComponentContext, TArg4> param4 = CreateArgResolver<TArg4>(factoryMethod.Method, 4);
+
+        builder
+            .Register((ctx) => factoryMethod(
+                param0(ctx),
+                param1(ctx),
+                param2(ctx),
+                param3(ctx),
+                param4(ctx)
+            ))
             .As<T>()
             .SingleInstance();
 
@@ -202,33 +202,31 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddScopedAsImplementedInterfaces<T>(this ContainerBuilder builder, T instance) where T : class
+    public static ContainerBuilder AddScoped<T, TArg0>(this ContainerBuilder builder, Func<TArg0, T> factoryMethod) where T : class where TArg0 : notnull
     {
-        builder.Register(ctx => instance)
-            .AsImplementedInterfaces()
+        Func<IComponentContext, TArg0> param0 = CreateArgResolver<TArg0>(factoryMethod.Method, 0);
+
+        builder
+            .Register<T>((ctx) => factoryMethod(
+                param0(ctx)
+            ))
+            .As<T>()
             .AsSelf()
-            .ExternallyOwned()
             .InstancePerLifetimeScope();
 
         return builder;
     }
 
-
     public static ContainerBuilder AddScoped<T, TArg0, TArg1>(this ContainerBuilder builder, Func<TArg0, TArg1, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull
     {
-        builder.Register<T>((ctx) =>
-            {
-                MethodInfo factoryMethodInfo = factoryMethod.Method;
+        Func<IComponentContext, TArg0> param0 = CreateArgResolver<TArg0>(factoryMethod.Method, 0);
+        Func<IComponentContext, TArg1> param1 = CreateArgResolver<TArg1>(factoryMethod.Method, 1);
 
-                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter0
-                    ? ctx.ResolveKeyed<TArg0>(keyFilter0.Key)
-                    : ctx.Resolve<TArg0>();
-                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter1
-                    ? ctx.ResolveKeyed<TArg1>(keyFilter1.Key)
-                    : ctx.Resolve<TArg1>();
-
-                return factoryMethod(arg0, arg1);
-            })
+        builder
+            .Register<T>((ctx) => factoryMethod(
+                param0(ctx),
+                param1(ctx)
+            ))
             .As<T>()
             .AsSelf()
             .InstancePerLifetimeScope();
@@ -238,41 +236,16 @@ public static class ContainerBuilderExtensions
 
     public static ContainerBuilder AddScoped<T, TArg0, TArg1, TArg2>(this ContainerBuilder builder, Func<TArg0, TArg1, TArg2, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull where TArg2 : notnull
     {
-        builder.Register<T>((ctx) =>
-            {
-                MethodInfo factoryMethodInfo = factoryMethod.Method;
+        Func<IComponentContext, TArg0> param0 = CreateArgResolver<TArg0>(factoryMethod.Method, 0);
+        Func<IComponentContext, TArg1> param1 = CreateArgResolver<TArg1>(factoryMethod.Method, 1);
+        Func<IComponentContext, TArg2> param2 = CreateArgResolver<TArg2>(factoryMethod.Method, 2);
 
-                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter0
-                    ? ctx.ResolveKeyed<TArg0>(keyFilter0.Key)
-                    : ctx.Resolve<TArg0>();
-                TArg1 arg1 = factoryMethodInfo.GetParameters()[1].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter1
-                    ? ctx.ResolveKeyed<TArg1>(keyFilter1.Key)
-                    : ctx.Resolve<TArg1>();
-                TArg2 arg2 = factoryMethodInfo.GetParameters()[2].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter2
-                    ? ctx.ResolveKeyed<TArg2>(keyFilter2.Key)
-                    : ctx.Resolve<TArg2>();
-
-                return factoryMethod(arg0, arg1, arg2);
-            })
-            .As<T>()
-            .AsSelf()
-            .InstancePerLifetimeScope();
-
-        return builder;
-    }
-
-    public static ContainerBuilder AddScoped<T, TArg0>(this ContainerBuilder builder, Func<TArg0, T> factoryMethod) where T : class where TArg0 : notnull
-    {
-        builder.Register<T>((ctx) =>
-            {
-                MethodInfo factoryMethodInfo = factoryMethod.Method;
-
-                TArg0 arg0 = factoryMethodInfo.GetParameters()[0].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter
-                    ? ctx.ResolveKeyed<TArg0>(keyFilter.Key)
-                    : ctx.Resolve<TArg0>();
-
-                return factoryMethod(arg0);
-            })
+        builder
+            .Register((ctx) => factoryMethod(
+                param0(ctx),
+                param1(ctx),
+                param2(ctx)
+            ))
             .As<T>()
             .AsSelf()
             .InstancePerLifetimeScope();
@@ -477,6 +450,14 @@ public static class ContainerBuilderExtensions
             .FindConstructorsWith(NethermindConstructorFinder.Instance);
     }
 
+    private static Func<IComponentContext, T> CreateArgResolver<T>(MethodInfo methodInfo, int paramIndex) where T : notnull
+    {
+        if (methodInfo.GetParameters()[paramIndex].GetCustomAttribute<KeyFilterAttribute>() is { } keyFilter)
+        {
+            return (ctx) => ctx.ResolveKeyed<T>(keyFilter.Key);
+        }
+        return (ctx) => ctx.Resolve<T>();
+    }
 }
 
 /// <summary>

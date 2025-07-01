@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -243,7 +244,7 @@ public class TestBlockchain : IDisposable
         BlockProducerRunner.Start();
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
 
-        _cts = AutoCancelTokenSource.ThatCancelAfter(TimeSpan.FromMilliseconds(TestTimout));
+        _cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimout));
 
         if (testConfiguration.SuggestGenesisOnStart)
         {
@@ -336,7 +337,7 @@ public class TestBlockchain : IDisposable
         return new StandardBlockProducerRunner(BlockProductionTrigger, BlockTree, BlockProducer);
     }
 
-    public virtual ILogManager LogManager { get; set; } = LimboLogs.Instance;
+    public ILogManager LogManager => Container.Resolve<ILogManager>();
 
     public BlockBuilder GenesisBlockBuilder { get; set; } = null!;
 
