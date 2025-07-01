@@ -85,8 +85,9 @@ public partial class BlockProcessor(
         Block suggestedBlock = suggestedBlocks[0];
         // Start prewarming as early as possible
         WaitForCacheClear();
+        IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
         (CancellationTokenSource? prewarmCancellation, Task? preWarmTask)
-            = PreWarmTransactions(suggestedBlock, newBranchStateRoot);
+            = PreWarmTransactions(suggestedBlock, newBranchStateRoot, spec);
 
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
@@ -101,11 +102,16 @@ public partial class BlockProcessor(
             {
                 WaitForCacheClear();
                 suggestedBlock = suggestedBlocks[i];
+                if (i > 0)
+                {
+                    // Refresh spec
+                    spec = specProvider.GetSpec(suggestedBlock.Header);
+                }
                 // If prewarmCancellation is not null it means we are in first iteration of loop
                 // and started prewarming at method entry, so don't start it again
                 if (prewarmCancellation is null)
                 {
-                    (prewarmCancellation, preWarmTask) = PreWarmTransactions(suggestedBlock, preBlockStateRoot);
+                    (prewarmCancellation, preWarmTask) = PreWarmTransactions(suggestedBlock, preBlockStateRoot, spec);
                 }
 
                 if (blocksCount > 64 && i % 8 == 0)
@@ -123,7 +129,7 @@ public partial class BlockProcessor(
 
                 if (prewarmCancellation is not null)
                 {
-                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer, token);
+                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                     // Block is processed, we can cancel the prewarm task
                     CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
                 }
@@ -135,7 +141,7 @@ public partial class BlockProcessor(
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
-                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer, token);
+                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
 
                 processedBlocks[i] = processedBlock;
@@ -193,14 +199,14 @@ public partial class BlockProcessor(
         }
     }
 
-    private (CancellationTokenSource prewarmCancellation, Task preWarmTask) PreWarmTransactions(Block suggestedBlock, Hash256 preBlockStateRoot)
+    private (CancellationTokenSource prewarmCancellation, Task preWarmTask) PreWarmTransactions(Block suggestedBlock, Hash256 preBlockStateRoot, IReleaseSpec spec)
     {
         if (preWarmer is null || suggestedBlock.Transactions.Length < 3) return (null, null);
 
         CancellationTokenSource prewarmCancellation = new();
         Task preWarmTask = preWarmer.PreWarmCaches(suggestedBlock,
             preBlockStateRoot,
-            specProvider.GetSpec(suggestedBlock.Header),
+            spec,
             prewarmCancellation.Token,
             beaconBlockRootHandler);
 
@@ -267,17 +273,17 @@ public partial class BlockProcessor(
     }
 
     // TODO: block processor pipeline
-    private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token)
+    private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, token);
+        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
-            StoreTxReceipts(block, receipts);
+            StoreTxReceipts(block, receipts, spec);
         }
 
         return (block, receipts);
@@ -305,10 +311,10 @@ public partial class BlockProcessor(
         Block block,
         IBlockTracer blockTracer,
         ProcessingOptions options,
+        IReleaseSpec spec,
         CancellationToken token)
     {
         BlockHeader header = block.Header;
-        IReleaseSpec spec = specProvider.GetSpec(header);
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
@@ -316,10 +322,10 @@ public partial class BlockProcessor(
         blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
         StoreBeaconRoot(block, spec);
-        blockHashStore.ApplyBlockhashStateChanges(header);
+        blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec, token);
+        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         _stateProvider.Commit(spec, commitRoots: false);
 
@@ -395,10 +401,10 @@ public partial class BlockProcessor(
     }
 
     // TODO: block processor pipeline
-    private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
+    private void StoreTxReceipts(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
     {
         // Setting canonical is done when the BlockAddedToMain event is fired
-        receiptStorage.Insert(block, txReceipts, false);
+        receiptStorage.Insert(block, txReceipts, spec, false);
     }
 
     // TODO: block processor pipeline

@@ -79,10 +79,6 @@ namespace Nethermind.Api
 
         IGasPriceOracle GasPriceOracle { get; }
 
-        [SkipServiceCollection]
-        IEthSyncingInfo? EthSyncingInfo { get; }
-
-
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }

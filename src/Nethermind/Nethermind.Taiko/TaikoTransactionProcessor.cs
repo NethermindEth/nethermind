@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -9,7 +10,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using System.Linq;
 using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
@@ -49,7 +49,7 @@ public class TaikoTransactionProcessor(
             {
                 if (((ITaikoReleaseSpec)spec).IsOntakeEnabled)
                 {
-                    byte basefeeSharingPctg = TaikoHeaderHelper.DecodeOntakeExtraData(header) ?? 0;
+                    byte basefeeSharingPctg = header.DecodeOntakeExtraData() ?? 0;
 
                     UInt256 feeCoinbase = baseFees * basefeeSharingPctg / 100;
                     WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, feeCoinbase, spec);

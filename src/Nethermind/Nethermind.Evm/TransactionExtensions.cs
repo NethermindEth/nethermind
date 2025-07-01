@@ -39,7 +39,7 @@ namespace Nethermind.Evm
         }
     }
 
-    public struct TxGasInfo
+    public readonly struct TxGasInfo
     {
         public TxGasInfo() { }
 
@@ -55,8 +55,8 @@ namespace Nethermind.Evm
             EffectiveGasPrice = effectiveGasPrice;
         }
 
-        public UInt256? EffectiveGasPrice { get; private set; }
-        public UInt256? BlobGasPrice { get; private set; }
-        public ulong? BlobGasUsed { get; private set; }
+        public UInt256? EffectiveGasPrice { get; }
+        public UInt256? BlobGasPrice { get; }
+        public ulong? BlobGasUsed { get; }
     }
 }

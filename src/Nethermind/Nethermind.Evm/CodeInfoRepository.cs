@@ -74,7 +74,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         ICodeInfo cachedCodeInfo = InternalGetCachedCode(worldState, codeSource, vmSpec);
 
-        if (!cachedCodeInfo.IsEmpty && TryGetDelegatedAddress(cachedCodeInfo.MachineCode.Span, out delegationAddress))
+        if (!cachedCodeInfo.IsEmpty && TryGetDelegatedAddress(cachedCodeInfo.CodeSpan, out delegationAddress))
         {
             if (followDelegation)
                 cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress, vmSpec);
@@ -202,10 +202,10 @@ public class CodeInfoRepository : ICodeInfoRepository
         new PrecompileInfo(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
 
     public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        TryGetDelegatedAddress(InternalGetCachedCode(worldState, address, spec).MachineCode.Span, out delegatedAddress);
+        TryGetDelegatedAddress(InternalGetCachedCode(worldState, address, spec).CodeSpan, out delegatedAddress);
 
     public bool TryGetDelegation(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        TryGetDelegatedAddress(InternalGetCachedCode(worldState, in codeHash, spec).MachineCode.Span, out delegatedAddress);
+        TryGetDelegatedAddress(InternalGetCachedCode(worldState, in codeHash, spec).CodeSpan, out delegatedAddress);
 
     private class CachedPrecompile(
         Address address,

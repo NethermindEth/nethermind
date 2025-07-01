@@ -270,6 +270,16 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder AddScopedOpenGeneric(this ContainerBuilder builder, Type interfaceType, Type implType)
+    {
+        builder.RegisterGeneric(implType)
+            .As(interfaceType)
+            .WithAttributeFiltering()
+            .InstancePerLifetimeScope();
+
+        return builder;
+    }
+
     public static ContainerBuilder AddKeyedScoped<T, TImpl>(this ContainerBuilder builder, object key) where TImpl : notnull where T : notnull
     {
         builder.RegisterType<TImpl>()

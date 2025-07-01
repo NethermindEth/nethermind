@@ -47,8 +47,8 @@ public abstract class VirtualMachineTestsBase
     protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
     protected virtual ForkActivation Activation => (BlockNumber, Timestamp);
-    protected virtual long BlockNumber { get; } = MainnetSpecProvider.ByzantiumBlockNumber;
-    protected virtual ulong Timestamp => 0UL;
+    protected virtual long BlockNumber { get; private set; } = MainnetSpecProvider.ByzantiumBlockNumber;
+    protected virtual ulong Timestamp { get; private set; } = 0UL;
     protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
     protected IReleaseSpec Spec => SpecProvider.GetSpec(Activation);
 
@@ -80,7 +80,7 @@ public abstract class VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default with { EnableMemory = true });
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
@@ -88,7 +88,7 @@ public abstract class VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
@@ -96,7 +96,7 @@ public abstract class VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
@@ -104,7 +104,7 @@ public abstract class VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
         GethLikeTxFileTracer tracer = new(dumpCallback, options);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
 
@@ -120,7 +120,7 @@ public abstract class VirtualMachineTestsBase
     {
         (Block block, Transaction transaction) = PrepareTx(activation, 100000, code);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -128,7 +128,7 @@ public abstract class VirtualMachineTestsBase
     {
         (Block block, _) = PrepareTx(activation, 100000, null);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -149,7 +149,7 @@ public abstract class VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
         tracer.StartNewBlockTrace(block);
         ITxTracer txTracer = tracer.StartNewTxTrace(transaction);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), txTracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), txTracer);
         tracer.EndTxTrace();
         tracer.EndBlockTrace();
         return tracer;
@@ -158,7 +158,7 @@ public abstract class VirtualMachineTestsBase
     protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
     {
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -171,7 +171,7 @@ public abstract class VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code,
             blockGasLimit: blockGasLimit, blobVersionedHashes: blobVersionedHashes);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -181,7 +181,7 @@ public abstract class VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code,
             blockGasLimit: blockGasLimit, blobVersionedHashes: blobVersionedHashes);
         TestAllTracerWithOutput tracer = CreateTracer();
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
 
@@ -251,6 +251,8 @@ public abstract class VirtualMachineTestsBase
             .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit, excessBlobGas);
+        BlockNumber = block.Header.Number;
+        Timestamp = block.Header.Timestamp;
         return (block, transaction);
     }
 

@@ -176,14 +176,13 @@ namespace Nethermind.Blockchain.Contracts
 
             try
             {
-                BlockExecutionContext blkCtx = new BlockExecutionContext(header, 0);
                 if (callAndRestore)
                 {
-                    transactionProcessor.CallAndRestore(transaction, in blkCtx, tracer);
+                    transactionProcessor.CallAndRestore(transaction, header, tracer);
                 }
                 else
                 {
-                    transactionProcessor.Execute(transaction, in blkCtx, tracer);
+                    transactionProcessor.Execute(transaction, header, tracer);
                 }
 
                 failure = tracer.StatusCode != StatusCode.Success;

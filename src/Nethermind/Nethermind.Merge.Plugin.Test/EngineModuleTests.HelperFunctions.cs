@@ -50,17 +50,29 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Hash256 parentHash, PrivateKey from,
-            Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0, IReleaseSpec? spec = null)
+            Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader,
+            int blobCountPerTx = 0, IReleaseSpec? spec = null)
+        {
+            return BuildTransactions(chain.BlockTree, chain.SpecProvider, chain.StateReader, Timestamper, parentHash, from, to,
+                count, value, out accountFrom, out parentHeader, blobCountPerTx, spec);
+        }
+
+        private static Transaction[] BuildTransactions(
+            IBlockTree blockTree,
+            ISpecProvider specProvider,
+            IStateReader stateReader,
+            ITimestamper timestamper,
+            Hash256 parentHash, PrivateKey from, Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0, IReleaseSpec? spec = null)
         {
             Transaction BuildTransaction(uint index, AccountStruct senderAccount)
             {
                 TransactionBuilder<Transaction> builder = Build.A.Transaction
                     .WithNonce(senderAccount.Nonce + index)
-                    .WithTimestamp(Timestamper.UnixTime.Seconds)
+                    .WithTimestamp(timestamper.UnixTime.Seconds)
                     .WithTo(to)
                     .WithValue(value.GWei())
                     .WithGasPrice(1.GWei())
-                    .WithChainId(chain.SpecProvider.ChainId)
+                    .WithChainId(specProvider.ChainId)
                     .WithSenderAddress(from.Address);
 
                 if (blobCountPerTx != 0)
@@ -77,8 +89,8 @@ namespace Nethermind.Merge.Plugin.Test
                     .SignedAndResolved(from).TestObject;
             }
 
-            parentHeader = chain.BlockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
-            chain.StateReader.TryGetAccount(parentHeader.StateRoot!, from.Address, out AccountStruct account);
+            parentHeader = blockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
+            stateReader.TryGetAccount(parentHeader.StateRoot!, from.Address, out AccountStruct account);
             accountFrom = account;
 
             return Enumerable.Range(0, (int)count).Select(i => BuildTransaction((uint)i, account)).ToArray();

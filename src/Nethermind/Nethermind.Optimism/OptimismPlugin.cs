@@ -38,6 +38,7 @@ using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Simulate;
@@ -78,7 +79,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         OptimismGasLimitCalculator gasLimitCalculator = new OptimismGasLimitCalculator();
 
-        BlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
+        IBlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
 
         return new OptimismPostMergeBlockProducer(
             new OptimismPayloadTxSource(),
@@ -156,7 +157,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         OptimismPayloadPreparationService payloadPreparationService = new(
             _api.SpecProvider,
-            (PostMergeBlockProducer)_api.BlockProducer,
+            _api.BlockProducer,
             improvementContextFactory,
             _api.TimerFactory,
             _api.LogManager,
@@ -352,12 +353,11 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddScoped<IBlockProcessor, OptimismBlockProcessor>()
             .AddScoped<IWithdrawalProcessor, OptimismWithdrawalProcessor>()
             .AddScoped<Create2DeployerContractRewriter>()
+            .AddScoped<BlockProcessor.IBlockProductionTransactionPicker, ISpecProvider, IBlocksConfig>((specProvider, blocksConfig) =>
+                new OptimismBlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
 
             .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
-            .AddSingleton<IBlockProducerEnvFactory, OptimismBlockProducerEnvFactory>()
             .AddDecorator<IBlockProducerTxSourceFactory, OptimismBlockProducerTxSourceFactory>()
-
-            .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddSingleton<ISimulateTransactionProcessorFactory, SimulateOptimismTransactionProcessorFactory>()
 
             // Rpcs

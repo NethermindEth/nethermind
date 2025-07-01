@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
@@ -141,7 +143,7 @@ namespace Nethermind.Serialization.Rlp
             return buffer;
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        [DoesNotReturn, StackTraceHidden]
         private static void ThrowSpanSourceNotCappedArray() => throw new InvalidOperationException("Encode to SpanSource failed to get a CappedArray.");
 
         public static Rlp Encode<T>(this IRlpObjectDecoder<T> decoder, IReadOnlyCollection<T?>? items, RlpBehaviors behaviors = RlpBehaviors.None)

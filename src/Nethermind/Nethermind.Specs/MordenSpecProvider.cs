@@ -25,7 +25,7 @@ namespace Nethermind.Specs
         public UInt256? TerminalTotalDifficulty { get; private set; }
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
+        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) =>
             forkActivation.BlockNumber switch
             {
                 < 494000 => Frontier.Instance,

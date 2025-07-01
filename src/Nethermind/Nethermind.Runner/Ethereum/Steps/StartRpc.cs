@@ -18,11 +18,12 @@ using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.KeyStore.Config;
+using Nethermind.Sockets;
 
 namespace Nethermind.Runner.Ethereum.Steps;
 
 [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(RegisterPluginRpcModules))]
-public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers) : IStep
+public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers, IWebSocketsManager webSocketsManager) : IStep
 {
     public async Task Execute(CancellationToken cancellationToken)
     {
@@ -71,7 +72,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
                 jsonRpcConfig.MaxBatchResponseBodySize,
                 jsonRpcConfig.WebSocketsProcessingConcurrency);
 
-            api.WebSocketsManager!.AddModule(webSocketsModule, true);
+            webSocketsManager!.AddModule(webSocketsModule, true);
         }
 
         Bootstrap.Instance.JsonRpcService = jsonRpcService;
@@ -83,7 +84,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         JsonRpcRunner? jsonRpcRunner = new(
             jsonRpcProcessor,
             jsonRpcUrlCollection,
-            api.WebSocketsManager!,
+            webSocketsManager!,
             api.ConfigProvider,
             auth,
             api.LogManager,
