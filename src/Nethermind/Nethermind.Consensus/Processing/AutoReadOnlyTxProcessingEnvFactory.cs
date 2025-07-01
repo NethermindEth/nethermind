@@ -20,7 +20,7 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {
             builder
-                .AddSingleton<IVisitingWorldState>(worldState).AddSingleton<IWorldState>()
+                .AddSingleton<IVisitingWorldState>(worldState).AddSingleton<IWorldState>(worldState)
                 .AddSingleton<AutoReadOnlyTxProcessingEnv>();
         });
 
