@@ -65,8 +65,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<IC
 
         protected override void Load(ContainerBuilder builder) =>
             builder
-                .AddScoped<IWorldState>(overridableScope.WorldState)
-                .AddScoped<IVisitingWorldState>(overridableScope.WorldState)
+                .AddScopedAsImplementedInterfaces(overridableScope.WorldState)
                 .AddScoped<IStateReader>(overridableScope.GlobalStateReader)
                 .AddScoped<IOverridableEnv>(this)
                 .AddScoped<ICodeInfoRepository>(codeInfoRepository);

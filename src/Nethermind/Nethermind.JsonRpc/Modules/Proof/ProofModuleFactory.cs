@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -18,21 +19,20 @@ namespace Nethermind.JsonRpc.Modules.Proof
 {
     public class ProofModuleFactory(
         ILifetimeScope rootLifetimeScope,
-        IOverridableEnvFactory overridableEnvFactory
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory
     ) : ModuleFactoryBase<IProofRpcModule>
     {
 
         public override IProofRpcModule Create()
         {
             // Note: No overridable world scope here. So there aren't any risk of leaking KV store.
-            IOverridableEnv env = overridableEnvFactory.Create();
+            IReadOnlyTxProcessingScope txProcessingEnv = readOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
 
             ILifetimeScope tracerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             {
                 builder
 
                     // Standard read only chain setting
-                    .AddModule(env)
                     .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
                     .AddScoped<ITransactionProcessorAdapter, TraceTransactionProcessorAdapter>()
                     .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
@@ -42,6 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     // Specific for proof rpc
                     .AddScoped<IReceiptStorage>(new InMemoryReceiptStorage()) // Umm.... not `NullReceiptStorage`?
                     .AddScoped<IRewardCalculator>(NoBlockRewards.Instance)
+                    .AddScopedAsImplementedInterfaces(txProcessingEnv.WorldState)
 
                     .AddScoped<ITracer, Tracer>()
                     ;

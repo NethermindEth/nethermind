@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Processing
     internal sealed class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
     {
         private IStateReader StateReader { get; }
-        private IWorldState StateProvider { get; }
+        private IVisitingWorldState StateProvider { get; }
         private IBlockTree BlockTree { get; }
         private IBlockhashProvider BlockhashProvider { get; }
         private ISpecProvider SpecProvider { get; }
@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.Processing
 
         private ReadOnlyTxProcessingEnv(
             IStateReader stateReader,
-            IWorldState stateProvider,
+            IVisitingWorldState stateProvider,
             ICodeInfoRepository codeInfoRepository,
             IReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider specProvider,

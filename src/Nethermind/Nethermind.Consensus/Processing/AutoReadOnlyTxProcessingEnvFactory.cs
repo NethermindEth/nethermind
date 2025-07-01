@@ -3,6 +3,7 @@
 
 using System;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
@@ -15,11 +16,11 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
 {
     public IReadOnlyTxProcessorSource Create()
     {
-        IWorldState worldState = worldStateManager.CreateResettableWorldState();
+        IVisitingWorldState worldState = worldStateManager.CreateResettableWorldState();
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {
             builder
-                .AddSingleton(worldState)
+                .AddSingletonAsImplementedInterfaces(worldState)
                 .AddSingleton<AutoReadOnlyTxProcessingEnv>();
         });
 
@@ -28,18 +29,18 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
 
     public IReadOnlyTxProcessorSource CreateForWarmingUp(IWorldState worldStateToWarmUp)
     {
-        IWorldState worldState = worldStateManager.CreateWorldStateForWarmingUp(worldStateToWarmUp);
+        IVisitingWorldState worldState = worldStateManager.CreateWorldStateForWarmingUp(worldStateToWarmUp);
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {
             builder
-                .AddSingleton(worldState)
+                .AddSingletonAsImplementedInterfaces(worldState)
                 .AddSingleton<AutoReadOnlyTxProcessingEnv>();
         });
 
         return childScope.Resolve<AutoReadOnlyTxProcessingEnv>();
     }
 
-    private class AutoReadOnlyTxProcessingEnv(ITransactionProcessor transactionProcessor, IWorldState worldState, ILifetimeScope lifetimeScope) : IReadOnlyTxProcessorSource, IDisposable
+    private class AutoReadOnlyTxProcessingEnv(ITransactionProcessor transactionProcessor, IVisitingWorldState worldState, ILifetimeScope lifetimeScope) : IReadOnlyTxProcessorSource, IDisposable
     {
         public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
         {

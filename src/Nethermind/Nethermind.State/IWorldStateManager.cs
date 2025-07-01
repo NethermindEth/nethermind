@@ -22,14 +22,14 @@ public interface IWorldStateManager
     /// Used by read only tasks that need to execute blocks.
     /// </summary>
     /// <returns></returns>
-    IWorldState CreateResettableWorldState();
+    IVisitingWorldState CreateResettableWorldState();
 
     /// <summary>
     /// Create a read only world state to warm up another world state
     /// </summary>
     /// <param name="forWarmup">Specify a world state to warm up by the returned world state.</param>
     /// <returns></returns>
-    IWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup);
+    IVisitingWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup);
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 

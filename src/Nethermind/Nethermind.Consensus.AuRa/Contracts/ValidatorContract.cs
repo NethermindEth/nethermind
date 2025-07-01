@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Evm.State;

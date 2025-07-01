@@ -68,7 +68,7 @@ public class WorldStateManager : IWorldStateManager
 
     public ISnapServer? SnapServer => _trieStore.Scheme == INodeStorage.KeyScheme.Hash ? null : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, GlobalStateReader, _logManager, _lastNStateRootTracker);
 
-    public IWorldState CreateResettableWorldState()
+    public IVisitingWorldState CreateResettableWorldState()
     {
         return new WorldState(
             _readOnlyTrieStore,
@@ -76,7 +76,7 @@ public class WorldStateManager : IWorldStateManager
             _logManager);
     }
 
-    public IWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup)
+    public IVisitingWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup)
     {
         PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
         return preBlockCaches is not null

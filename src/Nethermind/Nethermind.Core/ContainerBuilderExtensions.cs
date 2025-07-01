@@ -40,6 +40,16 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder AddSingletonAsImplementedInterfaces<T>(this ContainerBuilder builder, T instance) where T : class
+    {
+        builder.RegisterInstance(instance)
+            .AsImplementedInterfaces()
+            .ExternallyOwned()
+            .SingleInstance();
+
+        return builder;
+    }
+
     public static ContainerBuilder AddSingleton<T, TArg0>(this ContainerBuilder builder, Func<TArg0, T> factoryMethod) where T : class where TArg0 : notnull
     {
         builder.Register((ctx) =>
@@ -191,6 +201,18 @@ public static class ContainerBuilderExtensions
 
         return builder;
     }
+
+    public static ContainerBuilder AddScopedAsImplementedInterfaces<T>(this ContainerBuilder builder, T instance) where T : class
+    {
+        builder.Register(ctx => instance)
+            .AsImplementedInterfaces()
+            .AsSelf()
+            .ExternallyOwned()
+            .InstancePerLifetimeScope();
+
+        return builder;
+    }
+
 
     public static ContainerBuilder AddScoped<T, TArg0, TArg1>(this ContainerBuilder builder, Func<TArg0, TArg1, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull
     {
