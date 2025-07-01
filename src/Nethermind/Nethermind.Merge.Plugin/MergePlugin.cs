@@ -1,12 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -16,16 +10,23 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
+using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
@@ -34,8 +35,16 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -52,6 +61,8 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     private IBlockCacheService _blockCacheService = null!;
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
     private IPeerRefresher _peerRefresher = null!;
+    private IJsonRpcConfig _jsonRpcConfig = null!;
+
 
     protected ManualBlockFinalizationManager _blockFinalizationManager = null!;
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
@@ -70,6 +81,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         _syncConfig = nethermindApi.Config<ISyncConfig>();
         _blocksConfig = nethermindApi.Config<IBlocksConfig>();
         _txPoolConfig = nethermindApi.Config<ITxPoolConfig>();
+        _jsonRpcConfig = nethermindApi.Config<IJsonRpcConfig>();
 
         MigrateSecondsPerSlot(_blocksConfig, mergeConfig);
 
@@ -179,23 +191,22 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, wwe can skip this check, but we can still working with MergePlugin
             return;
 
-        IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
-        if (!jsonRpcConfig.Enabled)
+        if (!_jsonRpcConfig.Enabled)
         {
             if (_logger.IsInfo)
                 _logger.Info("JsonRpc not enabled. Turning on JsonRpc URL with engine API.");
 
-            jsonRpcConfig.Enabled = true;
+            _jsonRpcConfig.Enabled = true;
 
             EnsureEngineModuleIsConfigured();
 
-            if (!jsonRpcConfig.EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase))
+            if (!_jsonRpcConfig.EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase))
             {
                 // Disable it
-                jsonRpcConfig.EnabledModules = [];
+                _jsonRpcConfig.EnabledModules = [];
             }
 
-            jsonRpcConfig.AdditionalRpcUrls = jsonRpcConfig.AdditionalRpcUrls
+            _jsonRpcConfig.AdditionalRpcUrls = _jsonRpcConfig.AdditionalRpcUrls
                 .Where(static (url) => JsonRpcUrl.Parse(url).EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
         }
@@ -370,6 +381,54 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             if (_logger.IsInfo) _logger.Info("Engine Module has been enabled");
         }
 
+        if (!_jsonRpcConfig.EnabledModules.Contains(ModuleType.Debug, StringComparison.OrdinalIgnoreCase))
+        {
+            // Register debug module for merge
+            IOverridableWorldScope worldStateManager = _api.WorldStateManager!.CreateOverridableWorldScope();
+            OverridableTxProcessingEnv txEnv = new(worldStateManager, _api.BlockTree!.AsReadOnly(), _api.SpecProvider!, _api.LogManager);
+
+            IReadOnlyTxProcessingScope scope = txEnv.Build(Keccak.EmptyTreeHash);
+
+            ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor);
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessorAdapter, scope.WorldState);
+            ReadOnlyChainProcessingEnv chainProcessingEnv = new ReadOnlyChainProcessingEnv(
+                scope,
+                _api.BlockValidator!,
+                _api.BlockPreprocessor,
+                _api.RewardCalculatorSource!.Get(scope.TransactionProcessor),
+                _api.ReceiptStorage!,
+                _api.SpecProvider!,
+                _api.BlockTree!,
+                worldStateManager.GlobalStateReader,
+                _api.LogManager,
+                transactionsExecutor);
+
+            GethStyleTracer tracer = new(
+                chainProcessingEnv.ChainProcessor,
+                scope.WorldState,
+                _api.ReceiptStorage!,
+                _api.BlockTree!,
+                _api.BadBlocksStore!,
+                _api.SpecProvider!,
+                transactionProcessorAdapter,
+                _api.FileSystem,
+                txEnv);
+
+            MergeDebugBridge debugBridge = new(
+                _api.ConfigProvider,
+                _api.DbProvider!.AsReadOnly(true),
+                tracer,
+                _api.BlockTree!,
+                _api.ReceiptStorage!,
+                new ReceiptMigration(_api),
+                _api.SpecProvider!,
+                _api.SyncModeSelector,
+                _api.BadBlocksStore!,
+                _api.BlockProducer!);
+
+            var debugModule = new MergeDebugRpc(_api.LogManager, debugBridge, _jsonRpcConfig, _api.SpecProvider!);
+        }
+
         return Task.CompletedTask;
     }
 
@@ -377,6 +436,11 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     {
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
+    }
+    protected virtual void RegisterDebugRpcModule(IMergeDebugModule debugRpcModule)
+    {
+        ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
+        _api.RpcModuleProvider.RegisterSingle(debugRpcModule);
     }
 
     public Task InitSynchronization()

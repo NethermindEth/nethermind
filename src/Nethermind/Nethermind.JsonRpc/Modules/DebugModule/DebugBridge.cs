@@ -25,16 +25,16 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugBridge : IDebugBridge
 {
-    private readonly IConfigProvider _configProvider;
-    private readonly IGethStyleTracer _tracer;
-    private readonly IBlockTree _blockTree;
-    private readonly IReceiptStorage _receiptStorage;
-    private readonly IReceiptsMigration _receiptsMigration;
-    private readonly ISpecProvider _specProvider;
-    private readonly ISyncModeSelector _syncModeSelector;
-    private readonly IBadBlockStore _badBlockStore;
-    private readonly IBlockStore _blockStore;
-    private readonly Dictionary<string, IDb> _dbMappings;
+    protected readonly IConfigProvider _configProvider;
+    protected readonly IBlockTree _blockTree;
+    protected readonly IGethStyleTracer _tracer;
+    protected readonly IReceiptStorage _receiptStorage;
+    protected readonly IReceiptsMigration _receiptsMigration;
+    protected readonly ISpecProvider _specProvider;
+    protected readonly ISyncModeSelector _syncModeSelector;
+    protected readonly IBadBlockStore _badBlockStore;
+    protected readonly IBlockStore _blockStore;
+    protected readonly Dictionary<string, IDb> _dbMappings;
 
     public DebugBridge(
         IConfigProvider configProvider,

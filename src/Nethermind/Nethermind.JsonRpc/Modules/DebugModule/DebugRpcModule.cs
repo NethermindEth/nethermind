@@ -26,11 +26,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugRpcModule : IDebugRpcModule
 {
-    private readonly IDebugBridge _debugBridge;
-    private readonly ILogger _logger;
-    private readonly IJsonRpcConfig _jsonRpcConfig;
-    private readonly ISpecProvider _specProvider;
-    private readonly BlockDecoder _blockDecoder;
+    protected readonly IDebugBridge _debugBridge;
+    protected readonly ILogger _logger;
+    protected readonly IJsonRpcConfig _jsonRpcConfig;
+    protected readonly ISpecProvider _specProvider;
+    protected readonly BlockDecoder _blockDecoder;
 
     public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider)
     {
