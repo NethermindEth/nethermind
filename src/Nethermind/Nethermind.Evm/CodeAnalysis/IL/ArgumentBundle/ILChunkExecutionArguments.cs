@@ -24,31 +24,27 @@ namespace Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle
         public ref Word StackHeadRef;
         public ref EvmPooledMemory Memory;
         public ref readonly ExecutionEnvironment Environment;
-        public ref readonly TxExecutionContext TxExecutionContext;
-        public ref readonly BlockExecutionContext BlockExecutionContext;
 
         public ReadOnlyMemory<byte> ReturnDataBuffer;
 
         public EvmState EvmState;
-        public IReleaseSpec Spec;
+        public readonly VirtualMachine Vm;
         public ISpecProvider SpecProvider;
         public IBlockhashProvider BlockhashProvider;
         public ICodeInfoRepository CodeInfoRepository;
         public IWorldState WorldState;
 
-        public ITxTracer TxTracer;
         public ILogger Logger;
 
         public ILChunkExecutionArguments(
             ref byte machineCode, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef,
-            in TxExecutionContext txExecutionContext, in BlockExecutionContext blockExecutionContext,
+            VirtualMachine vm,
             EvmState evmState,
-            IReleaseSpec spec, ISpecProvider specProvider, IBlockhashProvider blockhashProvider, ICodeInfoRepository codeInfoRepository,
-            IWorldState worldState, ReadOnlyMemory<byte> returnDataBuffer, ITxTracer txTracer, ILogger logger
-            )
+            ISpecProvider specProvider, IBlockhashProvider blockhashProvider, ICodeInfoRepository codeInfoRepository,
+            IWorldState worldState, ReadOnlyMemory<byte> returnDataBuffer, ILogger logger)
         {
             MachineCode = ref machineCode;
-            Spec = spec;
+            Vm = vm;
             SpecProvider = specProvider;
             BlockhashProvider = blockhashProvider;
             CodeInfoRepository = codeInfoRepository;
@@ -59,13 +55,9 @@ namespace Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle
             ProgramCounter = ref programCounter;
             StackHead = ref stackHead;
             StackHeadRef = ref stackHeadRef;
-
-            TxTracer = txTracer;
             Logger = logger;
 
             Environment = ref evmState.Env;
-            TxExecutionContext = ref txExecutionContext;
-            BlockExecutionContext = ref blockExecutionContext;
 
             Memory = ref evmState.Memory;
         }

@@ -12,7 +12,6 @@ using Nethermind.Int256;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Config;
 
@@ -20,7 +19,6 @@ using static Nethermind.Evm.CodeAnalysis.IL.WordEmit;
 using static Nethermind.Evm.CodeAnalysis.IL.UnsafeEmit;
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
 using static Nethermind.Evm.CodeAnalysis.IL.OpcodeEmitters;
-using static Nethermind.Evm.IlvmInstructionExtensions;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
@@ -538,7 +536,7 @@ internal static class OpcodeEmitters
         envLoader.LoadBlockhashProvider(method, locals, false);
         envLoader.LoadHeader(method, locals);
         method.LoadLocal(locals.int64A);
-        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadSpec(method, locals);
         method.CallVirtual(typeof(IBlockhashProvider).GetMethod(nameof(IBlockhashProvider.GetBlockhash), [typeof(BlockHeader), typeof(long), typeof(IReleaseSpec)]));
         method.Duplicate();
         method.StoreLocal(locals.hash256);
@@ -1377,7 +1375,7 @@ internal static class OpcodeEmitters
 
         // load spec
         method.LoadLocal(locals.gasAvailable);
-        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadSpec(method, locals);
         method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExpByteCost)));
         method.LoadConstant((long)32);
         method.LoadLocal(locals.uint64A);
@@ -1587,7 +1585,7 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.LoadLocal(locals.gasAvailable);
-        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadSpec(method, locals);
         method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetSLoadCost)));
         method.Subtract();
         method.Duplicate();
@@ -1611,8 +1609,8 @@ internal static class OpcodeEmitters
 
         method.LoadLocalAddress(locals.storageCell);
         method.LoadConstant((int)VirtualMachineDependencies.StorageAccessType.SLOAD);
-        envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, false);
+        envLoader.LoadSpec(method, locals);
+        envLoader.LoadTxTracer(method, locals);
 
         method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.Public));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
@@ -1631,7 +1629,7 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.LoadLocal(locals.gasAvailable);
-        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadSpec(method, locals);
         method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
         method.Subtract();
         method.Duplicate();
@@ -1662,7 +1660,7 @@ internal static class OpcodeEmitters
         envLoader.LoadCodeInfoRepository(method, locals, false);
         envLoader.LoadWorldState(method, locals, false);
         method.LoadLocal(locals.address);
-        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadSpec(method, locals);
         method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
     }
 
@@ -1675,7 +1673,7 @@ internal static class OpcodeEmitters
         method.Call(Word.GetUInt256ByRef);
 
         method.LoadLocal(locals.gasAvailable);
-        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadSpec(method, locals);
         method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
         method.LoadLocalAddress(locals.uint256C);
         method.LoadLocalAddress(locals.lbool);
@@ -1741,7 +1739,7 @@ internal static class OpcodeEmitters
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
         method.LoadLocal(locals.gasAvailable);
-        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadSpec(method, locals);
         method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeHashCost)));
         method.Subtract();
         method.Duplicate();
@@ -1774,7 +1772,7 @@ internal static class OpcodeEmitters
         envLoader.LoadCodeInfoRepository(method, locals, false);
         envLoader.LoadWorldState(method, locals, false);
         method.LoadLocal(locals.address);
-        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadSpec(method, locals);
         method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.GetExecutableCodeHash), [typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
         method.Call(Word.SetKeccak);
         method.Branch(endOfOpcode);
@@ -1792,8 +1790,8 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.gasAvailable);
         envLoader.LoadVmState(method, locals, false);
         method.LoadLocal(locals.address);
-        envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, false);
+        envLoader.LoadSpec(method, locals);
+        envLoader.LoadTxTracer(method, locals);
         method.LoadConstant(true);
         method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeAccountAccessGas)));
     }
@@ -1814,7 +1812,7 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.LoadLocal(locals.gasAvailable);
-        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadSpec(method, locals);
         method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetBalanceCost)));
         method.Subtract();
         method.Duplicate();
@@ -2084,7 +2082,7 @@ internal static class OpcodeEmitters
         method.StoreLocal(locals.localReadonOnlySpan);
 
 
-        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadSpec(method, locals);
         method.CallVirtual(typeof(IReleaseSpec).GetProperty(nameof(IReleaseSpec.UseNetGasMeteringWithAStipendFix)).GetGetMethod());
         method.BranchIfTrue(metered);
 
@@ -2093,8 +2091,8 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localReadonOnlySpan);
-        envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, false);
+        envLoader.LoadSpec(method, locals);
+        envLoader.LoadTxTracer(method, locals);
 
 
         MethodInfo SStoreMethodUnMetered = typeof(VirtualMachineDependencies)
@@ -2112,8 +2110,8 @@ internal static class OpcodeEmitters
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localReadonOnlySpan);
-        envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, false);
+        envLoader.LoadSpec(method, locals);
+        envLoader.LoadTxTracer(method, locals);
 
 
         MethodInfo SStoreMethodMetered = typeof(VirtualMachineDependencies)
@@ -2151,7 +2149,7 @@ internal static class OpcodeEmitters
         Label skipGasDeduction = method.DefineLabel(locals.GetLabelName());
         Label happyPath = method.DefineLabel(locals.GetLabelName());
 
-        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadSpec(method, locals);
         method.CallVirtual(typeof(IReleaseSpec).GetProperty(nameof(IReleaseSpec.UseShanghaiDDosProtection)).GetGetMethod());
         method.BranchIfFalse(skipGasDeduction);
 
@@ -2170,8 +2168,8 @@ internal static class OpcodeEmitters
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.Call(Word.GetAddress);
         method.LoadLocalAddress(locals.gasAvailable);
-        envLoader.LoadSpec(method, locals, false);
-        envLoader.LoadTxTracer(method, locals, false);
+        envLoader.LoadSpec(method, locals);
+        envLoader.LoadTxTracer(method, locals);
 
         method.Call(selfDestruct);
 
@@ -2210,7 +2208,7 @@ internal static class OpcodeEmitters
         envLoader.LoadCodeInfoRepository(method, locals, false);
         envLoader.LoadWorldState(method, locals, false);
         method.LoadLocalAddress(locals.gasAvailable);
-        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadSpec(method, locals);
 
         method.LoadConstant((int)op);
 
@@ -2257,7 +2255,7 @@ internal static class OpcodeEmitters
 
         envLoader.LoadReturnDataBuffer(method, locals, true);
 
-        envLoader.LoadTxTracer(method, locals, false);
+        envLoader.LoadTxTracer(method, locals);
 
         method.LoadLocalAddress(newStateToExe);
 
@@ -2326,7 +2324,7 @@ internal static class OpcodeEmitters
         envLoader.LoadWorldState(method, locals, false);
         envLoader.LoadCodeInfoRepository(method, locals, false);
         method.LoadLocalAddress(locals.gasAvailable);
-        envLoader.LoadSpec(method, locals, false);
+        envLoader.LoadSpec(method, locals);
 
         int index = 1;
 

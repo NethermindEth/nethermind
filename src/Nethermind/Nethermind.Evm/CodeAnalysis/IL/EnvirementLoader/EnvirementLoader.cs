@@ -24,7 +24,7 @@ public class EnvirementLoader
     private static readonly FieldInfo FieldInputData = typeof(ExecutionEnvironment).GetField(nameof(ExecutionEnvironment.InputData), BindingFlags.Public | BindingFlags.Instance);
 
     public static readonly FieldInfo REF_MACHINECODE_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.MachineCode), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo OBJ_SPEC = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Spec), BindingFlags.Public | BindingFlags.Instance);
+    public static readonly FieldInfo VM_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Vm), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo OBJ_SPECPROVIDER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.SpecProvider), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo OBJ_BLOCKHASHPROVIDER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.BlockhashProvider), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo OBJ_CODEINFOPROVIDER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.CodeInfoRepository), BindingFlags.Public | BindingFlags.Instance);
@@ -35,12 +35,14 @@ public class EnvirementLoader
     public static readonly FieldInfo REF_PROGRAMCOUNTER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.ProgramCounter), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo REF_STACKHEAD_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.StackHead), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo REF_STACKHEADREF_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.StackHeadRef), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo REF_TX_CONTEXT_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.TxExecutionContext), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo REF_BLK_CONTEXT_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.BlockExecutionContext), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo REF_ENV_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Environment), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo REF_MEMORY_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Memory), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo OBJ_TXTRACER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.TxTracer), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo OBJ_LOGGER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Logger), BindingFlags.Public | BindingFlags.Instance);
+
+    private static readonly MethodInfo VmSpecPropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.Spec)).GetGetMethod(false);
+    private static readonly MethodInfo VmTxExecContextPropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.TxExecutionContext)).GetGetMethod(false);
+    private static readonly MethodInfo VmBlkExecContextPropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.BlockExecutionContext)).GetGetMethod(false);
+    private static readonly MethodInfo VmTxTracerPropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.TxTracer)).GetGetMethod(false);
 
     public const int REF_BUNDLED_ARGS_INDEX = 0;
     public const int REF_CURRENT_STATE_INDEX = REF_BUNDLED_ARGS_INDEX + 1;
@@ -53,7 +55,12 @@ public class EnvirementLoader
 
     public void LoadBlockContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        LoadRefField(il, REF_BLK_CONTEXT_FIELD);
+        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
+        il.LoadField(VM_FIELD);
+
+        // ref returning property
+        il.Call(VmBlkExecContextPropGet);
+
         if (!loadAddress)
         {
             il.LoadObject<BlockExecutionContext>();
@@ -186,17 +193,11 @@ public class EnvirementLoader
             il.LoadObject<ILChunkExecutionState>();
     }
 
-    public void LoadSpec<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadSpec<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        if (loadAddress)
-        {
-            il.LoadFieldAddress(OBJ_SPEC);
-        }
-        else
-        {
-            il.LoadField(OBJ_SPEC);
-        }
+        il.LoadField(VM_FIELD);
+        il.Call(VmSpecPropGet);
     }
 
     public void LoadStackHead<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
@@ -210,24 +211,23 @@ public class EnvirementLoader
 
     public void LoadTxContext<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
     {
-        LoadRefField(il, REF_TX_CONTEXT_FIELD);
+        il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
+        il.LoadField(VM_FIELD);
+
+        // ref returning property
+        il.Call(VmTxExecContextPropGet);
+
         if (!loadAddress)
         {
             il.LoadObject<TxExecutionContext>();
         }
     }
 
-    public void LoadTxTracer<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadTxTracer<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        if (loadAddress)
-        {
-            il.LoadFieldAddress(OBJ_TXTRACER_FIELD);
-        }
-        else
-        {
-            il.LoadField(OBJ_TXTRACER_FIELD);
-        }
+        il.LoadField(VM_FIELD);
+        il.Call(VmTxTracerPropGet);
     }
 
     public void LoadVmState<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
