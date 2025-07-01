@@ -1,15 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle
 {
@@ -29,21 +22,18 @@ namespace Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle
         public EvmState EvmState;
         public readonly VirtualMachine Vm;
         public ICodeInfoRepository CodeInfoRepository;
-        public IWorldState WorldState;
 
         public ILogger Logger;
 
         public ILChunkExecutionArguments(
             ref byte machineCode, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef,
             VirtualMachine vm,
-            EvmState evmState, ICodeInfoRepository codeInfoRepository,
-            IWorldState worldState, ReadOnlyMemory<byte> returnDataBuffer, ILogger logger)
+            EvmState evmState, ICodeInfoRepository codeInfoRepository, ReadOnlyMemory<byte> returnDataBuffer, ILogger logger)
         {
             MachineCode = ref machineCode;
             Vm = vm;
             CodeInfoRepository = codeInfoRepository;
             EvmState = evmState;
-            WorldState = worldState;
             ReturnDataBuffer = returnDataBuffer;
             GasAvailable = ref gasAvailable;
             ProgramCounter = ref programCounter;

@@ -1551,7 +1551,7 @@ internal static class OpcodeEmitters
         method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
         method.StoreLocal(locals.storageCell);
 
-        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadWorldState(method, locals);
         method.LoadLocalAddress(locals.storageCell);
         method.LoadLocal(locals.localArray);
         method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.SetTransientState), [typeof(StorageCell).MakeByRefType(), typeof(byte[])]));
@@ -1571,7 +1571,7 @@ internal static class OpcodeEmitters
         method.NewObject(typeof(StorageCell), [typeof(Address), typeof(UInt256).MakeByRefType()]);
         method.StoreLocal(locals.storageCell);
 
-        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadWorldState(method, locals);
         method.LoadLocalAddress(locals.storageCell);
         method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.GetTransientState), [typeof(StorageCell).MakeByRefType()]));
         method.StoreLocal(locals.localReadonOnlySpan);
@@ -1615,7 +1615,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.Public));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadWorldState(method, locals);
         method.LoadLocalAddress(locals.storageCell);
         method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.Get), [typeof(StorageCell).MakeByRefType()]));
         method.StoreLocal(locals.localReadonOnlySpan);
@@ -1658,7 +1658,7 @@ internal static class OpcodeEmitters
     private static void EmitGetCachedCodeInfo<TDelegateType>(Emit<TDelegateType> method, EnvirementLoader envLoader, Locals<TDelegateType> locals)
     {
         envLoader.LoadCodeInfoRepository(method, locals, false);
-        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadWorldState(method, locals);
         method.LoadLocal(locals.address);
         envLoader.LoadSpec(method, locals);
         method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
@@ -1758,19 +1758,19 @@ internal static class OpcodeEmitters
         Label pushhashcodeLabel = method.DefineLabel(locals.GetLabelName());
 
         // account exists
-        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadWorldState(method, locals);
         method.LoadLocal(locals.address);
         method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.AccountExists)));
         method.BranchIfFalse(pushZeroLabel);
 
-        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadWorldState(method, locals);
         method.LoadLocal(locals.address);
         method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.IsDeadAccount)));
         method.BranchIfTrue(pushZeroLabel);
 
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         envLoader.LoadCodeInfoRepository(method, locals, false);
-        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadWorldState(method, locals);
         method.LoadLocal(locals.address);
         envLoader.LoadSpec(method, locals);
         method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.GetExecutableCodeHash), [typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
@@ -1800,7 +1800,7 @@ internal static class OpcodeEmitters
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
-        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadWorldState(method, locals);
         envLoader.LoadEnv(method, locals, true);
 
         method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
@@ -1828,7 +1828,7 @@ internal static class OpcodeEmitters
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadWorldState(method, locals);
         method.LoadLocal(locals.address);
         method.CallVirtual(typeof(IWorldState).GetMethod(nameof(IWorldState.GetBalance)));
         method.Call(Word.SetUInt256ByRef);
@@ -2087,7 +2087,7 @@ internal static class OpcodeEmitters
         method.BranchIfTrue(metered);
 
         envLoader.LoadVmState(method, locals, false);
-        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadWorldState(method, locals);
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localReadonOnlySpan);
@@ -2106,7 +2106,7 @@ internal static class OpcodeEmitters
         method.MarkLabel(metered);
 
         envLoader.LoadVmState(method, locals, false);
-        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadWorldState(method, locals);
         method.LoadLocalAddress(locals.gasAvailable);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localReadonOnlySpan);
@@ -2164,7 +2164,7 @@ internal static class OpcodeEmitters
         method.MarkLabel(skipGasDeduction);
 
         envLoader.LoadVmState(method, locals, false);
-        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadWorldState(method, locals);
         method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
         method.Call(Word.GetAddress);
         method.LoadLocalAddress(locals.gasAvailable);
@@ -2206,7 +2206,7 @@ internal static class OpcodeEmitters
 
         envLoader.LoadVmState(method, locals, false);
         envLoader.LoadCodeInfoRepository(method, locals, false);
-        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadWorldState(method, locals);
         method.LoadLocalAddress(locals.gasAvailable);
         envLoader.LoadSpec(method, locals);
 
@@ -2321,7 +2321,7 @@ internal static class OpcodeEmitters
         Label happyPath = method.DefineLabel(locals.GetLabelName());
 
         envLoader.LoadVmState(method, locals, false);
-        envLoader.LoadWorldState(method, locals, false);
+        envLoader.LoadWorldState(method, locals);
         envLoader.LoadCodeInfoRepository(method, locals, false);
         method.LoadLocalAddress(locals.gasAvailable);
         envLoader.LoadSpec(method, locals);

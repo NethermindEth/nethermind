@@ -27,7 +27,6 @@ public class EnvirementLoader
     public static readonly FieldInfo VM_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.Vm), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo OBJ_CODEINFOPROVIDER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.CodeInfoRepository), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo OBJ_EVMSTATE_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.EvmState), BindingFlags.Public | BindingFlags.Instance);
-    public static readonly FieldInfo OBJ_WORLDSTATE_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.WorldState), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo OBJ_RETURNDATABUFFER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.ReturnDataBuffer), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo REF_GASAVAILABLE_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.GasAvailable), BindingFlags.Public | BindingFlags.Instance);
     public static readonly FieldInfo REF_PROGRAMCOUNTER_FIELD = typeof(ILChunkExecutionArguments).GetField(nameof(ILChunkExecutionArguments.ProgramCounter), BindingFlags.Public | BindingFlags.Instance);
@@ -43,6 +42,7 @@ public class EnvirementLoader
     private static readonly MethodInfo VmTxTracerPropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.TxTracer)).GetGetMethod(false);
     private static readonly MethodInfo VmBlockHashProviderPropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.BlockHashProvider)).GetGetMethod(false);
     private static readonly MethodInfo VmChainIdPropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.ChainId)).GetGetMethod(false);
+    private static readonly MethodInfo VmWorldStatePropGet = typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.WorldState)).GetGetMethod(false);
 
     public const int REF_BUNDLED_ARGS_INDEX = 0;
     public const int REF_CURRENT_STATE_INDEX = REF_BUNDLED_ARGS_INDEX + 1;
@@ -233,17 +233,11 @@ public class EnvirementLoader
         }
     }
 
-    public void LoadWorldState<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)
+    public void LoadWorldState<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals)
     {
         il.LoadArgument(REF_BUNDLED_ARGS_INDEX);
-        if (loadAddress)
-        {
-            il.LoadFieldAddress(OBJ_WORLDSTATE_FIELD);
-        }
-        else
-        {
-            il.LoadField(OBJ_WORLDSTATE_FIELD);
-        }
+        il.LoadField(VM_FIELD);
+        il.Call(VmWorldStatePropGet);
     }
 
     public void LoadReturnDataBuffer<TDelegate>(Emit<TDelegate> il, Locals<TDelegate> locals, bool loadAddress)

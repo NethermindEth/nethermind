@@ -1156,7 +1156,6 @@ public sealed unsafe partial class VirtualMachine(
                 this,
                 vmState,
                 CodeInfoRepository,
-                _worldState,
                 ReturnDataBuffer,
                 _logger
             );
