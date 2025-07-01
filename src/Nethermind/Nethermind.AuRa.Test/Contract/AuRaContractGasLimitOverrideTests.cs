@@ -91,9 +91,7 @@ public class AuRaContractGasLimitOverrideTests
                 .First();
             BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value,
                 blockGasLimitContractTransition.Key,
-                new ReadOnlyTxProcessingEnv(
-                    WorldStateManager,
-                    BlockTree.AsReadOnly(), SpecProvider, LimboLogs.Instance));
+                ReadOnlyTxProcessingEnvFactory.Create());
 
             GasLimitOverrideCache = new AuRaContractGasLimitOverride.Cache();
             GasLimitCalculator = new AuRaContractGasLimitOverride(new[] { gasLimitContract }, GasLimitOverrideCache, false, new FollowOtherMiners(SpecProvider), LimboLogs.Instance);

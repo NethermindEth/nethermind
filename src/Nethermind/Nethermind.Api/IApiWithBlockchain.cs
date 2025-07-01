@@ -74,7 +74,6 @@ namespace Nethermind.Api
         IBlockFinalizationManager? FinalizationManager { get; set; }
 
         IBlockProducerEnvFactory BlockProducerEnvFactory { get; }
-        IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
         IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory { get; }
 
         IGasPriceOracle GasPriceOracle { get; }

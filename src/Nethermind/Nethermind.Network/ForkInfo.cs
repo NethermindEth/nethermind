@@ -19,13 +19,13 @@ namespace Nethermind.Network
 {
     public class ForkInfo(ISpecProvider specProvider, ISyncServer syncServer) : IForkInfo
     {
-        private Lock _initLock = new Lock();
+        private readonly Lock _initLock = new();
         private bool _wasInitialized = false;
         private Dictionary<uint, (ForkActivation Activation, ForkId Id)> DictForks { get; set; }
-        private (ForkActivation Activation, ForkId Id)[] Forks { get; set; }
+        internal (ForkActivation Activation, ForkId Id)[] Forks { get; set; }
         private bool _hasTimestampFork;
 
-        private void EnsureInitialized()
+        internal void EnsureInitialized()
         {
             using var _ = _initLock.EnterScope();
 

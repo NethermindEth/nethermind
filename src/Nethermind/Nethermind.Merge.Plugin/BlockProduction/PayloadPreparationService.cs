@@ -16,6 +16,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
@@ -29,6 +30,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 {
     private readonly CancellationTokenSource _shutdown = new();
     private readonly IBlockProducer _blockProducer;
+    private readonly ITxPool _txPool;
     private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
     private readonly ILogger _logger;
     private readonly Core.Timers.ITimer _timer;
@@ -50,6 +52,23 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
     public PayloadPreparationService(
         IBlockProducer blockProducer,
+        ITxPool txPool,
+        IBlockImprovementContextFactory blockImprovementContextFactory,
+        ITimerFactory timerFactory,
+        ILogManager logManager,
+        IBlocksConfig blockConfig) : this(
+        blockProducer,
+        txPool,
+        blockImprovementContextFactory,
+        timerFactory,
+        logManager,
+        TimeSpan.FromSeconds(blockConfig.SecondsPerSlot))
+    {
+    }
+
+    public PayloadPreparationService(
+        IBlockProducer blockProducer,
+        ITxPool txPool,
         IBlockImprovementContextFactory blockImprovementContextFactory,
         ITimerFactory timerFactory,
         ILogManager logManager,
@@ -58,6 +77,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         TimeSpan? improvementDelay = null)
     {
         _blockProducer = blockProducer;
+        _txPool = txPool;
         _blockImprovementContextFactory = blockImprovementContextFactory;
         _timePerSlot = timePerSlot;
         TimeSpan timeout = timePerSlot;
@@ -153,7 +173,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
         long startTimestamp = Stopwatch.GetTimestamp();
-        long added = Volatile.Read(ref TxPool.Metrics.PendingTransactionsAdded);
+        long added = _txPool.PendingTransactionsAdded;
         IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
         blockImprovementContext.ImprovementTask.ContinueWith(
             (b) =>
@@ -191,7 +211,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
                 // Loop the delay if no new txs have been added, and while not cancelled.
                 // Is no point in rebuilding an identical block.
-            } while (added == Volatile.Read(ref TxPool.Metrics.PendingTransactionsAdded));
+            } while (added == _txPool.PendingTransactionsAdded);
 
             if (!token.IsCancellationRequested || !blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
             {
@@ -411,10 +431,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         _shutdown.Cancel();
     }
 
-    public void CancelBlockProductionForParent(object? sender, BlockHeader parentHeader)
+    public void CancelBlockProduction(string payloadId)
     {
-        PayloadAttributes payloadAttributes = parentHeader.GenerateSimulatedPayload();
-        string payloadId = payloadAttributes.GetPayloadId(parentHeader);
         // GetPayload cancels the request
         _ = GetPayload(payloadId);
     }

@@ -305,7 +305,7 @@ public class SynchronizerTests
 
             if (IsMerge(synchronizerType))
             {
-                builder.RegisterModule(new MergeModule(configProvider));
+                builder.RegisterModule(new TestMergeModule(configProvider));
             }
 
             Container = builder.Build();

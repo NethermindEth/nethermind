@@ -34,6 +34,8 @@ public class SurgeGasPriceOracle : GasPriceOracle
     private readonly ISurgeConfig _surgeConfig;
     private readonly GasUsageRingBuffer _gasUsageBuffer;
 
+    private DateTime _lastGasPriceCalculation = DateTime.MinValue;
+
     public SurgeGasPriceOracle(
         IBlockFinder blockFinder,
         ILogManager logManager,
@@ -59,7 +61,9 @@ public class SurgeGasPriceOracle : GasPriceOracle
         }
 
         Hash256 headBlockHash = headBlock.Hash!;
-        if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price))
+
+        // Use the cached price if it exists and the timeout hasn't elapsed
+        if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price) && !ForceRefreshGasPrice())
         {
             if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Using cached gas price estimate: {price}");
             return price!.Value;
@@ -86,16 +90,14 @@ public class SurgeGasPriceOracle : GasPriceOracle
         UInt256 proofPostingCost = _surgeConfig.ProofPostingGas * UInt256.Max(l1BaseFee, l1AverageBaseFee);
 
         ulong averageGasUsage = await GetAverageGasUsageAcrossBatches();
-        if (averageGasUsage == 0)
-        {
-            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Failed to calculate average gas usage, using fallback gas price");
-            return FallbackGasPrice();
-        }
 
         UInt256 gasPriceEstimate = (minProposingCost + proofPostingCost + _surgeConfig.ProvingCostPerL2Batch) /
                                    Math.Max(averageGasUsage, _surgeConfig.L2GasPerL2Batch);
         UInt256 adjustedGasPriceEstimate = gasPriceEstimate * 100 / (UInt256)_surgeConfig.SharingPercentage;
+
+        // Update the cache and timestamp
         _gasPriceEstimation.Set(headBlockHash, adjustedGasPriceEstimate);
+        _lastGasPriceCalculation = DateTime.UtcNow;
 
         if (_logger.IsTrace)
         {
@@ -105,6 +107,14 @@ public class SurgeGasPriceOracle : GasPriceOracle
         }
 
         return adjustedGasPriceEstimate;
+    }
+
+    /// <summary>
+    /// Determines if the gas price should be forced to refresh due to timeout.
+    /// </summary>
+    private bool ForceRefreshGasPrice()
+    {
+        return (DateTime.UtcNow - _lastGasPriceCalculation) >= TimeSpan.FromSeconds(_surgeConfig.GasPriceRefreshTimeoutSeconds);
     }
 
     private async ValueTask<L1FeeHistoryResults?> GetL1FeeHistory()
@@ -131,23 +141,23 @@ public class SurgeGasPriceOracle : GasPriceOracle
     {
         // Get the current batch information
         ulong? numBatches = await GetNumBatches();
-        if (numBatches is null or <= 1)
+        if (numBatches is null or < 1)
         {
-            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Failed to get numBatches, using fallback gas price");
+            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Failed to get numBatches");
             return 0;
         }
 
-        // Get the latest proposed batch
-        ulong? currentBatchLastBlockId = await GetLastBlockId(numBatches.Value - 1);
-        if (currentBatchLastBlockId == null)
-        {
-            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Failed to get current batch lastBlockId, using fallback gas price");
-            return 0;
-        }
-
-        // Get the previous batch to find the total number of blocks in the latest proposed batch
+        // Get the latest proposed batch and the previous batch to compute the start and end block ids
+        ulong? currentBatchLastBlockId = numBatches > 1 ? await GetLastBlockId(numBatches.Value - 1) : 0;
         ulong? previousBatchLastBlockId = numBatches > 2 ? await GetLastBlockId(numBatches.Value - 2) : 0;
-        ulong startBlockId = (previousBatchLastBlockId ?? 0) + 1;
+
+        if (currentBatchLastBlockId == null || previousBatchLastBlockId == null)
+        {
+            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Failed to get batch lastBlockId");
+            return 0;
+        }
+
+        ulong startBlockId = previousBatchLastBlockId.Value == 0 ? 0 : previousBatchLastBlockId.Value + 1;
         ulong endBlockId = currentBatchLastBlockId.Value;
 
         // Calculate total gas used for the batch

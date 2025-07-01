@@ -40,7 +40,8 @@ public class SurgeGasPriceOracleTests
         _l1RpcClient = Substitute.For<IJsonRpcClient>();
         _surgeConfig = new SurgeConfig
         {
-            TaikoInboxAddress = "0x06a9Ab27c7e2255df1815E6CC0168d7755Feb19a"
+            TaikoInboxAddress = "0x06a9Ab27c7e2255df1815E6CC0168d7755Feb19a",
+            GasPriceRefreshTimeoutSeconds = 2
         };
 
         _gasPriceOracle = new SurgeGasPriceOracle(
@@ -143,7 +144,7 @@ public class SurgeGasPriceOracleTests
     }
 
     [Test]
-    public async ValueTask GetGasPriceEstimate_WithZeroGasUsed_ReturnsMinGasPrice()
+    public async ValueTask GetGasPriceEstimate_WithZeroGasUsed_ReturnsAtleastMinGasPrice()
     {
         Block headBlock = Build.A.Block.WithNumber(1).WithGasUsed(0).TestObject;
         _blockFinder.Head.Returns(headBlock);
@@ -168,7 +169,7 @@ public class SurgeGasPriceOracleTests
 
         UInt256 gasPrice = await _gasPriceOracle.GetGasPriceEstimate();
 
-        Assert.That(gasPrice, Is.EqualTo(MinGasPrice));
+        Assert.That(gasPrice, Is.GreaterThanOrEqualTo(MinGasPrice));
     }
 
     [Test]
@@ -201,6 +202,58 @@ public class SurgeGasPriceOracleTests
         UInt256 secondGasPrice = await _gasPriceOracle.GetGasPriceEstimate();
 
         Assert.That(secondGasPrice, Is.EqualTo(firstGasPrice));
+    }
+
+    [Test]
+    public async ValueTask GetGasPriceEstimate_WithTimeout_RefreshesGasPrice()
+    {
+        Block headBlock = Build.A.Block.WithNumber(1).WithGasUsed(1000000).TestObject;
+        _blockFinder.Head.Returns(headBlock);
+
+        var feeHistory = new L1FeeHistoryResults
+        {
+            BaseFeePerGas =
+            [
+                UInt256.Parse("20000000000")
+            ],
+            BaseFeePerBlobGas =
+            [
+                UInt256.Parse("1000000000")
+            ]
+        };
+
+        _l1RpcClient.Post<L1FeeHistoryResults?>("eth_feeHistory", _surgeConfig.FeeHistoryBlockCount, BlockParameter.Latest, null)
+            .Returns(Task.FromResult<L1FeeHistoryResults?>(feeHistory));
+
+        // Mock Stats2 returned by getStats2() call to have 2 batches (numBatches=2)
+        var stats2Response = "0x" + CreatePaddedHex(2) + CreatePaddedHex(0, 192);
+        _l1RpcClient.Post<string>("eth_call", Arg.Is<object>(o =>
+            o.ToString()!.ToLowerInvariant().Contains("0x26baca1c")), "latest")
+            .Returns(stats2Response);
+
+        // Mock Batch returned by getBatch(1) call to have lastBlockId=1
+        var batchResponse = "0x" + CreatePaddedHex(0) + CreatePaddedHex(1) + CreatePaddedHex(0, 576);
+        _l1RpcClient.Post<string>("eth_call", Arg.Is<object>(o =>
+            o.ToString()!.ToLowerInvariant().Contains("0x888775d9")), "latest")
+            .Returns(batchResponse);
+
+        // Mock block finder to return block with gas usage
+        _blockFinder.FindBlock(1, Arg.Any<Blockchain.BlockTreeLookupOptions>())
+            .Returns(Build.A.Block.WithNumber(1).WithGasUsed(1000000).TestObject);
+
+        UInt256 firstGasPrice = await _gasPriceOracle.GetGasPriceEstimate();
+
+        // Wait for the timeout to elapse
+        await Task.Delay(_surgeConfig.GasPriceRefreshTimeoutSeconds * 1000 + 100);
+
+        // Change the fee history to a different value
+        feeHistory.BaseFeePerGas[0] = UInt256.Parse("40000000000");
+
+        // Second call should refresh due to timeout, even though head block hasn't changed
+        UInt256 secondGasPrice = await _gasPriceOracle.GetGasPriceEstimate();
+
+        // The gas price should be higher due to the changed L1 base fee
+        Assert.That(secondGasPrice, Is.GreaterThan(firstGasPrice));
     }
 
     [Test]

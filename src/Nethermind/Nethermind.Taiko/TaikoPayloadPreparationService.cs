@@ -53,8 +53,12 @@ public class TaikoPayloadPreparationService(
 
                 // Write L1Origin.
                 l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
-                // Write the head L1Origin.
-                l1OriginStore.WriteHeadL1Origin(l1Origin.BlockId);
+
+                // Write the head L1Origin, only when it's not a preconfirmation block.
+                if (!l1Origin.IsPreconfBlock)
+                {
+                    l1OriginStore.WriteHeadL1Origin(l1Origin.BlockId);
+                }
 
                 // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
                 return new NoBlockProductionContext(block, UInt256.Zero);
@@ -149,6 +153,11 @@ public class TaikoPayloadPreparationService(
             return ValueTask.FromResult<IBlockProductionContext?>(blockContext);
 
         return ValueTask.FromResult<IBlockProductionContext?>(null);
+    }
+
+    public void CancelBlockProduction(string payloadId)
+    {
+        _ = GetPayload(payloadId);
     }
 
 

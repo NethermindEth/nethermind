@@ -7,6 +7,7 @@ using System.IO.Abstractions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -48,7 +49,6 @@ class ShutterTestsCommon
 
     public static ShutterApiSimulator InitApi(Random rnd, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
     {
-        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
         ILogFinder logFinder = Substitute.For<ILogFinder>();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
@@ -56,8 +56,8 @@ class ShutterTestsCommon
             eventSimulator ?? InitEventSimulator(rnd),
             AbiEncoder, blockTree, Ecdsa, logFinder, receiptStorage,
             LogManager, SpecProvider, timestamper ?? Substitute.For<ITimestamper>(),
-            worldStateManager, Substitute.For<IFileSystem>(),
-            Substitute.For<IKeyStoreConfig>(), Cfg, new(), rnd
+            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg,
+            Substitute.For<IReadOnlyTxProcessingEnvFactory>(), new(), rnd
         );
     }
 
@@ -65,8 +65,8 @@ class ShutterTestsCommon
         => new(
             eventSimulator ?? InitEventSimulator(rnd),
             AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
-            chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper, chain.WorldStateManager,
-            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg, new(), rnd
+            chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper,
+            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg, chain.ReadOnlyTxProcessingEnvFactory, new(), rnd
         );
 
     public static ShutterEventSimulator InitEventSimulator(Random rnd)

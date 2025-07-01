@@ -34,9 +34,9 @@ public class LatencyBasedRequestSizer
     /// <param name="func"></param>
     /// <typeparam name="TResponse"></typeparam>
     /// <returns></returns>
-    public async Task<TResponse> MeasureLatency<TResponse>(Func<int, Task<TResponse>> func)
+    public Task<TResponse> MeasureLatency<TResponse>(Func<int, Task<TResponse>> func)
     {
-        return await _requestSizer.Run(async (requestSize) =>
+        return _requestSizer.Run(async (requestSize) =>
         {
             long startTime = Stopwatch.GetTimestamp();
             TResponse result = await func(requestSize);

@@ -6,7 +6,10 @@ using System.Globalization;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
+using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,10 +19,12 @@ using Nethermind.Core.Timers;
 using Nethermind.Facade.Proxy;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 using RichardSzalay.MockHttp;
@@ -33,7 +38,7 @@ public partial class EngineModuleTests
     public async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay()
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
-        using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig);
+        BlocksConfig blocksConfig = new() { SecondsPerSlot = 10 };
         IBoostRelay boostRelay = Substitute.For<IBoostRelay>();
         boostRelay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
             .Returns(c =>
@@ -48,15 +53,14 @@ public partial class EngineModuleTests
                 };
             });
 
-        BoostBlockImprovementContextFactory improvementContextFactory = new(chain.BlockProducer!, TimeSpan.FromSeconds(5), boostRelay, chain.StateReader);
-        TimeSpan timePerSlot = TimeSpan.FromSeconds(10);
-        chain.BlockImprovementContextFactory = improvementContextFactory;
-        chain.PayloadPreparationService = new PayloadPreparationService(
-            chain.BlockProducer!,
-            chain.BlockImprovementContextFactory,
-            TimerFactory.Default,
-            chain.LogManager,
-            timePerSlot);
+        using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig, configurer: builder => builder
+            .AddSingleton<IBlocksConfig>(blocksConfig)
+            .AddSingleton<IBlockImprovementContextFactory>((ctx) =>
+            {
+                BoostBlockImprovementContextFactory improvementContextFactory = new(ctx.Resolve<IBlockProducer>(),
+                    TimeSpan.FromSeconds(5), boostRelay, ctx.Resolve<IStateReader>());
+                return improvementContextFactory;
+            }));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
@@ -94,10 +98,6 @@ public partial class EngineModuleTests
     public virtual async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http(
         string blockHash, string parentHash)
     {
-        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
-        using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig);
-        IJsonSerializer serializer = chain.JsonSerializer;
-
         ulong timestamp = Timestamper.UnixTime.Seconds;
         PayloadAttributes payloadAttributes = new() { Timestamp = timestamp, SuggestedFeeRecipient = Address.Zero, PrevRandao = Keccak.Zero };
 
@@ -145,21 +145,28 @@ public partial class EngineModuleTests
             Profit = UInt256.Parse(expected_profit.AsSpan(2), NumberStyles.HexNumber)
         };
 
-        mockHttp
-            .Expect(HttpMethod.Post, relayUrl + BoostRelay.SendPayloadPath)
-            .WithContent(serializer.Serialize(expected));
+        MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig, configurer: builder => builder
+            .AddSingleton<IBlockImprovementContextFactory>(ctx =>
+            {
+                IJsonSerializer serializer = ctx.Resolve<IJsonSerializer>();
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+                IBlockProducer blockProducer = ctx.Resolve<IBlockProducer>();
+                IStateReader stateReader = ctx.Resolve<IStateReader>();
 
-        DefaultHttpClient defaultHttpClient = new(mockHttp.ToHttpClient(), serializer, chain.LogManager, 1, 100);
-        BoostRelay boostRelay = new(defaultHttpClient, relayUrl);
-        BoostBlockImprovementContextFactory improvementContextFactory = new(chain.BlockProducer!, TimeSpan.FromSeconds(5000), boostRelay, chain.StateReader);
-        TimeSpan timePerSlot = TimeSpan.FromSeconds(1000);
-        chain.BlockImprovementContextFactory = improvementContextFactory;
-        chain.PayloadPreparationService = new PayloadPreparationService(
-            chain.BlockProducer!,
-            chain.BlockImprovementContextFactory,
-            TimerFactory.Default,
-            chain.LogManager,
-            timePerSlot);
+                mockHttp
+                    .Expect(HttpMethod.Post, relayUrl + BoostRelay.SendPayloadPath)
+                    .WithContent(serializer.Serialize(expected));
+
+                DefaultHttpClient defaultHttpClient =
+                    new(mockHttp.ToHttpClient(), serializer, logManager, 1, 100);
+                BoostRelay boostRelay = new(defaultHttpClient, relayUrl);
+                BoostBlockImprovementContextFactory improvementContextFactory = new(blockProducer!,
+                    TimeSpan.FromSeconds(5000), boostRelay, stateReader);
+                return improvementContextFactory;
+            })
+            .AddSingleton<IBlocksConfig>(new BlocksConfig() { SecondsPerSlot = 1000 })
+        );
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
@@ -186,28 +193,27 @@ public partial class EngineModuleTests
     public async Task forkchoiceUpdatedV1_should_ignore_gas_limit([Values(false, true)] bool relay)
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
-        using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig);
-        IBlockImprovementContextFactory improvementContextFactory;
-        if (relay)
-        {
-            IBoostRelay boostRelay = Substitute.For<IBoostRelay>();
-            boostRelay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
-                .Returns(static c => (BoostPayloadAttributes)c.Arg<PayloadAttributes>());
+        using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig, configurer: builder => builder
+            .AddSingleton<IBlockImprovementContextFactory, IBlockProducer, IStateReader>((blockProducer, stateReader) =>
+            {
+                IBlockImprovementContextFactory improvementContextFactory;
+                if (relay)
+                {
+                    IBoostRelay boostRelay = Substitute.For<IBoostRelay>();
+                    boostRelay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
+                        .Returns(static c => (BoostPayloadAttributes)c.Arg<PayloadAttributes>());
 
-            improvementContextFactory = new BoostBlockImprovementContextFactory(chain.BlockProducer!, TimeSpan.FromSeconds(5), boostRelay, chain.StateReader);
-        }
-        else
-        {
-            improvementContextFactory = new BlockImprovementContextFactory(chain.BlockProducer!, TimeSpan.FromSeconds(5));
-        }
+                    improvementContextFactory = new BoostBlockImprovementContextFactory(blockProducer!, TimeSpan.FromSeconds(5), boostRelay, stateReader);
+                }
+                else
+                {
+                    improvementContextFactory = new BlockImprovementContextFactory(blockProducer!, TimeSpan.FromSeconds(5));
+                }
 
-        TimeSpan timePerSlot = TimeSpan.FromSeconds(10);
-        chain.PayloadPreparationService = new PayloadPreparationService(
-            chain.BlockProducer!,
-            improvementContextFactory,
-            TimerFactory.Default,
-            chain.LogManager,
-            timePerSlot);
+                return improvementContextFactory;
+            })
+            .AddSingleton<IBlocksConfig>(new BlocksConfig() { SecondsPerSlot = 10 })
+        );
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;

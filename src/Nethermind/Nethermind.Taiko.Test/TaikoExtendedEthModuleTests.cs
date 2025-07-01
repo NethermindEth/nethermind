@@ -65,4 +65,17 @@ public class TaikoExtendedEthModuleTests
 
         rpc.taiko_l1OriginByID(0).Result.Data.Should().Be(origin);
     }
+
+    [Test]
+    public void TestL1OriginById_WithBuildPayloadArgsId()
+    {
+        IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
+        TaikoExtendedEthModule rpc = new TaikoExtendedEthModule(new SyncConfig(), originStore);
+
+        var buildPayloadArgsId = new int[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 };
+        L1Origin origin = new L1Origin(0, TestItem.KeccakA, 1, Hash256.Zero, buildPayloadArgsId);
+        originStore.ReadL1Origin((UInt256)0).Returns(origin);
+
+        rpc.taiko_l1OriginByID(0).Result.Data.Should().Be(origin);
+    }
 }

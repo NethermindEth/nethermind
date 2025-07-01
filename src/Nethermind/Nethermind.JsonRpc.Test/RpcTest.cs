@@ -1,10 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO;
-using System.Reflection;
-using System.Text.Json;
-using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using FluentAssertions.Extensions;
@@ -13,6 +9,12 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Utils;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Serialization.Json;
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Reflection;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Test;
 
@@ -29,7 +31,7 @@ public static class RpcTest
 
     public static async Task<string> TestSerializedRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
     {
-        using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(10.Seconds());
+        using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : 10.Seconds());
         await using IContainer container = CreateContainerForModule<T>(module);
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();

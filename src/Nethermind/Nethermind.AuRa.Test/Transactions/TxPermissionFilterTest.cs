@@ -272,7 +272,7 @@ public class TxPermissionFilterTest
                 new LruCache<ValueHash256, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
 
             VersionedTransactionPermissionContract transactionPermissionContract = new(AbiEncoder.Instance, _contractAddress, 1,
-                new ReadOnlyTxProcessingEnv(WorldStateManager, BlockTree.AsReadOnly(), SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions, LimboLogs.Instance, SpecProvider);
+                ReadOnlyTxProcessingEnvFactory.Create(), TransactionPermissionContractVersions, LimboLogs.Instance, SpecProvider);
 
             TxPermissionFilterCache = new PermissionBasedTxFilter.Cache();
             PermissionBasedTxFilter = new PermissionBasedTxFilter(transactionPermissionContract, TxPermissionFilterCache, LimboLogs.Instance);

@@ -100,7 +100,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
                 foreach (BlobScheduleSettings settings in chainSpec.Parameters.BlobSchedule)
                 {
-                    if (settings.Timestamp == genesisTimestamp)
+                    if (settings.Timestamp <= genesisTimestamp)
                     {
                         continue;
                     }
@@ -303,7 +303,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     return;
                 }
 
-                BlobScheduleSettings? blobSchedule = chainSpec.Parameters.BlobSchedule.OrderByDescending(bs => bs).FirstOrDefault(bs => bs.Timestamp <= releaseStartTimestamp);
+                BlobScheduleSettings? blobSchedule = chainSpec.Parameters.BlobSchedule?.OrderByDescending(bs => bs).FirstOrDefault(bs => bs.Timestamp <= releaseStartTimestamp);
 
                 if (blobSchedule is not null)
                 {

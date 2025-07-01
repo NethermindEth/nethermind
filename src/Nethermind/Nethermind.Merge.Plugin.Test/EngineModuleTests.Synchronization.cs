@@ -832,18 +832,23 @@ public partial class EngineModuleTests
     [Test]
     public async Task Blocks_before_pivots_should_not_be_added_if_node_has_never_been_in_sync()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        BlockTree syncedBlockTree = Build.A.BlockTree(chain.BlockTree.Head!, chain.SpecProvider).WithPostMergeRules().OfChainLength(5).TestObject;
-        ISyncConfig syncConfig = new SyncConfig
+        ISyncConfig syncConfig;
+        Block blockBeforePivot;
         {
-            FastSync = true,
-            PivotNumber = syncedBlockTree.Head?.Number.ToString() ?? "",
-            PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
-            PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
-        };
+            using MergeTestBlockchain tmpChain = await CreateBlockchain();
+            BlockTree syncedBlockTree = Build.A.BlockTree(tmpChain.BlockTree.Head!, tmpChain.SpecProvider).WithPostMergeRules().OfChainLength(5).TestObject;
+            blockBeforePivot = syncedBlockTree.FindBlock(2, BlockTreeLookupOptions.None)!;
+            syncConfig = new SyncConfig
+            {
+                FastSync = true,
+                PivotNumber = syncedBlockTree.Head?.Number.ToString() ?? "",
+                PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
+                PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
+            };
+        }
 
-        IEngineRpcModule rpc = CreateEngineModule(chain, syncConfig);
-        Block blockBeforePivot = syncedBlockTree.FindBlock(2, BlockTreeLookupOptions.None)!;
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder.AddSingleton<ISyncConfig>(syncConfig));
+        IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload prePivotRequest = ExecutionPayload.Create(blockBeforePivot);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(prePivotRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
@@ -853,22 +858,28 @@ public partial class EngineModuleTests
     [Test]
     public async Task Blocks_before_pivots_should_not_be_added_if_node_has_been_synced()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        BlockTree syncedBlockTree = Build.A.BlockTree(chain.BlockTree.Head!, chain.SpecProvider).WithPostMergeRules().OfChainLength(5).TestObject;
-        ISyncConfig syncConfig = new SyncConfig
+        ISyncConfig syncConfig;
+        Block blockNr1;
+        Block blockBeforePivot;
         {
-            FastSync = true,
-            PivotNumber = syncedBlockTree.Head?.Number.ToString() ?? "",
-            PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
-            PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
-        };
+            using MergeTestBlockchain tmpChain = await CreateBlockchain();
+            BlockTree syncedBlockTree = Build.A.BlockTree(tmpChain.BlockTree.Head!, tmpChain.SpecProvider).WithPostMergeRules().OfChainLength(5).TestObject;
+            blockNr1 = syncedBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+            blockBeforePivot = syncedBlockTree.FindBlock(2, BlockTreeLookupOptions.None)!;
+            syncConfig = new SyncConfig
+            {
+                FastSync = true,
+                PivotNumber = syncedBlockTree.Head?.Number.ToString() ?? "",
+                PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
+                PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
+            };
+        }
 
-        Block blockNr1 = syncedBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder.AddSingleton<ISyncConfig>(syncConfig));
         await chain.BlockTree.SuggestBlockAsync(blockNr1, BlockTreeSuggestOptions.None);
         chain.BlockTree.UpdateMainChain(new List<Block>() { blockNr1 }, true, true);
 
-        IEngineRpcModule rpc = CreateEngineModule(chain, syncConfig);
-        Block blockBeforePivot = syncedBlockTree.FindBlock(2, BlockTreeLookupOptions.None)!;
+        IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload prePivotRequest = ExecutionPayload.Create(blockBeforePivot);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(prePivotRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatus.Valid).ToUpper());
@@ -878,20 +889,29 @@ public partial class EngineModuleTests
     [Test]
     public async Task Maintain_correct_pointers_for_beacon_sync_in_fast_sync()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        BlockTree syncedBlockTree = Build.A.BlockTree(chain.BlockTree.Head!).OfChainLength(5).TestObject;
-        ISyncConfig syncConfig = new SyncConfig
+
+        ISyncConfig syncConfig;
+        Block syncedHead;
         {
-            FastSync = true,
-            PivotNumber = syncedBlockTree.Head?.Number.ToString() ?? "",
-            PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
-            PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
-        };
-        IEngineRpcModule rpc = CreateEngineModule(chain, syncConfig);
+            using MergeTestBlockchain tmpChain = await CreateBlockchain();
+            BlockTree syncedBlockTree = Build.A.BlockTree(tmpChain.BlockTree.Head!).OfChainLength(5).TestObject;
+            syncedHead = syncedBlockTree.Head!;
+            syncConfig = new SyncConfig
+            {
+                FastSync = true,
+                PivotNumber = syncedBlockTree.Head?.Number.ToString() ?? "",
+                PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",
+                PivotTotalDifficulty = syncedBlockTree.Head?.TotalDifficulty?.ToString() ?? ""
+            };
+        }
+
+
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder.AddSingleton<ISyncConfig>(syncConfig));
+        IEngineRpcModule rpc = CreateEngineModule(chain);
         // create block gap from fast sync pivot
         int gap = 7;
         ExecutionPayload[] requests =
-            CreateBlockRequestBranch(chain, ExecutionPayload.Create(syncedBlockTree.Head!), Address.Zero, gap);
+            CreateBlockRequestBranch(chain, ExecutionPayload.Create(syncedHead), Address.Zero, gap);
         // setting up beacon pivot
         ExecutionPayload pivotRequest = CreateBlockRequest(chain, requests[^1], Address.Zero);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(pivotRequest);

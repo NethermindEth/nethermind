@@ -168,7 +168,7 @@ public partial class EngineModuleTests
     public async Task NewPayloadV4_reject_payload_with_bad_authorization_list_rlp()
     {
         ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, executionRequestsProcessorMock);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
@@ -203,7 +203,7 @@ public partial class EngineModuleTests
     public async Task NewPayloadV4_reject_payload_with_bad_execution_requests()
     {
         ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, executionRequestsProcessorMock);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
@@ -249,7 +249,7 @@ public partial class EngineModuleTests
     public async Task can_progress_chain_one_by_one_v4_with_requests(int count)
     {
         ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, executionRequestsProcessorMock);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;

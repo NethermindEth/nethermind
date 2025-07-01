@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -13,6 +14,7 @@ using Nethermind.Flashbots.Data;
 using Nethermind.Flashbots.Modules.Flashbots;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Test;
@@ -28,7 +30,7 @@ public partial class FlashbotsModuleTests
     public virtual async Task TestValidateBuilderSubmissionV3()
     {
         using EngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
-        IFlashbotsRpcModule rpc = CreateFlashbotsModule(chain);
+        IFlashbotsRpcModule rpc = chain.Container.Resolve<IRpcModuleFactory<IFlashbotsRpcModule>>().Create();
 
         Block block = CreateBlock(chain);
 
