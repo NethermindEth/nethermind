@@ -89,4 +89,46 @@ public class Node
         var receivedMessages = await subscriber;
         receivedMessages.Should().BeEquivalentTo(sentMessages);
     }
+
+    [Test]
+    public async Task PublishAndSubscribeToTopic_MultipleSubscribers()
+    {
+        using var grpcChannel = GrpcChannel.ForAddress(_grpcEndpoint, Configuration.DefaultGrpcChannelOptions);
+
+        var client = new GrpcOptimumNodeClient(grpcChannel);
+        var topic = Guid.NewGuid().ToString();
+        var messageCount = 10;
+
+        var subscribers = Enumerable.Range(0, 100)
+            .Select(_ => Task.Run(async () =>
+            {
+                var messages = client.SubscribeToTopic(topic);
+                return await messages
+                    .Take(messageCount)
+                    .Select(msg => msg.Message)
+                    .ToArrayAsync();
+            }))
+            .ToList();
+
+        var publisher = Task.Run(async () =>
+        {
+            var messages = Enumerable.Range(0, messageCount)
+                .Select(_ => Encoding.UTF8.GetBytes($"msg = {Guid.NewGuid()}"))
+                .ToArray();
+
+            foreach (var msg in messages)
+            {
+                await client.PublishToTopicAsync(topic, msg, CancellationToken.None);
+            }
+
+            return messages;
+        });
+
+        var sentMessages = await publisher;
+        var allReceivedMessages = await Task.WhenAll(subscribers);
+        foreach (var receivedMessages in allReceivedMessages)
+        {
+            receivedMessages.Should().BeEquivalentTo(sentMessages);
+        }
+    }
 }
