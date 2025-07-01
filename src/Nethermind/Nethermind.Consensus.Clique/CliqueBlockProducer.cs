@@ -331,6 +331,7 @@ public class CliqueBlockProducer : IBlockProducer
     public async Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer = null,
         PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None, CancellationToken token = default)
     {
+        _stateProvider.SetBaseBlock(parentHeader);
         Block? block = PrepareBlock(parentHeader);
         if (block is null)
         {
@@ -488,8 +489,6 @@ public class CliqueBlockProducer : IBlockProducer
         // Mix digest is reserved for now, set to empty
         header.MixHash = Keccak.Zero;
         header.WithdrawalsRoot = spec.WithdrawalsEnabled ? Keccak.EmptyTreeHash : null;
-
-        _stateProvider.StateRoot = parentHeader.StateRoot!;
 
         IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentHeader, header.GasLimit, null, filterSource: true);
         Block block = new BlockToProduce(

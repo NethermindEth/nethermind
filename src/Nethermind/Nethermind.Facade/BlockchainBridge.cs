@@ -208,7 +208,7 @@ namespace Nethermind.Facade
 
             CallOutputTracer callOutputTracer = new();
 
-            using var scope = _processingEnv.Build(header.StateRoot!);
+            using var scope = _processingEnv.BuildAndOverride(header);
             var components = scope.Component;
 
             TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, false,

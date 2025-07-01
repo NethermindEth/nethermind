@@ -42,7 +42,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         OverridableCodeInfoRepository codeInfoRepository,
         IReleaseSpec releaseSpec)
     {
-        stateProvider.StateRoot = parent.StateRoot!;
+        stateProvider.SetBaseBlock(parent);
         stateProvider.ApplyStateOverrides(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec, blockHeader.Number);
 
         IEnumerable<Address> senders = blockStateCall.Calls?.Select(static details => details.Transaction.SenderAddress) ?? [];
@@ -133,7 +133,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 suggestedBlocks[0] = currentBlock;
 
                 IBlockProcessor processor = env.GetProcessor(payload.Validation, spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null);
-                Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, cancellationBlockTracer, cancellationToken)[0];
+                // TODO: Double check this
+                Block processedBlock = processor.Process(parent, suggestedBlocks, processingFlags, cancellationBlockTracer, cancellationToken)[0];
 
                 FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
 
@@ -164,7 +165,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
     private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)
     {
-        stateProvider.StateRoot = processedBlock.StateRoot!;
+        stateProvider.SetBaseBlock(processedBlock.Header);
         stateProvider.Commit(currentSpec);
         stateProvider.CommitTree(currentBlock.Number);
         blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);

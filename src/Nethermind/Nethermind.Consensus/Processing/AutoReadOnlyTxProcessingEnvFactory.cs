@@ -40,11 +40,15 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
 
     private class AutoReadOnlyTxProcessingEnv(ITransactionProcessor transactionProcessor, IWorldState worldState, ILifetimeScope lifetimeScope) : IReadOnlyTxProcessorSource, IDisposable
     {
-        public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
+        public IReadOnlyTxProcessingScope Build(BlockHeader? header)
         {
-            Hash256 originalStateRoot = worldState.StateRoot;
-            worldState.StateRoot = stateRoot;
-            return new ReadOnlyTxProcessingScope(transactionProcessor, worldState, originalStateRoot);
+            // Hash256 originalStateRoot = worldState.StateRoot;
+            worldState.SetBaseBlock(header);
+            // Ah great.
+            // need to find a way to reset
+            // worldState.StateRoot = originalStateRoot;
+            IDisposable worldStateCloser = new Reactive.AnonymousDisposable(() => {});
+            return new ReadOnlyTxProcessingScope(transactionProcessor, worldState, worldStateCloser);
         }
 
         public void Dispose()

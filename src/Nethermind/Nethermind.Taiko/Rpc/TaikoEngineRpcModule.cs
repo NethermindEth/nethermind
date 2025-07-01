@@ -137,7 +137,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         }
 
         IReadOnlyTxProcessorSource readonlyTxProcessingEnv = readOnlyTxProcessingEnvFactory.Create();
-        using IReadOnlyTxProcessingScope scope = readonlyTxProcessingEnv.Build(head.StateRoot);
+        using IReadOnlyTxProcessingScope scope = readonlyTxProcessingEnv.Build(head);
 
         return ResultWrapper<PreBuiltTxList[]?>.Success(ProcessTransactions(scope.TransactionProcessor, scope.WorldState, new BlockHeader(
                 head.Hash!,
@@ -175,7 +175,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         }
 
         BlockExecutionContext blkCtx = new(blockHeader, _specProvider.GetSpec(blockHeader));
-        worldState.StateRoot = blockHeader.StateRoot;
+        worldState.SetBaseBlock(blockHeader);
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
 

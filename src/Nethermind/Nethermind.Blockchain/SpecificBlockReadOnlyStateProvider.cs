@@ -38,7 +38,8 @@ namespace Nethermind.Blockchain
 
         [SkipLocalsInit]
         public bool IsEmptyAccount(Address address) => TryGetAccount(address, out AccountStruct account) && account.IsEmpty;
-        public bool HasStateForRoot(Hash256 stateRoot) => _stateReader.HasStateForRoot(stateRoot);
+
+        public bool HasStateForRoot(BlockHeader? header) => _stateReader.HasStateForRoot(header?.StateRoot ?? Keccak.EmptyTreeHash);
 
         [SkipLocalsInit]
         public bool IsDeadAccount(Address address) => !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;

@@ -184,6 +184,11 @@ namespace Nethermind.State
 
         public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);
 
+        public void SetBaseBlock(BlockHeader? header)
+        {
+            StateRoot = header?.StateRoot ?? Keccak.EmptyTreeHash;
+        }
+
         public ref readonly UInt256 GetBalance(Address address) => ref _stateProvider.GetBalance(address);
 
         UInt256 IAccountStateProvider.GetBalance(Address address) => _stateProvider.GetBalance(address);
@@ -216,9 +221,9 @@ namespace Nethermind.State
             return _stateProvider.IsEmptyAccount(address);
         }
 
-        public bool HasStateForRoot(Hash256 stateRoot)
+        public bool HasStateForRoot(BlockHeader? header)
         {
-            return _trieStore.HasRoot(stateRoot);
+            return _trieStore.HasRoot(header?.StateRoot ?? Keccak.EmptyTreeHash);
         }
 
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)

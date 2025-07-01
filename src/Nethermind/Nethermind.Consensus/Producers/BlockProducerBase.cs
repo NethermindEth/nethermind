@@ -131,7 +131,7 @@ namespace Nethermind.Consensus.Producers
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
-            if (TrySetState(parent.StateRoot))
+            if (TrySetState(parent))
             {
                 Block block = PrepareBlock(parent, payloadAttributes, flags);
                 if (PreparedBlockCanBeMined(block))
@@ -191,11 +191,11 @@ namespace Nethermind.Consensus.Producers
         /// <param name="parentStateRoot">Parent block state</param>
         /// <returns>True if succeeded, false otherwise</returns>
         /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
-        protected bool TrySetState(Hash256? parentStateRoot)
+        protected bool TrySetState(BlockHeader? parent)
         {
-            if (parentStateRoot is not null && StateProvider.HasStateForRoot(parentStateRoot))
+            if (parent is not null && StateProvider.HasStateForRoot(parent))
             {
-                StateProvider.StateRoot = parentStateRoot;
+                StateProvider.SetBaseBlock(parent);
                 return true;
             }
 

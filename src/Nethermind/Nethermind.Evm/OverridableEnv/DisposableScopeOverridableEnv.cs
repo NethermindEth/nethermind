@@ -20,12 +20,6 @@ public class DisposableScopeOverridableEnv<T>(
     T resolvedComponents
 ) : IOverridableEnv<T>
 {
-    public Scope<T> Build(Hash256 stateRoot)
-    {
-        IDisposable disposable = overridableEnv.Build(stateRoot);
-        return new Scope<T>(resolvedComponents, disposable);
-    }
-
     public Scope<T> BuildAndOverride(BlockHeader header)
     {
         IDisposable disposable = overridableEnv.BuildAndOverride(header, null);

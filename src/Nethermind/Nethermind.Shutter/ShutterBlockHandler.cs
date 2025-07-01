@@ -197,7 +197,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
             return;
         }
 
-        using IReadOnlyTxProcessingScope scope = _envFactory.Create().Build(parent.StateRoot!);
+        using IReadOnlyTxProcessingScope scope = _envFactory.Create().Build(parent);
         ITransactionProcessor processor = scope.TransactionProcessor;
 
         ValidatorRegistryContract validatorRegistryContract = new(processor, _abiEncoder, new(_cfg.ValidatorRegistryContractAddress!), _logManager, _chainId, _cfg.ValidatorRegistryMessageVersion!);

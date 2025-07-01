@@ -31,6 +31,6 @@ namespace Nethermind.State
 
         bool IsEmptyAccount(Address address);
 
-        bool HasStateForRoot(Hash256 stateRoot);
+        bool HasStateForRoot(BlockHeader? header);
     }
 }

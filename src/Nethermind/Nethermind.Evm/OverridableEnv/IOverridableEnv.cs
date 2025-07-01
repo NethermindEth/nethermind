@@ -17,7 +17,6 @@ namespace Nethermind.Evm.OverridableEnv;
 /// </summary>
 public interface IOverridableEnv : IModule
 {
-    IDisposable Build(Hash256 stateRoot);
     IDisposable BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride);
 }
 
@@ -31,7 +30,6 @@ public interface IOverridableEnv : IModule
 /// <typeparam name="T"></typeparam>
 public interface IOverridableEnv<T>
 {
-    Scope<T> Build(Hash256 stateRoot);
     Scope<T> BuildAndOverride(BlockHeader header);
     Scope<T> BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride);
 }

@@ -35,11 +35,11 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         }
 
         IOverridableWorldScope worldScope = _overridableWorldScopePool.Get();
+        using var _ = worldScope.BeginScope(blockHeader);
         try
         {
             IWorldState worldState = worldScope.WorldState;
             IReleaseSpec releaseSpec = specProvider.GetSpec(blockHeader);
-            worldState.StateRoot = blockHeader.StateRoot!;
 
             foreach (KeyValuePair<Address, AccountChange> kv in accountDiff)
             {
@@ -104,7 +104,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             }
 
             worldState.Commit(releaseSpec);
-            worldState.CommitTree(blockHeader.Number + 1);
+            worldState.RecalculateStateRoot();
             return ResultWrapper<Hash256>.Success(worldState.StateRoot);
         }
         finally
@@ -149,7 +149,6 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
         public bool Return(IOverridableWorldScope obj)
         {
-            obj.ResetOverrides();
             return true;
         }
     }
