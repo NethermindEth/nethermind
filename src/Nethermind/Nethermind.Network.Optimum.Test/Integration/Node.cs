@@ -62,6 +62,15 @@ public class Node
         var topic = Guid.NewGuid().ToString();
         var messageCount = 10;
 
+        var subscriber = Task.Run(async () =>
+        {
+            var messages = client.SubscribeToTopic(topic);
+            return await messages
+                .Take(messageCount)
+                .Select(msg => msg.Message)
+                .ToArrayAsync();
+        });
+
         var publisher = Task.Run(async () =>
         {
             var messages = Enumerable.Range(0, messageCount)
@@ -74,15 +83,6 @@ public class Node
             }
 
             return messages;
-        });
-
-        var subscriber = Task.Run(async () =>
-        {
-            var messages = client.SubscribeToTopic(topic);
-            return await messages
-                .Take(messageCount)
-                .Select(msg => msg.Message)
-                .ToArrayAsync();
         });
 
         var sentMessages = await publisher;
