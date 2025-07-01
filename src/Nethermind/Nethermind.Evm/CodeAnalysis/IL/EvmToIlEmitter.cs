@@ -1106,9 +1106,8 @@ internal static class OpcodeEmitters
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         envLoader.LoadBlockContext(method, locals, true);
-        method.LoadFieldAddress(GetFieldInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header)));
-
-        method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.GasLimit), false, out _));
+        method.LoadField(GetFieldInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.GasLimit)));
+        method.Duplicate();
         method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
         return;
     }
