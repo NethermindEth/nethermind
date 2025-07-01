@@ -14,25 +14,21 @@ namespace Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle
         public ref int ProgramCounter;
         public ref int StackHead;
         public ref Word StackHeadRef;
-        public ref EvmPooledMemory Memory;
         public ref readonly ExecutionEnvironment Environment;
 
         public ReadOnlyMemory<byte> ReturnDataBuffer;
 
         public EvmState EvmState;
         public readonly VirtualMachine Vm;
-        public ICodeInfoRepository CodeInfoRepository;
 
         public ILogger Logger;
 
         public ILChunkExecutionArguments(
             ref byte machineCode, ref long gasAvailable, ref int programCounter, ref int stackHead, ref Word stackHeadRef,
-            VirtualMachine vm,
-            EvmState evmState, ICodeInfoRepository codeInfoRepository, ReadOnlyMemory<byte> returnDataBuffer, ILogger logger)
+            VirtualMachine vm, EvmState evmState, ReadOnlyMemory<byte> returnDataBuffer, ILogger logger)
         {
             MachineCode = ref machineCode;
             Vm = vm;
-            CodeInfoRepository = codeInfoRepository;
             EvmState = evmState;
             ReturnDataBuffer = returnDataBuffer;
             GasAvailable = ref gasAvailable;
@@ -42,8 +38,6 @@ namespace Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle
             Logger = logger;
 
             Environment = ref evmState.Env;
-
-            Memory = ref evmState.Memory;
         }
     }
 }

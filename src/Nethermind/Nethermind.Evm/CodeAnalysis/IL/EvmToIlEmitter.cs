@@ -410,7 +410,7 @@ internal static class OpcodeEmitters
             )
         );
 
-        envLoader.LoadMemory(method, locals, true);
+        envLoader.LoadMemoryByRef(method, locals);
         method.LoadLocalAddress(locals.uint256A); // position
         method.LoadLocalAddress(locals.uint256B); // length
         method.Call(
@@ -678,7 +678,7 @@ internal static class OpcodeEmitters
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
         envLoader.LoadResult(method, locals, true);
-        envLoader.LoadMemory(method, locals, true);
+        envLoader.LoadMemoryByRef(method, locals);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.uint256B);
         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Load), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
@@ -763,7 +763,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
         method.StoreLocal(locals.localZeroPaddedSpan);
 
-        envLoader.LoadMemory(method, locals, true);
+        envLoader.LoadMemoryByRef(method, locals);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localZeroPaddedSpan);
         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -843,7 +843,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(byte).MakeByRefType(), typeof(int), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
         method.StoreLocal(locals.localZeroPaddedSpan);
 
-        envLoader.LoadMemory(method, locals, true);
+        envLoader.LoadMemoryByRef(method, locals);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localZeroPaddedSpan);
         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -929,7 +929,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        envLoader.LoadMemory(method, locals, true);
+        envLoader.LoadMemoryByRef(method, locals);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.uint256B);
         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
@@ -978,9 +978,9 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        envLoader.LoadMemory(method, locals, true);
+        envLoader.LoadMemoryByRef(method, locals);
         method.LoadLocalAddress(locals.uint256A);
-        envLoader.LoadMemory(method, locals, true);
+        envLoader.LoadMemoryByRef(method, locals);
         method.LoadLocalAddress(locals.uint256B);
         method.LoadLocalAddress(locals.uint256C);
         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
@@ -1007,7 +1007,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        envLoader.LoadMemory(method, locals, true);
+        envLoader.LoadMemoryByRef(method, locals);
         method.LoadLocalAddress(locals.uint256A);
         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType()]));
         method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(Span<byte>)));
@@ -1040,7 +1040,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        envLoader.LoadMemory(method, locals, true);
+        envLoader.LoadMemoryByRef(method, locals);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocal(locals.byte8A);
 
@@ -1068,7 +1068,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(VirtualMachineDependencies).GetMethod(nameof(VirtualMachineDependencies.UpdateMemoryCost)));
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.OutOfGas));
 
-        envLoader.LoadMemory(method, locals, true);
+        envLoader.LoadMemoryByRef(method, locals);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocal(locals.wordRef256B);
         method.Call(Word.GetMutableSpan);
@@ -1081,7 +1081,7 @@ internal static class OpcodeEmitters
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
 
-        envLoader.LoadMemory(method, locals, true);
+        envLoader.LoadMemoryByRef(method, locals);
         method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
         method.CallSetter(Word.SetULong0, BitConverter.IsLittleEndian);
         return;
@@ -1198,7 +1198,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
         method.StoreLocal(locals.localZeroPaddedSpan);
 
-        envLoader.LoadMemory(method, locals, true);
+        envLoader.LoadMemoryByRef(method, locals);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localZeroPaddedSpan);
         method.CallVirtual(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -1657,7 +1657,7 @@ internal static class OpcodeEmitters
 
     private static void EmitGetCachedCodeInfo<TDelegateType>(Emit<TDelegateType> method, EnvirementLoader envLoader, Locals<TDelegateType> locals)
     {
-        envLoader.LoadCodeInfoRepository(method, locals, false);
+        envLoader.LoadCodeInfoRepository(method, locals);
         envLoader.LoadWorldState(method, locals);
         method.LoadLocal(locals.address);
         envLoader.LoadSpec(method, locals);
@@ -1724,7 +1724,7 @@ internal static class OpcodeEmitters
         method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
         method.StoreLocal(locals.localZeroPaddedSpan);
 
-        envLoader.LoadMemory(method, locals, true);
+        envLoader.LoadMemoryByRef(method, locals);
         method.LoadLocalAddress(locals.uint256A);
         method.LoadLocalAddress(locals.localZeroPaddedSpan);
         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
@@ -1769,7 +1769,7 @@ internal static class OpcodeEmitters
         method.BranchIfTrue(pushZeroLabel);
 
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
-        envLoader.LoadCodeInfoRepository(method, locals, false);
+        envLoader.LoadCodeInfoRepository(method, locals);
         envLoader.LoadWorldState(method, locals);
         method.LoadLocal(locals.address);
         envLoader.LoadSpec(method, locals);
@@ -2205,7 +2205,7 @@ internal static class OpcodeEmitters
         Label happyPath = method.DefineLabel(locals.GetLabelName());
 
         envLoader.LoadVmState(method, locals, false);
-        envLoader.LoadCodeInfoRepository(method, locals, false);
+        envLoader.LoadCodeInfoRepository(method, locals);
         envLoader.LoadWorldState(method, locals);
         method.LoadLocalAddress(locals.gasAvailable);
         envLoader.LoadSpec(method, locals);
@@ -2322,7 +2322,7 @@ internal static class OpcodeEmitters
 
         envLoader.LoadVmState(method, locals, false);
         envLoader.LoadWorldState(method, locals);
-        envLoader.LoadCodeInfoRepository(method, locals, false);
+        envLoader.LoadCodeInfoRepository(method, locals);
         method.LoadLocalAddress(locals.gasAvailable);
         envLoader.LoadSpec(method, locals);
 
