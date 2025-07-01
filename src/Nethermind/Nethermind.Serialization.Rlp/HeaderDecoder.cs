@@ -268,7 +268,7 @@ namespace Nethermind.Serialization.Rlp
             requiredItems[0] = !item.BaseFeePerGas.IsZero;
             requiredItems[1] = (item.WithdrawalsRoot is not null);
             requiredItems[2] = (item.BlobGasUsed is not null);
-            requiredItems[3] = (item.ExcessBlobGas is not null || item.ExcessBlobGas is not null);
+            requiredItems[3] = (item.BlobGasUsed is not null || item.ExcessBlobGas is not null);
             requiredItems[4] = (item.ParentBeaconBlockRoot is not null);
             requiredItems[5] = (item.RequestsHash is not null);
 
