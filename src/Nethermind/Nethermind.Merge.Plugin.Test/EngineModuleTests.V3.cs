@@ -731,8 +731,8 @@ public partial class EngineModuleTests
         await rpcModuleC.engine_forkchoiceUpdatedV3(new(payloadResultA2.BlockHash, chainC.BlockTree.GenesisHash, chainC.BlockTree.GenesisHash), null);
         await Task.Delay(1000);
 
-        await rpcModuleC.engine_newPayloadV3(payloadResultB2, [], TestItem.KeccakE);
-        await rpcModuleC.engine_newPayloadV3(payloadResultB3, [], TestItem.KeccakE);
+        (await rpcModuleC.engine_newPayloadV3(payloadResultB2, [], TestItem.KeccakE)).Data.Status.Should().Be("SYNCING");
+        (await rpcModuleC.engine_newPayloadV3(payloadResultB3, [], TestItem.KeccakE)).Data.Status.Should().Be("SYNCING");
 
         await Task.Delay(1000);
         AddBlockResult res = chainC.BlockTree.Insert(chainB.BlockTree.FindBlock(2)!.Header, BlockTreeInsertHeaderOptions.BeaconHeaderInsert);
