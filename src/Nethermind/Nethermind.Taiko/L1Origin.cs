@@ -19,8 +19,5 @@ public class L1Origin(UInt256 blockId, ValueHash256? l2BlockHash, long l1BlockHe
     /// <summary>
     /// IsPreconfBlock returns true if the L1Origin is for a preconfirmation block.
     /// </summary>    
-    public bool IsPreconfBlock()
-    {
-        return L1BlockHeight == 0;
-    }
+    public bool IsPreconfBlock => L1BlockHeight == 0;
 }

@@ -55,7 +55,7 @@ public class TaikoPayloadPreparationService(
                 l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
 
                 // Write the head L1Origin, only when it's not a preconfirmation block.
-                if (!l1Origin.IsPreconfBlock())
+                if (!l1Origin.IsPreconfBlock)
                 {
                     l1OriginStore.WriteHeadL1Origin(l1Origin.BlockId);
                 }
