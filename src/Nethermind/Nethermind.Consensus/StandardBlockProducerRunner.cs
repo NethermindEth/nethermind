@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -13,7 +12,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus;
 
-public class StandardBlockProducerRunner(IBlockProductionTrigger trigger, IBlockTree blockTree, [KeyFilter(IBlockProducer.Factory)] IBlockProducer blockProducer) : IBlockProducerRunner
+public class StandardBlockProducerRunner(IBlockProductionTrigger trigger, IBlockTree blockTree, IBlockProducer blockProducer) : IBlockProducerRunner
 {
     private bool _isRunning;
     private CancellationTokenSource? _producerCancellationToken;

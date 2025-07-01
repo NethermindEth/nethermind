@@ -32,7 +32,6 @@ public partial class BaseEngineModuleTests
 
         public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts)
         {
-            Console.Error.WriteLine($"Start {currentBestBlock.Number}");
             IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
             if (_skipDuplicatedContext
                 && CreatedContexts.Count > 0
@@ -67,7 +66,6 @@ public partial class BaseEngineModuleTests
 
         private Block? LogProductionResult(Task<Block?> t)
         {
-            Console.Error.WriteLine($"Finished {t.Result?.Number} {t.IsCompletedSuccessfully}");
             if (t.IsCompletedSuccessfully)
             {
                 BlockImproved?.Invoke(this, new BlockEventArgs(t.Result!));

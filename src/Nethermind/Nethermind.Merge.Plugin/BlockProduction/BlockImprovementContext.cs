@@ -38,23 +38,9 @@ public class BlockImprovementContext : IBlockImprovementContext
         _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
         CancellationToken ct = _linkedCancellation.Token;
         // Task.Run so doesn't block FCU response while first block is being produced
-        ImprovementTask = Task.Run(async () =>
-        {
-            Console.Error.WriteLine($"CCall {parentHeader.Number}");
-            try
-            {
-                Block? bestBlock = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes,
-                    IBlockProducer.Flags.None, ct);
-                Console.Error.WriteLine($"CCal finished {parentHeader.Number} {bestBlock?.Number}");
-
-                return SetCurrentBestBlock(bestBlock);
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"Thrown {ex}");
-                throw;
-            }
-        });
+        ImprovementTask = Task.Run(() => blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes,
+                IBlockProducer.Flags.None, ct)
+            .ContinueWith(SetCurrentBestBlock));
     }
 
     public Task<Block?> ImprovementTask { get; }
@@ -62,18 +48,22 @@ public class BlockImprovementContext : IBlockImprovementContext
     public Block? CurrentBestBlock { get; private set; }
     public UInt256 BlockFees { get; private set; }
 
-    private Block? SetCurrentBestBlock(Block? block)
+    private Block? SetCurrentBestBlock(Task<Block?> task)
     {
-        if (block is not null)
+        if (task.IsCompletedSuccessfully)
         {
-            UInt256 fees = _feesTracer.Fees;
-            if (CurrentBestBlock is null ||
-                fees > BlockFees ||
-                (fees == BlockFees && block.GasUsed > CurrentBestBlock.GasUsed))
+            Block? block = task.Result;
+            if (block is not null)
             {
-                // Only update block if block has actually improved.
-                CurrentBestBlock = block;
-                BlockFees = fees;
+                UInt256 fees = _feesTracer.Fees;
+                if (CurrentBestBlock is null ||
+                    fees > BlockFees ||
+                    (fees == BlockFees && block.GasUsed > CurrentBestBlock.GasUsed))
+                {
+                    // Only update block if block has actually improved.
+                    CurrentBestBlock = block;
+                    BlockFees = fees;
+                }
             }
         }
 

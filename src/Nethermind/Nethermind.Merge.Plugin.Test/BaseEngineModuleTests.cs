@@ -99,7 +99,6 @@ public abstract partial class BaseEngineModuleTests
 
     protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, int newPayloadCacheSize = 50)
     {
-        IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
         var synchronizationConfig = chain.Container.Resolve<ISyncConfig>();
 
         chain.BlockTree.SyncPivot = (
@@ -271,8 +270,6 @@ public abstract partial class BaseEngineModuleTests
 
         protected int _blockProcessingThrottle = 0;
 
-        public IPayloadPreparationService? OverridePayloadPreparationService { get; set; }
-
         public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
         {
             _blockProcessingThrottle = delayMs;
@@ -328,6 +325,7 @@ public abstract partial class BaseEngineModuleTests
                 .AddSingleton<ISyncPointers>(Substitute.For<ISyncPointers>())
                 .AddSingleton<ISyncProgressResolver>(Substitute.For<ISyncProgressResolver>())
                 .AddSingleton<ISyncModeSelector>(new StaticSelector(SyncMode.All))
+                .AddSingleton<IPeerRefresher>(Substitute.For<IPeerRefresher>())
             ;
 
             return builder;
@@ -379,12 +377,8 @@ public abstract partial class BaseEngineModuleTests
         public IBlockImprovementContextFactory BlockImprovementContextFactory =>
             Container.Resolve<IBlockImprovementContextFactory>();
 
-        public async Task<MergeTestBlockchain> Build(ISpecProvider specProvider, Action<ContainerBuilder>? configurer = null) =>
-            (MergeTestBlockchain)await Build(configurer: (builder) =>
-            {
-                builder.AddSingleton<ISpecProvider>(specProvider);
-                configurer?.Invoke(builder);
-            });
+        public async Task<MergeTestBlockchain> Build(ISpecProvider specProvider) =>
+            (MergeTestBlockchain)await Build(configurer: (builder) => builder.AddSingleton<ISpecProvider>(specProvider));
 
         public async Task<MergeTestBlockchain> BuildMergeTestBlockchain(Action<ContainerBuilder> configurer) =>
             (MergeTestBlockchain)await Build(configurer: configurer);

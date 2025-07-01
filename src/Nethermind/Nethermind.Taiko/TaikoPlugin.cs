@@ -279,7 +279,6 @@ public class TaikoModule : Module
 
             // Rpc
             .RegisterSingletonJsonRpcModule<ITaikoExtendedEthRpcModule, TaikoExtendedEthModule>()
-            .AddSingleton<IPayloadPreparationService, IBlockProducerEnvFactory, L1OriginStore, IRlpStreamDecoder<Transaction>, ILogManager>(CreatePayloadPreparationService)
 
             // Need to set the rlp globally
             .OnBuild(ctx =>

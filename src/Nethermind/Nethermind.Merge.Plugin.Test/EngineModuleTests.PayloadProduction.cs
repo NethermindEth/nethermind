@@ -17,7 +17,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -385,7 +384,6 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Task improvementWaitTask = chain.WaitForImprovedBlock();
-        Console.Error.WriteLine($"Add 3");
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
@@ -394,12 +392,10 @@ public partial class EngineModuleTests
         await improvementWaitTask;
 
         improvementWaitTask = chain.WaitForImprovedBlock();
-        Console.Error.WriteLine($"Add 3");
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
         await improvementWaitTask;
 
         improvementWaitTask = chain.WaitForImprovedBlock();
-        Console.Error.WriteLine($"Add 3");
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
         await improvementWaitTask;
 

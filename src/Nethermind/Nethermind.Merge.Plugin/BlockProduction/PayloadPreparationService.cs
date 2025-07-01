@@ -8,7 +8,6 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
@@ -190,7 +189,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             CancellationToken token = cts.Token;
             do
             {
-                Console.Error.WriteLine($"Pending tx added {TxPool.Metrics.PendingTransactionsAdded}");
                 if (token.IsCancellationRequested)
                 {
                     return;

@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Merge.Plugin.Handlers;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
