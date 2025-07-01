@@ -748,6 +748,50 @@ public partial class EthRpcModule(
                     : null);
     }
 
+    public async Task<ResultWrapper<BundleResponseForRpc>> eth_sendBundle(BundleRequestForRpc request)
+    {
+        if (request.Transactions == null || request.Transactions.Length == 0)
+        {
+            return ResultWrapper<BundleResponseForRpc>.Fail("Bundle must contain at least one transaction", ErrorCodes.InvalidParams);
+        }
+
+        if (string.IsNullOrEmpty(request.BlockNumber))
+        {
+            return ResultWrapper<BundleResponseForRpc>.Fail("Block number is required", ErrorCodes.InvalidParams);
+        }
+
+        try
+        {
+            // Parse the target block number
+            if (!UInt256.TryParse(request.BlockNumber, out UInt256 targetBlockNumber))
+            {
+                return ResultWrapper<BundleResponseForRpc>.Fail("Invalid block number format", ErrorCodes.InvalidParams);
+            }
+
+            // Create a bundle hash from the transactions and block number
+            // In a real implementation, this would be handled by a bundle pool
+            var bundleData = string.Join("", request.Transactions) + request.BlockNumber;
+            var bundleHash = Keccak.Compute(bundleData);
+
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"Received bundle with {request.Transactions.Length} transactions for block {targetBlockNumber}. Bundle hash: {bundleHash}");
+            }
+
+            // TODO: In a full implementation, this would:
+            // 1. Validate all transactions in the bundle
+            // 2. Submit the bundle to a bundle pool for MEV auction processing
+            // 3. Return the actual bundle hash used by the pool
+            
+            return ResultWrapper<BundleResponseForRpc>.Success(new BundleResponseForRpc(bundleHash));
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Failed to process bundle.", e);
+            return ResultWrapper<BundleResponseForRpc>.Fail(e.Message, ErrorCodes.InternalError);
+        }
+    }
+
     protected static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>
         ResultWrapper<TResult>.Fail(searchResult, isTemporary && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
 
