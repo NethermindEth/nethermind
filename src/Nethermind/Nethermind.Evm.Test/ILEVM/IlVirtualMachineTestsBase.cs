@@ -112,7 +112,7 @@ public class IlVirtualMachineTestsBase : VirtualMachineTestsBase
         {
             ForceRunAnalysis(tx.To, ILMode.AOT_MODE);
         }
-        base.Execute(fork ?? Activation, tx, gasAvailable);
+        base.Execute(fork ?? Activation, tx, tracer, gasAvailable);
     }
 
     public Address InsertCode(byte[] bytecode)
