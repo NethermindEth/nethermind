@@ -10,10 +10,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.State;
-using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {

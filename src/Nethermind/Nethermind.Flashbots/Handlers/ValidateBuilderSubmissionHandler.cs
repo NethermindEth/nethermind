@@ -19,9 +19,9 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.State;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.OverridableEnv;
+using Nethermind.Evm.State;
+using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Flashbots.Handlers;
 

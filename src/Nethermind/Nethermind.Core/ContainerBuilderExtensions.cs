@@ -202,6 +202,17 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder AddScopedAsImplementedInterfaces<T>(this ContainerBuilder builder, T instance) where T : class
+    {
+        builder.Register(ctx => instance)
+            .AsImplementedInterfaces()
+            .AsSelf()
+            .ExternallyOwned()
+            .InstancePerLifetimeScope();
+
+        return builder;
+    }
+
     public static ContainerBuilder AddScoped<T, TArg0>(this ContainerBuilder builder, Func<TArg0, T> factoryMethod) where T : class where TArg0 : notnull
     {
         Func<IComponentContext, TArg0> param0 = CreateArgResolver<TArg0>(factoryMethod.Method, 0);
