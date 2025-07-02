@@ -47,7 +47,7 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
             // Ah great.
             // need to find a way to reset
             // worldState.StateRoot = originalStateRoot;
-            IDisposable worldStateCloser = new Reactive.AnonymousDisposable(() => {});
+            IDisposable worldStateCloser = new Reactive.AnonymousDisposable(() => { });
             return new ReadOnlyTxProcessingScope(transactionProcessor, worldState, worldStateCloser);
         }
 

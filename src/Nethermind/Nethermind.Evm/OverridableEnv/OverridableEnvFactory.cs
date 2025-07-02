@@ -34,7 +34,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<IC
             if (_worldScopeCloser is not null) throw new InvalidOperationException("Previous overridable world scope was not closed");
 
             Reset();
-            _worldScopeCloser =  overridableScope.BeginScope(header);
+            _worldScopeCloser = overridableScope.BeginScope(header);
             IDisposable scope = new Scope(this);
 
             if (stateOverride is not null)
