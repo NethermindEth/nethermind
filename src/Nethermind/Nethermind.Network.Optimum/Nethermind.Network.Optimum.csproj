@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+  <ItemGroup>
+    <Protobuf Include="proto/gateway_stream.proto" GrpcServices="Client" Link="proto/gateway_stream.proto" />
+    <Protobuf Include="proto/p2p_stream.proto" GrpcServices="Client" Link="proto/p2p_stream.proto" />
+
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Google.Protobuf.Tools" />
+    <PackageReference Include="Grpc" />
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
+  </ItemGroup>
+
+</Project>

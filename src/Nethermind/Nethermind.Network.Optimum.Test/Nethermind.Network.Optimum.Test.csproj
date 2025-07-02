@@ -23,17 +23,16 @@
     <PackageReference Include="NUnit.Analyzers" />
     <PackageReference Include="NUnit3TestAdapter" />
     <PackageReference Include="Testcontainers" />
-
     <PackageReference Include="System.Linq.Async" />
-
-    <Protobuf Include="proto/gateway_stream.proto" GrpcServices="Client" Link="proto/gateway_stream.proto" />
-    <Protobuf Include="proto/p2p_stream.proto" GrpcServices="Client" Link="proto/p2p_stream.proto" />
-
     <PackageReference Include="Google.Protobuf" />
     <PackageReference Include="Google.Protobuf.Tools" />
     <PackageReference Include="Grpc" />
     <PackageReference Include="Grpc.Net.Client" />
     <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Network.Optimum\Nethermind.Network.Optimum.csproj" />
   </ItemGroup>
 
 </Project>
