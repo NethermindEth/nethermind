@@ -17,8 +17,6 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class WithdrawalValidatorTests
 {
-    private static readonly BlockDecoder BlockDecoder = new();
-
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Not_null_withdrawals_are_invalid_pre_shanghai()
     {
