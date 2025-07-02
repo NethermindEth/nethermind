@@ -331,6 +331,13 @@ namespace Nethermind.Core
             }
         }
 
+        public Transaction Clone()
+        {
+            Transaction copy = new();
+            CopyTo(copy);
+            return copy;
+        }
+
         public void CopyTo(Transaction tx)
         {
             tx.SourceHash = SourceHash;
