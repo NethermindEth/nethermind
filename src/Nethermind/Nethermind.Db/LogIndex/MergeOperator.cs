@@ -24,7 +24,7 @@ partial class LogIndexStorage
 
         public ArrayPoolList<byte>? PartialMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator) =>
             Merge(key, enumerator, isPartial: true);
-            //null;
+        //null;
 
         private static bool IsBlockNewer(int next, int? last, bool isBackwardSync) =>
             LogIndexStorage.IsBlockNewer(next, last, last, isBackwardSync);
@@ -95,7 +95,7 @@ partial class LogIndexStorage
                     if (FindNext(MergeOp.ReorgOp, enumerator, ref iReorg) is { } reorgBlock)
                         operand = MergeOps.ApplyTo(operand, MergeOp.ReorgOp, reorgBlock, isBackwards);
 
-                    if (truncateAggregate is {} truncateBlock)
+                    if (truncateAggregate is { } truncateBlock)
                         operand = MergeOps.ApplyTo(operand, MergeOp.TruncateOp, truncateBlock, isBackwards);
 
                     AddEnsureSorted(result, operand, isBackwards);
@@ -131,7 +131,7 @@ partial class LogIndexStorage
         private static int? Aggregate(MergeOp op, RocksDbMergeEnumerator enumerator, bool isBackwardSync)
         {
             int? result = null;
-            for(var i = 0; i < enumerator.OperandsCount; i++)
+            for (var i = 0; i < enumerator.OperandsCount; i++)
             {
                 if (!MergeOps.Is(op, enumerator.GetOperand(i), out var next))
                     continue;

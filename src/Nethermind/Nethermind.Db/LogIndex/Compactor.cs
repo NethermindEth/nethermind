@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -59,9 +59,9 @@ partial class LogIndexStorage
             _lastAtMax ??= _storage.GetMaxBlockNumber();
 
             var uncompacted = 0;
-            if (_storage.GetMinBlockNumber() is {} storageMin && storageMin < _lastAtMin)
+            if (_storage.GetMinBlockNumber() is { } storageMin && storageMin < _lastAtMin)
                 uncompacted += _lastAtMin.Value - storageMin;
-            if (_storage.GetMaxBlockNumber() is {} storageMax && storageMax > _lastAtMax)
+            if (_storage.GetMaxBlockNumber() is { } storageMax && storageMax > _lastAtMax)
                 uncompacted += storageMax - _lastAtMax.Value;
 
             // TODO: cover other cases - space usage, RocksDB stats?
