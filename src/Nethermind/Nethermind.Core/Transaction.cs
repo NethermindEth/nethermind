@@ -325,6 +325,7 @@ namespace Nethermind.Core
             tx.To = To;
             tx.SenderAddress = SenderAddress;
             tx.Signature = Signature;
+            tx._hash = _hash;
             tx.AccessList = AccessList;
             tx.BlobVersionedHashes = BlobVersionedHashes;
             tx.NetworkWrapper = NetworkWrapper;
