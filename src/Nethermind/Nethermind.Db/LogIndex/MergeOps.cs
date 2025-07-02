@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.Db;
 
-public partial class LogIndexStorage
+partial class LogIndexStorage
 {
     private enum MergeOp : byte
     {

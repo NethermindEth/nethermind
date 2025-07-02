@@ -57,24 +57,24 @@ namespace Nethermind.Db
 
         private const int BlockNumSize = sizeof(int);
 
-        private readonly int _compactionDistance;
         private readonly int _maxReorgDepth;
+
         private readonly MergeOperator _mergeOperator;
         private readonly Compressor _compressor;
+        private readonly ICompactor _compactor;
 
         // TODO: ensure class is singleton
         // TODO: take parameters from log-index/chain config
         public LogIndexStorage(IDbFactory dbFactory, ILogger logger,
             int ioParallelism, int compactionDistance, int maxReorgDepth = 64)
         {
-            if (compactionDistance < 1) throw new ArgumentException("Compaction distance must be a positive value.", nameof(compactionDistance));
-            _compactionDistance = compactionDistance;
-
             if (maxReorgDepth < 0) throw new ArgumentException("Compaction distance must be a positive value.", nameof(compactionDistance));
             _maxReorgDepth = maxReorgDepth;
 
             _logger = logger;
             _compressor = new(this, logger, ioParallelism);
+            _compactor = new Compactor(this, logger, compactionDistance);
+            //_compactor = new NoOpCompactor();
             _columnsDb = dbFactory.CreateColumnsDb<LogIndexColumns>(new("logIndexStorage", DbNames.LogIndex)
             {
                 MergeOperator = _mergeOperator = new(_compressor)
@@ -477,11 +477,26 @@ namespace Nethermind.Db
             }
         }
 
-        public LogIndexUpdateStats Compact(bool waitForCompression)
+        public async Task<CompactingStats> CompactAsync(bool flush)
         {
-            var stats = new LogIndexUpdateStats();
-            Compact(stats, waitForCompression: waitForCompression);
-            return stats;
+            if (!await _setReceiptsSemaphore.WaitAsync(TimeSpan.Zero, CancellationToken.None))
+                throw new InvalidOperationException($"{nameof(LogIndexStorage)} does not support concurrent invocations.");
+
+            try
+            {
+                // TODO: include time to stats
+                if (flush)
+                {
+                    _addressDb.Flush();
+                    _topicsDb.Flush();
+                }
+
+                return await _compactor.ForceAsync();
+            }
+            finally
+            {
+                _setReceiptsSemaphore.Release();
+            }
         }
 
         public async Task<LogIndexUpdateStats> RecompactAsync(int minLengthToCompress = -1)
@@ -490,6 +505,7 @@ namespace Nethermind.Db
                 minLengthToCompress = Compressor.MinLengthToCompress;
 
             var stats = new LogIndexUpdateStats();
+            stats.Compacting.Combine(await CompactAsync(flush: true));
 
             var timestamp = Stopwatch.GetTimestamp();
             var addressCount = await QueueLargeKeysCompression(_addressDb, minLengthToCompress);
@@ -501,15 +517,8 @@ namespace Nethermind.Db
 
             _logger.Info($"Queued keys for compaction: {addressCount:N0} address, {topicCount:N0} topic");
 
-            timestamp = Stopwatch.GetTimestamp();
-            _addressDb.Flush();
-            _topicsDb.Flush();
-            stats.FlushingDbs.Include(Stopwatch.GetElapsedTime(timestamp));
-
-            timestamp = Stopwatch.GetTimestamp();
-            _addressDb.Compact();
-            _topicsDb.Compact();
-            stats.CompactingDbs.Include(Stopwatch.GetElapsedTime(timestamp));
+            _compressor.WaitUntilEmpty();
+            stats.Compacting.Combine(await CompactAsync(flush: true));
 
             return stats;
         }
@@ -530,8 +539,6 @@ namespace Nethermind.Db
 
             return counter;
         }
-
-        private int? _lastCompactionAt;
 
         // batch is expected to be sorted
         public async Task<LogIndexUpdateStats> SetReceiptsAsync(
@@ -564,14 +571,6 @@ namespace Nethermind.Db
                         SaveBlockNumbersByKey(dbBatch, key, blockNums, isBackwardSync, stats);
                     }
                     stats.Processing.Include(Stopwatch.GetElapsedTime(timestamp));
-
-                    // Compact if needed
-                    _lastCompactionAt ??= batch[0].BlockNumber;
-                    if (Math.Abs(batch[^1].BlockNumber - _lastCompactionAt.Value) >= _compactionDistance)
-                    {
-                        Compact(stats);
-                        _lastCompactionAt = batch[^1].BlockNumber;
-                    }
                 }
 
                 // Update block numbers
@@ -589,6 +588,9 @@ namespace Nethermind.Db
                 }
                 stats.WaitingBatch.Include(Stopwatch.GetElapsedTime(timestamp));
 
+                // Enqueue compaction if needed
+                _compactor.TryEnqueue();
+
                 stats.MaxBlockNumber = GetMaxBlockNumber() ?? -1;
                 stats.MinBlockNumber = GetMinBlockNumber() ?? -1;
             }
@@ -599,37 +601,9 @@ namespace Nethermind.Db
 
             stats.Combine(_mergeOperator.GetAndResetStats());
             stats.PostMergeProcessing.Combine(_compressor.GetAndResetStats());
+            stats.Compacting.Combine(_compactor.GetAndResetStats());
             stats.Total.Include(Stopwatch.GetElapsedTime(totalTimestamp));
             return stats;
-        }
-
-        // TODO: log as Debug or not log at all!
-        private void Compact(LogIndexUpdateStats stats, bool flush = false, bool waitForCompression = false)
-        {
-            if (flush)
-            {
-                _logger.Warn("Log index flushing starting");
-                var timestamp = Stopwatch.GetTimestamp();
-                _addressDb.Flush();
-                _topicsDb.Flush();
-                stats.FlushingDbs.Include(Stopwatch.GetElapsedTime(timestamp));
-                _logger.Warn("Log index flushing completed");
-            }
-
-            {
-                // TODO: try keep writing during compaction
-                _logger.Warn("Log index compaction starting");
-                var timestamp = Stopwatch.GetTimestamp();
-                _addressDb.Compact();
-                _topicsDb.Compact();
-                stats.CompactingDbs.Include(Stopwatch.GetElapsedTime(timestamp));
-                _logger.Warn("Log index compaction completed");
-            }
-
-            if (waitForCompression)
-            {
-                _compressor.WaitUntilEmpty();
-            }
         }
 
         // TODO: optimize allocations

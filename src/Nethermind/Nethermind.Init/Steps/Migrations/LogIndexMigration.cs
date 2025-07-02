@@ -165,7 +165,7 @@ namespace Nethermind.Init.Steps.Migrations
 
                 _logger.Info($"LogIndexMigration" +
 
-                    $"\n\t\tBlocks: {total.MaxBlockNumber:N0} / {_totalBlocks:N0} ( {(decimal)total.MinBlockNumber / _totalBlocks * 100:F2} % ) ( +{last.BlocksAdded:N0} ) ( {_blocksChannel.Reader.Count} * {BatchSize} in queue )" +
+                    $"\n\t\tBlocks: {total.MaxBlockNumber:N0} / {_totalBlocks:N0} ( {(decimal)total.MinBlockNumber! / _totalBlocks * 100:F2} % ) ( +{last.BlocksAdded:N0} ) ( {_blocksChannel.Reader.Count} * {BatchSize} in queue )" +
                     $"\n\t\tTxs: {total.TxAdded:N0} ( +{last.TxAdded:N0} )" +
                     $"\n\t\tLogs: {total.LogsAdded:N0} ( +{last.LogsAdded:N0} )" +
                     $"\n\t\tTopics: {total.TopicsAdded:N0} ( +{last.TopicsAdded:N0} )" +
@@ -177,8 +177,7 @@ namespace Nethermind.Init.Steps.Migrations
                     $"\n\t\tMerge call: {last.CallingMerge} ( {total.CallingMerge} on average )" +
                     $"\n\t\tIn-memory merging: {last.InMemoryMerging} ( {total.InMemoryMerging} in total )" +
                     "\n" +
-                    $"\n\t\tFlushing DBs: {last.FlushingDbs} ( {total.FlushingDbs} on average )" +
-                    $"\n\t\tCompacting DBs: {last.CompactingDbs} ( {total.CompactingDbs} on average )" +
+                    $"\n\t\tCompacting DBs: {last.Compacting.Total} ( {total.Compacting.Total} on average )" +
                     $"\n\t\tPost-merge processing: {last.PostMergeProcessing.Execution} ( {total.PostMergeProcessing.Execution} in total )" +
                     $"\n\t\t\tDB getting: {last.PostMergeProcessing.GettingValue} ( {total.PostMergeProcessing.GettingValue} in total )" +
                     $"\n\t\t\tCompressing: {last.PostMergeProcessing.CompressingValue} ( {total.PostMergeProcessing.CompressingValue} in total )" +

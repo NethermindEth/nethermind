@@ -12,8 +12,8 @@ public class LogIndexUpdateStats : IFormattable
     public long LogsAdded { get; set; }
     public long TopicsAdded { get; set; }
 
-    public long MaxBlockNumber { get; set; } = -1;
-    public long MinBlockNumber { get; set; } = -1;
+    public long MaxBlockNumber { get; set; } = int.MinValue;
+    public long MinBlockNumber { get; set; } = int.MaxValue;
 
     public ExecTimeStats Total { get; } = new();
     public ExecTimeStats BuildingDictionary { get; } = new();
@@ -22,15 +22,15 @@ public class LogIndexUpdateStats : IFormattable
     public ExecTimeStats CallingMerge { get; } = new();
     public ExecTimeStats UpdatingMeta { get; } = new();
     public ExecTimeStats WaitingBatch { get; } = new();
-    public ExecTimeStats CompactingDbs { get; } = new();
-    public ExecTimeStats FlushingDbs { get; } = new();
-    public PostMergeProcessingStats PostMergeProcessing { get; } = new();
     public ExecTimeStats InMemoryMerging { get; } = new();
 
     public AverageStats KeysCount { get; } = new();
 
     public ExecTimeStats QueueingAddressCompression { get; } = new();
     public ExecTimeStats QueueingTopicCompression { get; } = new();
+
+    public PostMergeProcessingStats PostMergeProcessing { get; } = new();
+    public CompactingStats Compacting { get; } = new();
 
     public void Combine(LogIndexUpdateStats other)
     {
@@ -45,9 +45,6 @@ public class LogIndexUpdateStats : IFormattable
         UpdatingMeta.Combine(other.UpdatingMeta);
         CallingMerge.Combine(other.CallingMerge);
         WaitingBatch.Combine(other.WaitingBatch);
-        CompactingDbs.Combine(other.CompactingDbs);
-        FlushingDbs.Combine(other.FlushingDbs);
-        PostMergeProcessing.Combine(other.PostMergeProcessing);
         InMemoryMerging.Combine(other.InMemoryMerging);
         KeysCount.Combine(other.KeysCount);
         MaxBlockNumber = Math.Max(MaxBlockNumber, other.MaxBlockNumber);
@@ -55,6 +52,9 @@ public class LogIndexUpdateStats : IFormattable
 
         QueueingAddressCompression.Combine(other.QueueingAddressCompression);
         QueueingTopicCompression.Combine(other.QueueingTopicCompression);
+
+        PostMergeProcessing.Combine(other.PostMergeProcessing);
+        Compacting.Combine(other.Compacting);
     }
 
     public string ToString(string? format, IFormatProvider? formatProvider)
@@ -79,14 +79,16 @@ public class LogIndexUpdateStats : IFormattable
              {tab}Waiting batch: {WaitingBatch}
              {tab}In-memory merging: {InMemoryMerging}
 
-             {tab}Flushing DBs: {FlushingDbs}
-             {tab}Compacting DBs: {CompactingDbs}
              {tab}Post-merge processing: {PostMergeProcessing.Execution}
              {tab}{tab}DB getting: {PostMergeProcessing.GettingValue}
              {tab}{tab}Compressing: {PostMergeProcessing.CompressingValue}
              {tab}{tab}Putting: {PostMergeProcessing.PuttingValues}
              {tab}{tab}Compressed keys: {PostMergeProcessing.CompressedAddressKeys:N0} address, {PostMergeProcessing.CompressedTopicKeys:N0} topic
              {tab}{tab}In queue: {PostMergeProcessing.QueueLength:N0}
+
+             {tab}Compacting: {Compacting.Total}
+             {tab}{tab}Addresses: {Compacting.Addresses}
+             {tab}{tab}Topics: {Compacting.Topics}
              """;
     }
 
