@@ -151,18 +151,23 @@ public static class StackEmit
         }
     }
 
-
     public static void CleanWord<T>(this Emit<T> il, Local stackHeadRef, int offset, int count)
     {
         il.StackLoadPrevious(stackHeadRef, offset, count);
         il.InitializeObject(typeof(Word));
     }
+
     public static void CleanAndLoadWord<T>(this Emit<T> il, Local stackHeadRef, int offset, int count)
     {
         il.StackLoadPrevious(stackHeadRef, offset, count);
         il.Duplicate();
 
         il.InitializeObject(typeof(Word));
+    }
+
+    public static void LoadWord<T>(this Emit<T> il, Local stackHeadRef, int offset, int count)
+    {
+        il.StackLoadPrevious(stackHeadRef, offset, count);
     }
 }
 public static class WordEmit

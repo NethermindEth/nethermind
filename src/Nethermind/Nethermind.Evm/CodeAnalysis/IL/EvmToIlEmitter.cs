@@ -628,7 +628,7 @@ internal static class OpcodeEmitters
         using Local ulongNullable = method.DeclareLocal(typeof(ulong?), locals.GetLocalName());
 
         envLoader.LoadBlockContext(method, locals, true);
-        method.LoadFieldAddress(GetFieldInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header)));
+        method.LoadField(GetFieldInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header)));
         method.CallVirtual(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.ExcessBlobGas), false, out _));
         method.StoreLocal(ulongNullable);
 
@@ -636,11 +636,11 @@ internal static class OpcodeEmitters
         method.Call(typeof(ulong?).GetProperty(nameof(Nullable<ulong>.HasValue)).GetGetMethod());
         method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
 
-        method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
+        method.LoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         envLoader.LoadBlockContext(method, locals, true);
-        method.LoadField(GetFieldInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.BlobBaseFee)));
+        method.LoadFieldAddress(GetFieldInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.BlobBaseFee)));
 
-        method.Call(Word.SetKeccak);
+        method.Call(Word.SetKeccakByRef);
     }
 
     internal static void EmitBaseFeeInstruction<TDelegateType>(
