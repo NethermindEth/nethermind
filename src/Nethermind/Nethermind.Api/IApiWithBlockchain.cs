@@ -74,14 +74,9 @@ namespace Nethermind.Api
         IBlockFinalizationManager? FinalizationManager { get; set; }
 
         IBlockProducerEnvFactory BlockProducerEnvFactory { get; }
-        IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
         IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory { get; }
 
         IGasPriceOracle GasPriceOracle { get; }
-
-        [SkipServiceCollection]
-        IEthSyncingInfo? EthSyncingInfo { get; }
-
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }

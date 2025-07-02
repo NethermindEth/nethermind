@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Logging;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -18,6 +21,7 @@ using Nethermind.Runner.JsonRpc;
 using Nethermind.Runner.Logging;
 using Nethermind.Sockets;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
+using WebHost = Nethermind.Runner.JsonRpc.WebHost;
 
 namespace Nethermind.Runner.Ethereum
 {
@@ -30,7 +34,7 @@ namespace Nethermind.Runner.Ethereum
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
         private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
         private readonly IWebSocketsManager _webSocketsManager;
-        private IWebHost? _webHost;
+        private WebHost? _webApp;
         private readonly IJsonRpcServiceConfigurer[] _jsonRpcServices;
 
         public JsonRpcRunner(
@@ -56,7 +60,17 @@ namespace Nethermind.Runner.Ethereum
         {
             if (_logger.IsDebug) _logger.Debug("Initializing JSON RPC");
             string[] urls = _jsonRpcUrlCollection.Urls;
-            IWebHost webHost = new WebHostBuilder()
+            WebApplicationBuilder builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions
+            {
+                ApplicationName = "Nethermind"
+            });
+
+            IServiceCollection services = builder.Services;
+            services.AddSingleton<DiagnosticListener>(NullDiagnosticListener.Instance);
+            services.AddSingleton<DiagnosticSource>(NullDiagnosticListener.Instance);
+
+            Startup startup = new();
+            builder.WebHost
                 // Explicitly build from UseKestrelCore rather than UseKestrel to
                 // not add additional transports that we don't use e.g. msquic as that
                 // adds a lot of additional idle threads to the process.
@@ -74,28 +88,30 @@ namespace Nethermind.Runner.Ethereum
                     {
                         configurer.Configure(s);
                     }
+                    s.AddSingleton<ApplicationLifetime>();
+                    startup.ConfigureServices(s);
                 })
-                .UseStartup<Startup>()
                 .UseUrls(urls)
                 .ConfigureLogging(logging =>
                 {
                     logging.SetMinimumLevel(LogLevel.Information);
                     logging.ClearProviders();
                     logging.AddProvider(new CustomMicrosoftLoggerProvider(_logManager));
-                })
-                .Build();
+                });
+
+            WebApplication webApp = builder.Build();
 
             string urlsString = string.Join(" ; ", urls);
             // TODO: replace http with ws where relevant
 
             ThisNodeInfo.AddInfo("JSON RPC     :", $"{urlsString}");
 
-            _webHost = webHost;
+            _webApp = new WebHost(webApp.Services, webApp.Configuration, startup, _logManager);
 
             if (!cancellationToken.IsCancellationRequested)
             {
                 await NetworkHelper.HandlePortTakenError(
-                    () => _webHost.StartAsync(cancellationToken), urls
+                    () => _webApp.StartAsync(cancellationToken), urls
                 );
                 if (_logger.IsDebug) _logger.Debug($"JSON RPC     : {urlsString}");
             }
@@ -105,7 +121,7 @@ namespace Nethermind.Runner.Ethereum
         {
             try
             {
-                await (_webHost?.StopAsync() ?? Task.CompletedTask);
+                await (_webApp?.StopAsync() ?? Task.CompletedTask);
                 if (_logger.IsInfo) _logger.Info("JSON RPC service stopped");
             }
             catch (Exception e)

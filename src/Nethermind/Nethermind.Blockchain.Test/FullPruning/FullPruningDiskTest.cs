@@ -78,7 +78,7 @@ public class FullPruningDiskTest
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
         {
             IDbProvider dbProvider = new DbProvider();
-            RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
+            RocksDbFactory rocksDbFactory = new(new DbConfig(), LimboLogs.Instance, TempDirectory.Path);
             StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
             standardDbInitializer.InitStandardDbs(true);
 

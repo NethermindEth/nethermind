@@ -60,8 +60,8 @@ public class UnsafeStartingSyncPivotUpdater(
         return null;
     }
 
-    private async Task<BlockHeader?> TryGetFromPeers(long blockNumber, CancellationToken cancellationToken) =>
-        await TryGetFromPeers(blockNumber, cancellationToken, static async (peer, number, token) =>
+    private Task<BlockHeader?> TryGetFromPeers(long blockNumber, CancellationToken cancellationToken) =>
+        TryGetFromPeers(blockNumber, cancellationToken, static async (peer, number, token) =>
         {
             using IOwnedReadOnlyList<BlockHeader>? x = await peer.GetBlockHeaders(number, 1, 0, token);
             return x?.Count == 1 ? x[0] : null;

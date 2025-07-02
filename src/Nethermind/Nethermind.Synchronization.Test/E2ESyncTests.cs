@@ -166,21 +166,21 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             .AddSingleton<ITestEnv, PreMergeTestEnv>()
             ;
 
+        ManualTimestamper timestamper;
         if (isPostMerge)
         {
+            // Activate configured mainnet future EIP
+            timestamper = new ManualTimestamper(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
             builder
-                .AddModule(new MergeModule(
-                    configProvider.GetConfig<ITxPoolConfig>(),
-                    configProvider.GetConfig<IMergeConfig>(),
-                    configProvider.GetConfig<IBlocksConfig>()
-                ))
+                .AddModule(new TestMergeModule(configProvider.GetConfig<ITxPoolConfig>()))
+                .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
                 .AddDecorator<ITestEnv, PostMergeTestEnv>()
                 ;
         }
         else
         {
             // So that any EIP after the merge is not activated.
-            ManualTimestamper timestamper = ManualTimestamper.PreMerge;
+            timestamper = ManualTimestamper.PreMerge;
             builder
                 .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
                 .AddSingleton<ITimestamper>(timestamper)

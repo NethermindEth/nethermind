@@ -43,6 +43,7 @@ public class TestBlockProcessingModule : Module
             })
 
             .AddSingleton<ITxPool, TxPool.TxPool>()
+            .AddSingleton<CompositeTxGossipPolicy>()
             .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
 
             // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
@@ -57,15 +58,14 @@ public class TestBlockProcessingModule : Module
             .AddScoped<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
             .AddScoped<IComparer<Transaction>, ITransactionComparerProvider>(txComparer => txComparer.GetDefaultComparer())
 
-            // Much like block validation, anything that require the use of IWorldState in block producer, is wrapped in
-            // a `BlockProducerContext`.
-            .AddSingleton<BlockProducerContext, ILifetimeScope>(ConfigureBlockProducerContext)
-            // And then we extract it back out.
-            .Map<IBlockProducerRunner, BlockProducerContext>(ctx => ctx.BlockProducerRunner)
-            .Bind<IBlockProductionTrigger, IManualBlockProductionTrigger>()
+            .AddSingleton<IBlockProductionPolicy, BlockProductionPolicy>()
+            .AddSingleton<IBlockProducerFactory, AutoBlockProducerFactory<TestBlockProducer>>()
+            .AddSingleton<IBlockProducer, IBlockProducerFactory>((factory) => factory.InitBlockProducer())
 
             // Something else entirely. Just some wrapper over things.
             .AddSingleton<IManualBlockProductionTrigger, BuildBlocksWhenRequested>()
+            .Bind<IBlockProductionTrigger, IManualBlockProductionTrigger>()
+            .AddSingleton<IBlockProducerRunner, StandardBlockProducerRunner>()
             .AddSingleton<ProducedBlockSuggester>()
             .ResolveOnServiceActivation<ProducedBlockSuggester, IBlockProducerRunner>()
 
@@ -116,26 +116,21 @@ public class TestBlockProcessingModule : Module
         return innerScope.Resolve<MainBlockProcessingContext>();
     }
 
-    private BlockProducerContext ConfigureBlockProducerContext(ILifetimeScope ctx)
+    private class AutoBlockProducerFactory<T>(ILifetimeScope rootLifetime, IBlockProducerEnvFactory producerEnvFactory) : IBlockProducerFactory where T : IBlockProducer
     {
-        // Note: This is modelled after TestBlockchain, not prod
-        BlockProducerEnv env = ctx.Resolve<IBlockProducerEnvFactory>().Create();
-        ILifetimeScope innerScope = ctx.BeginLifetimeScope((producerCtx) =>
+        public IBlockProducer InitBlockProducer()
         {
-            producerCtx
+            IBlockProducerEnv env = producerEnvFactory.Create();
+            ILifetimeScope innerScope = rootLifetime.BeginLifetimeScope((builder) => builder
                 // Block producer specific things is in `IBlockProducerEnvFactory`.
                 // Yea, it can be added as `AddScoped` too and then mapped out, but its clearer this way.
                 .AddScoped<IWorldState>(env.ReadOnlyStateProvider)
                 .AddScoped<IBlockchainProcessor>(env.ChainProcessor)
                 .AddScoped<ITxSource>(env.TxSource)
 
-                // TODO: What is this suppose to be?
-                .AddScoped<IBlockProducer, TestBlockProducer>()
+                .AddScoped<IBlockProducer, T>());
 
-                .AddScoped<IBlockProducerRunner, StandardBlockProducerRunner>()
-                .AddScoped<BlockProducerContext>();
-        });
-
-        return innerScope.Resolve<BlockProducerContext>();
+            return innerScope.Resolve<IBlockProducer>();
+        }
     }
 }
