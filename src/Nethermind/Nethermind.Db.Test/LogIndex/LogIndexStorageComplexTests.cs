@@ -45,10 +45,13 @@ namespace Nethermind.Db.Test.LogIndex
         private ILogger _logger;
         private string _dbPath = null!;
         private IDbFactory _dbFactory = null!;
+        private readonly List<ILogIndexStorage> _createdStorages = [];
 
         private LogIndexStorage CreateLogIndexStorage(int compactionDistance = 262_144, int ioParallelism = 16, int maxReorgDepth = 32, IDbFactory? dbFactory = null)
         {
-            return new(dbFactory ?? _dbFactory, _logger, ioParallelism, compactionDistance, maxReorgDepth);
+            LogIndexStorage storage = new(dbFactory ?? _dbFactory, _logger, ioParallelism, compactionDistance, maxReorgDepth);
+            _createdStorages.Add(storage);
+            return storage;
         }
 
         [SetUp]
@@ -66,8 +69,14 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [TearDown]
-        public void RemoveDbFolder()
+        public async Task TearDown()
         {
+            foreach (ILogIndexStorage storage in _createdStorages)
+            {
+                await using (storage)
+                    await storage.StopAsync();
+            }
+
             if (!Directory.Exists(_dbPath))
                 return;
 
@@ -106,13 +115,13 @@ namespace Nethermind.Db.Test.LogIndex
             [Values] bool compact
         )
         {
-            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance, ioParallelism);
+            var logIndexStorage = CreateLogIndexStorage(compactionDistance, ioParallelism);
 
             BlockReceipts[][] batches = isBackwardsSync ? Reverse(testData.Batches) : testData.Batches;
             await SetReceiptsAsync(logIndexStorage, batches, isBackwardsSync);
 
             if (compact)
-                logIndexStorage.Compact(true);
+                await CompactAsync(logIndexStorage);
 
             VerifyReceipts(logIndexStorage, testData);
         }
@@ -123,7 +132,7 @@ namespace Nethermind.Db.Test.LogIndex
             [Values(1, 8, 16)] byte ioParallelism
         )
         {
-            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance, ioParallelism);
+            var logIndexStorage = CreateLogIndexStorage(compactionDistance, ioParallelism);
 
             var half = testData.Batches.Length / 2;
             await SetReceiptsAsync(logIndexStorage, Reverse(testData.Batches.Take(half)), isBackwardsSync: true);
@@ -144,7 +153,7 @@ namespace Nethermind.Db.Test.LogIndex
             [Values(100, int.MaxValue)] int compactionDistance
         )
         {
-            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance);
+            var logIndexStorage = CreateLogIndexStorage(compactionDistance);
 
             await SetReceiptsAsync(logIndexStorage, testData.Batches);
 
@@ -161,7 +170,7 @@ namespace Nethermind.Db.Test.LogIndex
             [Values(100, int.MaxValue)] int compactionDistance
         )
         {
-            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance);
+            var logIndexStorage = CreateLogIndexStorage(compactionDistance);
 
             await SetReceiptsAsync(logIndexStorage, testData.Batches);
 
@@ -181,7 +190,7 @@ namespace Nethermind.Db.Test.LogIndex
             [Values(100, int.MaxValue)] int compactionDistance
         )
         {
-            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance);
+            var logIndexStorage = CreateLogIndexStorage(compactionDistance);
 
             await SetReceiptsAsync(logIndexStorage, testData.Batches);
 
@@ -201,7 +210,7 @@ namespace Nethermind.Db.Test.LogIndex
             [Values(100, int.MaxValue)] int compactionDistance
         )
         {
-            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance);
+            var logIndexStorage = CreateLogIndexStorage(compactionDistance);
 
             await SetReceiptsAsync(logIndexStorage, testData.Batches);
 
@@ -222,10 +231,10 @@ namespace Nethermind.Db.Test.LogIndex
         [TestCase(65, 64, Explicit = true)]
         public async Task Set_Compact_ReorgLast_Get_Test(int reorgDepth, int maxReorgDepth)
         {
-            await using var logIndexStorage = CreateLogIndexStorage();
+            var logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth);
 
             await SetReceiptsAsync(logIndexStorage, testData.Batches);
-            logIndexStorage.Compact(true);
+            await CompactAsync(logIndexStorage);
 
             BlockReceipts[] reorgBlocks = testData.Batches.SelectMany(b => b).TakeLast(reorgDepth).ToArray();
             foreach (BlockReceipts block in reorgBlocks)
@@ -242,7 +251,7 @@ namespace Nethermind.Db.Test.LogIndex
             [Values] bool compactAfter
         )
         {
-            await using var logIndexStorage = CreateLogIndexStorage();
+            var logIndexStorage = CreateLogIndexStorage();
 
             var random = new Random(42);
             var allReorgBlocks = new List<BlockReceipts>();
@@ -263,7 +272,7 @@ namespace Nethermind.Db.Test.LogIndex
                     await logIndexStorage.ReorgFrom(block);
 
                 if (compactAfter)
-                    logIndexStorage.Compact(true);
+                    await CompactAsync(logIndexStorage);
 
                 await logIndexStorage.SetReceiptsAsync(addedBlocks, false);
             }
@@ -278,7 +287,7 @@ namespace Nethermind.Db.Test.LogIndex
             [Values] bool compactBetween
         )
         {
-            await using var logIndexStorage = CreateLogIndexStorage();
+            var logIndexStorage = CreateLogIndexStorage();
 
             await SetReceiptsAsync(logIndexStorage, testData.Batches);
 
@@ -290,7 +299,7 @@ namespace Nethermind.Db.Test.LogIndex
                     await logIndexStorage.ReorgFrom(block);
 
                 if (compactBetween)
-                    logIndexStorage.Compact(true);
+                    await CompactAsync(logIndexStorage);
             }
 
             VerifyReceipts(logIndexStorage, testData, excludedBlocks: testBlocks.TakeLast(reorgDepths.Max()).ToArray());
@@ -320,7 +329,7 @@ namespace Nethermind.Db.Test.LogIndex
             [Values] bool isBackwardsSync
         )
         {
-            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance);
+            var logIndexStorage = CreateLogIndexStorage(compactionDistance);
 
             await SetReceiptsAsync(logIndexStorage, testData.Batches);
             await SetReceiptsAsync(logIndexStorage, testData.Batches);
@@ -366,7 +375,7 @@ namespace Nethermind.Db.Test.LogIndex
             [Values] bool isBackwardsSync
         )
         {
-            await using var logIndexStorage = CreateLogIndexStorage(compactionDistance);
+            var logIndexStorage = CreateLogIndexStorage(compactionDistance);
 
             using var getCancellation = new CancellationTokenSource();
             var token = getCancellation.Token;
@@ -405,9 +414,12 @@ namespace Nethermind.Db.Test.LogIndex
 
             // Log statistics
             await TestContext.Out.WriteLineAsync(
-                $"x{count} {nameof(LogIndexStorage.SetReceiptsAsync)}({length}) in {Stopwatch.GetElapsedTime(timestamp)}:" +
-                $"\n{totalStats}" +
-                $"\n\tDB size: {LogIndexMigration.GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndex))}"
+                $"""
+                 x{count} {nameof(LogIndexStorage.SetReceiptsAsync)}({length}) in {Stopwatch.GetElapsedTime(timestamp)}:
+                 {'\t'}{totalStats}
+                 {'\t'}DB size: {LogIndexMigration.GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndex))}
+
+                 """
             );
         }
 
@@ -541,6 +553,23 @@ namespace Nethermind.Db.Test.LogIndex
             return result;
         }
 
+        private async Task CompactAsync(ILogIndexStorage logIndexStorage)
+        {
+            const bool flush = true;
+
+            var timestamp = Stopwatch.GetTimestamp();
+            CompactingStats stats = await logIndexStorage.CompactAsync(flush);
+
+            // Log statistics
+            await TestContext.Out.WriteLineAsync(
+                $"""
+                 {nameof(LogIndexStorage.CompactAsync)}({flush}) in {Stopwatch.GetElapsedTime(timestamp)}:
+                 {'\t'}DB size: {LogIndexMigration.GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndex))}
+
+                 """
+            );
+        }
+
         public class TestData
         {
             private readonly int _batchCount;
@@ -565,11 +594,11 @@ namespace Nethermind.Db.Test.LogIndex
                 var batches = new BlockReceipts[batchCount][];
                 var blocksCount = batchCount * blocksPerBatch;
                 var addresses = Enumerable.Repeat(0, Math.Max(10, blocksCount / 5))
-                    //var addresses = Enumerable.Repeat(0, 1)
+                //var addresses = Enumerable.Repeat(0, 1)
                     .Select(_ => new Address(random.NextBytes(Address.Size)))
                     .ToArray();
                 var topics = Enumerable.Repeat(0, addresses.Length * 7)
-                    //var topics = Enumerable.Repeat(0, 0)
+                //var topics = Enumerable.Repeat(0, 0)
                     .Select(_ => new Hash256(random.NextBytes(Hash256.Size)))
                     .ToArray();
 

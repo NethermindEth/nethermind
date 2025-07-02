@@ -3,13 +3,12 @@
 
 using System;
 using System.Diagnostics;
-using System.Runtime.ExceptionServices;
 using System.Threading;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Db;
 
-public partial class LogIndexStorage
+partial class LogIndexStorage
 {
     // TODO: check if success=false + paranoid_checks=true is better than throwing exception
     // TODO: tests for MergeOperator specifically?
@@ -25,6 +24,7 @@ public partial class LogIndexStorage
 
         public ArrayPoolList<byte>? PartialMerge(ReadOnlySpan<byte> key, RocksDbMergeEnumerator enumerator) =>
             Merge(key, enumerator, isPartial: true);
+            //null;
 
         private static bool IsBlockNewer(int next, int? last, bool isBackwardSync) =>
             LogIndexStorage.IsBlockNewer(next, last, last, isBackwardSync);
