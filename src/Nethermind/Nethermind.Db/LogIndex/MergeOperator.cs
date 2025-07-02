@@ -79,19 +79,23 @@ public partial class LogIndexStorage
 
                 result = new(resultLength);
 
-                var (iReorg, iTruncate) = (0, 0);
+                // For truncate - just use max/min for all operands
+                var truncateAggregate = Aggregate(MergeOp.TruncateOp, enumerator, isBackwards);
+
+                var iReorg = 0;
                 for (var i = 0; i < enumerator.TotalCount; i++)
                 {
                     Span<byte> operand = enumerator.Get(i);
-                    (iReorg, iTruncate) = (Math.Max(iReorg, i + 1), Math.Max(iTruncate, i + 1));
 
                     if (MergeOps.IsAny(operand))
                         continue;
 
+                    // For reorg - order matters, so need to always traverse from the current position
+                    iReorg = Math.Max(iReorg, i + 1);
                     if (FindNext(MergeOp.ReorgOp, enumerator, ref iReorg) is { } reorgBlock)
                         operand = MergeOps.ApplyTo(operand, MergeOp.ReorgOp, reorgBlock, isBackwards);
 
-                    if (FindNext(MergeOp.TruncateOp, enumerator, ref iTruncate) is { } truncateBlock)
+                    if (truncateAggregate is {} truncateBlock)
                         operand = MergeOps.ApplyTo(operand, MergeOp.TruncateOp, truncateBlock, isBackwards);
 
                     AddEnsureSorted(result, operand, isBackwards);
@@ -122,6 +126,21 @@ public partial class LogIndexStorage
                 return block;
 
             return null;
+        }
+
+        private static int? Aggregate(MergeOp op, RocksDbMergeEnumerator enumerator, bool isBackwardSync)
+        {
+            int? result = null;
+            for(var i = 0; i < enumerator.OperandsCount; i++)
+            {
+                if (!MergeOps.Is(op, enumerator.GetOperand(i), out var next))
+                    continue;
+
+                if (result is null || (isBackwardSync && next < result) || (!isBackwardSync && next > result))
+                    result = next;
+            }
+
+            return result;
         }
     }
 }
