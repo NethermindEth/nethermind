@@ -159,8 +159,8 @@ public class CodeInfoRepositoryTests
         stateProvider.InsertCode(delegationAddress, delegationCode, Substitute.For<IReleaseSpec>());
         CodeInfoRepository sut = new();
 
-        ICodeInfo result = sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>());
-        result.CodeSpan.ToArray().Should().BeEquivalentTo(delegationCode);
+        ICodeInfo cached = sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>());
+        cached.CodeSpan.ToArray().Should().BeEquivalentTo(delegationCode);
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]
@@ -173,6 +173,7 @@ public class CodeInfoRepositoryTests
 
         CodeInfoRepository sut = new();
 
-        sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().BeEquivalentTo(new CodeInfo(code));
+        ICodeInfo cached = sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>());
+        cached.CodeSpan.ToArray().Should().BeEquivalentTo(code);
     }
 }
