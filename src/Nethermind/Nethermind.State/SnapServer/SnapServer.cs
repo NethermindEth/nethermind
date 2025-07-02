@@ -68,7 +68,7 @@ public class SnapServer : ISnapServer
 
     private bool IsRootMissing(Hash256 stateRoot)
     {
-        return !_store.HasRoot(stateRoot) || _lastNStateRootTracker?.HasStateRoot(stateRoot) == false;
+        return (!_store.HasRoot(stateRoot)) || _lastNStateRootTracker?.HasStateRoot(stateRoot) == false;
     }
 
     public IOwnedReadOnlyList<byte[]>? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken)
@@ -294,6 +294,10 @@ public class SnapServer : ISnapServer
             ReadOnlySpan<byte> bytes = tree.Get(accountPath, rootHash.ToCommitment());
             Rlp.ValueDecoderContext rlpContext = new Rlp.ValueDecoderContext(bytes);
             return bytes.IsNullOrEmpty() ? null : _decoder.Decode(ref rlpContext);
+        }
+        catch (TrieNodeException)
+        {
+            return null;
         }
         catch (MissingTrieNodeException)
         {

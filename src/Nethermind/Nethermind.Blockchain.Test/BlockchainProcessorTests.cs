@@ -50,7 +50,7 @@ public class BlockchainProcessorTests
             public BlockProcessorMock(ILogManager logManager, IStateReader stateReader)
             {
                 _logger = logManager.GetClassLogger();
-                stateReader.HasStateForRoot(Arg.Any<BlockHeader>()).Returns(x => _rootProcessed.Contains(x[0]));
+                stateReader.HasStateForRoot(Arg.Any<BlockHeader>()).Returns(x => _rootProcessed.Contains(((BlockHeader?)x[0])?.StateRoot!));
             }
 
             public void Allow(Hash256 hash)
