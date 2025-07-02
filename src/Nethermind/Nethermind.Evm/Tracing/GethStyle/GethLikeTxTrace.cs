@@ -13,6 +13,7 @@ namespace Nethermind.Evm.Tracing.GethStyle;
 public class GethLikeTxTrace : IDisposable
 {
     private readonly IDisposable? _disposable;
+    private long _gas;
 
     public GethLikeTxTrace(IDisposable? disposable = null)
     {
@@ -23,7 +24,15 @@ public class GethLikeTxTrace : IDisposable
 
     public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
 
-    public long Gas { get; set; }
+    public long Gas
+    {
+        get => _gas;
+        set
+        {
+            Console.Error.WriteLine($"Set to {value} by {Environment.StackTrace}");
+            _gas = value;
+        }
+    }
 
     public bool Failed { get; set; }
 
