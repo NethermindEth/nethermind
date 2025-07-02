@@ -377,15 +377,8 @@ public class TestBlockchain : IDisposable
     protected virtual async Task AddBlocksOnStart()
     {
         await AddBlock();
-        await AddBlock(BuildTransactionWithNonce(0));
-        await AddBlock(BuildTransactionWithNonce(1), BuildTransactionWithNonce(2));
-    }
-
-    private Transaction BuildTransactionWithNonce(UInt256 nonce)
-    {
-        return CreateTransactionBuilder()
-            .WithNonce(nonce)
-            .TestObject;
+        await AddBlock(CreateTransactionBuilder().WithNonce(0).TestObject);
+        await AddBlock(CreateTransactionBuilder().WithNonce(1).TestObject, CreateTransactionBuilder().WithNonce(2).TestObject);
     }
 
     private TransactionBuilder<Transaction> CreateTransactionBuilder()
