@@ -33,7 +33,7 @@ namespace Nethermind.Trie.Test
 
         public class PruningContext
         {
-            private BlockHeader? _baseBlock = null;
+            private BlockHeader? _baseBlock = Build.A.EmptyBlockHeader;
             private readonly Dictionary<string, BlockHeader?> _branchingPoints = new();
             private readonly IDbProvider _dbProvider;
             private IWorldState _stateProvider;
@@ -218,7 +218,7 @@ namespace Nethermind.Trie.Test
             public PruningContext Commit()
             {
                 _stateProvider.Commit(MuirGlacier.Instance);
-                _stateProvider.CommitTree(_baseBlock?.Number ?? 0 + 1);
+                _stateProvider.CommitTree((_baseBlock?.Number ?? 0) + 1);
                 _baseBlock = Build.A.BlockHeader.WithParent(_baseBlock).WithStateRoot(_stateProvider.StateRoot).TestObject;
 
                 // This causes the root node to be reloaded instead of keeping old one
@@ -227,7 +227,7 @@ namespace Nethermind.Trie.Test
                 _stateProvider.Reset();
                 _stateProvider.SetBaseBlock(_baseBlock);
                 _trieStore.WaitForPruning();
-                Console.Error.WriteLine($"Commited block {_baseBlock} {_trieStore.CachedNodesCount} {_trieStore.PersistedNodesCount}");
+                Console.Error.WriteLine($"Commited block {_baseBlock.ToString(BlockHeader.Format.Short)} {_trieStore.CachedNodesCount} {_trieStore.PersistedNodesCount}");
                 return this;
             }
 
@@ -317,6 +317,7 @@ namespace Nethermind.Trie.Test
             public PruningContext RestoreBranchingPoint(string name)
             {
                 BlockHeader branchPoint = _branchingPoints[name];
+                _baseBlock = branchPoint;
                 _stateProvider.Reset();
                 _stateProvider.SetBaseBlock(branchPoint);
                 return this;

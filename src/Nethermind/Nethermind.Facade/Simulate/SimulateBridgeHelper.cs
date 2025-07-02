@@ -35,7 +35,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         | ProcessingOptions.MarkAsProcessed
         | ProcessingOptions.StoreReceipts;
 
-    private void PrepareState(BlockHeader blockHeader,
+    private void PrepareState(
+        BlockHeader blockHeader,
         BlockHeader parent,
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
         IWorldState stateProvider,
@@ -121,7 +122,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 callHeader.TxRoot = TxTrie.CalculateRoot(transactions);
                 callHeader.Hash = callHeader.CalculateHash();
 
-                if (!TryGetBlock(payload, env, callHeader, transactions, out Block currentBlock, out error))
+                if (!TryGetBlock(payload, env, callHeader, transactions, out Block callBlock, out error))
                 {
                     return false;
                 }
@@ -130,13 +131,13 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     ? SimulateProcessingOptions
                     : SimulateProcessingOptions | ProcessingOptions.NoValidation;
 
-                suggestedBlocks[0] = currentBlock;
+                suggestedBlocks[0] = callBlock;
 
                 IBlockProcessor processor = env.GetProcessor(payload.Validation, spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null);
-                // TODO: Double check this
-                Block processedBlock = processor.Process(parent, suggestedBlocks, processingFlags, cancellationBlockTracer, cancellationToken)[0];
+                // Note: Weird behaviour where the call header is the same as the suggested blocks.
+                Block processedBlock = processor.Process(callHeader, suggestedBlocks, processingFlags, cancellationBlockTracer, cancellationToken)[0];
 
-                FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
+                FinalizeStateAndBlock(stateProvider, processedBlock, spec, callBlock, blockTree);
 
                 SimulateBlockResult<TTrace> blockResult = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
                 {
