@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.OverridableEnv;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;

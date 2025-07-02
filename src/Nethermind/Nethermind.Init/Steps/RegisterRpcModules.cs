@@ -38,11 +38,11 @@ public class RegisterRpcModules(
     ILogManager logManager
 ) : IStep
 {
-    public virtual async Task Execute(CancellationToken cancellationToken)
+    public virtual Task Execute(CancellationToken cancellationToken)
     {
         if (!jsonRpcConfig.Enabled)
         {
-            return;
+            return Task.CompletedTask;
         }
 
         // lets add threads to support parallel eth_getLogs
@@ -68,6 +68,6 @@ public class RegisterRpcModules(
         if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Value.Enabled.OrderBy(static x => x))}");
         ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Value.Enabled.OrderBy(static x => x))}");
 
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 }
