@@ -110,6 +110,7 @@
   <Project Path="Nethermind.Network.Discovery/Nethermind.Network.Discovery.csproj" />
   <Project Path="Nethermind.Network.Dns/Nethermind.Network.Dns.csproj" />
   <Project Path="Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />
+  <Project Path="Nethermind.Network.Optimum.Fuzzer\Nethermind.Network.Optimum.Fuzzer.csproj" Type="Classic C#" />
   <Project Path="Nethermind.Network.Optimum\Nethermind.Network.Optimum.csproj" Type="Classic C#" />
   <Project Path="Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />
   <Project Path="Nethermind.Network/Nethermind.Network.csproj" />
