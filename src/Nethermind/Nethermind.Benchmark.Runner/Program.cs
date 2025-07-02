@@ -33,6 +33,7 @@ using Nethermind.Precompiles.Benchmark;
 using System.Threading.Tasks;
 using System.Threading;
 using BenchmarkDotNet.Toolchains.CsProj;
+using Nethermind.Core;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -126,11 +127,11 @@ namespace Nethermind.Benchmark.Runner
             }
             else if (mode == ILMode.AOT_MODE)
             {
-                BenchmarkRunner.Run<WrapedEthBenchmarksSetup<VirtualMachine.IsPrecompiling>>(config);
+                BenchmarkRunner.Run<WrapedEthBenchmarksSetup<OnFlag>>(config);
             }
             else if (mode == ILMode.NO_ILVM)
             {
-                BenchmarkRunner.Run<WrapedEthBenchmarksSetup<VirtualMachine.NotOptimizing>>(config);
+                BenchmarkRunner.Run<WrapedEthBenchmarksSetup<OffFlag>>(config);
             }
         }
 

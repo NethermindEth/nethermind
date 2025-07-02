@@ -27,12 +27,14 @@ using System.Text;
 using System.Threading.Tasks;
 using static Nethermind.Evm.VirtualMachine;
 using BenchmarkDotNet.Loggers;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Trie;
 
 namespace Nethermind.Evm.Benchmark
 {
     [MemoryDiagnoser]
     public class WrapedEthBenchmarksSetup<TIsOptimizing>
-        where TIsOptimizing : struct, VirtualMachine.IIsOptimizing
+        where TIsOptimizing : struct, IFlag
     {
         string Name { get; set; } = "weth";
 
@@ -59,7 +61,7 @@ namespace Nethermind.Evm.Benchmark
         private ICodeInfoRepository codeInfoRepository;
         private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
         private ITxTracer _txTracer = NullTxTracer.Instance;
-        private VirtualMachine<VirtualMachine.NotTracing, TIsOptimizing> _virtualMachine;
+        private VirtualMachine _virtualMachine;
         private ITransactionProcessor _transactionProcessor;
         private ISpecProvider _specProvider = MainnetSpecProvider.Instance;
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
@@ -80,19 +82,24 @@ namespace Nethermind.Evm.Benchmark
         [GlobalSetup]
         public void GlobalSetup()
         {
-
-            string isIlvm = typeof(TIsOptimizing) == typeof(VirtualMachine.IsPrecompiling) ? "-ilvm" : "-no-ilvm";
+            string isIlvm = typeof(TIsOptimizing) == typeof(OnFlag) ? "-ilvm" : "-no-ilvm";
             Name = "weth" + isIlvm;
 
             vmConfig = new VMConfig();
 
-            vmConfig.IsILEvmEnabled = typeof(TIsOptimizing) != typeof(VirtualMachine.NotOptimizing);
-            vmConfig.IlEvmEnabledMode = typeof(TIsOptimizing) == typeof(VirtualMachine.IsPrecompiling)
+            vmConfig.IsILEvmEnabled = typeof(TIsOptimizing) != typeof(OffFlag);
+            vmConfig.IlEvmEnabledMode = typeof(TIsOptimizing) == typeof(OnFlag)
                 ? ILMode.AOT_MODE : ILMode.NO_ILVM;
 
             vmConfig.IlEvmAnalysisThreshold = 1;
-            TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(Logging.NullLogger.Instance));
-            IKeyValueStore codeDb = new MemDb();
+            TrieStore trieStore = new(
+                new NodeStorage(new MemDb()),
+                No.Pruning,
+                Persist.EveryBlock,
+                new PruningConfig(),
+                LimboLogs.Instance);
+
+            IKeyValueStoreWithBatching codeDb = new MemDb();
             _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(Logging.NullLogger.Instance));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
@@ -105,7 +112,7 @@ namespace Nethermind.Evm.Benchmark
 
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
 
-            _virtualMachine = new VirtualMachine<VirtualMachine.NotTracing, TIsOptimizing>(_blockhashProvider, codeInfoRepository, MainnetSpecProvider.Instance, vmConfig, _logger);
+            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, logmanager, vmConfig);
 
             _transactionProcessor = new TransactionProcessor(
                 _specProvider,
@@ -214,7 +221,7 @@ namespace Nethermind.Evm.Benchmark
             if (vmConfig.IsILEvmEnabled)
             {
                 var targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, ContractAddress, Prague.Instance, out _);
-                IlAnalyzer.Analyse(targetCodeInfo, vmConfig.IlEvmEnabledMode, vmConfig, Logging.NullLogger.Instance);
+                IlAnalyzer.Analyse((CodeInfo)targetCodeInfo, vmConfig.IlEvmEnabledMode, vmConfig, Logging.NullLogger.Instance);
             }
 
             _stateProvider.Restore(snapshot);
@@ -238,8 +245,8 @@ namespace Nethermind.Evm.Benchmark
     [MemoryDiagnoser]
     public class WrapedEthBenchmarks
     {
-        private WrapedEthBenchmarksSetup<NotOptimizing> Setup_noIlvm = new WrapedEthBenchmarksSetup<NotOptimizing>();
-        private WrapedEthBenchmarksSetup<IsPrecompiling> Setup_ilvm = new WrapedEthBenchmarksSetup<IsPrecompiling>();
+        private WrapedEthBenchmarksSetup<OffFlag> Setup_noIlvm = new();
+        private WrapedEthBenchmarksSetup<OnFlag> Setup_ilvm = new();
 
         [GlobalSetup]
         public void GlobalSetup()

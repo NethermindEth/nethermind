@@ -23,7 +23,6 @@ using Nethermind.Evm.Tracing.GethStyle;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using static Nethermind.Evm.VirtualMachine;
 using System.Reflection;
 using Nethermind.Core.Test.Builders;
 using System.Linq;
@@ -42,6 +41,7 @@ using Iced.Intel;
 using static Microsoft.FSharp.Core.ByRefKinds;
 using Nethermind.Consensus.Processing;
 using Grpc.Core;
+using Nethermind.Trie;
 
 namespace Nethermind.Evm.Benchmark
 {
@@ -52,20 +52,15 @@ namespace Nethermind.Evm.Benchmark
         void Reset();
     }
     public struct LocalSetup<TIsOptimizing> : ILocalSetup
-        where TIsOptimizing : struct, VirtualMachine.IIsOptimizing
+        where TIsOptimizing : struct, IFlag
     {
-
-        internal delegate CallResult ExecuteCode<TTracingInstructions, TTracingRefunds, TTracingStorage>(EvmState vmState, scoped ref EvmStack<TTracingInstructions> stack, long gasAvailable, IReleaseSpec spec)
-            where TTracingInstructions : struct, VirtualMachine.IIsTracing
-            where TTracingRefunds : struct, VirtualMachine.IIsTracing
-            where TTracingStorage : struct, VirtualMachine.IIsTracing;
         public string Name { get; init; }
 
         private readonly ICodeInfoRepository codeInfoRepository;
         private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
         private ITxTracer _txTracer = NullTxTracer.Instance;
         private ExecutionEnvironment _environment;
-        private VirtualMachine<VirtualMachine.NotTracing, TIsOptimizing> _virtualMachine;
+        private VirtualMachine _virtualMachine;
         private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
         private EvmState _evmState;
@@ -81,13 +76,18 @@ namespace Nethermind.Evm.Benchmark
 
             vmConfig = new VMConfig();
 
-            vmConfig.IsILEvmEnabled = typeof(TIsOptimizing) != typeof(VirtualMachine.NotOptimizing);
-            vmConfig.IlEvmEnabledMode = typeof(TIsOptimizing) == typeof(VirtualMachine.IsPrecompiling)
+            vmConfig.IsILEvmEnabled = typeof(TIsOptimizing) != typeof(OffFlag);
+            vmConfig.IlEvmEnabledMode = typeof(TIsOptimizing) == typeof(OnFlag)
                 ? ILMode.AOT_MODE : ILMode.NO_ILVM;
 
             vmConfig.IlEvmAnalysisThreshold = 1;
-            TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
-            IKeyValueStore codeDb = new MemDb();
+            TrieStore trieStore = new(
+                new NodeStorage(new MemDb()),
+                No.Pruning,
+                Persist.EveryBlock,
+                new PruningConfig(),
+                LimboLogs.Instance);
+            IKeyValueStoreWithBatching codeDb = new MemDb();
             _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
@@ -100,7 +100,7 @@ namespace Nethermind.Evm.Benchmark
 
             _logger = logmanager.GetClassLogger();
 
-            _virtualMachine = new VirtualMachine<VirtualMachine.NotTracing, TIsOptimizing>(_blockhashProvider, codeInfoRepository, MainnetSpecProvider.Instance, vmConfig, _logger);
+            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, logmanager, vmConfig);
 
             var (address, targetCodeHash) = InsertCode(bytecode);
 
@@ -116,7 +116,7 @@ namespace Nethermind.Evm.Benchmark
             var driverCodehash = Keccak.Compute(driver);
 
             driverCodeInfo = new CodeInfo(driver, driverCodehash);
-            targetCodeInfo = codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance, out _);
+            targetCodeInfo = (CodeInfo)codeInfoRepository.GetCachedCodeInfo(_stateProvider, address, Prague.Instance, out _);
         }
         private (Address, ValueHash256) InsertCode(byte[] bytecode, Address target = null)
         {
@@ -133,36 +133,38 @@ namespace Nethermind.Evm.Benchmark
         {
             _environment = new ExecutionEnvironment
             (
-                executingAccount: Address.Zero,
-                codeSource: Address.Zero,
-                caller: Address.Zero,
                 codeInfo: targetCodeInfo,
-                value: 0,
-                transferValue: 0,
-                txExecutionContext: new TxExecutionContext(new BlockExecutionContext(_header, _spec), Address.Zero, 0, null, codeInfoRepository),
-                inputData: default
+                executingAccount: Address.Zero,
+                caller: Address.Zero,
+                codeSource: Address.Zero,
+                0,
+                UInt256.Zero,
+                UInt256.Zero,
+                ReadOnlyMemory<byte>.Empty
             );
 
             if (vmConfig.IsILEvmEnabled)
             {
-                if (driverCodeInfo.IlInfo.IsNotProcessed)
+                if (driverCodeInfo.IlMetadata.IsNotProcessed)
                 {
                     IlAnalyzer.Analyse(driverCodeInfo, vmConfig.IlEvmEnabledMode, vmConfig, NullLogger.Instance);
                 }
 
-                if (targetCodeInfo.IlInfo.IsNotProcessed)
+                if (targetCodeInfo.IlMetadata.IsNotProcessed)
                 {
                     IlAnalyzer.Analyse(targetCodeInfo, vmConfig.IlEvmEnabledMode, vmConfig, NullLogger.Instance);
                 }
             }
 
+            _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
+            _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 1));
 
-            _evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot(), _environment, new StackAccessTracker());
+            _evmState = EvmState.RentTopLevel(long.MaxValue, ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
         }
 
         public void Run()
         {
-            _virtualMachine.Run<VirtualMachine.NotTracing>(_evmState, _stateProvider, _txTracer);
+            _virtualMachine.ExecuteTransaction<OffFlag>(_evmState, _stateProvider, _txTracer);
         }
 
         public void Reset()
@@ -290,12 +292,12 @@ namespace Nethermind.Evm.Benchmark
 
                 if ((mode & ILMode.NO_ILVM) == ILMode.NO_ILVM)
                 {
-                    yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + benchName, bytecode);
+                    yield return new LocalSetup<OffFlag>("ILEVM::1::std::" + benchName, bytecode);
                 }
 
                 if ((mode & ILMode.AOT_MODE) == ILMode.AOT_MODE)
                 {
-                    yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + benchName, bytecode);
+                    yield return new LocalSetup<OnFlag>("ILEVM::2::aot::" + benchName, bytecode);
                 }
             }
 
@@ -311,12 +313,12 @@ namespace Nethermind.Evm.Benchmark
 
                 if ((mode & ILMode.NO_ILVM) == ILMode.NO_ILVM)
                 {
-                    yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + benchName, bytecode);
+                    yield return new LocalSetup<OffFlag>("ILEVM::1::std::" + benchName, bytecode);
                 }
 
                 if ((mode & ILMode.AOT_MODE) == ILMode.AOT_MODE)
                 {
-                    yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + benchName, bytecode);
+                    yield return new LocalSetup<OnFlag>("ILEVM::2::aot::" + benchName, bytecode);
                 }
             }
 
@@ -326,12 +328,12 @@ namespace Nethermind.Evm.Benchmark
 
             if ((mode & ILMode.NO_ILVM) == ILMode.NO_ILVM)
             {
-                yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + mtbenchName, mtbytecode);
+                yield return new LocalSetup<OffFlag>("ILEVM::1::std::" + mtbenchName, mtbytecode);
             }
 
             if ((mode & ILMode.AOT_MODE) == ILMode.AOT_MODE)
             {
-                yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + mtbenchName, mtbytecode);
+                yield return new LocalSetup<OnFlag>("ILEVM::2::aot::" + mtbenchName, mtbytecode);
             }
         }
 
@@ -369,10 +371,10 @@ namespace Nethermind.Evm.Benchmark
             switch (mode)
             {
                 case ILMode.NO_ILVM:
-                    yield return new LocalSetup<NotOptimizing>("ILEVM::1::std::" + BenchmarkName, bytecode);
+                    yield return new LocalSetup<OffFlag>("ILEVM::1::std::" + BenchmarkName, bytecode);
                     break;
                 case ILMode.AOT_MODE:
-                    yield return new LocalSetup<IsPrecompiling>("ILEVM::2::aot::" + BenchmarkName, bytecode);
+                    yield return new LocalSetup<OnFlag>("ILEVM::2::aot::" + BenchmarkName, bytecode);
                     break;
             }
         }
