@@ -532,7 +532,7 @@ namespace Nethermind.Db
             {
                 if (IsMergeKey(key) && value.Length >= minLengthToCompress)
                 {
-                    await _compressor.EnqueueAsync(key, value);
+                    await _compressor.EnqueueAsync(key);
                     counter++;
                 }
             }

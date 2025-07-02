@@ -14,7 +14,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db;
 
-public partial class LogIndexStorage
+partial class LogIndexStorage
 {
     private class Compressor
     {
@@ -25,7 +25,7 @@ public partial class LogIndexStorage
         private readonly ConcurrentDictionary<byte[], bool> _compressQueue = new(Bytes.EqualityComparer);
         private readonly LogIndexStorage _storage;
         private readonly ILogger _logger;
-        private readonly ActionBlock<(byte[] key, byte[] value)> _processingBlock;
+        private readonly ActionBlock<byte[]> _processingBlock;
         private readonly ManualResetEventSlim _queueEmptyEvent = new(true);
 
         private PostMergeProcessingStats _stats = new();
@@ -54,17 +54,16 @@ public partial class LogIndexStorage
             if (!_compressQueue.TryAdd(dbKeyArr, true))
                 return false;
 
-            var dbValueArr = dbValue.ToArray();
-            if (_processingBlock.Post((dbKeyArr, dbValueArr)))
+            if (_processingBlock.Post(dbKeyArr))
                 return true;
 
             _compressQueue.TryRemove(dbKeyArr, out _);
             return false;
         }
 
-        public async Task EnqueueAsync(byte[] dbKey, byte[] dbValue)
+        public async Task EnqueueAsync(byte[] dbKey)
         {
-            await _processingBlock.SendAsync((dbKey, dbValue));
+            await _processingBlock.SendAsync(dbKey);
             _queueEmptyEvent.Reset();
         }
 
@@ -79,11 +78,8 @@ public partial class LogIndexStorage
         // TODO: log errors
         // TODO: optimize allocations
         // TODO: use WriteBatch for atomicity
-        private void CompressValue((byte[] key, byte[] value) arg)
+        private void CompressValue(byte[] dbKey)
         {
-            Span<byte> dbKey = arg.key;
-            Span<byte> dbValue = arg.value;
-
             try
             {
                 var execTimestamp = Stopwatch.GetTimestamp();
@@ -91,7 +87,7 @@ public partial class LogIndexStorage
                 IDb db = _storage.GetDbByKeyLength(dbKey.Length, out var prefixLength);
 
                 var timestamp = Stopwatch.GetTimestamp();
-
+                Span<byte> dbValue = db.Get(dbKey);
                 _stats.GettingValue.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 // Do not compress blocks that can be reorged, as compressed data is immutable
@@ -138,7 +134,7 @@ public partial class LogIndexStorage
             }
             finally
             {
-                _compressQueue.TryRemove(arg.key, out _);
+                _compressQueue.TryRemove(dbKey, out _);
 
                 if (_processingBlock.InputCount == 0)
                     _queueEmptyEvent.Set();
