@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -205,6 +206,12 @@ namespace Nethermind.Core
 
         protected int? _size = null;
         private bool _disposed;
+        public bool IsDisposed => Volatile.Read(ref _disposed);
+
+        private int _broadcastCount;
+        public void MarkBroadcasting() => Interlocked.Increment(ref _broadcastCount);
+
+        public void UnmarkBroadcasting() => Interlocked.Decrement(ref _broadcastCount);
 
         /// <summary>
         /// Encoded transaction length
@@ -279,13 +286,18 @@ namespace Nethermind.Core
             public bool Return(Transaction tx)
             {
                 ObjectDisposedException.ThrowIf(tx._disposed, tx);
-                tx._disposed = true;
+                Volatile.Write(ref tx._disposed, true);
+
+                if (Volatile.Read(ref tx._broadcastCount) > 0)
+                {
+                    return false;
+                }
+
                 tx.SourceHash = default;
                 tx.To = default;
                 tx.SenderAddress = default;
                 tx.Signature = default;
                 tx.Hash = default;
-                tx.ClearPreHash();
                 tx.AccessList = default;
                 tx.BlobVersionedHashes = default;
                 if (tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
@@ -315,7 +327,7 @@ namespace Nethermind.Core
                 tx.MaxFeePerBlobGas = default;
                 tx._size = default;
 
-                return true;
+                return Volatile.Read(ref tx._broadcastCount) == 0;
             }
         }
 

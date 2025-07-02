@@ -192,7 +192,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public void SendNewTransaction(Transaction tx)
         {
-            if (ShouldNotifyTransaction(tx.Hash))
+            if (!tx.IsDisposed && ShouldNotifyTransaction(tx.Hash))
             {
                 SendNewTransactionCore(tx);
             }
@@ -202,6 +202,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             if (!tx.SupportsBlobs) //additional protection from sending full tx with blob
             {
+                tx.MarkBroadcasting();
+                if (tx.IsDisposed) return;
+
                 SendMessage(new ArrayPoolList<Transaction>(1) { tx });
             }
         }
@@ -229,6 +232,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             foreach (Transaction tx in txs)
             {
+                tx.MarkBroadcasting();
+                if (tx.IsDisposed) continue;
+
                 int txSize = tx.GetLength();
 
                 if (txSize > packetSizeLeft && txsToSend.Count > 0)
