@@ -63,6 +63,11 @@ namespace Nethermind.Db
         private readonly Compressor _compressor;
         private readonly ICompactor _compactor;
 
+        private int? _addressMaxBlock;
+        private int? _topicMaxBlock;
+        private int? _addressMinBlock;
+        private int? _topicMinBlock;
+
         // TODO: ensure class is singleton
         // TODO: take parameters from log-index/chain config
         public LogIndexStorage(IDbFactory dbFactory, ILogger logger,
@@ -99,14 +104,24 @@ namespace Nethermind.Db
             }
         }
 
+        // Not thread safe
+        private bool _stopped;
+        private bool _disposed;
+
         public async Task StopAsync()
         {
+            if (_stopped)
+                return;
+
             await _setReceiptsSemaphore.WaitAsync();
+
+            if (_stopped)
+                return;
 
             try
             {
-                // TODO: consider not waiting for compression queue to finish
-                await _compressor.StopAsync();
+                await _compactor.StopAsync(); // Need to wait, as releasing RocksDB during compaction will cause 0xC0000005
+                await _compressor.StopAsync(); // TODO: consider not waiting for compression queue to finish
 
                 // TODO: check if needed
                 _addressDb.Flush();
@@ -116,24 +131,25 @@ namespace Nethermind.Db
             }
             finally
             {
+                _stopped = true;
                 _setReceiptsSemaphore.Release();
             }
         }
 
-        ValueTask IAsyncDisposable.DisposeAsync()
+        async ValueTask IAsyncDisposable.DisposeAsync()
         {
+            if (_disposed)
+                return;
+
+            await StopAsync();
+
             _setReceiptsSemaphore.Dispose();
             _columnsDb.Dispose();
             _addressDb.Dispose();
             _topicsDb.Dispose();
 
-            return ValueTask.CompletedTask;
+            _disposed = true;
         }
-
-        private int? _addressMaxBlock;
-        private int? _topicMaxBlock;
-        private int? _addressMinBlock;
-        private int? _topicMinBlock;
 
         private static int? LoadBlockNumber(IDb db, byte[] key)
         {
