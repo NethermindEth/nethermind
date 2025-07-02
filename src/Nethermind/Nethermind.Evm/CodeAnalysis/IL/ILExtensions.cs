@@ -70,7 +70,7 @@ public static class ReleaseSpecEmit
         {
             if (opcode.RequiresAvailabilityCheck())
             {
-                envirementLoader.LoadSpec(method, locals, false);
+                envirementLoader.LoadSpec(method, locals);
                 method.LoadConstant((byte)opcode);
                 method.Call(typeof(IlvmInstructionExtensions).GetMethod(nameof(IlvmInstructionExtensions.IsEnabled)));
                 method.BranchIfFalse(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));

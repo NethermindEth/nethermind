@@ -1145,24 +1145,16 @@ public sealed unsafe partial class VirtualMachine(
             ReadOnlySpan<byte> codeAsSpan = env.CodeInfo.Code.Span;
             ref ILChunkExecutionState chunkExecutionState = ref vmState.IlExecutionStepState;
 
-            // TODO: now VirtualMachine provides BlockExecutionContext, TxExecutionContext, Spec, _specProvider, WorldState
-            // We could pass it to minimize the overhead and the size of ILChunkExecutionArguments
+            // TODO: Use members of VM to minimize the overhead and the size of ILChunkExecutionArguments.
             ILChunkExecutionArguments chunkArguments = new(
                 ref MemoryMarshal.GetReference(codeAsSpan),
                 ref gasAvailable,
                 ref programCounter,
                 ref stack.Head,
                 ref Add(ref As<byte, CodeAnalysis.IL.Word>(ref MemoryMarshal.GetReference(stack.UnderlyingSpan)), stack.Head),
-                in TxExecutionContext,
-                in BlockExecutionContext,
+                this,
                 vmState,
-                Spec, _specProvider,
-                _blockHashProvider,
-                CodeInfoRepository,
-                _worldState,
-                ReturnDataBuffer,
-                _txTracer,
-                _logger
+                ReturnDataBuffer
             );
 
             if (env.CodeInfo.IlMetadata.PrecompiledContract(

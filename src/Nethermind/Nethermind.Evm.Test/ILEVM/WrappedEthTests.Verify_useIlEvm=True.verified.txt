@@ -143,7 +143,8 @@ ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j21
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -225,7 +226,8 @@ ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j32
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -268,7 +270,8 @@ ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j38
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -311,7 +314,8 @@ ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j44
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -354,7 +358,8 @@ ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j50
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -397,7 +402,8 @@ ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j56
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -440,7 +446,8 @@ ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j62
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -483,7 +490,8 @@ ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j68
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -565,7 +573,8 @@ ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j79
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -623,7 +632,8 @@ ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j87
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -758,7 +768,8 @@ ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j103
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -810,7 +821,8 @@ ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j110
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -861,7 +873,8 @@ ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j116
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -904,7 +917,8 @@ ldloca.s 36
 call Boolean get_HasValue()
 brtrue.s j122
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 253
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -1040,7 +1054,8 @@ ldloca.s 74
 call Boolean get_HasValue()
 brtrue.s j139
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 250
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
@@ -1064,7 +1079,8 @@ ldloca.s 75
 call Boolean get_HasValue()
 brtrue.s j143
 ldarg.0
-ldfld Nethermind.Core.Specs.IReleaseSpec Spec
+ldfld Nethermind.Evm.VirtualMachine Vm
+call Nethermind.Core.Specs.IReleaseSpec get_Spec()
 ldc.i4 250
 call Boolean IsEnabled(Nethermind.Core.Specs.IReleaseSpec, Nethermind.Evm.Instruction)
 brfalse BadInstruction
