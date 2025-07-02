@@ -1863,8 +1863,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             public void ClearIterators()
             {
                 if (_disposed) return;
-                if (Values is null) return;
-                foreach (IteratorHolder iterator in Values)
+                if (Values is not {} values) return;
+                foreach (IteratorHolder iterator in values)
                 {
                     iterator.Dispose();
                 }
