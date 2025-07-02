@@ -70,6 +70,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
         Debug.Assert(_callStack.Count == 1, $"Unexpected frames on call stack, expected only master frame, found {_callStack.Count} frames.");
 
+        builtTrace = Environment.StackTrace;
         _callStack.RemoveAt(0);
         _disposables.Add(firstCallFrame);
 
@@ -81,6 +82,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
     public override void Dispose()
     {
+        disposedTrace = Environment.StackTrace;
         base.Dispose();
         for (int i = 0; i < _callStack.Count; i++)
         {

@@ -47,8 +47,10 @@ public partial class DebugRpcModuleTests
 
         var blockNumber = context.Blockchain.BlockTree.Head!.Number;
         string headStr = context.Blockchain.BlockTree.Head?.Header.ToString(BlockHeader.Format.Short)!;
+        Console.Error.WriteLine($"The head is {headStr}");
         var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockNumber, 0, options);
 
+        Console.Error.WriteLine($"The head now is {headStr}");
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(response).RootElement,
             JsonDocument.Parse(expected).RootElement),
