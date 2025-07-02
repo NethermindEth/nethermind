@@ -1045,9 +1045,10 @@ public partial class EngineModuleTests
             executePayloadRequest.BlockHash = hash;
             ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(executePayloadRequest);
             result.Data.Status.Should().Be(PayloadStatus.Valid);
-            chain.StateReader.HasStateForRoot(executePayloadRequest.StateRoot).Should().BeTrue();
 
-            chain.StateReader.GetBalance(executePayloadRequest.StateRoot, to).Should().Be(toBalanceAfter);
+            BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(executePayloadRequest.BlockHash);
+            chain.StateReader.HasStateForRoot(payloadBlock).Should().BeTrue();
+            chain.StateReader.GetBalance(payloadBlock, to).Should().Be(toBalanceAfter);
             if (moveHead)
             {
                 ForkchoiceStateV1 forkChoiceUpdatedRequest = new(executePayloadRequest.BlockHash, executePayloadRequest.BlockHash, executePayloadRequest.BlockHash);
@@ -1073,7 +1074,7 @@ public partial class EngineModuleTests
             Address to = TestItem.AddressD;
             (_, UInt256 toBalanceAfter) = AddTransactions(chain, executionPayload, from, to, count, 1, out BlockHeader parentHeader);
 
-            UInt256 fromBalance = chain.StateReader.GetBalance(parentHeader.StateRoot!, from.Address);
+            UInt256 fromBalance = chain.StateReader.GetBalance(parentHeader!, from.Address);
             executionPayload.GasUsed = GasCostOf.Transaction * count;
             executionPayload.StateRoot =
                 new Hash256("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
@@ -1084,11 +1085,13 @@ public partial class EngineModuleTests
             ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(executionPayload);
 
             result.Data.Status.Should().Be(PayloadStatus.Valid);
-            chain.StateReader.HasStateForRoot(executionPayload.StateRoot).Should().BeTrue();
 
-            UInt256 fromBalanceAfter = chain.StateReader.GetBalance(executionPayload.StateRoot, from.Address);
+            BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(executionPayload.BlockHash);
+            chain.StateReader.HasStateForRoot(payloadBlock).Should().BeTrue();
+
+            UInt256 fromBalanceAfter = chain.StateReader.GetBalance(payloadBlock, from.Address);
             Assert.That(fromBalanceAfter, Is.LessThan(fromBalance - toBalanceAfter));
-            chain.StateReader.GetBalance(executionPayload.StateRoot, to).Should().Be(toBalanceAfter);
+            chain.StateReader.GetBalance(payloadBlock, to).Should().Be(toBalanceAfter);
             Block findBlock = chain.BlockTree.FindBlock(executionPayload.BlockHash, BlockTreeLookupOptions.None)!;
             TxReceipt[]? receipts = chain.ReceiptStorage.Get(findBlock);
             findBlock.Transactions.Select(static t => t.Hash).Should().BeEquivalentTo(receipts.Select(static r => r.TxHash));

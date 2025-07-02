@@ -122,7 +122,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             return ResultWrapper<AccountState?>.Fail("Block not found", ErrorCodes.ResourceNotFound);
         }
 
-        if (worldStateManager.GlobalStateReader.TryGetAccount(blockHeader.StateRoot!, address,
+        if (worldStateManager.GlobalStateReader.TryGetAccount(blockHeader, address,
                 out AccountStruct account))
         {
             return ResultWrapper<AccountState?>.Success(new AccountState(account.Nonce, account.Balance,

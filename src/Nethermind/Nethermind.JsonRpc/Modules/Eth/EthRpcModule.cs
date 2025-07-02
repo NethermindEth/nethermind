@@ -12,7 +12,6 @@ using DotNetty.Buffers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -32,7 +31,6 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
@@ -84,7 +82,7 @@ public partial class EthRpcModule(
 
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
-        return blockchainBridge.HasStateForRoot(header.StateRoot!);
+        return blockchainBridge.HasStateForRoot(header);
     }
 
     public ResultWrapper<string> eth_protocolVersion()
@@ -174,7 +172,7 @@ public partial class EthRpcModule(
             return Task.FromResult(GetStateFailureResult<UInt256?>(header));
         }
 
-        _stateReader.TryGetAccount(header!.StateRoot!, address, out AccountStruct account);
+        _stateReader.TryGetAccount(header!, address, out AccountStruct account);
         return Task.FromResult(ResultWrapper<UInt256?>.Success(account.Balance));
     }
 
@@ -190,7 +188,7 @@ public partial class EthRpcModule(
         BlockHeader? header = searchResult.Object;
         try
         {
-            ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
+            ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!, address, positionIndex);
             return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage!.PadLeft(32));
         }
         catch (MissingTrieNodeException e)
@@ -220,7 +218,7 @@ public partial class EthRpcModule(
             return Task.FromResult(GetStateFailureResult<UInt256>(header));
         }
 
-        _stateReader.TryGetAccount(header!.StateRoot!, address, out AccountStruct account);
+        _stateReader.TryGetAccount(header!, address, out AccountStruct account);
         return Task.FromResult(ResultWrapper<UInt256>.Success(account.Nonce));
     }
 
@@ -268,7 +266,7 @@ public partial class EthRpcModule(
         return !HasStateForBlock(_blockchainBridge, header!)
             ? GetStateFailureResult<byte[]>(header)
             : ResultWrapper<byte[]>.Success(
-                _stateReader.TryGetAccount(header!.StateRoot!, address, out AccountStruct account)
+                _stateReader.TryGetAccount(header!, address, out AccountStruct account)
                     ? _stateReader.GetCode(account.CodeHash)
                     : []);
     }
@@ -743,7 +741,7 @@ public partial class EthRpcModule(
         return !HasStateForBlock(_blockchainBridge, header!)
             ? GetStateFailureResult<AccountForRpc?>(header)
             : ResultWrapper<AccountForRpc?>.Success(
-                _stateReader.TryGetAccount(header!.StateRoot!, accountAddress, out AccountStruct account)
+                _stateReader.TryGetAccount(header!, accountAddress, out AccountStruct account)
                     ? new AccountForRpc(account)
                     : null);
     }

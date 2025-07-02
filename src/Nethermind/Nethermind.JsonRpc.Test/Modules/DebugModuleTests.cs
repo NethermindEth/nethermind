@@ -268,7 +268,7 @@ public class DebugModuleTests
         blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
         blockFinder.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>()).ReturnsForAnyArgs(Build.A.BlockHeader.WithNumber(1).TestObject);
         blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(Build.A.BlockHeader.WithNumber(1).TestObject);
-        blockchainBridge.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
+        blockchainBridge.HasStateForRoot(Arg.Any<BlockHeader>()).Returns(true);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
         ResultWrapper<GethLikeTxTrace> debugTraceCall = rpcModule.debug_traceCall(txForRpc, null, gtOptions);

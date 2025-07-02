@@ -26,14 +26,14 @@ public class FullStateFinder : IFullStateFinder
         _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
     }
 
-    private bool IsFullySynced(Hash256 stateRoot)
+    private bool IsFullySynced(BlockHeader block)
     {
-        if (stateRoot == Keccak.EmptyTreeHash)
+        if (block.StateRoot == Keccak.EmptyTreeHash)
         {
             return true;
         }
 
-        return _stateReader.HasStateForRoot(stateRoot);
+        return _stateReader.HasStateForRoot(block);
     }
 
     public long FindBestFullState()
@@ -78,7 +78,7 @@ public class FullStateFinder : IFullStateFinder
                 break;
             }
 
-            if (IsFullySynced(startHeader.StateRoot!))
+            if (IsFullySynced(startHeader))
             {
                 bestFullState = startHeader.Number;
                 break;

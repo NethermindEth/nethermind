@@ -204,7 +204,7 @@ namespace Nethermind.Trie.Test
             public PruningContext ReadAccountViaStateReader(int accountIndex)
             {
                 _logger.Info($"READ   ACCOUNT {accountIndex}");
-                _stateReader.TryGetAccount(_stateProvider.StateRoot, Address.FromNumber((UInt256)accountIndex), out _);
+                _stateReader.TryGetAccount(_baseBlock, Address.FromNumber((UInt256)accountIndex), out _);
                 return this;
             }
 

@@ -298,7 +298,7 @@ public abstract class StateSyncFeedTestsBase
             _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
 
             IStateReader alwaysAvailableRootTracker = Substitute.For<IStateReader>();
-            alwaysAvailableRootTracker.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
+            alwaysAvailableRootTracker.HasStateForRoot(Arg.Any<BlockHeader>()).Returns(true);
             TrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
                 Persist.EveryBlock, new PruningConfig(), LimboLogs.Instance);
             _stateDb = trieStore.TrieNodeRlpStore;

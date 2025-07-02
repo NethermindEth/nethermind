@@ -278,7 +278,7 @@ public class AdminModuleTests
     public async Task Test_hasStateForBlock()
     {
         (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_isStateRootAvailable", "latest")).Should().Contain("false");
-        _stateReader.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
+        _stateReader.HasStateForRoot(Arg.Any<BlockHeader>()).Returns(true);
         (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_isStateRootAvailable", "latest")).Should().Contain("true");
     }
 
