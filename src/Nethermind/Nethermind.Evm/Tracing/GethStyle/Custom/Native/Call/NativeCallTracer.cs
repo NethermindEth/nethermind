@@ -31,6 +31,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
     private readonly CompositeDisposable _disposables = new();
 
+    private string? builtTrace = null;
+    private string? disposedTrace = null;
+
     private EvmExceptionType? _error;
     private long _remainingGas;
 
@@ -55,6 +58,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
+        if (builtTrace != null && _callStack.Count == 0)
+        {
+            Console.Error.WriteLine($"Was built at {builtTrace}");
+        }
+        if (disposedTrace != null && _callStack.Count == 0)
+        {
+            Console.Error.WriteLine($"Was disposed at {disposedTrace}");
+        }
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
 
         Debug.Assert(_callStack.Count == 1, $"Unexpected frames on call stack, expected only master frame, found {_callStack.Count} frames.");
