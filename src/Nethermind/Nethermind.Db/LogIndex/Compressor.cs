@@ -29,6 +29,7 @@ public partial class LogIndexStorage
         private readonly ManualResetEventSlim _queueEmptyEvent = new(true);
 
         private PostMergeProcessingStats _stats = new();
+        public PostMergeProcessingStats Stats => _stats;
         public PostMergeProcessingStats GetAndResetStats()
         {
             _stats.QueueLength = _processingBlock.InputCount;
@@ -50,7 +51,7 @@ public partial class LogIndexStorage
                 return false;
 
             var dbKeyArr = dbKey.ToArray();
-            if (_compressQueue.TryAdd(dbKeyArr, true))
+            if (!_compressQueue.TryAdd(dbKeyArr, true))
                 return false;
 
             var dbValueArr = dbValue.ToArray();
@@ -100,13 +101,13 @@ public partial class LogIndexStorage
                 if (dbValue.Length < MinLengthToCompress)
                     return; // TODO: check back later
 
-                var (firstBlock, lastBlock) = (GetValBlockNum(dbValue), GetValLastBlockNum(dbValue));
-                var postfixBlock = Math.Min(firstBlock, lastBlock);
-                var truncateBlock = lastBlock;
+                var truncateBlock = GetValLastBlockNum(dbValue);
 
                 ReverseBlocksIfNeeded(dbValue);
 
-                var dbKeyComp = new byte[prefixLength + BlockNumSize];
+                var postfixBlock = GetValBlockNum(dbValue);
+
+                Span<byte> dbKeyComp = new byte[prefixLength + BlockNumSize];
                 dbKey[..prefixLength].CopyTo(dbKeyComp);
                 SetKeyBlockNum(dbKeyComp, postfixBlock);
 
