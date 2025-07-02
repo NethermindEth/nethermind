@@ -100,13 +100,15 @@ public partial class LogIndexStorage
                 if (dbValue.Length < MinLengthToCompress)
                     return; // TODO: check back later
 
-                var firstBlock = GetValBlockNum(dbValue);
-                var truncateBlock = GetValLastBlockNum(dbValue);
+                var (firstBlock, lastBlock) = (GetValBlockNum(dbValue), GetValLastBlockNum(dbValue));
+                var postfixBlock = Math.Min(firstBlock, lastBlock);
+                var truncateBlock = lastBlock;
+
                 ReverseBlocksIfNeeded(dbValue);
 
                 var dbKeyComp = new byte[prefixLength + BlockNumSize];
                 dbKey[..prefixLength].CopyTo(dbKeyComp);
-                SetKeyBlockNum(dbKeyComp, firstBlock);
+                SetKeyBlockNum(dbKeyComp, postfixBlock);
 
                 timestamp = Stopwatch.GetTimestamp();
                 dbValue = CompressDbValue(dbValue);
