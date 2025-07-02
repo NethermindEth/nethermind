@@ -838,7 +838,7 @@ namespace Nethermind.TxPool
             return hasBeenRemoved;
         }
 
-        public bool ContainsTx(Hash256 hash) => 
+        public bool ContainsTx(Hash256 hash) =>
             _blobTransactions.ContainsKey(hash) ||
             _transactions.ContainsKey(hash) ||
             _broadcaster.ContainsTx(hash);
