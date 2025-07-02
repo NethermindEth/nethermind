@@ -58,7 +58,7 @@ public class TraceRpcModuleTests
                         .WithNonce(Blockchain.StateReader.GetNonce(stateRoot, TestItem.AddressB) + (UInt256)j)
                         .SignedAndResolved(Blockchain.EthereumEcdsa, TestItem.PrivateKeyB).TestObject);
                 }
-                await Blockchain.AddBlock(transactions.ToArray());
+                await Blockchain.AddBlockMayMissTx(transactions.ToArray());
 
                 stateRoot = Blockchain.BlockTree.Head!.StateRoot!;
             }
@@ -262,7 +262,7 @@ public class TraceRpcModuleTests
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
         UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
-        await context.Blockchain.AddBlock(
+        await context.Blockchain.AddBlockMayMissTx(
             new[]
             {
                 Build.A.Transaction.WithNonce(currentNonceAddressA + 1).WithTo(TestItem.AddressD)
@@ -609,7 +609,7 @@ public class TraceRpcModuleTests
             .WithGasPrice(875000000)
             .SignedAndResolved(TestItem.PrivateKeyC)
             .WithIsServiceTransaction(true).TestObject;
-        await blockchain.AddBlock(serviceTransaction);
+        await blockchain.AddBlockMayMissTx(serviceTransaction);
         BlockParameter blockParameter = new BlockParameter(BlockParameterType.Latest);
         string[] traceTypes = { "trace" };
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(blockParameter, traceTypes);

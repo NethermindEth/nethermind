@@ -377,8 +377,29 @@ public class TestBlockchain : IDisposable
     protected virtual async Task AddBlocksOnStart()
     {
         await AddBlock();
-        await AddBlock(BuildSimpleTransaction.WithNonce(0).TestObject);
-        await AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
+        await AddBlock(CreateTransactionBuilder().WithNonce(0).TestObject);
+        await AddBlock(CreateTransactionBuilder().WithNonce(1).TestObject, CreateTransactionBuilder().WithNonce(2).TestObject);
+    }
+
+    private TransactionBuilder<Transaction> CreateTransactionBuilder()
+    {
+        TransactionBuilder<Transaction> txBuilder = BuildSimpleTransaction;
+
+        Block? head = BlockFinder.Head;
+        if (head is not null)
+        {
+            IReleaseSpec headReleaseSpec = SpecProvider.GetSpec(head.Header);
+
+            if (headReleaseSpec.IsEip1559Enabled && headReleaseSpec.Eip1559TransitionBlock <= head.Number)
+            {
+                UInt256 nextFee = headReleaseSpec.BaseFeeCalculator.Calculate(head.Header, headReleaseSpec);
+                txBuilder = txBuilder
+                    .WithType(TxType.EIP1559)
+                    .WithMaxFeePerGasIfSupports1559(nextFee * 2);
+            }
+        }
+
+        return txBuilder;
     }
 
     protected virtual IBlockProcessor CreateBlockProcessor(IWorldState state) =>
@@ -421,7 +442,12 @@ public class TestBlockchain : IDisposable
 
     public async Task AddBlock(params Transaction[] transactions)
     {
-        await TestUtil.AddBlockAndWaitForHead(_cts.Token, transactions);
+        await TestUtil.AddBlockAndWaitForHead(false, _cts.Token, transactions);
+    }
+
+    public async Task AddBlockMayMissTx(params Transaction[] transactions)
+    {
+        await TestUtil.AddBlockAndWaitForHead(true, _cts.Token, transactions);
     }
 
     public async Task AddBlockThroughPoW(params Transaction[] transactions)
@@ -431,7 +457,7 @@ public class TestBlockchain : IDisposable
 
     public async Task AddBlockDoNotWaitForHead(params Transaction[] transactions)
     {
-        await TestUtil.AddBlockDoNotWaitForHead(_cts.Token, transactions);
+        await TestUtil.AddBlockDoNotWaitForHead(false, _cts.Token, transactions);
     }
 
     public void AddTransactions(params Transaction[] txs)
@@ -456,7 +482,7 @@ public class TestBlockchain : IDisposable
     /// <param name="ether">Value of ether to add to the account</param>
     /// <returns></returns>
     public async Task AddFunds(Address address, UInt256 ether) =>
-        await AddBlock(GetFundsTransaction(address, ether));
+        await AddBlockMayMissTx(GetFundsTransaction(address, ether));
 
     public async Task AddFunds(params (Address address, UInt256 ether)[] funds) =>
         await AddBlock(funds.Select((f, i) => GetFundsTransaction(f.address, f.ether, (uint)i)).ToArray());
