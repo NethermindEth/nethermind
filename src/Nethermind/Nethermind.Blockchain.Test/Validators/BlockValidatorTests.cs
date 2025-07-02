@@ -7,7 +7,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -20,22 +19,38 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class BlockValidatorTests
 {
-    private static readonly BlockDecoder BlockDecoder = new();
-    private static readonly BlockValidator BlockValidator =
-        new(
+    private static BlockValidator _blockValidator;
+
+    [SetUp]
+    public void Setup()
+    {
+        IHeaderValidator headerValidator = Substitute.For<IHeaderValidator>();
+        headerValidator.Validate(Arg.Any<BlockHeader>()).Returns(true);
+        _blockValidator = new(
             Substitute.For<ITxValidator>(),
-            Substitute.For<IHeaderValidator>(),
+            headerValidator,
             Substitute.For<IUnclesValidator>(),
             Substitute.For<ISpecProvider>(),
             LimboLogs.Instance);
+    }
 
+
+    [Test]
+    public void Accepts_valid_block()
+    {
+        Block block = Build.A.Block.WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize).TestObject;
+        bool result = _blockValidator.ValidateSuggestedBlock(block);
+        Assert.That(result, Is.True);
+    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_more_uncles_than_allowed_returns_false()
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        ReleaseSpec releaseSpec = new();
-        releaseSpec.MaximumUncleCount = 0;
+        ReleaseSpec releaseSpec = new()
+        {
+            MaximumUncleCount = 0
+        };
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, releaseSpec));
 
         BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
@@ -56,7 +71,7 @@ public class BlockValidatorTests
 
 
         Assert.That(
-            BlockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
+            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
             Is.True);
     }
 
@@ -70,7 +85,7 @@ public class BlockValidatorTests
         block.Header.TxRoot = Keccak.OfAnEmptyString;
 
         Assert.That(
-            BlockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
+            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
             Is.False);
     }
 
@@ -85,7 +100,7 @@ public class BlockValidatorTests
         block.Header.UnclesHash = Keccak.OfAnEmptyString;
 
         Assert.That(
-            BlockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
+            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
             Is.False);
     }
 
@@ -99,7 +114,7 @@ public class BlockValidatorTests
         block.Header.WithdrawalsRoot = Keccak.OfAnEmptyString;
 
         Assert.That(
-            BlockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
+            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
             Is.False);
     }
 
