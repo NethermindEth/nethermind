@@ -204,8 +204,6 @@ namespace Nethermind.TxPool
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
-
-
         public bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof)
@@ -824,6 +822,11 @@ namespace Nethermind.TxPool
 
             return hasBeenRemoved;
         }
+
+        public bool ContainsTx(Hash256 hash)
+            => _blobTransactions.ContainsKey(hash) ||
+            _transactions.ContainsKey(hash) ||
+            _broadcaster.ContainsTx(hash);
 
         public bool ContainsTx(Hash256 hash, TxType txType) => txType == TxType.Blob
             ? _blobTransactions.ContainsKey(hash)
