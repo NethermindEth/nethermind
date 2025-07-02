@@ -13,6 +13,7 @@ using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -108,6 +109,7 @@ public partial class DebugRpcModuleTests
         string headStr = context.Blockchain.BlockTree.Head?.Header.ToString(BlockHeader.Format.Short)!;
         var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByIndex", blockRlp, 0, options);
         string headStr2 = context.Blockchain.BlockTree.Head?.Header.ToString(BlockHeader.Format.Short)!;
+        Console.Error.WriteLine($"The head is {headStr2}");
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(response).RootElement,

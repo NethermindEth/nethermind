@@ -40,6 +40,7 @@ public partial class DebugRpcModuleTests
             TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build();
 
             IDebugRpcModule debugRpcModule = blockchain.DebugRpcModule;
+            Console.Error.WriteLine($"The head in create is {blockchain.BlockTree.Head?.Header.ToString(BlockHeader.Format.Short)} the info is {blockchain.ReadOnlyState.StateRoot}");
 
             return new(blockchain, debugRpcModule);
         }
