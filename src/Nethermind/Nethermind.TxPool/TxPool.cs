@@ -19,6 +19,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
@@ -204,8 +205,6 @@ namespace Nethermind.TxPool
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
-
-
         public bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof)
@@ -354,6 +353,7 @@ namespace Nethermind.TxPool
         private void RemoveProcessedTransactions(Block block)
         {
             Transaction[] blockTransactions = block.Transactions;
+            using ArrayPoolList<Transaction> txsRemoved = new(blockTransactions.Length);
             using ArrayPoolList<Transaction> blobTxsToSave = new((int)_specProvider.GetSpec(block.Header).MaxBlobCount);
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
@@ -381,16 +381,6 @@ namespace Nethermind.TxPool
                 {
                     blobTxs++;
                     blobs += blockTx.GetBlobCount();
-
-                    if (_blobReorgsSupportEnabled)
-                    {
-                        if (_blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx))
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"Saved processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db");
-                            blobTxsToSave.Add(fullBlobTx);
-                        }
-                        else if (_logger.IsTrace) _logger.Trace($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
-                    }
                 }
 
                 if (!IsKnown(txHash))
@@ -398,7 +388,16 @@ namespace Nethermind.TxPool
                     discoveredForHashCache++;
                 }
 
-                if (!RemoveIncludedTransaction(blockTx))
+                if (RemoveIncludedTransaction(blockTx, out Transaction? removed))
+                {
+                    txsRemoved.Add(removed);
+                    if (_blobReorgsSupportEnabled && removed.SupportsBlobs && removed.NetworkWrapper is ShardBlobNetworkWrapper)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Saved processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db");
+                        blobTxsToSave.Add(removed);
+                    }
+                }
+                else
                 {
                     discoveredForPendingTxs++;
                 }
@@ -407,6 +406,12 @@ namespace Nethermind.TxPool
             if (blobTxsToSave.Count > 0)
             {
                 _blobTxStorage.AddBlobTransactionsFromBlock(block.Number, blobTxsToSave);
+            }
+
+            // This must be after saving blobs to storage, above
+            foreach (Transaction removed in txsRemoved.AsSpan())
+            {
+                TxDecoder.TxObjectPool.Return(removed);
             }
 
             long transactionsInBlock = blockTransactions.Length;
@@ -421,11 +426,11 @@ namespace Nethermind.TxPool
             }
         }
 
-        private bool RemoveIncludedTransaction(Transaction tx)
+        private bool RemoveIncludedTransaction(Transaction tx, [NotNullWhen(true)] out Transaction? removed)
         {
-            bool removed = RemoveTransaction(tx.Hash);
+            bool wasRemoved = RemoveTransaction(tx.Hash, out removed);
             _broadcaster.EnsureStopBroadcastUpToNonce(tx.SenderAddress!, tx.Nonce);
-            return removed;
+            return wasRemoved;
         }
 
         public void AddPeer(ITxPoolPeer peer)
@@ -504,6 +509,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
+                    TxDecoder.TxObjectPool.Return(tx);
                     Metrics.PendingTransactionsDiscarded++;
                 }
             }
@@ -599,6 +605,7 @@ namespace Nethermind.TxPool
 
             if (tx.Hash == removed?.Hash)
             {
+                if (removed is not null) TxDecoder.TxObjectPool.Return(removed);
                 // it means it was added and immediately evicted - pool was full of better txs
                 if (!isPersistentBroadcast || tx.SupportsBlobs || !_broadcaster.Broadcast(tx, true))
                 {
@@ -628,6 +635,8 @@ namespace Nethermind.TxPool
                 // to give it opportunity to come back to TxPool in the future, when fees drops
                 _hashCache.DeleteFromLongTerm(removed.Hash!);
                 Metrics.PendingTransactionsEvicted++;
+
+                TxDecoder.TxObjectPool.Return(removed);
             }
 
             AddPendingDelegations(tx);
@@ -797,25 +806,29 @@ namespace Nethermind.TxPool
         }
 
         public bool RemoveTransaction(Hash256? hash)
+            => RemoveTransaction(hash, out _);
+
+        private bool RemoveTransaction(Hash256? hash, [NotNullWhen(true)] out Transaction? removed)
         {
             if (hash is null)
             {
+                removed = null;
                 return false;
             }
 
-            bool hasBeenRemoved = _transactions.TryRemove(hash, out Transaction? transaction)
-                                 || _blobTransactions.TryRemove(hash, out transaction);
+            bool hasBeenRemoved = _transactions.TryRemove(hash, out removed)
+                                 || _blobTransactions.TryRemove(hash, out removed);
 
-            if (transaction is null || !hasBeenRemoved)
+            if (removed is null || !hasBeenRemoved)
             {
                 return false;
             }
 
             if (hasBeenRemoved)
             {
-                RemovedPending?.Invoke(this, new TxEventArgs(transaction));
+                RemovedPending?.Invoke(this, new TxEventArgs(removed));
 
-                RemovePendingDelegations(transaction);
+                RemovePendingDelegations(removed);
             }
 
             _broadcaster.StopBroadcast(hash);
