@@ -1,0 +1,45 @@
+name: Update fast sync settings
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-configs:
+    name: Update fast sync settings
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+      - name: Install dependencies
+        run: |
+          pip install setuptools
+          pip install emoji
+      - name: Update config files
+        run: python3 scripts/sync-settings.py -k ${{ secrets.ETHERSCAN_API_KEY }}
+      - name: Create GitHub app token
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      - name: Create a pull request
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: |
+          head_branch=feature/fast-sync-config-${{ github.run_number }}-${{ github.run_attempt }}
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git checkout -b $head_branch
+          git add -A
+          git commit -am "Auto-update fast sync settings"
+          git push origin $head_branch
+          gh pr create -B master -H $head_branch -t "Auto-update fast sync settings" \
+            -b "Updated fast sync settings in config files" -l configuration -l sync

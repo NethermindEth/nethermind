@@ -42,7 +42,7 @@ public class EnrTreeRoot : EnrTreeNode
         }
     }
 
-    public override string[] Links => Array.Empty<string>();
+    public override string[] Links => [];
 
-    public override string[] Records => Array.Empty<string>();
+    public override string[] Records => [];
 }

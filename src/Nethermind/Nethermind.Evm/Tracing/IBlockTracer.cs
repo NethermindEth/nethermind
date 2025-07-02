@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing
@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Tracing
         /// <summary>
         /// Starts new transaction trace in a block.
         /// </summary>
-        /// <param name="tx">Transaction this trace is started for. Null if it's reward trace.</param>
+        /// <param name="tx">Transaction this trace is started for. Null if it's reward trace (only when <see cref="IsTracingRewards"/> is true).</param>
         /// <returns>Returns tracer for transaction.</returns>
         ITxTracer StartNewTxTrace(Transaction? tx);
 
@@ -55,5 +55,10 @@ namespace Nethermind.Evm.Tracing
         /// Ends block trace <see cref="StartNewBlockTrace"/>.
         /// </summary>
         void EndBlockTrace();
+    }
+
+    public interface IBlockTracer<out TTrace> : IBlockTracer
+    {
+        IReadOnlyCollection<TTrace> BuildResult();
     }
 }

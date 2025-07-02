@@ -14,9 +14,9 @@ namespace Nethermind.Core.Test.Builders
     {
         private readonly AccountDecoder _accountDecoder = new();
 
-        public TrieBuilder(IKeyValueStoreWithBatching db)
+        public TrieBuilder(INodeStorage db)
         {
-            TestObjectInternal = new PatriciaTree(db, Keccak.EmptyTreeHash, false, true, LimboLogs.Instance);
+            TestObjectInternal = new PatriciaTree(new RawScopedTrieStore(db), Keccak.EmptyTreeHash, true, LimboLogs.Instance);
         }
 
         public TrieBuilder WithAccountsByIndex(int start, int count)
@@ -24,19 +24,19 @@ namespace Nethermind.Core.Test.Builders
             int end = start + count;
             for (int j = start; j < end; j++)
             {
-                Keccak key = TestItem.Keccaks[j];
+                Hash256 key = TestItem.Keccaks[j];
                 byte[] value = GenerateIndexedAccountRlp(j);
                 TestObjectInternal.Set(key.Bytes, value);
             }
 
             for (int j = 0; j < end; j++)
             {
-                Keccak key = TestItem.Keccaks[j];
+                Hash256 key = TestItem.Keccaks[j];
                 byte[] value = GenerateIndexedAccountRlp(j + 1);
                 TestObjectInternal.Set(key.Bytes, value);
             }
 
-            TestObjectInternal.Commit(0);
+            TestObjectInternal.Commit();
             TestObjectInternal.UpdateRootHash();
 
             return this;

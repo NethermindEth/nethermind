@@ -13,10 +13,10 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handler
 {
-    private const int MaxCount = 1024;
+    protected const int MaxCount = 1024;
 
-    private readonly IBlockTree _blockTree;
-    private readonly ILogger _logger;
+    protected readonly IBlockTree _blockTree;
+    protected readonly ILogger _logger;
 
     public GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, ILogManager logManager)
     {
@@ -24,36 +24,53 @@ public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handle
         _logger = logManager.GetClassLogger();
     }
 
-    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> Handle(long start, long count)
+    protected bool CheckRangeCount(long start, long count, out string? error, out int errorCode)
     {
         if (start < 1 || count < 1)
         {
-            var error = $"'{nameof(start)}' and '{nameof(count)}' must be positive numbers";
+            error = $"'{nameof(start)}' and '{nameof(count)}' must be positive numbers";
 
-            if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByRangeV1Handler)}: ${error}");
+            if (_logger.IsError) _logger.Error($"{GetType().Name}: ${error}");
 
-            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Fail(error, ErrorCodes.InvalidParams);
+            errorCode = ErrorCodes.InvalidParams;
+            return false;
         }
 
         if (count > MaxCount)
         {
-            var error = $"The number of requested bodies must not exceed {MaxCount}";
+            error = $"The number of requested bodies must not exceed {MaxCount}";
 
-            if (_logger.IsError) _logger.Error($"{nameof(GetPayloadBodiesByRangeV1Handler)}: {error}");
+            if (_logger.IsError) _logger.Error($"{GetType().Name}: {error}");
 
-            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            errorCode = MergeErrorCodes.TooLargeRequest;
+            return false;
+        }
+        error = null;
+        errorCode = 0;
+        return true;
+    }
+
+    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> Handle(long start, long count)
+    {
+        if (!CheckRangeCount(start, count, out string? error, out int errorCode))
+        {
+            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Fail(error!, errorCode);
         }
 
+        return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(GetRequests(start, count));
+    }
+
+    private IEnumerable<ExecutionPayloadBodyV1Result?> GetRequests(long start, long count)
+    {
         var headNumber = _blockTree.Head?.Number ?? 0;
-        var payloadBodies = new List<ExecutionPayloadBodyV1Result?>((int)count);
 
         for (long i = start, c = Math.Min(start + count - 1, headNumber); i <= c; i++)
         {
             var block = _blockTree.FindBlock(i);
 
-            payloadBodies.Add(block is null ? null : new(block.Transactions, block.Withdrawals));
+            yield return (block is null ? null : new ExecutionPayloadBodyV1Result(block.Transactions, block.Withdrawals));
         }
 
-        return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(payloadBodies);
+        yield break;
     }
 }

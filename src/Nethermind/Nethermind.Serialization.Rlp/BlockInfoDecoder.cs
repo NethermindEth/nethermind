@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -10,6 +9,8 @@ namespace Nethermind.Serialization.Rlp
 {
     public class BlockInfoDecoder : IRlpStreamDecoder<BlockInfo>, IRlpValueDecoder<BlockInfo>
     {
+        public static BlockInfoDecoder Instance { get; } = new();
+
         public BlockInfo? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
@@ -20,7 +21,7 @@ namespace Nethermind.Serialization.Rlp
 
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
-            Keccak? blockHash = rlpStream.DecodeKeccak();
+            Hash256? blockHash = rlpStream.DecodeKeccak();
 
             bool wasProcessed = rlpStream.DecodeBool();
             UInt256 totalDifficulty = rlpStream.DecodeUInt256();
@@ -53,7 +54,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(RlpStream stream, BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 stream.Encode(Rlp.OfEmptySequence);
                 return;
@@ -72,7 +73,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        private int GetContentLength(BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        private static int GetContentLength(BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             bool hasMetadata = item.Metadata != BlockMetadata.None;
             int contentLength = 0;
@@ -90,7 +91,7 @@ namespace Nethermind.Serialization.Rlp
 
         public int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return item == null ? Rlp.OfEmptySequence.Length : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+            return item is null ? Rlp.OfEmptySequence.Length : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }
 
         public BlockInfo? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -103,7 +104,7 @@ namespace Nethermind.Serialization.Rlp
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
 
-            Keccak? blockHash = decoderContext.DecodeKeccak();
+            Hash256? blockHash = decoderContext.DecodeKeccak();
             bool wasProcessed = decoderContext.DecodeBool();
             UInt256 totalDifficulty = decoderContext.DecodeUInt256();
 

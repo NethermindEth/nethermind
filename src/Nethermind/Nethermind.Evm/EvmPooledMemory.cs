@@ -3,290 +3,374 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
-using Nethermind.Core.Buffers;
-using Nethermind.Core.Extensions;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm;
+
+public struct EvmPooledMemory : IEvmMemory
 {
-    public class EvmPooledMemory : IEvmMemory
+    public const int WordSize = 32;
+
+    private ulong _lastZeroedSize;
+
+    private byte[]? _memory;
+    public ulong Length { get; private set; }
+    public ulong Size { get; private set; }
+
+    public void SaveWord(in UInt256 location, Span<byte> word)
     {
-        public const int WordSize = 32;
+        if (word.Length != WordSize) ThrowArgumentOutOfRangeException();
 
-        private static readonly ArrayPool<byte> Pool = LargerArrayPool.Shared;
+        CheckMemoryAccessViolation(in location, WordSize, out ulong newLength);
+        UpdateSize(newLength);
 
-        private int _lastZeroedSize;
+        int offset = (int)location;
 
-        private byte[]? _memory;
-        public ulong Length { get; private set; }
-        public ulong Size { get; private set; }
+        // Direct 256bit register copy rather than invoke Memmove
+        Unsafe.WriteUnaligned(
+            ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory), offset),
+            Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(word))
+        );
+    }
 
-        public void SaveWord(in UInt256 location, Span<byte> word)
+    public void SaveByte(in UInt256 location, byte value)
+    {
+        CheckMemoryAccessViolation(in location, WordSize, out _);
+        UpdateSize(in location, in UInt256.One);
+
+        _memory![(long)location] = value;
+    }
+
+    public void Save(in UInt256 location, Span<byte> value)
+    {
+        if (value.Length == 0)
         {
-            CheckMemoryAccessViolation(in location, WordSize);
-            UpdateSize(in location, WordSize);
-
-            if (word.Length < WordSize)
-            {
-                Array.Clear(_memory!, (int)location, WordSize - word.Length);
-            }
-
-            word.CopyTo(_memory.AsSpan((int)location + WordSize - word.Length, word.Length));
+            return;
         }
 
-        public void SaveByte(in UInt256 location, byte value)
-        {
-            CheckMemoryAccessViolation(in location, WordSize);
-            UpdateSize(in location, 1);
+        CheckMemoryAccessViolation(in location, (ulong)value.Length, out ulong newLength);
+        UpdateSize(newLength);
 
-            _memory![(long)location] = value;
+        value.CopyTo(_memory.AsSpan((int)location, value.Length));
+    }
+
+    private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength, out bool outOfGas)
+    {
+        if (location.IsLargerThanULong() || length.IsLargerThanULong())
+        {
+            outOfGas = true;
+            newLength = 0;
+            return;
         }
 
-        public void Save(in UInt256 location, Span<byte> value)
+        CheckMemoryAccessViolationInner(location.u0, length.u0, out newLength, out outOfGas);
+    }
+
+    private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength)
+    {
+        if (location.IsLargerThanULong() || length.IsLargerThanULong())
         {
-            if (value.Length == 0)
-            {
-                return;
-            }
-
-            CheckMemoryAccessViolation(in location, (UInt256)value.Length);
-            UpdateSize(in location, (UInt256)value.Length);
-
-            value.CopyTo(_memory.AsSpan((int)location, value.Length));
+            ThrowOutOfGasException();
         }
 
-        private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length)
+        CheckMemoryAccessViolationInner(location.u0, length.u0, out newLength, out bool outOfGas);
+        if (outOfGas)
         {
-            UInt256 totalSize = location + length;
-            if (totalSize < location || totalSize > long.MaxValue)
-            {
-                Metrics.EvmExceptions++;
-                throw new OutOfGasException();
-            }
+            ThrowOutOfGasException();
+        }
+    }
+
+    private static void CheckMemoryAccessViolation(in UInt256 location, ulong length, out ulong newLength)
+    {
+        if (location.IsLargerThanULong())
+        {
+            ThrowOutOfGasException();
         }
 
-        public void Save(in UInt256 location, byte[] value)
+        CheckMemoryAccessViolationInner(location.u0, length, out newLength, out bool outOfGas);
+        if (outOfGas)
         {
-            if (value.Length == 0)
-            {
-                return;
-            }
+            ThrowOutOfGasException();
+        }
+    }
 
-            CheckMemoryAccessViolation(in location, (UInt256)value.Length);
-            UpdateSize(in location, (UInt256)value.Length);
-
-            Array.Copy(value, 0, _memory!, (long)location, value.Length);
+    private static void CheckMemoryAccessViolationInner(ulong location, ulong length, out ulong newLength, out bool outOfGas)
+    {
+        ulong totalSize = location + length;
+        if (totalSize < location || totalSize > long.MaxValue)
+        {
+            outOfGas = true;
+            newLength = 0;
+            return;
         }
 
-        public void Save(in UInt256 location, ZeroPaddedSpan value)
+        outOfGas = false;
+        newLength = totalSize;
+    }
+
+    public void Save(in UInt256 location, byte[] value)
+    {
+        if (value.Length == 0)
         {
-            if (value.Length == 0)
-            {
-                return;
-            }
-
-            CheckMemoryAccessViolation(in location, (UInt256)value.Length);
-            UpdateSize(in location, (UInt256)value.Length);
-
-            int intLocation = (int)location;
-            value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
-            _memory.AsSpan(intLocation + value.Span.Length, value.PaddingLength).Clear();
+            return;
         }
 
-        public void Save(in UInt256 location, ZeroPaddedMemory value)
+        ulong length = (ulong)value.Length;
+        CheckMemoryAccessViolation(in location, length, out ulong newLength);
+        UpdateSize(newLength);
+
+        Array.Copy(value, 0, _memory!, (long)location, value.Length);
+    }
+
+    public void Save(in UInt256 location, in ZeroPaddedSpan value)
+    {
+        if (value.Length == 0)
         {
-            if (value.Length == 0)
-            {
-                return;
-            }
-
-            CheckMemoryAccessViolation(in location, (UInt256)value.Length);
-            UpdateSize(in location, (UInt256)value.Length);
-
-            int intLocation = (int)location;
-            value.Memory.CopyTo(_memory.AsMemory().Slice(intLocation, value.Memory.Length));
-            _memory.AsSpan(intLocation + value.Memory.Length, value.PaddingLength).Clear();
+            // Nothing to do
+            return;
         }
 
-        public Span<byte> LoadSpan(scoped in UInt256 location)
-        {
-            CheckMemoryAccessViolation(in location, WordSize);
-            UpdateSize(in location, WordSize);
+        ulong length = (ulong)value.Length;
+        CheckMemoryAccessViolation(in location, length, out ulong newLength);
+        UpdateSize(newLength);
 
-            return _memory.AsSpan((int)location, WordSize);
+        if (location.u0 > int.MaxValue)
+        {
+            ThrowOutOfGas();
         }
 
-        public Span<byte> LoadSpan(in UInt256 location, in UInt256 length)
+        int intLocation = (int)location.u0;
+        value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
+        if (value.PaddingLength > 0)
         {
-            if (length.IsZero)
-            {
-                return Array.Empty<byte>();
-            }
-
-            CheckMemoryAccessViolation(in location, length);
-            UpdateSize(in location, length);
-
-            return _memory.AsSpan((int)location, (int)length);
+            ClearPadding(_memory, intLocation + value.Span.Length, value.PaddingLength);
         }
 
-        public ReadOnlyMemory<byte> Load(in UInt256 location, in UInt256 length)
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ClearPadding(byte[] memory, int offset, int length)
+            => memory.AsSpan(offset, length).Clear();
+    }
+
+    public Span<byte> LoadSpan(scoped in UInt256 location)
+    {
+        CheckMemoryAccessViolation(in location, WordSize, out ulong newLength);
+        UpdateSize(newLength);
+
+        return _memory.AsSpan((int)location, WordSize);
+    }
+
+    public Span<byte> LoadSpan(scoped in UInt256 location, scoped in UInt256 length)
+    {
+        if (length.IsZero)
         {
-            if (length.IsZero)
-            {
-                return ReadOnlyMemory<byte>.Empty;
-            }
-
-            if (location > int.MaxValue)
-            {
-                return new byte[(long)length];
-            }
-
-            UpdateSize(in location, length);
-
-            return _memory.AsMemory((int)location, (int)length);
+            return [];
         }
 
-        public ReadOnlyMemory<byte> Inspect(in UInt256 location, in UInt256 length)
+        CheckMemoryAccessViolation(in location, in length, out ulong newLength);
+        UpdateSize(newLength);
+
+        return _memory.AsSpan((int)location, (int)length);
+    }
+
+    public ReadOnlyMemory<byte> Load(in UInt256 location, in UInt256 length)
+    {
+        if (length.IsZero)
         {
-            if (length.IsZero)
-            {
-                return ReadOnlyMemory<byte>.Empty;
-            }
-
-            if (location > int.MaxValue)
-            {
-                return new byte[(long)length];
-            }
-
-            if (_memory is null || location + length > _memory.Length)
-            {
-                return ReadOnlyMemory<byte>.Empty;
-            }
-
-            return _memory.AsMemory((int)location, (int)length);
+            return default;
         }
 
-        public long CalculateMemoryCost(in UInt256 location, in UInt256 length)
+        if (location > int.MaxValue)
         {
-            if (length.IsZero)
-            {
-                return 0L;
-            }
+            return new byte[(long)length];
+        }
 
-            CheckMemoryAccessViolation(in location, length);
-            UInt256 newSize = location + length;
+        UpdateSize(in location, in length);
 
-            if (newSize > Size)
-            {
-                long newActiveWords = Div32Ceiling(newSize);
-                long activeWords = Div32Ceiling(Size);
+        return _memory.AsMemory((int)location, (int)length);
+    }
 
-                // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
-                ulong cost = (ulong)
-                    ((newActiveWords - activeWords) * GasCostOf.Memory +
-                     ((newActiveWords * newActiveWords) >> 9) -
-                     ((activeWords * activeWords) >> 9));
+    public ReadOnlyMemory<byte> Inspect(in UInt256 location, in UInt256 length)
+    {
+        if (length.IsZero)
+        {
+            return default;
+        }
 
-                if (cost > long.MaxValue)
-                {
-                    return long.MaxValue;
-                }
+        if (location > int.MaxValue)
+        {
+            return new byte[(long)length];
+        }
 
-                UpdateSize(in newSize, 0, false);
+        if (_memory is null)
+        {
+            return default;
+        }
 
-                return (long)cost;
-            }
+        if (location >= Size)
+        {
+            return default;
+        }
+        UInt256 largeSize = location + length;
+        if (largeSize > _memory.Length)
+        {
+            return default;
+        }
 
+        ClearForTracing((ulong)largeSize);
+        return _memory.AsMemory((int)location, (int)length);
+    }
+
+    private void ClearForTracing(ulong size)
+    {
+        if (_memory is not null && size > _lastZeroedSize)
+        {
+            int lengthToClear = (int)(Math.Min(size, (ulong)_memory.Length) - _lastZeroedSize);
+            Array.Clear(_memory, (int)_lastZeroedSize, lengthToClear);
+            _lastZeroedSize += (uint)lengthToClear;
+        }
+    }
+
+    public long CalculateMemoryCost(in UInt256 location, in UInt256 length, out bool outOfGas)
+    {
+        outOfGas = false;
+        if (length.IsZero)
+        {
             return 0L;
         }
 
-        public List<string> GetTrace()
-        {
-            int traceLocation = 0;
-            List<string> memoryTrace = new();
+        CheckMemoryAccessViolation(in location, in length, out ulong newSize, out outOfGas);
+        if (outOfGas) return 0;
 
-            while ((ulong)traceLocation < Size)
+        if (newSize > Size)
+        {
+            long newActiveWords = EvmInstructions.Div32Ceiling(newSize, out outOfGas);
+            if (outOfGas) return 0;
+            long activeWords = EvmInstructions.Div32Ceiling(Size, out outOfGas);
+            if (outOfGas) return 0;
+
+            // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
+            ulong cost = (ulong)
+                ((newActiveWords - activeWords) * GasCostOf.Memory +
+                 ((newActiveWords * newActiveWords) >> 9) -
+                 ((activeWords * activeWords) >> 9));
+
+            if (cost > long.MaxValue)
             {
-                int sizeAvailable = Math.Min(WordSize, (_memory?.Length ?? 0) - traceLocation);
-                if (sizeAvailable > 0)
+                return long.MaxValue;
+            }
+
+            UpdateSize(newSize, rentIfNeeded: false);
+
+            return (long)cost;
+        }
+
+        return 0L;
+    }
+
+    public long CalculateMemoryCost(in UInt256 location, in UInt256 length)
+    {
+        long result = CalculateMemoryCost(in location, in length, out bool outOfGas);
+        if (outOfGas)
+        {
+            ThrowOutOfGas();
+        }
+
+        return result;
+
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowOutOfGas() => throw new OutOfGasException();
+
+    public TraceMemory GetTrace()
+    {
+        ulong size = Size;
+        ClearForTracing(size);
+        return new(size, _memory);
+    }
+
+    public void Dispose()
+    {
+        byte[] memory = _memory;
+        if (memory is not null)
+        {
+            _memory = null;
+            ArrayPool<byte>.Shared.Return(memory);
+        }
+    }
+
+    private void UpdateSize(in UInt256 location, in UInt256 length, bool rentIfNeeded = true)
+    {
+        UpdateSize((ulong)(location + length), rentIfNeeded);
+    }
+
+    private void UpdateSize(ulong length, bool rentIfNeeded = true)
+    {
+        const int MinRentSize = 1_024;
+        Length = length;
+
+        if (Length > Size)
+        {
+            ulong remainder = Length % WordSize;
+            Size = remainder != 0 ? Length + WordSize - remainder : Length;
+        }
+
+        if (rentIfNeeded)
+        {
+            if (_memory is null)
+            {
+                _memory = ArrayPool<byte>.Shared.Rent((int)Math.Max(Size, MinRentSize));
+                Array.Clear(_memory, 0, (int)Size);
+            }
+            else
+            {
+                int lastZeroedSize = (int)_lastZeroedSize;
+                if (Size > (ulong)_memory.LongLength)
                 {
-                    Span<byte> bytes = _memory.AsSpan(traceLocation, sizeAvailable);
-                    memoryTrace.Add(bytes.ToHexString());
+                    byte[] beforeResize = _memory;
+                    _memory = ArrayPool<byte>.Shared.Rent((int)Size);
+                    Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
+                    Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
+                    ArrayPool<byte>.Shared.Return(beforeResize);
                 }
-                else // Memory might not be initialized
+                else if (Size > _lastZeroedSize)
                 {
-                    memoryTrace.Add(Bytes.Zero32.ToHexString());
-                }
-
-                traceLocation += WordSize;
-            }
-
-            return memoryTrace;
-        }
-
-        public void Dispose()
-        {
-            if (_memory is not null)
-            {
-                Pool.Return(_memory);
-            }
-        }
-
-        private static UInt256 MaxInt32 = (UInt256)int.MaxValue;
-
-        public static long Div32Ceiling(in UInt256 length)
-        {
-            UInt256 rem = length & 31;
-            UInt256 result = length >> 5;
-            UInt256 withCeiling = result + (rem.IsZero ? 0UL : 1UL);
-            if (withCeiling > MaxInt32)
-            {
-                Metrics.EvmExceptions++;
-                throw new OutOfGasException();
-            }
-
-            return (long)withCeiling;
-        }
-
-        private void UpdateSize(in UInt256 position, in UInt256 length, bool rentIfNeeded = true)
-        {
-            Length = (ulong)(position + length);
-            if (Length > Size)
-            {
-                ulong remainder = Length % WordSize;
-                if (remainder != 0)
-                {
-                    Size = Length + WordSize - remainder;
+                    Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
                 }
                 else
                 {
-                    Size = Length;
+                    return;
                 }
             }
 
-            if (rentIfNeeded)
-            {
-                if (_memory is null)
-                {
-                    _memory = Pool.Rent((int)Size);
-                    Array.Clear(_memory, 0, (int)Size);
-                }
-                else if (Size > (ulong)_memory.LongLength)
-                {
-                    byte[] beforeResize = _memory;
-                    _memory = Pool.Rent((int)Size);
-                    Array.Copy(beforeResize, 0, _memory, 0, _lastZeroedSize);
-                    Array.Clear(_memory, _lastZeroedSize, (int)Size - _lastZeroedSize);
-                    Pool.Return(beforeResize);
-                }
-                else if (Size > (ulong)_lastZeroedSize)
-                {
-                    Array.Clear(_memory, _lastZeroedSize, (int)Size - _lastZeroedSize);
-                }
-
-                _lastZeroedSize = (int)Size;
-            }
+            _lastZeroedSize = Size;
         }
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowArgumentOutOfRangeException()
+    {
+        Metrics.EvmExceptions++;
+        throw new ArgumentOutOfRangeException("Word size must be 32 bytes");
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowOutOfGasException()
+    {
+        Metrics.EvmExceptions++;
+        throw new OutOfGasException();
+    }
+}
+
+internal static class UInt256Extensions
+{
+    public static bool IsLargerThanULong(in this UInt256 value) => (value.u1 | value.u2 | value.u3) != 0;
+    public static bool IsLargerThanLong(in this UInt256 value) => value.IsLargerThanULong() || value.u0 > long.MaxValue;
+    public static long ToLong(in this UInt256 value) => value.IsLargerThanLong() ? long.MaxValue : (long)value.u0;
 }

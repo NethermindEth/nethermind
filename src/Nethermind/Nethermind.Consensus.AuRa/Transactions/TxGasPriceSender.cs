@@ -28,12 +28,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _percentDelta = percentDelta;
         }
 
-        public ValueTask<(Keccak, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public async ValueTask<(Hash256, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            UInt256 gasPriceEstimated = _gasPriceOracle.GetGasPriceEstimate() * _percentDelta / 100;
+            UInt256 gasPriceEstimated = await _gasPriceOracle.GetGasPriceEstimate() * _percentDelta / 100;
             tx.DecodedMaxFeePerGas = gasPriceEstimated;
             tx.GasPrice = gasPriceEstimated;
-            return _txSender.SendTransaction(tx, txHandlingOptions);
+            return await _txSender.SendTransaction(tx, txHandlingOptions);
         }
     }
 }

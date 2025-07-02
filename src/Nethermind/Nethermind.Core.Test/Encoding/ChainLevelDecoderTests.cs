@@ -7,41 +7,39 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test.Encoding
+namespace Nethermind.Core.Test.Encoding;
+
+public class ChainLevelDecoderTests
 {
-    [TestFixture]
-    public class ChainLevelDecoderTests
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Can_do_roundtrip(bool valueDecode)
     {
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Can_do_roundtrip(bool valueDecode)
-        {
-            BlockInfo blockInfo = new(TestItem.KeccakA, 1);
-            blockInfo.WasProcessed = true;
+        BlockInfo blockInfo = new(TestItem.KeccakA, 1);
+        blockInfo.WasProcessed = true;
 
-            BlockInfo blockInfo2 = new(TestItem.KeccakB, 2);
-            blockInfo2.WasProcessed = false;
+        BlockInfo blockInfo2 = new(TestItem.KeccakB, 2);
+        blockInfo2.WasProcessed = false;
 
-            ChainLevelInfo chainLevelInfo = new(true, new[] { blockInfo, blockInfo2 });
-            chainLevelInfo.HasBlockOnMainChain = true;
+        ChainLevelInfo chainLevelInfo = new(true, new[] { blockInfo, blockInfo2 });
+        chainLevelInfo.HasBlockOnMainChain = true;
 
-            Rlp rlp = Rlp.Encode(chainLevelInfo);
+        Rlp rlp = Rlp.Encode(chainLevelInfo);
 
-            ChainLevelInfo decoded = valueDecode ? Rlp.Decode<ChainLevelInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<ChainLevelInfo>(rlp);
+        ChainLevelInfo decoded = valueDecode ? Rlp.Decode<ChainLevelInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<ChainLevelInfo>(rlp);
 
-            Assert.True(decoded.HasBlockOnMainChain, "has block on the main chain");
-            Assert.True(decoded.BlockInfos[0].WasProcessed, "0 processed");
-            Assert.False(decoded.BlockInfos[1].WasProcessed, "1 not processed");
-            Assert.AreEqual(TestItem.KeccakA, decoded.BlockInfos[0].BlockHash, "block hash");
-            Assert.AreEqual(UInt256.One, decoded.BlockInfos[0].TotalDifficulty, "difficulty");
-        }
+        Assert.That(decoded.HasBlockOnMainChain, Is.True, "has block on the main chain");
+        Assert.That(decoded.BlockInfos[0].WasProcessed, Is.True, "0 processed");
+        Assert.That(decoded.BlockInfos[1].WasProcessed, Is.False, "1 not processed");
+        Assert.That(decoded.BlockInfos[0].BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
+        Assert.That(decoded.BlockInfos[0].TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
+    }
 
-        [Test]
-        public void Can_handle_nulls()
-        {
-            Rlp rlp = Rlp.Encode((ChainLevelInfo)null!);
-            ChainLevelInfo decoded = Rlp.Decode<ChainLevelInfo>(rlp);
-            Assert.Null(decoded);
-        }
+    [Test]
+    public void Can_handle_nulls()
+    {
+        Rlp rlp = Rlp.Encode((ChainLevelInfo)null!);
+        ChainLevelInfo decoded = Rlp.Decode<ChainLevelInfo>(rlp);
+        Assert.That(decoded, Is.Null);
     }
 }

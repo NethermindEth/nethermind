@@ -24,10 +24,8 @@ namespace Nethermind.Synchronization.FastBlocks
             _fastest = new BySpeedStrategy(speedType, true);
         }
 
-        private IPeerAllocationStrategy _slowest;
-        private IPeerAllocationStrategy _fastest;
-
-        public bool CanBeReplaced => false;
+        private readonly IPeerAllocationStrategy _slowest;
+        private readonly IPeerAllocationStrategy _fastest;
 
         public PeerInfo? Allocate(
             PeerInfo? currentPeer,

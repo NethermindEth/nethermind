@@ -11,45 +11,40 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 
-namespace Nethermind.Analytics
+namespace Nethermind.Analytics;
+
+public class AnalyticsWebSocketsModule : IWebSocketsModule, IPublisher
 {
-    public class AnalyticsWebSocketsModule : IWebSocketsModule, IPublisher
+    private readonly ConcurrentDictionary<string, ISocketsClient> _clients = new();
+
+    private readonly IJsonSerializer _jsonSerializer;
+    private readonly ILogManager _logManager;
+
+    public string Name { get; } = "analytics";
+
+    public AnalyticsWebSocketsModule(IJsonSerializer jsonSerializer, ILogManager logManager)
     {
-        private readonly ConcurrentDictionary<string, ISocketsClient> _clients = new();
+        _jsonSerializer = jsonSerializer;
+        _logManager = logManager;
+    }
 
-        private readonly IJsonSerializer _jsonSerializer;
-        private readonly ILogManager _logManager;
+    public ValueTask<ISocketsClient> CreateClient(WebSocket webSocket, string clientName, HttpContext httpContext)
+    {
+        SocketClient<WebSocketMessageStream> socketsClient = new(clientName, new WebSocketMessageStream(webSocket, _logManager), _jsonSerializer);
+        _clients.TryAdd(socketsClient.Id, socketsClient);
 
-        public string Name { get; } = "analytics";
+        return ValueTask.FromResult<ISocketsClient>(socketsClient);
+    }
 
-        public AnalyticsWebSocketsModule(IJsonSerializer jsonSerializer, ILogManager logManager)
-        {
-            _jsonSerializer = jsonSerializer;
-            _logManager = logManager;
-        }
+    public void RemoveClient(string id) => _clients.TryRemove(id, out _);
 
-        public ISocketsClient CreateClient(WebSocket webSocket, string clientName, HttpContext httpContext)
-        {
-            SocketClient socketsClient = new SocketClient(clientName, new WebSocketHandler(webSocket, _logManager), _jsonSerializer);
-            _clients.TryAdd(socketsClient.Id, socketsClient);
+    public Task PublishAsync<T>(T data) where T : class
+        => SendAsync(new SocketsMessage("analytics", null, data));
 
-            return socketsClient;
-        }
+    public Task SendAsync(SocketsMessage message)
+        => Task.WhenAll(_clients.Values.Select(v => v.SendAsync(message)));
 
-        public void RemoveClient(string id) => _clients.TryRemove(id, out _);
-
-        public async Task PublishAsync<T>(T data) where T : class
-        {
-            await SendAsync(new SocketsMessage("analytics", null, data));
-        }
-
-        public async Task SendAsync(SocketsMessage message)
-        {
-            await Task.WhenAll(_clients.Values.Select(v => v.SendAsync(message)));
-        }
-
-        public void Dispose()
-        {
-        }
+    public void Dispose()
+    {
     }
 }

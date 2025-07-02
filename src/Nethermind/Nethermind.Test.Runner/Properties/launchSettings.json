@@ -1,0 +1,32 @@
+{
+  "profiles": {
+    "State Test": {
+      "commandName": "Project",
+      "commandLineArgs": "-t -i statetest1.json"
+    },
+    "Gnosis State Test": {
+      "commandName": "Project",
+      "commandLineArgs": "-g -i gnosisStateTest1.json"
+    },
+    "Blockchain Test": {
+      "commandName": "Project",
+      "commandLineArgs": "-b -i blockchainTest1.json"
+    },
+    "EOF Test": {
+      "commandName": "Project",
+      "commandLineArgs": "-e -i eoftest1.json"
+    },
+    "Gnosis Blockchain Test": {
+      "commandName": "Project",
+      "commandLineArgs": "-g -b -i gnosisBlockchainTest1.json"
+    },
+    "Regex State Test": {
+      "commandName": "Project",
+      "commandLineArgs": "-i statetest1.json -f \"randomStatetestmartin-Wed_10_02_29-14338-([0-9]+)\""
+    },
+    "Regex Blockchain Test": {
+      "commandName": "Project",
+      "commandLineArgs": "-b -i blockchainTest1.json -f \"GasUsedHigherThanBlockGasLimitButNotWithRefundsSuicideFirst_I([A-Za-z0-9]+)\""
+    }
+  }
+}

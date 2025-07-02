@@ -8,51 +8,54 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
-    public struct ExecutionEnvironment
+    public readonly struct ExecutionEnvironment(
+        ICodeInfo codeInfo,
+        Address executingAccount,
+        Address caller,
+        Address? codeSource,
+        int callDepth,
+        in UInt256 transferValue,
+        in UInt256 value,
+        in ReadOnlyMemory<byte> inputData)
     {
         /// <summary>
-        /// Transaction originator
+        /// Parsed bytecode for the current call.
         /// </summary>
-        public TxExecutionContext TxExecutionContext { get; set; }
+        public readonly ICodeInfo CodeInfo = codeInfo;
 
         /// <summary>
         /// Currently executing account (in DELEGATECALL this will be equal to caller).
         /// </summary>
-        public Address ExecutingAccount { get; set; }
+        public readonly Address ExecutingAccount = executingAccount;
 
         /// <summary>
         /// Caller
         /// </summary>
-        public Address Caller { get; set; }
+        public readonly Address Caller = caller;
 
         /// <summary>
         /// Bytecode source (account address).
         /// </summary>
-        public Address? CodeSource { get; set; }
+        public readonly Address? CodeSource = codeSource;
 
-        /// <summary>
-        /// Parameters / arguments of the current call.
-        /// </summary>
-        public ReadOnlyMemory<byte> InputData { get; set; }
+        /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
+        public readonly int CallDepth = callDepth;
 
         /// <summary>
         /// ETH value transferred in this call.
         /// </summary>
-        public UInt256 TransferValue { get; set; }
+        public readonly UInt256 TransferValue = transferValue;
 
         /// <summary>
         /// Value information passed (it is different from transfer value in DELEGATECALL.
         /// DELEGATECALL behaves like a library call and it uses the value information from the caller even
         /// as no transfer happens.
         /// </summary>
-        public UInt256 Value { get; set; }
+        public readonly UInt256 Value = value;
 
         /// <summary>
-        /// Parsed bytecode for the current call.
+        /// Parameters / arguments of the current call.
         /// </summary>
-        public CodeInfo CodeInfo { get; set; }
-
-        /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
-        public int CallDepth { get; set; }
+        public readonly ReadOnlyMemory<byte> InputData = inputData;
     }
 }

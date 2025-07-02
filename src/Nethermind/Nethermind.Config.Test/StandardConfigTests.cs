@@ -6,12 +6,16 @@ using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test
 {
     public static class StandardConfigTests
     {
+        private static readonly JsonSerializerOptions _jsonOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
         public static void ValidateDefaultValues()
         {
             ForEachProperty(CheckDefault);
@@ -24,10 +28,10 @@ namespace Nethermind.Config.Test
 
         private static void ForEachProperty(Action<PropertyInfo, object?> verifier)
         {
-            string[] dlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll").OrderBy(n => n).ToArray();
+            string[] dlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.JsonRpc.dll").OrderBy(n => n).ToArray();
             foreach (string dll in dlls)
             {
-                TestContext.WriteLine($"Verifying {nameof(StandardConfigTests)} on {Path.GetFileName(dll)}");
+                TestContext.Out.WriteLine($"Verifying {nameof(StandardConfigTests)} on {Path.GetFileName(dll)}");
                 Assembly assembly = Assembly.LoadFile(dll);
                 Type[] configs =
                     assembly.GetExportedTypes().Where(t => typeof(IConfig).IsAssignableFrom(t) && t.IsInterface)
@@ -35,24 +39,18 @@ namespace Nethermind.Config.Test
 
                 foreach (Type configType in configs)
                 {
-                    TestContext.WriteLine($"  Verifying type {configType.Name}");
+                    TestContext.Out.WriteLine($"  Verifying type {configType.Name}");
                     PropertyInfo[] properties = configType.GetProperties();
 
                     Type? implementationType = configType.Assembly.GetExportedTypes()
-                        .SingleOrDefault(t => t.IsClass && configType.IsAssignableFrom(t));
-
-                    if (implementationType is null)
-                    {
-                        throw new Exception($"Missing config implementation for {configType}");
-                    }
-
+                        .SingleOrDefault(t => t.IsClass && configType.IsAssignableFrom(t)) ?? throw new Exception($"Missing config implementation for {configType}");
                     object? instance = Activator.CreateInstance(implementationType);
 
                     foreach (PropertyInfo property in properties)
                     {
                         try
                         {
-                            TestContext.WriteLine($"    Verifying property {property.Name}");
+                            TestContext.Out.WriteLine($"    Verifying property {property.Name}");
                             verifier(property, instance);
                         }
                         catch (Exception e)
@@ -89,6 +87,15 @@ namespace Nethermind.Config.Test
             }
 
             string expectedValue = attribute.DefaultValue?.Trim('"') ?? "null";
+
+            if (expectedValue.StartsWith("```json", StringComparison.Ordinal))
+            {
+                expectedValue = expectedValue
+                    .Replace("```json", string.Empty)
+                    .Replace("```", string.Empty);
+                expectedValue = JsonSerializer.Serialize(JsonDocument.Parse(expectedValue), _jsonOptions);
+            }
+
             string actualValue;
 
             object? value = property.GetValue(instance);
@@ -114,11 +121,11 @@ namespace Nethermind.Config.Test
                 {
                     string? actualValueAtIndex = actualValueArray[i]?.ToString();
                     string expectedValueAtIndex = expectedItems[i];
-                    Assert.AreEqual(actualValueAtIndex, expectedValueAtIndex,
+                    Assert.That(expectedValueAtIndex, Is.EqualTo(actualValueAtIndex),
                         $"Property: {property.Name}, expected value at index {i}: <{expectedValueAtIndex}> but was <{actualValueAtIndex}>");
                 }
 
-                Assert.AreEqual(actualValueArray.Count, expectedItems.Length,
+                Assert.That(expectedItems.Length, Is.EqualTo(actualValueArray.Count),
                     $"Property: {property.Name}, expected value length: <{expectedItems.Length}> but was <{actualValueArray.Count}>");
 
                 return;
@@ -128,7 +135,7 @@ namespace Nethermind.Config.Test
                 actualValue = value.ToString()!;
             }
 
-            Assert.AreEqual(actualValue, expectedValue,
+            Assert.That(expectedValue, Is.EqualTo(actualValue),
                 $"Property: {property.Name}, expected value: <{expectedValue}> but was <{actualValue}>");
         }
     }

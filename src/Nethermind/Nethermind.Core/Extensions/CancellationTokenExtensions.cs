@@ -1,13 +1,23 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Utils;
 
 namespace Nethermind.Core.Extensions
 {
     public static class CancellationTokenExtensions
     {
+        public static CancellationToken AlreadyCancelledToken { get; } = CreateAlreadyCancelledToken();
+        private static CancellationToken CreateAlreadyCancelledToken()
+        {
+            CancellationTokenSource cts = new();
+            cts.Cancel();
+            return cts.Token;
+        }
+
         /// <summary>
         /// Converts <see cref="CancellationToken"/> to a awaitable <see cref="Task"/> when token is cancelled.
         /// </summary>
@@ -28,7 +38,7 @@ namespace Nethermind.Core.Extensions
         /// <remarks>
         /// This method is thread-sage and uses <see cref="Interlocked.CompareExchange{T}(ref T,T,T)"/> to safely manage reference.
         /// </remarks>
-        public static void CancelDisposeAndClear(ref CancellationTokenSource? cancellationTokenSource)
+        public static bool CancelDisposeAndClear(ref CancellationTokenSource? cancellationTokenSource)
         {
             CancellationTokenSource? source = cancellationTokenSource;
             if (source is not null)
@@ -38,8 +48,28 @@ namespace Nethermind.Core.Extensions
                 {
                     source.Cancel();
                     source.Dispose();
+                    return true;
                 }
             }
+
+            return false;
+        }
+
+        /// <summary>
+        /// DSL for `CancelAfter`.
+        /// </summary>
+        public static CancellationTokenSource ThatCancelAfter(this CancellationTokenSource cts, TimeSpan delay)
+        {
+            cts.CancelAfter(delay);
+            return cts;
+        }
+
+        public static AutoCancelTokenSource CreateChildTokenSource(this CancellationToken parentToken, TimeSpan delay = default)
+        {
+            CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(parentToken);
+            if (delay != TimeSpan.Zero) cts.CancelAfter(delay);
+
+            return new AutoCancelTokenSource(cts);
         }
     }
 }

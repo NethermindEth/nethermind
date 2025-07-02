@@ -7,16 +7,15 @@ using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test
+namespace Nethermind.Blockchain.Test;
+
+public class ChainHeadReadOnlyStateProviderTests
 {
-    public class ChainHeadReadOnlyStateProviderTests
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void uses_block_tree_head_state_root()
     {
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void uses_block_tree_head_state_root()
-        {
-            BlockTree blockTree = Build.A.BlockTree(Build.A.Block.WithStateRoot(TestItem.KeccakA).TestObject).OfChainLength(10).TestObject;
-            ChainHeadReadOnlyStateProvider chainHeadReadOnlyStateProvider = new(blockTree, Substitute.For<IStateReader>());
-            chainHeadReadOnlyStateProvider.StateRoot.Should().BeEquivalentTo(blockTree.Head!.StateRoot);
-        }
+        BlockTree blockTree = Build.A.BlockTree(Build.A.Block.WithStateRoot(TestItem.KeccakA).TestObject).OfChainLength(10).TestObject;
+        ChainHeadReadOnlyStateProvider chainHeadReadOnlyStateProvider = new(blockTree, Substitute.For<IStateReader>());
+        chainHeadReadOnlyStateProvider.StateRoot.Should().BeEquivalentTo(blockTree.Head!.StateRoot);
     }
 }

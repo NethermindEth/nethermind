@@ -3,16 +3,13 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
-using Google.Protobuf.WellKnownTypes;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
@@ -39,6 +36,9 @@ public class PeerRefresherTests
         _syncPeer = Substitute.For<ISyncPeer>();
         _peerRefresher = new PeerRefresher(_syncPeerPool, new TimerFactory(), new TestLogManager());
     }
+
+    [TearDown]
+    public void TearDown() => _peerRefresher.DisposeAsync();
 
     [Test]
     public async Task Given_allHeaderAvailable_thenShouldCallUpdateHeader_3Times()
@@ -91,11 +91,11 @@ public class PeerRefresherTests
     private void GivenAllHeaderAvailable()
     {
         _syncPeer.GetBlockHeaders(_headParentBlockHeader.Hash!, 2, 0, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new[] { _headParentBlockHeader, _headBlockHeader }));
+            .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>(2) { _headParentBlockHeader, _headBlockHeader }));
         GivenFinalizedHeaderAvailable();
     }
 
     private void GivenFinalizedHeaderAvailable() =>
         _syncPeer.GetHeadBlockHeader(_finalizedBlockHeader.Hash!, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(_finalizedBlockHeader));
+            .Returns(Task.FromResult<BlockHeader?>(_finalizedBlockHeader));
 }

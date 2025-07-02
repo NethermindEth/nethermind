@@ -1,40 +1,30 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
-using System.Xml.XPath;
+using Nethermind.Core.Buffers;
 
 namespace Nethermind.Trie
 {
-    internal static class TrieNodeFactory
+    public static class TrieNodeFactory
     {
         public static TrieNode CreateBranch()
         {
-            TrieNode node = new(NodeType.Branch);
-            return node;
+            return new(new BranchData());
         }
 
-        public static TrieNode CreateLeaf(byte[] path, byte[]? value)
+        public static TrieNode CreateLeaf(byte[] path, SpanSource value)
         {
-            TrieNode node = new(NodeType.Leaf);
-            node.Key = path;
-            node.Value = value;
-            return node;
+            return new(new LeafData(path, value));
         }
 
         public static TrieNode CreateExtension(byte[] path)
         {
-            TrieNode node = new(NodeType.Extension);
-            node.Key = path;
-            return node;
+            return new(new ExtensionData(path));
         }
 
         public static TrieNode CreateExtension(byte[] path, TrieNode child)
         {
-            TrieNode node = new(NodeType.Extension);
-            node.SetChild(0, child);
-            node.Key = path;
-            return node;
+            return new(new ExtensionData(path, child));
         }
     }
 }

@@ -7,138 +7,117 @@ using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
-using System.Net.Http;
-using System.IO;
 using System.Net.Sockets;
+using Nethermind.Core.ServiceStopper;
 using Prometheus;
 
-namespace Nethermind.Monitoring
+namespace Nethermind.Monitoring;
+
+public class MonitoringService : IMonitoringService, IStoppableService
 {
-    public class MonitoringService : IMonitoringService
+    private readonly IMetricsController _metricsController;
+    private readonly ILogger _logger;
+    private readonly Options _options;
+
+    private readonly string _exposeHost;
+    private readonly int? _exposePort;
+    private readonly string _nodeName;
+    private readonly bool _pushEnabled;
+    private readonly string _pushGatewayUrl;
+    private readonly int _intervalSeconds;
+
+    public MonitoringService(IMetricsController metricsController, IMetricsConfig metricsConfig, ILogManager logManager)
     {
-        private readonly IMetricsController _metricsController;
-        private readonly ILogger _logger;
-        private readonly Options _options;
+        _metricsController = metricsController ?? throw new ArgumentNullException(nameof(metricsController));
 
-        private readonly int? _exposePort;
-        private readonly string _nodeName;
-        private readonly bool _pushEnabled;
-        private readonly string _pushGatewayUrl;
-        private readonly int _intervalSeconds;
+        string exposeHost = metricsConfig.ExposeHost;
+        int? exposePort = metricsConfig.ExposePort;
+        string nodeName = metricsConfig.NodeName;
+        string pushGatewayUrl = metricsConfig.PushGatewayUrl;
+        bool pushEnabled = metricsConfig.Enabled;
+        int intervalSeconds = metricsConfig.IntervalSeconds;
 
-        public MonitoringService(IMetricsController metricsController, IMetricsConfig metricsConfig, ILogManager logManager)
+        _exposeHost = exposeHost;
+        _exposePort = exposePort;
+        _nodeName = string.IsNullOrWhiteSpace(nodeName)
+            ? throw new ArgumentNullException(nameof(nodeName))
+            : nodeName;
+        _pushGatewayUrl = pushGatewayUrl;
+        _pushEnabled = pushEnabled;
+        _intervalSeconds = intervalSeconds <= 0
+            ? throw new ArgumentException($"Invalid monitoring push interval: {intervalSeconds}s")
+            : intervalSeconds;
+
+        _logger = logManager is null
+            ? throw new ArgumentNullException(nameof(logManager))
+            : logManager.GetClassLogger();
+        _options = GetOptions(metricsConfig);
+    }
+
+    public async Task StartAsync()
+    {
+        if (_pushGatewayUrl is not null)
         {
-            _metricsController = metricsController ?? throw new ArgumentNullException(nameof(metricsController));
-
-            int? exposePort = metricsConfig.ExposePort;
-            string nodeName = metricsConfig.NodeName;
-            string pushGatewayUrl = metricsConfig.PushGatewayUrl;
-            bool pushEnabled = metricsConfig.Enabled;
-            int intervalSeconds = metricsConfig.IntervalSeconds;
-
-            _exposePort = exposePort;
-            _nodeName = string.IsNullOrWhiteSpace(nodeName)
-                ? throw new ArgumentNullException(nameof(nodeName))
-                : nodeName;
-            _pushGatewayUrl = pushGatewayUrl;
-            _pushEnabled = pushEnabled;
-            _intervalSeconds = intervalSeconds <= 0
-                ? throw new ArgumentException($"Invalid monitoring push interval: {intervalSeconds}s")
-                : intervalSeconds;
-
-            _logger = logManager is null
-                ? throw new ArgumentNullException(nameof(logManager))
-                : logManager.GetClassLogger();
-            _options = GetOptions();
-        }
-
-        public async Task StartAsync()
-        {
-            if (!string.IsNullOrWhiteSpace(_pushGatewayUrl))
+            MetricPusherOptions pusherOptions = new()
             {
-                MetricPusherOptions pusherOptions = new MetricPusherOptions
+                Endpoint = _pushGatewayUrl,
+                Job = _options.Job,
+                Instance = _options.Instance,
+                IntervalMilliseconds = _intervalSeconds * 1000,
+                AdditionalLabels = [new Tuple<string, string>("nethermind_group", _options.Group)],
+                OnError = ex =>
                 {
-                    Endpoint = _pushGatewayUrl,
-                    Job = _options.Job,
-                    Instance = _options.Instance,
-                    IntervalMilliseconds = _intervalSeconds * 1000,
-                    AdditionalLabels = new[]
+                    if (ex.InnerException is SocketException)
                     {
-                        new Tuple<string, string>("nethermind_group", _options.Group),
-                    },
-                    OnError = ex =>
-                    {
-                        if (ex.InnerException is SocketException)
-                        {
-                            if (_logger.IsError) _logger.Error("Could not reach PushGatewayUrl, Please make sure you have set the correct endpoint in the configurations.", ex);
-                            return;
-                        }
-                        if (_logger.IsTrace) _logger.Error(ex.Message, ex); // keeping it as Error to log the exception details with it.
+                        if (_logger.IsError) _logger.Error($"Cannot reach Pushgateway at {_pushGatewayUrl}", ex);
+                        return;
                     }
-                };
-                MetricPusher metricPusher = new MetricPusher(pusherOptions);
+                    if (_logger.IsTrace) _logger.Error(ex.Message, ex); // keeping it as Error to log the exception details with it.
+                }
+            };
+            MetricPusher metricPusher = new(pusherOptions);
 
-                metricPusher.Start();
-
-
-            }
-            if (_exposePort is not null)
-            {
-                IMetricServer metricServer = new KestrelMetricServer(_exposePort.Value);
-                metricServer.Start();
-            }
-            await Task.Factory.StartNew(() => _metricsController.StartUpdating(), TaskCreationOptions.LongRunning);
-            if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
+            metricPusher.Start();
         }
 
-        public void RegisterMetrics(Type type)
+        if (_exposePort is not null)
         {
-            _metricsController.RegisterMetrics(type);
+            new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value).Start();
         }
 
-        public Task StopAsync()
-        {
-            _metricsController.StopUpdating();
+        await Task.Factory.StartNew(_metricsController.StartUpdating, TaskCreationOptions.LongRunning);
 
-            return Task.CompletedTask;
-        }
+        if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
+    }
 
-        private Options GetOptions()
-            => new Options(GetValueFromVariableOrDefault("JOB", "nethermind"), GetGroup(), GetInstance());
+    public void AddMetricsUpdateAction(Action callback)
+    {
+        _metricsController.AddMetricsUpdateAction(callback);
+    }
 
-        private string GetInstance()
-            => _nodeName.Replace("enode://", string.Empty).Split("@").FirstOrDefault();
+    public Task StopAsync()
+    {
+        _metricsController.StopUpdating();
 
-        private string GetGroup()
-        {
-            string group = GetValueFromVariableOrDefault("GROUP", "nethermind");
-            string endpoint = _pushGatewayUrl.Split("/").LastOrDefault();
-            if (!string.IsNullOrWhiteSpace(endpoint) && endpoint.Contains("-"))
-            {
-                group = endpoint.Split("-")[0] ?? group;
-            }
+        return Task.CompletedTask;
+    }
 
-            return group;
-        }
+    public string Description => "Monitoring service";
 
-        private static string GetValueFromVariableOrDefault(string variable, string @default)
-        {
-            string value = Environment.GetEnvironmentVariable($"NETHERMIND_MONITORING_{variable}")?.ToLowerInvariant();
+    private Options GetOptions(IMetricsConfig config)
+    {
+        string endpoint = _pushGatewayUrl?.Split("/").Last();
+        string group = endpoint?.Contains('-', StringComparison.Ordinal) == true
+            ? endpoint.Split("-")[0] : config.MonitoringGroup;
+        string instance = _nodeName.Replace("enode://", string.Empty).Split("@")[0];
 
-            return string.IsNullOrWhiteSpace(value) ? @default : value;
-        }
+        return new(config.MonitoringJob, group, instance);
+    }
 
-        private class Options
-        {
-            public string Job { get; }
-            public string Instance { get; }
-            public string Group { get; }
-            public Options(string job, string @group, string instance)
-            {
-                Job = job;
-                Group = @group;
-                Instance = instance;
-            }
-        }
+    private class Options(string job, string group, string instance)
+    {
+        public string Job { get; } = job;
+        public string Instance { get; } = instance;
+        public string Group { get; } = group;
     }
 }

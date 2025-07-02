@@ -1,0 +1,56 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "EnableUnsecuredDevWallet": true,
+    "KeepDevWalletInMemory": true,
+    "DiscoveryEnabled": false,
+    "PeerManagerEnabled": false,
+    "IsMining": true,
+    "ChainSpecPath": "chainspec/spaceneth.json",
+    "BaseDbPath": "spaceneth_db",
+    "LogFileName": "spaceneth.log",
+    "DiagnosticMode": "None",
+    "MemoryHint": 128000000
+  },
+  "Sync": {
+    "NetworkingEnabled": false,
+    "SynchronizationEnabled": false
+  },
+  "Network": {
+    "ActivePeersMaxCount": 4
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Timeout": 20000,
+    "Host": "127.0.0.1",
+    "Port": 8545,
+    "EnabledModules": [
+      "Admin",
+      "Clique",
+      "Consensus",
+      "Db",
+      "Debug",
+      "Deposit",
+      "Erc20",
+      "Eth",
+      "Evm",
+      "Net",
+      "Nft",
+      "Parity",
+      "Personal",
+      "Proof",
+      "Subscribe",
+      "Trace",
+      "TxPool",
+      "Vault",
+      "Web3"
+    ]
+  },
+  "TxPool": {
+    "Size": 128,
+    "BlobsSupport": "Disabled"
+  },
+  "Metrics": {
+    "NodeName": "Spaceneth"
+  }
+}

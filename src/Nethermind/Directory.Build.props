@@ -1,16 +1,12 @@
 <Project>
 
-  <PropertyGroup>
-    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
-  </PropertyGroup>
+  <Import Project="../../Directory.Build.props" />
 
   <PropertyGroup Label="ProductInfo">
     <BuildTimestamp Condition="'$(BuildTimestamp)' == ''">$([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())</BuildTimestamp>
-    <Copyright>Demerzel Solutions Limited</Copyright>
-    <Product>Nethermind</Product>
-    <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit.Substring(0, 8))</SourceRevisionId>
-    <VersionPrefix>1.18.0-unstable</VersionPrefix>
-    <VersionSuffix></VersionSuffix>
+    <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit)</SourceRevisionId>
+    <VersionPrefix>1.33.0</VersionPrefix>
+    <VersionSuffix>unstable</VersionSuffix>
   </PropertyGroup>
 
   <ItemGroup Label="AssemblyCustomMetadata">
@@ -18,10 +14,6 @@
       <_Parameter1>BuildTimestamp</_Parameter1>
       <_Parameter2>$(BuildTimestamp)</_Parameter2>
     </AssemblyAttribute>
-    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute" Condition="'$(Commit)' != ''">
-      <_Parameter1>Commit</_Parameter1>
-      <_Parameter2>$(Commit)</_Parameter2>
-    </AssemblyAttribute>
   </ItemGroup>
-  
+
 </Project>

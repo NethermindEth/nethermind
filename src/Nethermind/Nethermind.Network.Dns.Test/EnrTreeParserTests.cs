@@ -13,7 +13,7 @@ public class EnrTreeParserTests
     {
         EnrTreeRoot root = EnrTreeParser.ParseEnrRoot(enrTreeRootText);
         string actual = root.ToString();
-        Assert.AreEqual(enrTreeRootText, actual);
+        Assert.That(actual, Is.EqualTo(enrTreeRootText));
     }
 
     [TestCase("enrtree-branch:TSVUMUTQU3AMKR36PNX4ILDJJI,VPN5OWLF7Q2PBBJUSOYKPQDGFE", 2)]
@@ -22,8 +22,8 @@ public class EnrTreeParserTests
     {
         EnrTreeBranch branch = EnrTreeParser.ParseBranch(enrBranchText);
         string actual = branch.ToString();
-        Assert.AreEqual(hashCount, branch.Hashes.Length);
-        Assert.AreEqual(enrBranchText, actual);
+        Assert.That(branch.Hashes.Length, Is.EqualTo(hashCount));
+        Assert.That(actual, Is.EqualTo(enrBranchText));
     }
 
     [TestCase("enrtree-branch:TSVUMUTQU3AMKR36PNX4ILDJJI,VPN5OWLF7Q2PBBJUSOYKPQDGFE", 2)]
@@ -32,8 +32,8 @@ public class EnrTreeParserTests
     {
         EnrTreeBranch branch = EnrTreeParser.ParseBranch(enrBranchText);
         string actual = branch.ToString();
-        Assert.AreEqual(hashCount, branch.Hashes.Length);
-        Assert.AreEqual(enrBranchText, actual);
+        Assert.That(branch.Hashes.Length, Is.EqualTo(hashCount));
+        Assert.That(actual, Is.EqualTo(enrBranchText));
     }
 
     [TestCase("enrtree-branch:TSVUMUTQU3AMKR36PNX4ILDJJI,VPN5OWLF7Q2PBBJUSOYKPQDGFE", 2)]
@@ -42,7 +42,7 @@ public class EnrTreeParserTests
     {
         EnrTreeBranch branch = EnrTreeParser.ParseBranch(enrBranchText);
         string actual = branch.ToString();
-        Assert.AreEqual(hashCount, branch.Hashes.Length);
-        Assert.AreEqual(enrBranchText, actual);
+        Assert.That(branch.Hashes.Length, Is.EqualTo(hashCount));
+        Assert.That(actual, Is.EqualTo(enrBranchText));
     }
 }

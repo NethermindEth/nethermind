@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using FluentAssertions.Json;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -21,9 +20,9 @@ namespace Nethermind.Abi.Test.Json
         public void Can_load_contract(Type contractType)
         {
             var parser = new AbiDefinitionParser();
-            var json = parser.LoadContract(contractType);
+            var json = AbiDefinitionParser.LoadContract(contractType);
             var contract = parser.Parse(json);
-            var serialized = parser.Serialize(contract);
+            var serialized = AbiDefinitionParser.Serialize(contract);
             JToken.Parse(serialized).Should().ContainSubtree(json);
         }
     }

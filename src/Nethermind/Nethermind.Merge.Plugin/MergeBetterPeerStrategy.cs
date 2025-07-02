@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
-using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -30,12 +28,12 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
         _logger = logManager.GetClassLogger();
     }
 
-    public int Compare(in (UInt256 TotalDifficulty, long Number) valueX, in (UInt256 TotalDifficulty, long Number) valueY) =>
+    public int Compare(in (UInt256? TotalDifficulty, long Number) valueX, in (UInt256? TotalDifficulty, long Number) valueY) =>
         ShouldApplyPreMergeLogic(valueX.TotalDifficulty, valueY.TotalDifficulty)
             ? _preMergeBetterPeerStrategy.Compare(valueX, valueY)
             : valueX.Number.CompareTo(valueY.Number);
 
-    public bool IsBetterThanLocalChain(in (UInt256 TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestBlock)
+    public bool IsBetterThanLocalChain(in (UInt256? TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestBlock)
     {
         if (_logger.IsTrace) _logger.Trace($"IsBetterThanLocalChain BestPeerInfo.TD: {bestPeerInfo.TotalDifficulty}, BestPeerInfo.Number: {bestPeerInfo.Number}, LocalChainDifficulty {bestBlock.TotalDifficulty} LocalChainBestFullBlock: {bestBlock.Number} TerminalTotalDifficulty {_poSSwitcher.TerminalTotalDifficulty}");
         return ShouldApplyPreMergeLogic(bestPeerInfo.TotalDifficulty, bestBlock.TotalDifficulty)
@@ -43,7 +41,7 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
             : bestPeerInfo.Number > bestBlock.Number;
     }
 
-    public bool IsDesiredPeer(in (UInt256 TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestHeader)
+    public bool IsDesiredPeer(in (UInt256? TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestHeader)
     {
         if (_logger.IsTrace) _logger.Trace(
             $"IsDesiredPeer: " +
@@ -72,7 +70,8 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
     public bool IsLowerThanTerminalTotalDifficulty(UInt256 totalDifficulty) =>
         _poSSwitcher.TerminalTotalDifficulty is null || totalDifficulty < _poSSwitcher.TerminalTotalDifficulty;
 
-    private bool ShouldApplyPreMergeLogic(UInt256 totalDifficultyX, UInt256 totalDifficultyY) =>
-        IsLowerThanTerminalTotalDifficulty(totalDifficultyX) || IsLowerThanTerminalTotalDifficulty(totalDifficultyY);
+    private bool ShouldApplyPreMergeLogic(UInt256? totalDifficultyX, UInt256? totalDifficultyY) =>
+        totalDifficultyX is not null && totalDifficultyY is not null &&
+        (IsLowerThanTerminalTotalDifficulty(totalDifficultyX.Value) || IsLowerThanTerminalTotalDifficulty(totalDifficultyY.Value));
 
 }

@@ -22,14 +22,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public string Id { get; }
         public abstract string Type { get; }
         public IJsonRpcDuplexClient JsonRpcDuplexClient { get; }
-        private Channel<Action> SendChannel { get; } = Channel.CreateUnbounded<Action>(new UnboundedChannelOptions() { SingleReader = true });
+        private Channel<Func<Task>> SendChannel { get; } = Channel.CreateUnbounded<Func<Task>>(new UnboundedChannelOptions { SingleReader = true });
 
         public virtual void Dispose()
         {
             SendChannel.Writer.Complete();
         }
 
-        protected JsonRpcResult CreateSubscriptionMessage(object result)
+        protected JsonRpcResult CreateSubscriptionMessage(object result, string methodName = SubscriptionMethodName.EthSubscription)
         {
             return JsonRpcResult.Single(
                 new JsonRpcSubscriptionResponse()
@@ -38,11 +38,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     {
                         Result = result,
                         Subscription = Id
-                    }
+                    },
+                    MethodName = methodName
                 }, default);
         }
 
-        protected void ScheduleAction(Action action)
+        protected void ScheduleAction(Func<Task> action)
         {
             SendChannel.Writer.TryWrite(action);
         }
@@ -55,11 +56,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 while (await SendChannel.Reader.WaitToReadAsync())
                 {
-                    while (SendChannel.Reader.TryRead(out Action action))
+                    while (SendChannel.Reader.TryRead(out Func<Task> action))
                     {
                         try
                         {
-                            action();
+                            await action();
                         }
                         catch (Exception e)
                         {

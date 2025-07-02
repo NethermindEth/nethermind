@@ -1,14 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using Google.Protobuf.WellKnownTypes;
-using Nethermind.Api;
+using Nethermind.Api.Steps;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.ServiceStopper;
+using Nethermind.Db;
+using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
@@ -17,56 +18,112 @@ using Type = System.Type;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeNetwork))]
-public class StartMonitoring : IStep
+[RunnerStepDependencies(typeof(InitializeBlockTree))]
+public class StartMonitoring(
+    IEthSyncingInfo ethSyncingInfo,
+    IDbProvider dbProvider,
+    IPruningConfig pruningConfig,
+    ISyncConfig syncConfig,
+    IServiceStopper serviceStopper,
+    ILogManager logManager,
+    IMetricsConfig metricsConfig
+) : IStep
 {
-    private readonly IApiWithNetwork _api;
-
-    public StartMonitoring(INethermindApi api)
-    {
-        _api = api;
-    }
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public async Task Execute(CancellationToken cancellationToken)
     {
-        IMetricsConfig metricsConfig = _api.Config<IMetricsConfig>();
-        ILogger logger = _api.LogManager.GetClassLogger();
-
         // hacky
         if (!string.IsNullOrEmpty(metricsConfig.NodeName))
         {
-            _api.LogManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
+            logManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
+        }
+
+        MetricsController? controller = null;
+        if (metricsConfig.Enabled || metricsConfig.CountersEnabled)
+        {
+            PrepareProductInfoMetrics();
+            controller = new(metricsConfig);
+
+            IEnumerable<Type> metrics = TypeDiscovery.FindNethermindBasedTypes(nameof(Metrics));
+            foreach (Type metric in metrics)
+            {
+                controller.RegisterMetrics(metric);
+            }
         }
 
         if (metricsConfig.Enabled)
         {
-            PrepareProductInfoMetrics();
-            MetricsController metricsController = new(metricsConfig);
+            MonitoringService monitoringService = new MonitoringService(controller, metricsConfig, logManager);
 
-            _api.MonitoringService = new MonitoringService(metricsController, metricsConfig, _api.LogManager);
-            IEnumerable<Type> metrics = TypeDiscovery.FindNethermindTypes(nameof(Metrics));
-            foreach (Type metric in metrics)
-            {
-                _api.MonitoringService.RegisterMetrics(metric);
-            }
+            SetupMetrics(monitoringService);
 
-            await _api.MonitoringService.StartAsync().ContinueWith(x =>
+            await monitoringService.StartAsync().ContinueWith(x =>
             {
-                if (x.IsFaulted && logger.IsError)
-                    logger.Error("Error during starting a monitoring.", x.Exception);
+                if (x.IsFaulted && _logger.IsError)
+                    _logger.Error("Error during starting a monitoring.", x.Exception);
             }, cancellationToken);
 
-            _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => _api.MonitoringService.StopAsync())); // do not await
+            serviceStopper.AddStoppable(monitoringService);
         }
         else
         {
-            if (logger.IsInfo)
-                logger.Info("Grafana / Prometheus metrics are disabled in configuration");
+            if (_logger.IsInfo)
+                _logger.Info("Grafana / Prometheus metrics are disabled in configuration");
+        }
+
+        if (_logger.IsInfo)
+        {
+            _logger.Info(metricsConfig.CountersEnabled
+                ? "System.Diagnostics.Metrics enabled and will be collectable with dotnet-counters"
+                : "System.Diagnostics.Metrics disabled");
         }
     }
 
-    private static void PrepareProductInfoMetrics()
+    private void SetupMetrics(IMonitoringService monitoringService)
     {
+        if (metricsConfig.EnableDbSizeMetrics)
+        {
+            monitoringService.AddMetricsUpdateAction(() =>
+            {
+                foreach (KeyValuePair<string, IDbMeta> kv in dbProvider.GetAllDbMeta())
+                {
+                    // Note: At the moment, the metric for a columns db is combined across column.
+                    IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric(includeSharedCache: kv.Key == DbNames.State); // Only include shared cache if state db
+                    Db.Metrics.DbSize[kv.Key] = dbMetric.Size;
+                    Db.Metrics.DbBlockCacheSize[kv.Key] = dbMetric.CacheSize;
+                    Db.Metrics.DbMemtableSize[kv.Key] = dbMetric.MemtableSize;
+                    Db.Metrics.DbIndexFilterSize[kv.Key] = dbMetric.IndexSize;
+                    Db.Metrics.DbReads[kv.Key] = dbMetric.TotalReads;
+                    Db.Metrics.DbWrites[kv.Key] = dbMetric.TotalWrites;
+                }
+            });
+        }
+
+        monitoringService.AddMetricsUpdateAction(() =>
+        {
+            Synchronization.Metrics.SyncTime = (long?)ethSyncingInfo?.UpdateAndGetSyncTime().TotalSeconds ?? 0;
+        });
+    }
+
+    private void PrepareProductInfoMetrics()
+    {
+        ProductInfo.Instance = metricsConfig.NodeName;
+
+        if (syncConfig.SnapSync)
+        {
+            ProductInfo.SyncType = "Snap";
+        }
+        else if (syncConfig.FastSync)
+        {
+            ProductInfo.SyncType = "Fast";
+        }
+        else
+        {
+            ProductInfo.SyncType = "Full";
+        }
+
+        ProductInfo.PruningMode = pruningConfig.Mode.ToString();
         Metrics.Version = VersionToMetrics.ConvertToNumber(ProductInfo.Version);
     }
 

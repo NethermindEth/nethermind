@@ -1,8 +1,12 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Nethermind.Trie
 {
     public readonly struct NodeCommitInfo
     {
-        public NodeCommitInfo(TrieNode node)
+        public NodeCommitInfo(
+            TrieNode node
+        )
         {
             ChildPositionAtParent = 0;
             Node = node;
@@ -25,6 +29,7 @@ namespace Nethermind.Trie
 
         public int ChildPositionAtParent { get; }
 
+        [MemberNotNullWhen(false, nameof(Node))]
         public bool IsEmptyBlockMarker => Node is null;
 
         public bool IsRoot => !IsEmptyBlockMarker && NodeParent is null;

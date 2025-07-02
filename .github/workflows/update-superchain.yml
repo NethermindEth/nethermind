@@ -1,0 +1,56 @@
+name: Update OP Superchain chains
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-configs:
+    name: Update OP Superchain chains
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.1'
+      - name: Install dependencies
+        run: |
+          pip install zstandard
+          pip install safe-pysha3
+          pip install requests
+          pip install setuptools
+          pip install emoji
+      - name: Generate Chainspec and config files
+        run: python3 scripts/superchain.py -v -o /tmp/superchain
+      - name: Copy generated files
+        run: |
+          cp -r /tmp/superchain/chainspec/* ./src/Nethermind/Chains
+          cp -r /tmp/superchain/runner/* ./src/Nethermind/Nethermind.Runner/configs
+      - name: Update fast sync settings
+        run: python3 scripts/sync-settings.py --superchain
+      - name: Create GitHub app token
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      - name: Create a pull request
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: |
+          head_branch=feature/update-superchain-${{ github.run_number }}-${{ github.run_attempt }}
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git checkout -b $head_branch
+          git add -A
+          git commit -am "Update OP Superchain chains"
+          git push origin $head_branch
+          gh pr create -B master -H $head_branch -t "Update OP Superchain chains" \
+            -b "Generated Chainspec and config files" -l configuration -l sync

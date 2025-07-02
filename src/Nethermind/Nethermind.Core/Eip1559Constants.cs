@@ -14,10 +14,5 @@ namespace Nethermind.Core
         public static readonly UInt256 DefaultBaseFeeMaxChangeDenominator = 8;
 
         public static readonly int DefaultElasticityMultiplier = 2;
-
-        // The above values are the default ones. However, we're allowing to override it from genesis
-        public static UInt256 ForkBaseFee { get; set; } = DefaultForkBaseFee;
-        public static UInt256 BaseFeeMaxChangeDenominator { get; set; } = DefaultBaseFeeMaxChangeDenominator;
-        public static long ElasticityMultiplier { get; set; } = DefaultElasticityMultiplier;
     }
 }

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Producers
@@ -111,21 +112,13 @@ namespace Nethermind.Consensus.Producers
         public void Dispose()
         {
             DetachEvents();
-
-            if (_blockProductionTrigger is IDisposable disposableTrigger)
-            {
-                disposableTrigger.Dispose();
-            }
+            _blockProductionTrigger.TryDispose();
         }
 
         public async ValueTask DisposeAsync()
         {
             DetachEvents();
-
-            if (_blockProductionTrigger is IAsyncDisposable disposableTrigger)
-            {
-                await disposableTrigger.DisposeAsync();
-            }
+            await _blockProductionTrigger.TryDisposeAsync();
         }
 
         private void DetachEvents()

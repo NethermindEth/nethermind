@@ -3,32 +3,28 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
+using Nethermind.State.Tracing;
 
 namespace Nethermind.State
 {
     /// <summary>
     /// Contains common code for both Persistent and Transient storage providers
     /// </summary>
-    public abstract class PartialStorageProviderBase
+    internal abstract class PartialStorageProviderBase
     {
-        protected readonly ResettableDictionary<StorageCell, StackList<int>> _intraBlockCache = new();
-
+        protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = new();
         protected readonly ILogger _logger;
-
-        private const int StartCapacity = Resettable.StartCapacity;
-        private int _capacity = StartCapacity;
-        protected Change?[] _changes = new Change[StartCapacity];
-        protected int _currentPosition = Resettable.EmptyPosition;
+        protected readonly List<Change> _changes = new(Resettable.StartCapacity);
+        private readonly List<Change> _keptInCache = new();
 
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
         protected readonly Stack<int> _transactionChangesSnapshots = new();
-
-        protected static readonly byte[] _zeroValue = { 0 };
 
         protected PartialStorageProviderBase(ILogManager? logManager)
         {
@@ -40,9 +36,9 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        public byte[] Get(in StorageCell storageCell)
+        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
         {
-            return GetCurrentValue(storageCell);
+            return GetCurrentValue(in storageCell);
         }
 
         /// <summary>
@@ -52,7 +48,7 @@ namespace Nethermind.State
         /// <param name="newValue">Value to store</param>
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
-            PushUpdate(storageCell, newValue);
+            PushUpdate(in storageCell, newValue);
         }
 
         /// <summary>
@@ -62,13 +58,14 @@ namespace Nethermind.State
         /// <returns>Snapshot index</returns>
         public int TakeSnapshot(bool newTransactionStart)
         {
-            if (_logger.IsTrace) _logger.Trace($"Storage snapshot {_currentPosition}");
-            if (newTransactionStart && _currentPosition != Resettable.EmptyPosition)
+            int position = _changes.Count - 1;
+            if (_logger.IsTrace) _logger.Trace($"Storage snapshot {position}");
+            if (newTransactionStart && position != Resettable.EmptyPosition)
             {
-                _transactionChangesSnapshots.Push(_currentPosition);
+                _transactionChangesSnapshots.Push(position);
             }
 
-            return _currentPosition;
+            return position;
         }
 
         /// <summary>
@@ -80,58 +77,61 @@ namespace Nethermind.State
         {
             if (_logger.IsTrace) _logger.Trace($"Restoring storage snapshot {snapshot}");
 
-            if (snapshot > _currentPosition)
+            int currentPosition = _changes.Count - 1;
+            if (snapshot > currentPosition)
             {
-                throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
+                throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
             }
 
-            if (snapshot == _currentPosition)
+            if (snapshot == currentPosition)
             {
                 return;
             }
 
-            List<Change> keptInCache = new();
-
-            for (int i = 0; i < _currentPosition - snapshot; i++)
+            for (int i = 0; i < currentPosition - snapshot; i++)
             {
-                Change change = _changes[_currentPosition - i];
-                if (_intraBlockCache[change!.StorageCell].Count == 1)
+                Change change = _changes[currentPosition - i];
+                StackList<int> stack = _intraBlockCache[change!.StorageCell];
+                if (stack.Count == 1)
                 {
-                    if (_changes[_intraBlockCache[change.StorageCell].Peek()]!.ChangeType == ChangeType.JustCache)
+                    if (_changes[stack.Peek()]!.ChangeType == ChangeType.JustCache)
                     {
-                        int actualPosition = _intraBlockCache[change.StorageCell].Pop();
-                        if (actualPosition != _currentPosition - i)
+                        int actualPosition = stack.Pop();
+                        if (actualPosition != currentPosition - i)
                         {
-                            throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {_currentPosition} - {i}");
+                            throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {currentPosition} - {i}");
                         }
 
-                        keptInCache.Add(change);
-                        _changes[actualPosition] = null;
+                        _keptInCache.Add(change);
+                        _changes[actualPosition] = default;
                         continue;
                     }
                 }
 
-                int forAssertion = _intraBlockCache[change.StorageCell].Pop();
-                if (forAssertion != _currentPosition - i)
+                int forAssertion = stack.Pop();
+                if (forAssertion != currentPosition - i)
                 {
-                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
+                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
                 }
 
-                _changes[_currentPosition - i] = null;
+                _changes[currentPosition - i] = default;
 
-                if (_intraBlockCache[change.StorageCell].Count == 0)
+                if (stack.Count == 0)
                 {
                     _intraBlockCache.Remove(change.StorageCell);
                 }
             }
 
-            _currentPosition = snapshot;
-            foreach (Change kept in keptInCache)
+            CollectionsMarshal.SetCount(_changes, snapshot + 1);
+            currentPosition = _changes.Count - 1;
+            foreach (Change kept in _keptInCache)
             {
-                _currentPosition++;
-                _changes[_currentPosition] = kept;
-                _intraBlockCache[kept.StorageCell].Push(_currentPosition);
+                currentPosition++;
+                _changes.Add(kept);
+                _intraBlockCache[kept.StorageCell].Push(currentPosition);
             }
+
+            _keptInCache.Clear();
 
             while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
             {
@@ -143,36 +143,39 @@ namespace Nethermind.State
         /// <summary>
         /// Commit persistent storage
         /// </summary>
-        public void Commit()
+        public void Commit(bool commitRoots = true)
         {
-            Commit(NullStorageTracer.Instance);
+            Commit(NullStateTracer.Instance, commitRoots);
         }
 
-        protected readonly struct ChangeTrace
+        protected struct ChangeTrace
         {
+            public static readonly ChangeTrace _zeroBytes = new(StorageTree.ZeroBytes, StorageTree.ZeroBytes);
+            public static ref readonly ChangeTrace ZeroBytes => ref _zeroBytes;
+
             public ChangeTrace(byte[]? before, byte[]? after)
             {
-                After = after ?? _zeroValue;
-                Before = before ?? _zeroValue;
+                After = after ?? StorageTree.ZeroBytes;
+                Before = before ?? StorageTree.ZeroBytes;
             }
 
             public ChangeTrace(byte[]? after)
             {
-                After = after ?? _zeroValue;
-                Before = _zeroValue;
+                After = after ?? StorageTree.ZeroBytes;
+                Before = StorageTree.ZeroBytes;
             }
 
-            public byte[] Before { get; }
-            public byte[] After { get; }
+            public byte[] Before;
+            public byte[] After;
         }
 
         /// <summary>
         /// Commit persistent storage
         /// </summary>
         /// <param name="stateTracer">State tracer</param>
-        public void Commit(IStorageTracer tracer)
+        public void Commit(IStorageTracer tracer, bool commitRoots = true)
         {
-            if (_currentPosition == Snapshot.EmptyPosition)
+            if (_changes.Count == 0)
             {
                 if (_logger.IsTrace) _logger.Trace("No storage changes to commit");
             }
@@ -180,6 +183,16 @@ namespace Nethermind.State
             {
                 CommitCore(tracer);
             }
+
+            if (commitRoots)
+            {
+                CommitStorageRoots();
+            }
+        }
+
+        protected virtual void CommitStorageRoots()
+        {
+            // Commit storage roots
         }
 
         /// <summary>
@@ -189,22 +202,21 @@ namespace Nethermind.State
         /// <param name="tracer">Storage tracer</param>
         protected virtual void CommitCore(IStorageTracer tracer)
         {
-            Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition);
-            _intraBlockCache.Reset();
+            _changes.Clear();
+            _intraBlockCache.Clear();
             _transactionChangesSnapshots.Clear();
         }
 
         /// <summary>
         /// Reset the storage state
         /// </summary>
-        public virtual void Reset()
+        public virtual void Reset(bool resetBlockChanges = true)
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
+            _changes.Clear();
             _intraBlockCache.Clear();
             _transactionChangesSnapshots.Clear();
-            _currentPosition = -1;
-            Array.Clear(_changes, 0, _changes.Length);
         }
 
         /// <summary>
@@ -219,7 +231,7 @@ namespace Nethermind.State
             {
                 int lastChangeIndex = stack.Peek();
                 {
-                    bytes = _changes[lastChangeIndex]!.Value;
+                    bytes = _changes[lastChangeIndex].Value;
                     return true;
                 }
             }
@@ -233,7 +245,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected abstract byte[] GetCurrentValue(in StorageCell storageCell);
+        protected abstract ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell);
 
         /// <summary>
         /// Update the storage cell with provided value
@@ -242,30 +254,24 @@ namespace Nethermind.State
         /// <param name="value">Value to set</param>
         private void PushUpdate(in StorageCell cell, byte[] value)
         {
-            SetupRegistry(cell);
-            IncrementChangePosition();
-            _intraBlockCache[cell].Push(_currentPosition);
-            _changes[_currentPosition] = new Change(ChangeType.Update, cell, value);
-        }
-
-        /// <summary>
-        /// Increment position and size (if needed) of _changes
-        /// </summary>
-        protected void IncrementChangePosition()
-        {
-            Resettable<Change>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
+            StackList<int> stack = SetupRegistry(cell);
+            stack.Push(_changes.Count);
+            _changes.Add(new Change(in cell, value, ChangeType.Update));
         }
 
         /// <summary>
         /// Initialize the StackList at the storage cell position if needed
         /// </summary>
         /// <param name="cell"></param>
-        protected void SetupRegistry(in StorageCell cell)
+        protected StackList<int> SetupRegistry(in StorageCell cell)
         {
-            if (!_intraBlockCache.ContainsKey(cell))
+            ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
+            if (!exists)
             {
-                _intraBlockCache[cell] = new StackList<int>();
+                value = new StackList<int>();
             }
+
+            return value;
         }
 
         /// <summary>
@@ -280,7 +286,7 @@ namespace Nethermind.State
             {
                 if (cellByAddress.Key.Address == address)
                 {
-                    Set(cellByAddress.Key, _zeroValue);
+                    Set(cellByAddress.Key, StorageTree.ZeroBytes);
                 }
             }
         }
@@ -288,18 +294,13 @@ namespace Nethermind.State
         /// <summary>
         /// Used for tracking each change to storage
         /// </summary>
-        protected class Change
+        protected readonly struct Change(in StorageCell storageCell, byte[] value, ChangeType changeType)
         {
-            public Change(ChangeType changeType, StorageCell storageCell, byte[] value)
-            {
-                StorageCell = storageCell;
-                Value = value;
-                ChangeType = changeType;
-            }
+            public readonly StorageCell StorageCell = storageCell;
+            public readonly byte[] Value = value;
+            public readonly ChangeType ChangeType = changeType;
 
-            public ChangeType ChangeType { get; }
-            public StorageCell StorageCell { get; }
-            public byte[] Value { get; }
+            public bool IsNull => ChangeType == ChangeType.Null;
         }
 
         /// <summary>
@@ -307,6 +308,7 @@ namespace Nethermind.State
         /// </summary>
         protected enum ChangeType
         {
+            Null = 0,
             JustCache,
             Update,
             Destroy,

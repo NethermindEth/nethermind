@@ -2,16 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.State.Snap
 {
-    public class AccountsAndProofs
+    public class AccountsAndProofs : IDisposable
     {
-        public PathWithAccount[] PathAndAccounts { get; set; }
-        public byte[][] Proofs { get; set; }
+        public IOwnedReadOnlyList<PathWithAccount> PathAndAccounts { get; set; }
+        public IOwnedReadOnlyList<byte[]> Proofs { get; set; }
+
+        public void Dispose()
+        {
+            PathAndAccounts?.Dispose();
+            Proofs?.Dispose();
+        }
     }
 }

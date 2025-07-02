@@ -6,47 +6,40 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core
 {
-    public class LogEntry
+    public class LogEntry(Address address, byte[] data, Hash256[] topics) : ILogEntry
     {
-        public LogEntry(Address address, byte[] data, Keccak[] topics)
-        {
-            LoggersAddress = address;
-            Data = data;
-            Topics = topics;
-        }
-
-        public Address LoggersAddress { get; }
-        public Keccak[] Topics { get; }
-        public byte[] Data { get; }
+        public Address Address { get; } = address;
+        public Hash256[] Topics { get; } = topics;
+        public byte[] Data { get; } = data;
     }
 
     public ref struct LogEntryStructRef
     {
-        public LogEntryStructRef(AddressStructRef address, Span<byte> data, Span<byte> topicsRlp)
+        public LogEntryStructRef(AddressStructRef address, ReadOnlySpan<byte> data, ReadOnlySpan<byte> topicsRlp)
         {
-            LoggersAddress = address;
+            Address = address;
             Data = data;
             TopicsRlp = topicsRlp;
             Topics = null;
         }
 
-        public AddressStructRef LoggersAddress;
+        public AddressStructRef Address;
 
         public LogEntryStructRef(LogEntry logEntry)
         {
-            LoggersAddress = logEntry.LoggersAddress.ToStructRef();
+            Address = logEntry.Address.ToStructRef();
             Data = logEntry.Data;
             Topics = logEntry.Topics;
-            TopicsRlp = Span<byte>.Empty;
+            TopicsRlp = default;
         }
 
-        public Keccak[]? Topics { get; }
+        public Hash256[]? Topics { get; }
 
         /// <summary>
         /// Rlp encoded array of Keccak
         /// </summary>
-        public Span<byte> TopicsRlp { get; }
+        public ReadOnlySpan<byte> TopicsRlp { get; }
 
-        public Span<byte> Data { get; }
+        public ReadOnlySpan<byte> Data { get; }
     }
 }

@@ -15,23 +15,28 @@ namespace Nethermind.TxPool.Filters
     internal sealed class GapNonceFilter : IIncomingTxFilter
     {
         private readonly TxDistinctSortedPool _txs;
+        private readonly TxDistinctSortedPool _blobTxs;
         private readonly ILogger _logger;
 
-        public GapNonceFilter(TxDistinctSortedPool txs, ILogger logger)
+        public GapNonceFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger)
         {
             _txs = txs;
+            _blobTxs = blobTxs;
             _logger = logger;
         }
 
-        public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             bool isLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
-            if (isLocal || !_txs.IsFull())
+            bool nonceGapsAllowed = isLocal || !_txs.IsFull();
+            if (nonceGapsAllowed && !tx.SupportsBlobs)
             {
                 return AcceptTxResult.Accepted;
             }
 
-            int numberOfSenderTxsInPending = _txs.GetBucketCount(tx.SenderAddress!); // since unknownSenderFilter will run before this one
+            int numberOfSenderTxsInPending = tx.SupportsBlobs
+                ? _blobTxs.GetBucketCount(tx.SenderAddress!)
+                : _txs.GetBucketCount(tx.SenderAddress!); // since unknownSenderFilter will run before this one
             UInt256 currentNonce = state.SenderAccount.Nonce;
             long nextNonceInOrder = (long)currentNonce + numberOfSenderTxsInPending;
             bool isTxNonceNextInOrder = tx.Nonce <= nextNonceInOrder;
@@ -43,9 +48,7 @@ namespace Nethermind.TxPool.Filters
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce in future.");
                 }
 
-                return !isLocal ?
-                    AcceptTxResult.NonceGap :
-                    AcceptTxResult.NonceGap.WithMessage($"Future nonce. Expected nonce: {nextNonceInOrder}");
+                return AcceptTxResult.NonceGap;
             }
 
             return AcceptTxResult.Accepted;

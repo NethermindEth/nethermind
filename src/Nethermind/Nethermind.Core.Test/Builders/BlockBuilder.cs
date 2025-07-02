@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
+using System;
 using System.Linq;
+using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Core.Test.Builders
@@ -56,6 +59,18 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithBlobGasUsed(ulong? blobGasUsed)
+        {
+            TestObjectInternal.Header.BlobGasUsed = blobGasUsed;
+            return this;
+        }
+
+        public BlockBuilder WithExcessBlobGas(ulong? excessBlobGas)
+        {
+            TestObjectInternal.Header.ExcessBlobGas = excessBlobGas;
+            return this;
+        }
+
         public BlockBuilder WithTransactions(int txCount, IReleaseSpec releaseSpec)
         {
             Transaction[] txs = new Transaction[txCount];
@@ -73,6 +88,7 @@ namespace Nethermind.Core.Test.Builders
             for (int i = 0; i < txCount; i++)
             {
                 txs[i] = new Transaction();
+                txs[i].Hash = txs[i].CalculateHash();
             }
 
             TxReceipt[] receipts = new TxReceipt[txCount];
@@ -82,9 +98,8 @@ namespace Nethermind.Core.Test.Builders
             }
 
             BlockBuilder result = WithTransactions(txs);
-            ReceiptTrie receiptTrie = new(specProvider.GetSpec(TestObjectInternal.Header), receipts);
-            receiptTrie.UpdateRootHash();
-            TestObjectInternal.Header.ReceiptsRoot = receiptTrie.RootHash;
+            Hash256 receiptHash = ReceiptTrie.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, Rlp.GetStreamDecoder<TxReceipt>()!);
+            TestObjectInternal.Header.ReceiptsRoot = receiptHash;
             return result;
         }
 
@@ -92,14 +107,12 @@ namespace Nethermind.Core.Test.Builders
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
                 TestObjectInternal.Body.WithChangedTransactions(transactions));
-            TxTrie trie = new(transactions);
-            trie.UpdateRootHash();
 
-            TestObjectInternal.Header.TxRoot = trie.RootHash;
+            TestObjectInternal.Header.TxRoot = TxTrie.CalculateRoot(transactions);
             return this;
         }
 
-        public BlockBuilder WithTxRoot(Keccak txRoot)
+        public BlockBuilder WithTxRoot(Hash256 txRoot)
         {
             TestObjectInternal.Header.TxRoot = txRoot;
             return this;
@@ -135,7 +148,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithMixHash(Keccak mixHash)
+        public BlockBuilder WithMixHash(Hash256 mixHash)
         {
             TestObjectInternal.Header.MixHash = mixHash;
             return this;
@@ -152,6 +165,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.Number = blockHeader?.Number + 1 ?? 0;
             TestObjectInternal.Header.Timestamp = blockHeader?.Timestamp + 1 ?? 0;
             TestObjectInternal.Header.ParentHash = blockHeader is null ? Keccak.Zero : blockHeader.Hash;
+            TestObjectInternal.Header.MaybeParent = blockHeader is null ? null : new WeakReference<BlockHeader>(blockHeader);
             return this;
         }
 
@@ -160,10 +174,19 @@ namespace Nethermind.Core.Test.Builders
             return WithParent(block.Header);
         }
 
+        public BlockBuilder WithPostMergeRules()
+        {
+            TestObjectInternal.Header.Difficulty = 0;
+            TestObjectInternal.Header.UnclesHash = Keccak.OfAnEmptySequenceRlp;
+            TestObjectInternal.Header.Nonce = 0;
+            TestObjectInternal.Header.IsPostMerge = true;
+            return this;
+        }
+
         public BlockBuilder WithUncles(params Block[] uncles)
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
-                TestObjectInternal.Body.WithChangedUncles(uncles.Select(o => o.Header).ToArray()));
+                TestObjectInternal.Body.WithChangedUncles(uncles.Select(static o => o.Header).ToArray()));
             return this;
         }
 
@@ -171,22 +194,23 @@ namespace Nethermind.Core.Test.Builders
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
                 TestObjectInternal.Body.WithChangedUncles(uncles));
+            TestObjectInternal.Header.UnclesHash = UnclesHash.Calculate(uncles);
             return this;
         }
 
-        public BlockBuilder WithParentHash(Keccak parent)
+        public BlockBuilder WithParentHash(Hash256 parent)
         {
             TestObjectInternal.Header.ParentHash = parent;
             return this;
         }
 
-        public BlockBuilder WithStateRoot(Keccak stateRoot)
+        public BlockBuilder WithStateRoot(Hash256 stateRoot)
         {
             TestObjectInternal.Header.StateRoot = stateRoot;
             return this;
         }
 
-        public BlockBuilder WithWithdrawalsRoot(Keccak? withdrawalsRoot)
+        public BlockBuilder WithWithdrawalsRoot(Hash256? withdrawalsRoot)
         {
             TestObjectInternal.Header.WithdrawalsRoot = withdrawalsRoot;
 
@@ -220,9 +244,16 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.Hash = TestObjectInternal.Header.CalculateHash();
         }
 
-        public BlockBuilder WithReceiptsRoot(Keccak keccak)
+        public BlockBuilder WithReceiptsRoot(Hash256 keccak)
         {
             TestObjectInternal.Header.ReceiptsRoot = keccak;
+            return this;
+        }
+
+        public BlockBuilder WithEmptyRequestsHash()
+        {
+            TestObjectInternal.Header.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
+            TestObjectInternal.ExecutionRequests = ExecutionRequestExtensions.EmptyRequests;
             return this;
         }
 
@@ -242,7 +273,7 @@ namespace Nethermind.Core.Test.Builders
             return WithWithdrawals(withdrawals);
         }
 
-        public BlockBuilder WithWithdrawals(Withdrawal[]? withdrawals)
+        public BlockBuilder WithWithdrawals(params Withdrawal[]? withdrawals)
         {
             TestObjectInternal = TestObjectInternal
                 .WithReplacedBody(TestObjectInternal.Body.WithChangedWithdrawals(withdrawals));
@@ -251,6 +282,12 @@ namespace Nethermind.Core.Test.Builders
                 ? null
                 : new WithdrawalTrie(withdrawals).RootHash;
 
+            return this;
+        }
+
+        public BlockBuilder WithParentBeaconBlockRoot(Hash256? parentBeaconBlockRoot)
+        {
+            TestObjectInternal.Header.ParentBeaconBlockRoot = parentBeaconBlockRoot;
             return this;
         }
     }

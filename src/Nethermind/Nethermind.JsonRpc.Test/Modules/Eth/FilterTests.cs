@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using System.Text.Json;
+
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
-using Newtonsoft.Json;
+using Nethermind.Serialization.Json;
+
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
@@ -25,7 +28,7 @@ public class FilterTests
                 });
 
             yield return new TestCaseData(
-                JsonConvert.SerializeObject(
+                JsonSerializer.Serialize(
                     new
                     {
                         fromBlock = "earliest",
@@ -58,7 +61,7 @@ public class FilterTests
                 });
 
             yield return new TestCaseData(
-                JsonConvert.SerializeObject(
+                JsonSerializer.Serialize(
                     new
                     {
                         address = "0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda5c",
@@ -90,7 +93,7 @@ public class FilterTests
             var blockParam = BlockParameterConverter.GetBlockParameter(blockHash);
 
             yield return new TestCaseData(
-                JsonConvert.SerializeObject(new { blockHash }),
+                JsonSerializer.Serialize(new { blockHash }),
                 new Filter
                 {
                     FromBlock = blockParam,
@@ -103,7 +106,8 @@ public class FilterTests
     public void FromJson_parses_correctly(string json, Filter expectation)
     {
         Filter filter = new();
-        filter.ReadJson(JsonSerializer.CreateDefault(), json);
+        using JsonDocument doc = JsonDocument.Parse(json);
+        filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
         filter.Should().BeEquivalentTo(expectation);
     }
 }

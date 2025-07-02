@@ -9,7 +9,7 @@ namespace Nethermind.Core.Test.Builders
 {
     public class TransactionValidatorBuilder : BuilderBase<ITxValidator>
     {
-        private bool _alwaysTrue;
+        private ValidationResult _always;
 
         public TransactionValidatorBuilder()
         {
@@ -20,7 +20,7 @@ namespace Nethermind.Core.Test.Builders
         {
             get
             {
-                _alwaysTrue = false;
+                _always = "Invalid";
                 return this;
             }
         }
@@ -29,15 +29,15 @@ namespace Nethermind.Core.Test.Builders
         {
             get
             {
-                _alwaysTrue = true;
+                _always = ValidationResult.Success;
                 return this;
             }
         }
 
         protected override void BeforeReturn()
         {
-            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_alwaysTrue);
-            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_alwaysTrue);
+            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_always);
+            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_always);
             base.BeforeReturn();
         }
     }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -11,59 +12,59 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class CliqueRpcModule : ICliqueRpcModule
+    public class CliqueRpcModule(
+        ICliqueBlockProducerRunner? cliqueBlockProducer,
+        ISnapshotManager snapshotManager,
+        IBlockFinder blockTree)
+        : ICliqueRpcModule
     {
         private const string CannotVoteOnNonValidatorMessage = "Not a signer node - cannot vote";
 
-        private readonly ICliqueBlockProducer? _cliqueBlockProducer;
-        private readonly ISnapshotManager _snapshotManager;
-        private readonly IBlockFinder _blockTree;
+        private readonly ISnapshotManager _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
+        private readonly IBlockFinder _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
-        public CliqueRpcModule(ICliqueBlockProducer? cliqueBlockProducer, ISnapshotManager snapshotManager, IBlockFinder blockTree)
+        public bool ProduceBlock(Hash256 parentHash)
         {
-            _cliqueBlockProducer = cliqueBlockProducer;
-            _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        }
-
-        public bool ProduceBlock(Keccak parentHash)
-        {
-            if (_cliqueBlockProducer is null)
+            if (cliqueBlockProducer is null)
             {
                 return false;
             }
 
-            _cliqueBlockProducer?.ProduceOnTopOf(parentHash);
+            cliqueBlockProducer?.ProduceOnTopOf(parentHash);
             return true;
         }
 
         public void CastVote(Address signer, bool vote)
         {
-            if (_cliqueBlockProducer is null)
+            if (cliqueBlockProducer is null)
             {
                 throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
             }
 
-            _cliqueBlockProducer.CastVote(signer, vote);
+            cliqueBlockProducer.CastVote(signer, vote);
         }
 
         public void UncastVote(Address signer)
         {
-            if (_cliqueBlockProducer is null)
+            if (cliqueBlockProducer is null)
             {
                 throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
             }
 
-            _cliqueBlockProducer.UncastVote(signer);
+            cliqueBlockProducer.UncastVote(signer);
         }
 
-        public Snapshot GetSnapshot()
+        public Snapshot GetSnapshot(long? number = null)
         {
             Block head = _blockTree.Head;
+            if (number is not null && head.Number != number)
+            {
+                head = _blockTree.FindBlock(number.Value);
+            }
             return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
         }
 
-        public Snapshot GetSnapshot(Keccak hash)
+        public Snapshot GetSnapshot(Hash256 hash)
         {
             BlockHeader head = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
@@ -72,78 +73,57 @@ namespace Nethermind.Consensus.Clique
         public Address[] GetSigners()
         {
             Block head = _blockTree.Head;
-            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(s => s.Key).ToArray();
+            return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash).Signers.Select(static s => s.Key).ToArray();
         }
 
         public Address[] GetSigners(long number)
         {
             BlockHeader header = _blockTree.FindHeader(number, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
-                .Select(s => s.Key).ToArray();
+                .Select(static s => s.Key).ToArray();
         }
 
         public string[] GetSignersAnnotated()
         {
             Block header = _blockTree.Head;
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
-                .Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
+                .Select(static s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
 
-        public Address[] GetSigners(Keccak hash)
+        public Address[] GetSigners(Hash256 hash)
         {
             BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
-                .Select(s => s.Key).ToArray();
+                .Select(static s => s.Key).ToArray();
         }
 
-        public string[] GetSignersAnnotated(Keccak hash)
+        public string[] GetSignersAnnotated(Hash256 hash)
         {
             BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
-                .Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
+                .Select(static s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
 
-        public ResultWrapper<bool> clique_produceBlock(Keccak parentHash)
-        {
-            return ResultWrapper<bool>.Success(ProduceBlock(parentHash));
-        }
+        public ResultWrapper<bool> clique_produceBlock(Hash256 parentHash) => ResultWrapper<bool>.Success(ProduceBlock(parentHash));
 
-        public ResultWrapper<Snapshot> clique_getSnapshot()
-        {
-            return ResultWrapper<Snapshot>.Success(GetSnapshot());
-        }
+        public ResultWrapper<IReadOnlyDictionary<Address, bool>> clique_proposals() =>
+            ResultWrapper<IReadOnlyDictionary<Address, bool>>.Success(cliqueBlockProducer?.GetProposals() ?? new Dictionary<Address, bool>());
 
-        public ResultWrapper<Snapshot> clique_getSnapshotAtHash(Keccak hash)
-        {
-            return ResultWrapper<Snapshot>.Success(GetSnapshot(hash));
-        }
+        public ResultWrapper<Snapshot> clique_getSnapshot(long? number) => ResultWrapper<Snapshot>.Success(GetSnapshot(number));
 
-        public ResultWrapper<Address[]> clique_getSigners()
-        {
-            return ResultWrapper<Address[]>.Success(GetSigners().ToArray());
-        }
+        public ResultWrapper<Snapshot> clique_getSnapshotAtHash(Hash256 hash) => ResultWrapper<Snapshot>.Success(GetSnapshot(hash));
 
-        public ResultWrapper<Address[]> clique_getSignersAtHash(Keccak hash)
-        {
-            return ResultWrapper<Address[]>.Success(GetSigners(hash).ToArray());
-        }
+        public ResultWrapper<Address[]> clique_getSigners() => ResultWrapper<Address[]>.Success(GetSigners().ToArray());
 
-        public ResultWrapper<Address[]> clique_getSignersAtNumber(long number)
-        {
-            return ResultWrapper<Address[]>.Success(GetSigners(number).ToArray());
-        }
+        public ResultWrapper<Address[]> clique_getSignersAtHash(Hash256 hash) => ResultWrapper<Address[]>.Success(GetSigners(hash).ToArray());
 
-        public ResultWrapper<string[]> clique_getSignersAnnotated()
-        {
-            return ResultWrapper<string[]>.Success(GetSignersAnnotated().ToArray());
-        }
+        public ResultWrapper<Address[]> clique_getSignersAtNumber(long number) => ResultWrapper<Address[]>.Success(GetSigners(number).ToArray());
 
-        public ResultWrapper<string[]> clique_getSignersAtHashAnnotated(Keccak hash)
-        {
-            return ResultWrapper<string[]>.Success(GetSignersAnnotated(hash).ToArray());
-        }
+        public ResultWrapper<string[]> clique_getSignersAnnotated() => ResultWrapper<string[]>.Success(GetSignersAnnotated().ToArray());
 
-        public ResultWrapper<Address?> clique_getBlockSigner(Keccak? hash)
+        public ResultWrapper<string[]> clique_getSignersAtHashAnnotated(Hash256 hash) => ResultWrapper<string[]>.Success(GetSignersAnnotated(hash).ToArray());
+
+        public ResultWrapper<Address?> clique_getBlockSigner(Hash256? hash)
         {
             if (hash is null)
             {

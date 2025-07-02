@@ -10,13 +10,13 @@ namespace Ethereum.Test.Base
 {
     public class LoadGeneralStateTestFileStrategy : ITestLoadStrategy
     {
-        public IEnumerable<IEthereumTest> Load(string testName, string? wildcard = null)
+        public IEnumerable<EthereumTest> Load(string testName, string? wildcard = null)
         {
-            //in case user wants to give test file other than the ones in ethereum tests submodule 
+            //in case user wants to give test file other than the ones in ethereum tests submodule
             if (File.Exists(testName))
             {
                 FileTestsSource fileTestsSource = new(testName, wildcard);
-                IEnumerable<GeneralStateTest> tests = fileTestsSource.LoadGeneralStateTests();
+                IEnumerable<EthereumTest> tests = fileTestsSource.LoadTests(TestType.State);
 
                 return tests;
             }
@@ -25,22 +25,15 @@ namespace Ethereum.Test.Base
 
             IEnumerable<string> testFiles = Directory.EnumerateFiles(testsDirectory, testName, SearchOption.AllDirectories);
 
-            List<GeneralStateTest> generalStateTests = new();
+            List<EthereumTest> generalStateTests = new();
 
-            //load all tests from found test files in ethereum tests submodule 
+            //load all tests from found test files in ethereum tests submodule
             foreach (string testFile in testFiles)
             {
                 FileTestsSource fileTestsSource = new(testFile, wildcard);
-                try
-                {
-                    IEnumerable<GeneralStateTest> tests = fileTestsSource.LoadGeneralStateTests();
 
-                    generalStateTests.AddRange(tests);
-                }
-                catch (Exception e)
-                {
-                    generalStateTests.Add(new GeneralStateTest { Name = testFile, LoadFailure = $"Failed to load: {e}" });
-                }
+                IEnumerable<EthereumTest> tests = fileTestsSource.LoadTests(TestType.State);
+                generalStateTests.AddRange(tests);
             }
 
             return generalStateTests;
@@ -51,7 +44,7 @@ namespace Ethereum.Test.Base
             char pathSeparator = Path.AltDirectorySeparatorChar;
             string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
-            return currentDirectory.Remove(currentDirectory.LastIndexOf("src")) + $"src{pathSeparator}tests{pathSeparator}GeneralStateTests";
+            return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src")), "src", "tests", "GeneralStateTests");
         }
     }
 }

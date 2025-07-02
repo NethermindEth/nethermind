@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -108,7 +107,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptFinder receiptsFinder = Substitute.For<IReceiptFinder>();
-            receiptsFinder.Get(Arg.Any<Block>()).Returns(Array.Empty<TxReceipt>());
+            receiptsFinder.Get(Arg.Any<Block>()).Returns([]);
 
             return new TestCase<T>()
             {

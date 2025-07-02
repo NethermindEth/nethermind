@@ -58,21 +58,21 @@ public static class EnrTreeParser
 
     public static EnrTreeRoot ParseEnrRoot(string enrTreeRootText)
     {
-        if (enrTreeRootText is null) throw new ArgumentNullException(nameof(enrTreeRootText));
+        ArgumentNullException.ThrowIfNull(enrTreeRootText);
 
         EnrTreeRoot enrTreeRoot = new();
 
-        int ensRootIndex = enrTreeRootText.IndexOf("e=", StringComparison.InvariantCulture);
+        int ensRootIndex = enrTreeRootText.IndexOf("e=", StringComparison.Ordinal);
         enrTreeRoot.EnrRoot = enrTreeRootText.Substring(ensRootIndex + 2, HashLengthBase32);
 
-        int linkRootIndex = enrTreeRootText.IndexOf("l=", StringComparison.InvariantCulture);
+        int linkRootIndex = enrTreeRootText.IndexOf("l=", StringComparison.Ordinal);
         enrTreeRoot.LinkRoot = enrTreeRootText.Substring(linkRootIndex + 2, HashLengthBase32);
 
-        int seqIndex = enrTreeRootText.IndexOf("seq=", StringComparison.InvariantCulture);
-        int seqLength = enrTreeRootText.IndexOf(" ", seqIndex, StringComparison.InvariantCulture) - (seqIndex + 4);
+        int seqIndex = enrTreeRootText.IndexOf("seq=", StringComparison.Ordinal);
+        int seqLength = enrTreeRootText.IndexOf(' ', seqIndex) - (seqIndex + 4);
         enrTreeRoot.Sequence = int.Parse(enrTreeRootText.AsSpan(seqIndex + 4, seqLength));
 
-        int sigIndex = enrTreeRootText.IndexOf("sig=", StringComparison.InvariantCulture);
+        int sigIndex = enrTreeRootText.IndexOf("sig=", StringComparison.Ordinal);
         enrTreeRoot.Signature = enrTreeRootText.Substring(sigIndex + 4, SigLengthBase32);
 
         return enrTreeRoot;

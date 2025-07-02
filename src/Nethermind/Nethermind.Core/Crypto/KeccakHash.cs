@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
+
 using static System.Numerics.BitOperations;
 
 // ReSharper disable InconsistentNaming
@@ -20,7 +23,6 @@ namespace Nethermind.Core.Crypto
         private const int ROUNDS = 24;
         private const int LANE_BITS = 8 * 8;
         private const int TEMP_BUFF_SIZE = 144;
-
         private static readonly ulong[] RoundConstants =
         {
             0x0000000000000001UL, 0x0000000000008082UL, 0x800000000000808aUL,
@@ -33,8 +35,8 @@ namespace Nethermind.Core.Crypto
             0x8000000000008080UL, 0x0000000080000001UL, 0x8000000080008008UL
         };
 
-        private byte[] _remainderBuffer = Array.Empty<byte>();
-        private ulong[] _state = Array.Empty<ulong>();
+        private byte[] _remainderBuffer = [];
+        private ulong[] _state = [];
         private byte[]? _hash;
         private int _remainderLength;
         private int _roundSize;
@@ -90,6 +92,18 @@ namespace Nethermind.Core.Crypto
         // update the state with given number of rounds
         private static void KeccakF(Span<ulong> st)
         {
+            if (Avx512F.IsSupported)
+            {
+                KeccakF1600Avx512F(st);
+            }
+            else
+            {
+                KeccakF1600(st);
+            }
+        }
+
+        private static void KeccakF1600(Span<ulong> st)
+        {
             Debug.Assert(st.Length == 25);
 
             ulong aba, abe, abi, abo, abu;
@@ -105,36 +119,31 @@ namespace Nethermind.Core.Crypto
             ulong ema, eme, emi, emo, emu;
             ulong esa, ese, esi, eso, esu;
 
-            {
-                // Access last element to perform range check once
-                // and not for every ascending access
-                _ = st[24];
-            }
-            aba = st[0];
-            abe = st[1];
-            abi = st[2];
-            abo = st[3];
-            abu = st[4];
-            aga = st[5];
-            age = st[6];
-            agi = st[7];
-            ago = st[8];
-            agu = st[9];
-            aka = st[10];
-            ake = st[11];
-            aki = st[12];
-            ako = st[13];
-            aku = st[14];
-            ama = st[15];
-            ame = st[16];
-            ami = st[17];
-            amo = st[18];
-            amu = st[19];
-            asa = st[20];
-            ase = st[21];
-            asi = st[22];
-            aso = st[23];
             asu = st[24];
+            aso = st[23];
+            asi = st[22];
+            ase = st[21];
+            asa = st[20];
+            amu = st[19];
+            amo = st[18];
+            ami = st[17];
+            ame = st[16];
+            ama = st[15];
+            aku = st[14];
+            ako = st[13];
+            aki = st[12];
+            ake = st[11];
+            aka = st[10];
+            agu = st[9];
+            ago = st[8];
+            agi = st[7];
+            age = st[6];
+            aga = st[5];
+            abu = st[4];
+            abo = st[3];
+            abi = st[2];
+            abe = st[1];
+            aba = st[0];
 
             for (int round = 0; round < ROUNDS; round += 2)
             {
@@ -152,216 +161,158 @@ namespace Nethermind.Core.Crypto
                 @do = bCi ^ RotateLeft(bCu, 1);
                 du = bCo ^ RotateLeft(bCa, 1);
 
-                aba ^= da;
-                bCa = aba;
-                age ^= de;
-                bCe = RotateLeft(age, 44);
-                aki ^= di;
-                bCi = RotateLeft(aki, 43);
-                amo ^= @do;
-                bCo = RotateLeft(amo, 21);
-                asu ^= du;
-                bCu = RotateLeft(asu, 14);
-                eba = bCa ^ ((~bCe) & bCi);
-                eba ^= RoundConstants[round];
+                bCa = aba ^ da;
+                bCe = RotateLeft(age ^ de, 44);
+                bCi = RotateLeft(aki ^ di, 43);
+                eba = bCa ^ ((~bCe) & bCi) ^ RoundConstants[round];
+                bCo = RotateLeft(amo ^ @do, 21);
                 ebe = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(asu ^ du, 14);
                 ebi = bCi ^ ((~bCo) & bCu);
                 ebo = bCo ^ ((~bCu) & bCa);
                 ebu = bCu ^ ((~bCa) & bCe);
 
-                abo ^= @do;
-                bCa = RotateLeft(abo, 28);
-                agu ^= du;
-                bCe = RotateLeft(agu, 20);
-                aka ^= da;
-                bCi = RotateLeft(aka, 3);
-                ame ^= de;
-                bCo = RotateLeft(ame, 45);
-                asi ^= di;
-                bCu = RotateLeft(asi, 61);
+                bCa = RotateLeft(abo ^ @do, 28);
+                bCe = RotateLeft(agu ^ du, 20);
+                bCi = RotateLeft(aka ^ da, 3);
                 ega = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(ame ^ de, 45);
                 ege = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(asi ^ di, 61);
                 egi = bCi ^ ((~bCo) & bCu);
                 ego = bCo ^ ((~bCu) & bCa);
                 egu = bCu ^ ((~bCa) & bCe);
 
-                abe ^= de;
-                bCa = RotateLeft(abe, 1);
-                agi ^= di;
-                bCe = RotateLeft(agi, 6);
-                ako ^= @do;
-                bCi = RotateLeft(ako, 25);
-                amu ^= du;
-                bCo = RotateLeft(amu, 8);
-                asa ^= da;
-                bCu = RotateLeft(asa, 18);
+                bCa = RotateLeft(abe ^ de, 1);
+                bCe = RotateLeft(agi ^ di, 6);
+                bCi = RotateLeft(ako ^ @do, 25);
                 eka = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(amu ^ du, 8);
                 eke = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(asa ^ da, 18);
                 eki = bCi ^ ((~bCo) & bCu);
                 eko = bCo ^ ((~bCu) & bCa);
                 eku = bCu ^ ((~bCa) & bCe);
 
-                abu ^= du;
-                bCa = RotateLeft(abu, 27);
-                aga ^= da;
-                bCe = RotateLeft(aga, 36);
-                ake ^= de;
-                bCi = RotateLeft(ake, 10);
-                ami ^= di;
-                bCo = RotateLeft(ami, 15);
-                aso ^= @do;
-                bCu = RotateLeft(aso, 56);
+                bCa = RotateLeft(abu ^ du, 27);
+                bCe = RotateLeft(aga ^ da, 36);
+                bCi = RotateLeft(ake ^ de, 10);
                 ema = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(ami ^ di, 15);
                 eme = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(aso ^ @do, 56);
                 emi = bCi ^ ((~bCo) & bCu);
                 emo = bCo ^ ((~bCu) & bCa);
                 emu = bCu ^ ((~bCa) & bCe);
 
-                abi ^= di;
-                bCa = RotateLeft(abi, 62);
-                ago ^= @do;
-                bCe = RotateLeft(ago, 55);
-                aku ^= du;
-                bCi = RotateLeft(aku, 39);
-                ama ^= da;
-                bCo = RotateLeft(ama, 41);
-                ase ^= de;
-                bCu = RotateLeft(ase, 2);
+                bCa = RotateLeft(abi ^ di, 62);
+                bCe = RotateLeft(ago ^ @do, 55);
+                bCi = RotateLeft(aku ^ du, 39);
                 esa = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(ama ^ da, 41);
                 ese = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(ase ^ de, 2);
                 esi = bCi ^ ((~bCo) & bCu);
                 eso = bCo ^ ((~bCu) & bCa);
                 esu = bCu ^ ((~bCa) & bCe);
 
                 //    prepareTheta
-                bCa = eba ^ ega ^ eka ^ ema ^ esa;
-                bCe = ebe ^ ege ^ eke ^ eme ^ ese;
-                bCi = ebi ^ egi ^ eki ^ emi ^ esi;
-                bCo = ebo ^ ego ^ eko ^ emo ^ eso;
-                bCu = ebu ^ egu ^ eku ^ emu ^ esu;
 
+                bCe = ebe ^ ege ^ eke ^ eme ^ ese;
+                bCu = ebu ^ egu ^ eku ^ emu ^ esu;
                 //thetaRhoPiChiIotaPrepareTheta(round+1, E, A)
                 da = bCu ^ RotateLeft(bCe, 1);
+                bCa = eba ^ ega ^ eka ^ ema ^ esa;
+                bCi = ebi ^ egi ^ eki ^ emi ^ esi;
                 de = bCa ^ RotateLeft(bCi, 1);
+                bCo = ebo ^ ego ^ eko ^ emo ^ eso;
                 di = bCe ^ RotateLeft(bCo, 1);
                 @do = bCi ^ RotateLeft(bCu, 1);
                 du = bCo ^ RotateLeft(bCa, 1);
 
-                eba ^= da;
-                bCa = eba;
-                ege ^= de;
-                bCe = RotateLeft(ege, 44);
-                eki ^= di;
-                bCi = RotateLeft(eki, 43);
-                emo ^= @do;
-                bCo = RotateLeft(emo, 21);
-                esu ^= du;
-                bCu = RotateLeft(esu, 14);
-                aba = bCa ^ ((~bCe) & bCi);
-                aba ^= RoundConstants[round + 1];
+
+                bCi = RotateLeft(eki ^ di, 43);
+                bCe = RotateLeft(ege ^ de, 44);
+                bCa = eba ^ da;
+                aba = bCa ^ ((~bCe) & bCi) ^ RoundConstants[round + 1];
+                bCo = RotateLeft(emo ^ @do, 21);
                 abe = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(esu ^ du, 14);
                 abi = bCi ^ ((~bCo) & bCu);
                 abo = bCo ^ ((~bCu) & bCa);
                 abu = bCu ^ ((~bCa) & bCe);
 
-                ebo ^= @do;
-                bCa = RotateLeft(ebo, 28);
-                egu ^= du;
-                bCe = RotateLeft(egu, 20);
-                eka ^= da;
-                bCi = RotateLeft(eka, 3);
-                eme ^= de;
-                bCo = RotateLeft(eme, 45);
-                esi ^= di;
-                bCu = RotateLeft(esi, 61);
+                bCa = RotateLeft(ebo ^ @do, 28);
+                bCe = RotateLeft(egu ^ du, 20);
+                bCi = RotateLeft(eka ^ da, 3);
                 aga = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(eme ^ de, 45);
                 age = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(esi ^ di, 61);
                 agi = bCi ^ ((~bCo) & bCu);
                 ago = bCo ^ ((~bCu) & bCa);
                 agu = bCu ^ ((~bCa) & bCe);
 
-                ebe ^= de;
-                bCa = RotateLeft(ebe, 1);
-                egi ^= di;
-                bCe = RotateLeft(egi, 6);
-                eko ^= @do;
-                bCi = RotateLeft(eko, 25);
-                emu ^= du;
-                bCo = RotateLeft(emu, 8);
-                esa ^= da;
-                bCu = RotateLeft(esa, 18);
+                bCa = RotateLeft(ebe ^ de, 1);
+                bCe = RotateLeft(egi ^ di, 6);
+                bCi = RotateLeft(eko ^ @do, 25);
                 aka = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(emu ^ du, 8);
                 ake = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(esa ^ da, 18);
                 aki = bCi ^ ((~bCo) & bCu);
                 ako = bCo ^ ((~bCu) & bCa);
                 aku = bCu ^ ((~bCa) & bCe);
 
-                ebu ^= du;
-                bCa = RotateLeft(ebu, 27);
-                ega ^= da;
-                bCe = RotateLeft(ega, 36);
-                eke ^= de;
-                bCi = RotateLeft(eke, 10);
-                emi ^= di;
-                bCo = RotateLeft(emi, 15);
-                eso ^= @do;
-                bCu = RotateLeft(eso, 56);
+                bCa = RotateLeft(ebu ^ du, 27);
+                bCe = RotateLeft(ega ^ da, 36);
+                bCi = RotateLeft(eke ^ de, 10);
                 ama = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(emi ^ di, 15);
                 ame = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(eso ^ @do, 56);
                 ami = bCi ^ ((~bCo) & bCu);
                 amo = bCo ^ ((~bCu) & bCa);
                 amu = bCu ^ ((~bCa) & bCe);
 
-                ebi ^= di;
-                bCa = RotateLeft(ebi, 62);
-                ego ^= @do;
-                bCe = RotateLeft(ego, 55);
-                eku ^= du;
-                bCi = RotateLeft(eku, 39);
-                ema ^= da;
-                bCo = RotateLeft(ema, 41);
-                ese ^= de;
-                bCu = RotateLeft(ese, 2);
+                bCa = RotateLeft(ebi ^ di, 62);
+                bCe = RotateLeft(ego ^ @do, 55);
+                bCi = RotateLeft(eku ^ du, 39);
                 asa = bCa ^ ((~bCe) & bCi);
+                bCo = RotateLeft(ema ^ da, 41);
                 ase = bCe ^ ((~bCi) & bCo);
+                bCu = RotateLeft(ese ^ de, 2);
                 asi = bCi ^ ((~bCo) & bCu);
                 aso = bCo ^ ((~bCu) & bCa);
                 asu = bCu ^ ((~bCa) & bCe);
             }
 
             //copyToState(state, A)
-            st[0] = aba;
-            st[1] = abe;
-            st[2] = abi;
-            st[3] = abo;
-            st[4] = abu;
-            st[5] = aga;
-            st[6] = age;
-            st[7] = agi;
-            st[8] = ago;
-            st[9] = agu;
-            st[10] = aka;
-            st[11] = ake;
-            st[12] = aki;
-            st[13] = ako;
-            st[14] = aku;
-            st[15] = ama;
-            st[16] = ame;
-            st[17] = ami;
-            st[18] = amo;
-            st[19] = amu;
-            st[20] = asa;
-            st[21] = ase;
-            st[22] = asi;
-            st[23] = aso;
             st[24] = asu;
-        }
-
-        public static Span<byte> ComputeHash(ReadOnlySpan<byte> input, int size = HASH_SIZE)
-        {
-            Span<byte> output = new byte[size];
-            ComputeHash(input, output);
-            return output;
+            st[23] = aso;
+            st[22] = asi;
+            st[21] = ase;
+            st[20] = asa;
+            st[19] = amu;
+            st[18] = amo;
+            st[17] = ami;
+            st[16] = ame;
+            st[15] = ama;
+            st[14] = aku;
+            st[13] = ako;
+            st[12] = aki;
+            st[11] = ake;
+            st[10] = aka;
+            st[9] = agu;
+            st[8] = ago;
+            st[7] = agi;
+            st[6] = age;
+            st[5] = aga;
+            st[4] = abu;
+            st[3] = abo;
+            st[2] = abi;
+            st[1] = abe;
+            st[0] = aba;
         }
 
         public static byte[] ComputeHashBytes(ReadOnlySpan<byte> input, int size = HASH_SIZE)
@@ -388,7 +339,7 @@ namespace Nethermind.Core.Crypto
             return output;
         }
 
-        public static uint[] ComputeBytesToUint(byte[] input, int size)
+        public static uint[] ComputeBytesToUint(ReadOnlySpan<byte> input, int size)
         {
             uint[] output = new uint[size / sizeof(uint)];
             ComputeHash(input, MemoryMarshal.Cast<uint, byte>(output));
@@ -398,50 +349,161 @@ namespace Nethermind.Core.Crypto
         // compute a Keccak hash (md) of given byte length from "in"
         public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
         {
-            int size = output.Length;
-            int roundSize = GetRoundSize(size);
+            int roundSize = GetRoundSize(output.Length);
             if (output.Length <= 0 || output.Length > STATE_SIZE)
             {
                 ThrowBadKeccak();
             }
 
             Span<ulong> state = stackalloc ulong[STATE_SIZE / sizeof(ulong)];
-            Span<byte> temp = stackalloc byte[TEMP_BUFF_SIZE];
+            Span<byte> stateBytes = MemoryMarshal.AsBytes(state);
 
-            int remainingInputLength = input.Length;
-            for (; remainingInputLength >= roundSize; remainingInputLength -= roundSize, input = input[roundSize..])
+            if (input.Length == Address.Size)
             {
-                ReadOnlySpan<ulong> input64 = MemoryMarshal.Cast<byte, ulong>(input[..roundSize]);
-
-                for (int i = 0; i < input64.Length; i++)
+                // Hashing Address, 20 bytes which is uint+Vector128
+                Unsafe.As<byte, uint>(ref MemoryMarshal.GetReference(stateBytes)) =
+                    Unsafe.As<byte, uint>(ref MemoryMarshal.GetReference(input));
+                Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(stateBytes), sizeof(uint))) =
+                        Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(input), sizeof(uint)));
+            }
+            else if (input.Length == Vector256<byte>.Count)
+            {
+                // Hashing Hash256 or UInt256, 32 bytes
+                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(stateBytes)) =
+                    Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input));
+            }
+            else if (input.Length >= roundSize)
+            {
+                // Process full rounds
+                do
                 {
-                    state[i] ^= input64[i];
+                    XorVectors(stateBytes, input[..roundSize]);
+                    KeccakF(state);
+                    input = input[roundSize..];
+                } while (input.Length >= roundSize);
+
+                if (input.Length > 0)
+                {
+                    // XOR the remaining input bytes into the state
+                    XorVectors(stateBytes, input);
                 }
-
-                KeccakF(state);
             }
-
-            // last block and padding
-            if (input.Length >= TEMP_BUFF_SIZE || input.Length > roundSize || roundSize + 1 >= TEMP_BUFF_SIZE || roundSize == 0 || roundSize - 1 >= TEMP_BUFF_SIZE)
+            else
             {
-                ThrowBadKeccak();
+                input.CopyTo(stateBytes);
             }
 
-            input[..remainingInputLength].CopyTo(temp);
-            temp[remainingInputLength] = 1;
-            temp[roundSize - 1] |= 0x80;
+            // Apply terminator markers within the current block
+            stateBytes[input.Length] ^= 0x01;  // Append bit '1' after remaining input
+            stateBytes[roundSize - 1] ^= 0x80; // Set the last bit of the round to '1'
 
-            Span<ulong> tempU64 = MemoryMarshal.Cast<byte, ulong>(temp[..roundSize]);
-            for (int i = 0; i < tempU64.Length; i++)
-            {
-                state[i] ^= tempU64[i];
-            }
-
+            // Process the final block
             KeccakF(state);
-            MemoryMarshal.AsBytes(state[..(size / sizeof(ulong))]).CopyTo(output);
+
+            if (output.Length == Vector256<byte>.Count)
+            {
+                // Fast Vector sized copy for Hash256
+                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(output)) =
+                    Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(stateBytes));
+            }
+            else if (output.Length == Vector512<byte>.Count)
+            {
+                // Fast Vector sized copy for Hash512
+                Unsafe.As<byte, Vector512<byte>>(ref MemoryMarshal.GetReference(output)) =
+                    Unsafe.As<byte, Vector512<byte>>(ref MemoryMarshal.GetReference(stateBytes));
+            }
+            else
+            {
+                stateBytes[..output.Length].CopyTo(output);
+            }
         }
 
-        public void Update(Span<byte> input)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void XorVectors(Span<byte> state, ReadOnlySpan<byte> input)
+        {
+            ref byte stateRef = ref MemoryMarshal.GetReference(state);
+            if (Vector512<byte>.IsSupported && input.Length >= Vector512<byte>.Count)
+            {
+                // Convert to uint for the mod else the Jit does a more complicated signed mod
+                // whereas as uint it just does an And
+                int vectorLength = input.Length - (int)((uint)input.Length % (uint)Vector512<byte>.Count);
+                ref byte inputRef = ref MemoryMarshal.GetReference(input);
+                for (int i = 0; i < vectorLength; i += Vector512<byte>.Count)
+                {
+                    ref Vector512<byte> state256 = ref Unsafe.As<byte, Vector512<byte>>(ref Unsafe.Add(ref stateRef, i));
+                    Vector512<byte> input256 = Unsafe.As<byte, Vector512<byte>>(ref Unsafe.Add(ref inputRef, i));
+                    state256 = Vector512.Xor(state256, input256);
+                }
+
+                if (input.Length == vectorLength) return;
+
+                input = input[vectorLength..];
+                stateRef = ref Unsafe.Add(ref stateRef, vectorLength);
+            }
+
+            if (Vector256<byte>.IsSupported && input.Length >= Vector256<byte>.Count)
+            {
+                // Convert to uint for the mod else the Jit does a more complicated signed mod
+                // whereas as uint it just does an And
+                int vectorLength = input.Length - (int)((uint)input.Length % (uint)Vector256<byte>.Count);
+                ref byte inputRef = ref MemoryMarshal.GetReference(input);
+                for (int i = 0; i < vectorLength; i += Vector256<byte>.Count)
+                {
+                    ref Vector256<byte> state256 = ref Unsafe.As<byte, Vector256<byte>>(ref Unsafe.Add(ref stateRef, i));
+                    Vector256<byte> input256 = Unsafe.As<byte, Vector256<byte>>(ref Unsafe.Add(ref inputRef, i));
+                    state256 = Vector256.Xor(state256, input256);
+                }
+
+                if (input.Length == vectorLength) return;
+
+                input = input[vectorLength..];
+                stateRef = ref Unsafe.Add(ref stateRef, vectorLength);
+            }
+
+            if (Vector128<byte>.IsSupported && input.Length >= Vector128<byte>.Count)
+            {
+                int vectorLength = input.Length - (int)((uint)input.Length % (uint)Vector128<byte>.Count);
+                ref byte inputRef = ref MemoryMarshal.GetReference(input);
+                for (int i = 0; i < vectorLength; i += Vector128<byte>.Count)
+                {
+                    ref Vector128<byte> state128 = ref Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref stateRef, i));
+                    Vector128<byte> input128 = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref inputRef, i));
+                    state128 = Vector128.Xor(state128, input128);
+                }
+
+                if (input.Length == vectorLength) return;
+
+                input = input[vectorLength..];
+                stateRef = ref Unsafe.Add(ref stateRef, vectorLength);
+            }
+
+            // As 25 longs in state, 1 more to process after the vector sizes
+            if (input.Length >= sizeof(ulong))
+            {
+                int ulongLength = input.Length - (int)((uint)input.Length % sizeof(ulong));
+                ref byte inputRef = ref MemoryMarshal.GetReference(input);
+                for (int i = 0; i < ulongLength; i += sizeof(ulong))
+                {
+                    ref ulong state64 = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref stateRef, i));
+                    ulong input64 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref inputRef, i));
+                    state64 ^= input64;
+                }
+
+                // Should exit here for 25 longs
+                if (input.Length == ulongLength) return;
+
+                input = input[ulongLength..];
+                stateRef = ref Unsafe.Add(ref stateRef, ulongLength);
+            }
+
+            // Handle remaining bytes
+            for (int i = 0; i < input.Length; i++)
+            {
+                Unsafe.Add(ref stateRef, i) ^= input[i];
+            }
+        }
+
+        public void Update(ReadOnlySpan<byte> input)
         {
             if (_hash is not null)
             {
@@ -454,85 +516,58 @@ namespace Nethermind.Core.Crypto
                 return;
             }
 
-            // If our provided state is empty, initialize a new one
             ulong[] state = _state;
             if (state.Length == 0)
             {
+                // If our provided state is empty, initialize a new one
                 _state = state = Pool.RentState();
             }
 
-            // If our remainder is non zero.
+            int offset = 0;
+            Span<byte> stateBytes = MemoryMarshal.AsBytes(state.AsSpan());
+
+            // Handle any existing remainder
             if (_remainderLength != 0)
             {
-                // Copy data to our remainder
-                Span<byte> remainderAdditive = input[..Math.Min(input.Length, _roundSize - _remainderLength)];
-                remainderAdditive.CopyTo(_remainderBuffer.AsSpan(_remainderLength));
+                int bytesToFill = _roundSize - _remainderLength;
+                int bytesToCopy = Math.Min(input.Length, bytesToFill);
 
-                // Increment the length
-                _remainderLength += remainderAdditive.Length;
+                input[..bytesToCopy].CopyTo(_remainderBuffer.AsSpan(_remainderLength));
+                _remainderLength += bytesToCopy;
+                offset += bytesToCopy;
 
-                // Increment the input
-                input = input[remainderAdditive.Length..];
-
-                // If our remainder length equals a full round
                 if (_remainderLength == _roundSize)
                 {
-                    // Cast our input to ulongs.
-                    Span<ulong> remainderBufferU64 = MemoryMarshal.Cast<byte, ulong>(_remainderBuffer.AsSpan(0, _roundSize));
-
-                    // Eliminate bounds check for state for the loop
-                    _ = state[remainderBufferU64.Length];
-                    // Loop for each ulong in this remainder, and xor the state with the input.
-                    for (int i = 0; i < remainderBufferU64.Length; i++)
-                    {
-                        state[i] ^= remainderBufferU64[i];
-                    }
-
-                    // Perform our KeccakF on our state.
+                    // XOR the remainder buffer into the state using XorVectors
+                    XorVectors(stateBytes, _remainderBuffer);
                     KeccakF(state);
 
-                    // Clear remainder fields
+                    // Reset remainder
                     _remainderLength = 0;
                     Pool.ReturnRemainder(ref _remainderBuffer);
                 }
             }
 
-            // Loop for every round in our size.
-            while (input.Length >= _roundSize)
+            // Process full rounds
+            while (input.Length - offset >= _roundSize)
             {
-                // Cast our input to ulongs.
-                Span<ulong> input64 = MemoryMarshal.Cast<byte, ulong>(input[.._roundSize]);
-
-                // Eliminate bounds check for state for the loop
-                _ = state[input64.Length];
-                // Loop for each ulong in this round, and xor the state with the input.
-                for (int i = 0; i < input64.Length; i++)
-                {
-                    state[i] ^= input64[i];
-                }
-
-                // Perform our KeccakF on our state.
+                XorVectors(stateBytes, input.Slice(offset, _roundSize));
                 KeccakF(state);
 
-                // Remove the input data processed this round.
-                input = input[_roundSize..];
+                offset += _roundSize;
             }
 
-            // last block and padding
-            if (input.Length >= TEMP_BUFF_SIZE || input.Length > _roundSize || _roundSize + 1 >= TEMP_BUFF_SIZE || _roundSize == 0 || _roundSize - 1 >= TEMP_BUFF_SIZE)
-            {
-                ThrowBadKeccak();
-            }
-
-            // If we have any remainder here, it means any remainder was processed before, we can copy our data over and set our length
-            if (input.Length > 0)
+            // Handle remaining input (less than a full block)
+            int remainingInputLength = input.Length - offset;
+            if (remainingInputLength > 0)
             {
                 if (_remainderBuffer.Length == 0)
                 {
                     _remainderBuffer = Pool.RentRemainder();
                 }
-                input.CopyTo(_remainderBuffer);
-                _remainderLength = input.Length;
+
+                input[offset..].CopyTo(_remainderBuffer);
+                _remainderLength = remainingInputLength;
             }
         }
 
@@ -547,6 +582,13 @@ namespace Nethermind.Core.Crypto
             return output;
         }
 
+        public ValueHash256 GenerateValueHash()
+        {
+            Unsafe.SkipInit(out ValueHash256 output);
+            UpdateFinalTo(output.BytesAsSpan);
+            return output;
+        }
+
         public void UpdateFinalTo(Span<byte> output)
         {
             if (_hash is not null)
@@ -554,38 +596,38 @@ namespace Nethermind.Core.Crypto
                 ThrowHashingComplete();
             }
 
+            ulong[] state = _state;
+            Span<byte> stateBytes = MemoryMarshal.AsBytes(state.AsSpan());
+
             if (_remainderLength > 0)
             {
-                Span<byte> remainder = _remainderBuffer.AsSpan(0, _roundSize);
-                // Set a 1 byte after the remainder.
-                remainder[_remainderLength++] = 1;
+                // XOR the remainder buffer into the state
+                XorVectors(stateBytes, _remainderBuffer.AsSpan(0, _remainderLength));
+            }
 
-                // Set the highest bit on the last byte.
-                remainder[_roundSize - 1] |= 0x80;
+            // Apply terminator markers within the current block
+            stateBytes[_remainderLength] ^= 0x01; // Append bit '1' after the input
+            stateBytes[_roundSize - 1] ^= 0x80;   // Set the last bit of the block to '1'
 
-                // Cast the remainder buffer to ulongs.
-                Span<ulong> temp64 = MemoryMarshal.Cast<byte, ulong>(remainder);
-                // Loop for each ulong in this round, and xor the state with the input.
-                for (int i = 0; i < temp64.Length; i++)
-                {
-                    _state[i] ^= temp64[i];
-                }
+            KeccakF(state);
 
-                Pool.ReturnRemainder(ref _remainderBuffer);
+            // Copy the hash output
+            if (output.Length == Vector256<byte>.Count)
+            {
+                // Fast Vector sized copy for Hash256
+                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(output)) =
+                    Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(stateBytes));
+            }
+            else if (output.Length == Vector512<byte>.Count)
+            {
+                // Fast Vector sized copy for Hash512
+                Unsafe.As<byte, Vector512<byte>>(ref MemoryMarshal.GetReference(output)) =
+                    Unsafe.As<byte, Vector512<byte>>(ref MemoryMarshal.GetReference(stateBytes));
             }
             else
             {
-                Span<byte> temp = MemoryMarshal.AsBytes<ulong>(_state);
-                // Xor 1 byte as first byte.
-                temp[0] ^= 1;
-                // Xor the highest bit on the last byte.
-                temp[_roundSize - 1] ^= 0x80;
+                stateBytes[..output.Length].CopyTo(output);
             }
-
-            KeccakF(_state);
-
-            // Obtain the state data in the desired (hash) size we want.
-            MemoryMarshal.AsBytes<ulong>(_state)[..HashSize].CopyTo(output);
 
             Pool.ReturnState(ref _state);
         }
@@ -643,36 +685,234 @@ namespace Nethermind.Core.Crypto
 
         private static class Pool
         {
-            private const int MaxPooled = 24;
-            private static ConcurrentQueue<byte[]> s_remainderCache = new();
-            public static byte[] RentRemainder() => s_remainderCache.TryDequeue(out byte[]? remainder) ? remainder : new byte[STATE_SIZE];
+            private const int MaxPooledPerThread = 4;
+            [ThreadStatic]
+            private static Queue<byte[]>? s_remainderCache;
+            public static byte[] RentRemainder() => s_remainderCache?.TryDequeue(out byte[]? remainder) ?? false ? remainder : new byte[STATE_SIZE];
             public static void ReturnRemainder(ref byte[] remainder)
             {
                 if (remainder.Length == 0) return;
 
-                if (s_remainderCache.Count <= MaxPooled)
+                var cache = (s_remainderCache ??= new());
+                if (cache.Count <= MaxPooledPerThread)
                 {
                     remainder.AsSpan().Clear();
-                    s_remainderCache.Enqueue(remainder);
+                    cache.Enqueue(remainder);
                 }
 
-                remainder = Array.Empty<byte>();
+                remainder = [];
             }
 
-            private static ConcurrentQueue<ulong[]> s_stateCache = new();
-            public static ulong[] RentState() => s_stateCache.TryDequeue(out ulong[]? state) ? state : new ulong[STATE_SIZE / sizeof(ulong)];
+            [ThreadStatic]
+            private static Queue<ulong[]>? s_stateCache;
+            public static ulong[] RentState() => s_stateCache?.TryDequeue(out ulong[]? state) ?? false ? state : new ulong[STATE_SIZE / sizeof(ulong)];
             public static void ReturnState(ref ulong[] state)
             {
                 if (state.Length == 0) return;
 
-                if (s_stateCache.Count <= MaxPooled)
+                var cache = (s_stateCache ??= new());
+                if (cache.Count <= MaxPooledPerThread)
                 {
                     state.AsSpan().Clear();
-                    s_stateCache.Enqueue(state);
+                    cache.Enqueue(state);
                 }
 
-                state = Array.Empty<ulong>();
+                state = [];
             }
+        }
+
+        [SkipLocalsInit]
+        public static void KeccakF1600Avx512F(Span<ulong> state)
+        {
+            {
+                // Redundant statement that removes all the in loop bounds checks
+                _ = state[24];
+            }
+
+            // Can straight load and over-read for start elements
+            Vector512<ulong> mask = Vector512.Create(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, 0UL, 0UL, 0UL);
+            Vector512<ulong> c0 = Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state));
+            // Clear the over-read values from first vectors
+            c0 = Vector512.BitwiseAnd(mask, c0);
+            Vector512<ulong> c1 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5));
+            c1 = Vector512.BitwiseAnd(mask, c1);
+            Vector512<ulong> c2 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10));
+            c2 = Vector512.BitwiseAnd(mask, c2);
+            Vector512<ulong> c3 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15));
+            c3 = Vector512.BitwiseAnd(mask, c3);
+
+            // Can't over-read for the last elements (8 items in vector 5 to be remaining)
+            // so read a Vector256 and ulong then combine
+            Vector256<ulong> c4a = Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 20));
+            Vector256<ulong> c4b = Vector256.Create(state[24], 0UL, 0UL, 0UL);
+            Vector512<ulong> c4 = Vector512.Create(c4a, c4b);
+
+            Vector512<ulong> permute1 = Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL);
+            Vector512<ulong> permute2 = Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL);
+            ulong[] roundConstants = RoundConstants;
+            // Use constant for loop so Jit expects to loop; unroll once
+            for (int round = 0; round < ROUNDS; round += 2)
+            {
+                // Iteration 1
+                {
+                    ulong roundConstant = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(roundConstants), round);
+                    // Theta step
+                    Vector512<ulong> parity = Avx512F.TernaryLogic(Avx512F.TernaryLogic(c0, c1, c2, 0x96), c3, c4, 0x96);
+
+                    // Compute Theta
+                    Vector512<ulong> bVecRot1Rotated = Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL)), 1);
+                    Vector512<ulong> bVecRot4 = Avx512F.PermuteVar8x64(parity, Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL));
+                    Vector512<ulong> theta = Avx512F.Xor(bVecRot4, bVecRot1Rotated);
+
+                    c0 = Avx512F.Xor(c0, theta);
+                    c1 = Avx512F.Xor(c1, theta);
+                    c2 = Avx512F.Xor(c2, theta);
+                    c3 = Avx512F.Xor(c3, theta);
+                    c4 = Avx512F.Xor(c4, theta);
+
+                    // Rho step
+                    Vector512<ulong> rhoVec0 = Vector512.Create(0UL, 1UL, 62UL, 28UL, 27UL, 0UL, 0UL, 0UL);
+                    c0 = Avx512F.RotateLeftVariable(c0, rhoVec0);
+
+                    Vector512<ulong> rhoVec1 = Vector512.Create(36UL, 44UL, 6UL, 55UL, 20UL, 0UL, 0UL, 0UL);
+                    c1 = Avx512F.RotateLeftVariable(c1, rhoVec1);
+
+                    Vector512<ulong> rhoVec2 = Vector512.Create(3UL, 10UL, 43UL, 25UL, 39UL, 0UL, 0UL, 0UL);
+                    c2 = Avx512F.RotateLeftVariable(c2, rhoVec2);
+
+                    Vector512<ulong> rhoVec3 = Vector512.Create(41UL, 45UL, 15UL, 21UL, 8UL, 0UL, 0UL, 0UL);
+                    c3 = Avx512F.RotateLeftVariable(c3, rhoVec3);
+
+                    Vector512<ulong> rhoVec4 = Vector512.Create(18UL, 2UL, 61UL, 56UL, 14UL, 0UL, 0UL, 0UL);
+                    c4 = Avx512F.RotateLeftVariable(c4, rhoVec4);
+
+                    // Pi step
+                    Vector512<ulong> c0Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(0UL, 8 + 1, 2, 3, 4, 5, 6, 7), c1);
+                    c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, Vector512.Create(0UL, 1, 8 + 2, 3, 4, 5, 6, 7), c2);
+                    c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, Vector512.Create(0UL, 1, 2, 8 + 3, 4, 5, 6, 7), c3);
+                    c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 4, 5, 6, 7), c4);
+
+                    Vector512<ulong> c1Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(3UL, 8 + 4, 2, 3, 4, 5, 6, 7), c1);
+                    c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, Vector512.Create(0UL, 1, 8 + 0, 3, 4, 5, 6, 7), c2);
+                    c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, Vector512.Create(0UL, 1, 2, 8 + 1, 4, 5, 6, 7), c3);
+                    c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 2, 5, 6, 7), c4);
+
+                    Vector512<ulong> c2Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(1UL, 8 + 2, 2, 3, 4, 5, 6, 7), c1);
+                    c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, Vector512.Create(0UL, 1, 8 + 3, 3, 4, 5, 6, 7), c2);
+                    c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, Vector512.Create(0UL, 1, 2, 8 + 4, 4, 5, 6, 7), c3);
+                    c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 0, 5, 6, 7), c4);
+
+                    Vector512<ulong> c3Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(4UL, 8 + 0, 2, 3, 4, 5, 6, 7), c1);
+                    c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(0UL, 1, 8 + 1, 3, 4, 5, 6, 7), c2);
+                    c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(0UL, 1, 2, 8 + 2, 4, 5, 6, 7), c3);
+                    c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 3, 5, 6, 7), c4);
+
+                    Vector512<ulong> c4Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(2UL, 8 + 3, 2, 3, 4, 5, 6, 7), c1);
+                    c0 = c0Pi;
+                    c1 = c1Pi;
+                    c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 1, 8 + 4, 3, 4, 5, 6, 7), c2);
+                    c2 = c2Pi;
+                    c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 1, 2, 8 + 0, 4, 5, 6, 7), c3);
+                    c3 = c3Pi;
+                    c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 1, 5, 6, 7), c4);
+                    c4 = c4Pi;
+
+                    // Chi step
+
+                    c0 = Avx512F.TernaryLogic(c0, Avx512F.PermuteVar8x64(c0, permute1), Avx512F.PermuteVar8x64(c0, permute2), 0xD2);
+                    c1 = Avx512F.TernaryLogic(c1, Avx512F.PermuteVar8x64(c1, permute1), Avx512F.PermuteVar8x64(c1, permute2), 0xD2);
+                    c2 = Avx512F.TernaryLogic(c2, Avx512F.PermuteVar8x64(c2, permute1), Avx512F.PermuteVar8x64(c2, permute2), 0xD2);
+                    c3 = Avx512F.TernaryLogic(c3, Avx512F.PermuteVar8x64(c3, permute1), Avx512F.PermuteVar8x64(c3, permute2), 0xD2);
+                    c4 = Avx512F.TernaryLogic(c4, Avx512F.PermuteVar8x64(c4, permute1), Avx512F.PermuteVar8x64(c4, permute2), 0xD2);
+
+                    // Iota step
+                    c0 = Vector512.Xor(c0, Vector512.Create(roundConstant, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL));
+                }
+                // Iteration 2
+                {
+                    ulong roundConstant = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(roundConstants), round + 1);
+                    // Theta step
+                    Vector512<ulong> parity = Avx512F.TernaryLogic(Avx512F.TernaryLogic(c0, c1, c2, 0x96), c3, c4, 0x96);
+
+                    // Compute Theta
+                    Vector512<ulong> bVecRot1Rotated = Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL)), 1);
+                    Vector512<ulong> bVecRot4 = Avx512F.PermuteVar8x64(parity, Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL));
+                    Vector512<ulong> theta = Avx512F.Xor(bVecRot4, bVecRot1Rotated);
+
+                    c0 = Avx512F.Xor(c0, theta);
+                    c1 = Avx512F.Xor(c1, theta);
+                    c2 = Avx512F.Xor(c2, theta);
+                    c3 = Avx512F.Xor(c3, theta);
+                    c4 = Avx512F.Xor(c4, theta);
+
+                    // Rho step
+                    Vector512<ulong> rhoVec0 = Vector512.Create(0UL, 1UL, 62UL, 28UL, 27UL, 0UL, 0UL, 0UL);
+                    c0 = Avx512F.RotateLeftVariable(c0, rhoVec0);
+
+                    Vector512<ulong> rhoVec1 = Vector512.Create(36UL, 44UL, 6UL, 55UL, 20UL, 0UL, 0UL, 0UL);
+                    c1 = Avx512F.RotateLeftVariable(c1, rhoVec1);
+
+                    Vector512<ulong> rhoVec2 = Vector512.Create(3UL, 10UL, 43UL, 25UL, 39UL, 0UL, 0UL, 0UL);
+                    c2 = Avx512F.RotateLeftVariable(c2, rhoVec2);
+
+                    Vector512<ulong> rhoVec3 = Vector512.Create(41UL, 45UL, 15UL, 21UL, 8UL, 0UL, 0UL, 0UL);
+                    c3 = Avx512F.RotateLeftVariable(c3, rhoVec3);
+
+                    Vector512<ulong> rhoVec4 = Vector512.Create(18UL, 2UL, 61UL, 56UL, 14UL, 0UL, 0UL, 0UL);
+                    c4 = Avx512F.RotateLeftVariable(c4, rhoVec4);
+
+                    // Pi step
+                    Vector512<ulong> c0Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(0UL, 8 + 1, 2, 3, 4, 5, 6, 7), c1);
+                    c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, Vector512.Create(0UL, 1, 8 + 2, 3, 4, 5, 6, 7), c2);
+                    c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, Vector512.Create(0UL, 1, 2, 8 + 3, 4, 5, 6, 7), c3);
+                    c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 4, 5, 6, 7), c4);
+
+                    Vector512<ulong> c1Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(3UL, 8 + 4, 2, 3, 4, 5, 6, 7), c1);
+                    c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, Vector512.Create(0UL, 1, 8 + 0, 3, 4, 5, 6, 7), c2);
+                    c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, Vector512.Create(0UL, 1, 2, 8 + 1, 4, 5, 6, 7), c3);
+                    c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 2, 5, 6, 7), c4);
+
+                    Vector512<ulong> c2Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(1UL, 8 + 2, 2, 3, 4, 5, 6, 7), c1);
+                    c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, Vector512.Create(0UL, 1, 8 + 3, 3, 4, 5, 6, 7), c2);
+                    c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, Vector512.Create(0UL, 1, 2, 8 + 4, 4, 5, 6, 7), c3);
+                    c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 0, 5, 6, 7), c4);
+
+                    Vector512<ulong> c3Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(4UL, 8 + 0, 2, 3, 4, 5, 6, 7), c1);
+                    c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(0UL, 1, 8 + 1, 3, 4, 5, 6, 7), c2);
+                    c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(0UL, 1, 2, 8 + 2, 4, 5, 6, 7), c3);
+                    c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 3, 5, 6, 7), c4);
+
+                    Vector512<ulong> c4Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(2UL, 8 + 3, 2, 3, 4, 5, 6, 7), c1);
+                    c0 = c0Pi;
+                    c1 = c1Pi;
+                    c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 1, 8 + 4, 3, 4, 5, 6, 7), c2);
+                    c2 = c2Pi;
+                    c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 1, 2, 8 + 0, 4, 5, 6, 7), c3);
+                    c3 = c3Pi;
+                    c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 1, 5, 6, 7), c4);
+                    c4 = c4Pi;
+
+                    // Chi step
+
+                    c0 = Avx512F.TernaryLogic(c0, Avx512F.PermuteVar8x64(c0, permute1), Avx512F.PermuteVar8x64(c0, permute2), 0xD2);
+                    c1 = Avx512F.TernaryLogic(c1, Avx512F.PermuteVar8x64(c1, permute1), Avx512F.PermuteVar8x64(c1, permute2), 0xD2);
+                    c2 = Avx512F.TernaryLogic(c2, Avx512F.PermuteVar8x64(c2, permute1), Avx512F.PermuteVar8x64(c2, permute2), 0xD2);
+                    c3 = Avx512F.TernaryLogic(c3, Avx512F.PermuteVar8x64(c3, permute1), Avx512F.PermuteVar8x64(c3, permute2), 0xD2);
+                    c4 = Avx512F.TernaryLogic(c4, Avx512F.PermuteVar8x64(c4, permute1), Avx512F.PermuteVar8x64(c4, permute2), 0xD2);
+
+                    // Iota step
+                    c0 = Vector512.Xor(c0, Vector512.Create(roundConstant, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL));
+                }
+            }
+
+            // Can over-write for first elements
+            Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state)) = c0;
+            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5)) = c1;
+            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10)) = c2;
+            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)) = c3;
+            // Can't over-write for last elements so write the upper Vector256 and then ulong
+            Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 20)) = c4.GetLower();
+            state[24] = c4.GetElement(4);
         }
     }
 }

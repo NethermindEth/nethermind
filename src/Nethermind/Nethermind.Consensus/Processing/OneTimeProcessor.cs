@@ -2,26 +2,26 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing
 {
-    public class OneTimeChainProcessor : IBlockchainProcessor
+    public sealed class OneTimeChainProcessor : IBlockchainProcessor
     {
         public ITracerBag Tracers => _processor.Tracers;
 
         private readonly IBlockchainProcessor _processor;
-        private readonly IReadOnlyDbProvider _readOnlyDbProvider;
+        private readonly IWorldState _worldState;
 
-        private object _lock = new();
+        private readonly Lock _lock = new();
 
-        public OneTimeChainProcessor(IReadOnlyDbProvider readOnlyDbProvider, IBlockchainProcessor processor)
+        public OneTimeChainProcessor(IWorldState worldState, IBlockchainProcessor processor)
         {
-            _readOnlyDbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
+            _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
         }
 
@@ -35,21 +35,11 @@ namespace Nethermind.Consensus.Processing
             return _processor.StopAsync(processRemainingBlocks);
         }
 
-        public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer)
+        public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token)
         {
             lock (_lock)
             {
-                Block result;
-                try
-                {
-                    result = _processor.Process(block, options, tracer);
-                }
-                finally
-                {
-                    _readOnlyDbProvider.ClearTempChanges();
-                }
-
-                return result;
+                return _processor.Process(block, options, tracer, token);
             }
         }
 
@@ -64,10 +54,6 @@ namespace Nethermind.Consensus.Processing
         public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
 #pragma warning restore 67
 
-        public void Dispose()
-        {
-            _processor?.Dispose();
-            _readOnlyDbProvider?.Dispose();
-        }
+        public ValueTask DisposeAsync() => _processor?.DisposeAsync() ?? default;
     }
 }

@@ -1,8 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using FluentAssertions;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using NUnit.Framework;
@@ -14,7 +18,7 @@ public class SnapSyncBatchTests
     [Test]
     public void TestAccountRangeToString()
     {
-        SnapSyncBatch batch = new()
+        using SnapSyncBatch batch = new()
         {
             AccountRangeRequest = new AccountRange(Keccak.Zero, Keccak.MaxValue, Keccak.Compute("abc"), 999)
         };
@@ -25,13 +29,13 @@ public class SnapSyncBatchTests
     [Test]
     public void TestStorageRangeToString()
     {
-        SnapSyncBatch batch = new()
+        using SnapSyncBatch batch = new()
         {
             StorageRangeRequest = new StorageRange()
             {
                 BlockNumber = 123,
                 RootHash = Keccak.Zero,
-                Accounts = new PathWithAccount[9],
+                Accounts = new PathWithAccount[9].ToPooledList(),
                 StartingHash = Keccak.MaxValue,
                 LimitHash = Keccak.Compute("abc"),
             }
@@ -43,9 +47,9 @@ public class SnapSyncBatchTests
     [Test]
     public void TestCodeRequestsToString()
     {
-        SnapSyncBatch batch = new()
+        using SnapSyncBatch batch = new()
         {
-            CodesRequest = new Keccak[9],
+            CodesRequest = new ArrayPoolList<ValueHash256>(9, Enumerable.Repeat(TestItem.KeccakA.ValueHash256, 9)),
         };
 
         batch.ToString().Should().Be("CodesRequest: (9)");
@@ -54,12 +58,12 @@ public class SnapSyncBatchTests
     [Test]
     public void TestAccountToRefreshToString()
     {
-        SnapSyncBatch batch = new()
+        using SnapSyncBatch batch = new()
         {
             AccountsToRefreshRequest = new AccountsToRefreshRequest()
             {
                 RootHash = Keccak.Zero,
-                Paths = new AccountWithStorageStartingHash[9],
+                Paths = new ArrayPoolList<AccountWithStorageStartingHash>(9, Enumerable.Repeat(new AccountWithStorageStartingHash(), 9))
             }
         };
 

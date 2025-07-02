@@ -25,7 +25,7 @@ namespace Nethermind.TxPool
             _ecdsa = ecdsa ?? throw new ArgumentException(nameof(ecdsa));
         }
 
-        public ValueTask<(Keccak, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public ValueTask<(Hash256, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             bool manageNonce = (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             tx.SenderAddress ??= _ecdsa.RecoverAddress(tx);
@@ -36,7 +36,7 @@ namespace Nethermind.TxPool
                 ? SubmitTxWithManagedNonce(tx, txHandlingOptions)
                 : SubmitTxWithNonce(tx, txHandlingOptions);
 
-            return new ValueTask<(Keccak, AcceptTxResult?)>((tx.Hash!, result)); // The sealer calculates the hash
+            return new ValueTask<(Hash256, AcceptTxResult?)>((tx.Hash!, result)); // The sealer calculates the hash
         }
 
         private AcceptTxResult SubmitTxWithNonce(Transaction tx, TxHandlingOptions txHandlingOptions)

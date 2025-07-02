@@ -12,7 +12,7 @@ namespace Nethermind.Consensus
     {
         Task<Block> SealBlock(Block block, CancellationToken cancellationToken);
 
-        bool CanSeal(long blockNumber, Keccak parentHash);
+        bool CanSeal(long blockNumber, Hash256 parentHash);
 
         Address Address { get; }
     }

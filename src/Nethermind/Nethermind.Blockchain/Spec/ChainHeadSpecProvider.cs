@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -9,19 +10,13 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Spec
 {
-    public class ChainHeadSpecProvider : IChainHeadSpecProvider
+    public class ChainHeadSpecProvider(ISpecProvider specProvider, IBlockFinder blockFinder) : IChainHeadSpecProvider
     {
-        private readonly ISpecProvider _specProvider;
-        private readonly IBlockFinder _blockFinder;
+        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         private long _lastHeader = -1;
-        private IReleaseSpec? _headerSpec = null;
-        private readonly object _lock = new();
-
-        public ChainHeadSpecProvider(ISpecProvider specProvider, IBlockFinder blockFinder)
-        {
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-        }
+        private IReleaseSpec? _headerSpec;
+        private readonly Lock _lock = new();
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
@@ -36,9 +31,11 @@ namespace Nethermind.Blockchain.Spec
 
         public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
+        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
+
+        public ulong? BeaconChainGenesisTimestamp => _specProvider.BeaconChainGenesisTimestamp;
 
         public ulong NetworkId => _specProvider.NetworkId;
 
@@ -67,9 +64,9 @@ namespace Nethermind.Blockchain.Spec
             lock (_lock)
             {
                 _lastHeader = headerNumber;
-                if (header is not null)
-                    return _headerSpec = _specProvider.GetSpec(header);
-                return _headerSpec = GetSpec((ForkActivation)headerNumber);
+                return _headerSpec = header is not null
+                    ? _specProvider.GetSpec(header)
+                    : _specProvider.GetSpec((ForkActivation)headerNumber);
             }
         }
     }

@@ -27,8 +27,8 @@ namespace Nethermind.Blockchain.FullPruning
 
         private void OnTick(object? sender, EventArgs e)
         {
-            string driveName = _fileSystem.Path.GetPathRoot(_fileSystem.Path.GetFullPath(_path));
-            IDriveInfo drive = _fileSystem.DriveInfo.New(driveName);
+            string fullPath = _fileSystem.Path.GetFullPath(_path);
+            IDriveInfo drive = _fileSystem.DriveInfo.New(fullPath);
             if (drive.AvailableFreeSpace < _threshold)
             {
                 Prune?.Invoke(this, new PruningTriggerEventArgs());

@@ -2,24 +2,38 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 using Nethermind.Core;
-using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
+
     public class TxTypeConverter : JsonConverter<TxType>
     {
-        public override void WriteJson(JsonWriter writer, TxType txTypeValue, JsonSerializer serializer)
+        public override TxType Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
         {
-            byte byteValue = (byte)txTypeValue;
-            writer.WriteValue(string.Concat("0x", byteValue.ToString("X")));
+            return (TxType)Convert.ToByte(reader.GetString(), 16);
         }
 
-        public override TxType ReadJson(JsonReader reader, Type objectType, TxType existingValue, bool hasExistingValue,
-            JsonSerializer serializer)
+        public override void Write(
+            Utf8JsonWriter writer,
+            TxType txTypeValue,
+            JsonSerializerOptions options)
         {
-            string s = (string)reader.Value;
-            return (TxType)Convert.ToByte(s, 16);
+            if (txTypeValue == TxType.Legacy)
+            {
+                writer.WriteRawValue("\"0x0\""u8, skipInputValidation: true);
+                return;
+            }
+
+            byte byteValue = (byte)txTypeValue;
+            ByteArrayConverter.Convert(writer, MemoryMarshal.CreateReadOnlySpan(ref byteValue, 1), skipLeadingZeros: true);
         }
     }
 }

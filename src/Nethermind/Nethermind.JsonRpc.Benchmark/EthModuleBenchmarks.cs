@@ -1,10 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.Tasks;
+using Autofac;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -31,123 +37,86 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using NSubstitute;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
+using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Facade.Find;
+using Nethermind.Facade.Simulate;
+using Nethermind.Network;
+using Nethermind.Network.Config;
+using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.Rlpx;
+using Nethermind.Stats;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
+using NSubstitute;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
     public class EthModuleBenchmarks
     {
-        private IVirtualMachine _virtualMachine;
-        private IBlockhashProvider _blockhashProvider;
         private EthRpcModule _ethModule;
+        private IContainer _container;
 
         [GlobalSetup]
         public void GlobalSetup()
         {
-            var dbProvider = TestMemDbProvider.Init();
-            IDb codeDb = dbProvider.CodeDb;
-            IDb stateDb = dbProvider.StateDb;
-            IDb blockInfoDb = new MemDb(10, 5);
+            _container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+                .Build();
 
-            ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            IReleaseSpec spec = MainnetSpecProvider.Instance.GenesisSpec;
-            var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
-
-            StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
+            IWorldState stateProvider = _container.Resolve<IWorldStateManager>().GlobalWorldState;
             stateProvider.CreateAccount(Address.Zero, 1000.Ether());
+            IReleaseSpec spec = MainnetSpecProvider.Instance.GenesisSpec;
             stateProvider.Commit(spec);
             stateProvider.CommitTree(0);
 
-            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
-            StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
-
-            ChainLevelInfoRepository chainLevelInfoRepository = new(blockInfoDb);
-            BlockTree blockTree = new(dbProvider, chainLevelInfoRepository, specProvider, NullBloomStorage.Instance, LimboLogs.Instance);
-            _blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
-            _virtualMachine = new VirtualMachine(_blockhashProvider, specProvider, LimboLogs.Instance);
-
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
+            IBlockTree blockTree = _container.Resolve<IBlockTree>();
             blockTree.SuggestBlock(genesisBlock);
 
             Block block1 = Build.A.Block.WithParent(genesisBlock).WithNumber(1).TestObject;
             blockTree.SuggestBlock(block1);
 
-            TransactionProcessor transactionProcessor
-                 = new(MainnetSpecProvider.Instance, stateProvider, storageProvider, _virtualMachine, LimboLogs.Instance);
-
-            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider);
-            BlockProcessor blockProcessor = new(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionsExecutor,
-                stateProvider, storageProvider, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance);
-
-            EthereumEcdsa ecdsa = new(specProvider.ChainId, LimboLogs.Instance);
-            BlockchainProcessor blockchainProcessor = new(
-                blockTree,
-                blockProcessor,
-                new RecoverSignatures(
-                    ecdsa,
-                    NullTxPool.Instance,
-                    specProvider,
-                    LimboLogs.Instance),
-                stateReader,
-                LimboLogs.Instance,
-                BlockchainProcessor.Options.NoReceipts);
-
+            IBlockchainProcessor blockchainProcessor = _container.Resolve<IMainProcessingContext>().BlockchainProcessor;
             blockchainProcessor.Process(genesisBlock, ProcessingOptions.None, NullBlockTracer.Instance);
             blockchainProcessor.Process(block1, ProcessingOptions.None, NullBlockTracer.Instance);
 
-            IBloomStorage bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
+            IBlockchainBridge bridge = _container.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
 
-            LogFinder logFinder = new(
-                blockTree,
-                new InMemoryReceiptStorage(),
-                new InMemoryReceiptStorage(),
-                bloomStorage,
-                LimboLogs.Instance,
-                new ReceiptsRecovery(ecdsa, specProvider));
-
-            BlockchainBridge bridge = new(
-                new ReadOnlyTxProcessingEnv(
-                    new ReadOnlyDbProvider(dbProvider, false),
-                    trieStore.AsReadOnly(),
-                    new ReadOnlyBlockTree(blockTree),
-                    specProvider,
-                    LimboLogs.Instance),
-                NullTxPool.Instance,
-                NullReceiptStorage.Instance,
-                NullFilterStore.Instance,
-                NullFilterManager.Instance,
-                ecdsa,
-                Timestamper.Default,
-                logFinder,
-                specProvider,
-                new BlocksConfig(),
-                false);
-
-            GasPriceOracle gasPriceOracle = new(blockTree, specProvider, LimboLogs.Instance);
+            ISpecProvider specProvider = _container.Resolve<ISpecProvider>();
             FeeHistoryOracle feeHistoryOracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
 
-            IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
-            ISyncConfig syncConfig = new SyncConfig();
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, LimboLogs.Instance);
-
             _ethModule = new EthRpcModule(
-                new JsonRpcConfig(),
+                _container.Resolve<IJsonRpcConfig>(),
                 bridge,
                 blockTree,
-                stateReader,
+                _container.Resolve<IReceiptFinder>(),
+                _container.Resolve<IStateReader>(),
                 NullTxPool.Instance,
                 NullTxSender.Instance,
                 NullWallet.Instance,
-                Substitute.For<IReceiptFinder>(),
                 LimboLogs.Instance,
                 specProvider,
-                gasPriceOracle,
-                ethSyncingInfo,
-                feeHistoryOracle);
+                _container.Resolve<IGasPriceOracle>(),
+                _container.Resolve<IEthSyncingInfo>(),
+                feeHistoryOracle,
+                _container.Resolve<IProtocolsManager>(),
+                new BlocksConfig().SecondsPerSlot);
+        }
+
+        [GlobalCleanup]
+        public void TearDown()
+        {
+            _container.Dispose();
         }
 
         [Benchmark]

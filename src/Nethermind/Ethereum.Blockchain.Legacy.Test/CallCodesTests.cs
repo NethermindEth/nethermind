@@ -5,21 +5,19 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Legacy.Test
+namespace Ethereum.Blockchain.Legacy.Test;
+
+[Parallelizable(ParallelScope.All)]
+public class CallCodesTests : GeneralStateTestBase
 {
-    [TestFixture]
-    [Parallelizable(ParallelScope.All)]
-    public class CallCodesTests : GeneralStateTestBase
+    [TestCaseSource(nameof(LoadTests))]
+    public void Test(GeneralStateTest test)
     {
-        [TestCaseSource(nameof(LoadTests))]
-        public void Test(GeneralStateTest test)
-        {
-            Assert.True(RunTest(test).Pass);
-        }
-        public static IEnumerable<GeneralStateTest> LoadTests()
-        {
-            var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stCallCodes");
-            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
-        }
+        Assert.That(RunTest(test).Pass, Is.True);
+    }
+    public static IEnumerable<GeneralStateTest> LoadTests()
+    {
+        var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stCallCodes");
+        return loader.LoadTests<GeneralStateTest>();
     }
 }

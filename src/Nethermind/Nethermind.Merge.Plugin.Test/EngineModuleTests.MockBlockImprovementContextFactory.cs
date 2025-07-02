@@ -6,10 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
-using Nethermind.Merge.Plugin.BlockProduction;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -17,7 +14,8 @@ public partial class EngineModuleTests
 {
     private class MockBlockImprovementContextFactory : IBlockImprovementContextFactory
     {
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime) =>
+        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime,
+        UInt256 currentBlockFees, CancellationTokenSource cts) =>
             new MockBlockImprovementContext(currentBestBlock, startDateTime);
     }
 
@@ -31,6 +29,9 @@ public partial class EngineModuleTests
         }
 
         public void Dispose() => Disposed = true;
+
+        public void CancelOngoingImprovements() { }
+
         public Task<Block?> ImprovementTask { get; }
         public Block? CurrentBestBlock { get; }
         public UInt256 BlockFees { get; }

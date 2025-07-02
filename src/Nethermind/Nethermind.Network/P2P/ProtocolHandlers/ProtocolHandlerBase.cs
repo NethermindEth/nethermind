@@ -22,14 +22,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public bool IsPriority { get; set; }
         protected INodeStatsManager StatsManager { get; }
         private readonly IMessageSerializationService _serializer;
-        protected ISession Session { get; }
+        protected internal ISession Session { get; }
         protected long Counter;
 
         private readonly TaskCompletionSource<MessageBase> _initCompletionSource;
 
         protected ProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
         {
-            Logger = logManager?.GetClassLogger(GetType()) ?? throw new ArgumentNullException(nameof(logManager));
+            Logger = logManager?.GetClassLogger<ProtocolHandlerBase>() ?? throw new ArgumentNullException(nameof(logManager));
             StatsManager = nodeStats ?? throw new ArgumentNullException(nameof(nodeStats));
             Session = session ?? throw new ArgumentNullException(nameof(session));
 
@@ -37,7 +37,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _initCompletionSource = new TaskCompletionSource<MessageBase>();
         }
 
-        protected ILogger Logger { get; }
+        protected internal ILogger Logger { get; }
 
         protected abstract TimeSpan InitTimeout { get; }
 
@@ -50,13 +50,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             catch (RlpException e)
             {
                 if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
-                ReportIn($"{typeof(T).Name} - Deserialization exception");
+                ReportIn($"{typeof(T).Name} - Deserialization exception", data.Length);
                 throw;
             }
         }
 
         protected T Deserialize<T>(IByteBuffer data) where T : P2PMessage
         {
+            int size = data.ReadableBytes;
             try
             {
                 int originalReaderIndex = data.ReaderIndex;
@@ -71,37 +72,53 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             catch (RlpException e)
             {
                 if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
-                ReportIn($"{typeof(T).Name} - Deserialization exception");
+                ReportIn($"{typeof(T).Name} - Deserialization exception", size);
                 throw;
             }
         }
 
-        protected void Send<T>(T message) where T : P2PMessage
+        protected internal void Send<T>(T message) where T : P2PMessage
         {
             Interlocked.Increment(ref Counter);
             if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, message.ToString());
-            Session.DeliverMessage(message);
+            if (NetworkDiagTracer.IsEnabled)
+            {
+                string messageString = message.ToString();
+                int size = Session.DeliverMessage(message);
+                NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, messageString, size);
+            }
+            else
+                Session.DeliverMessage(message);
         }
 
         protected async Task CheckProtocolInitTimeout()
         {
-            Task<MessageBase> receivedInitMsgTask = _initCompletionSource.Task;
-            CancellationTokenSource delayCancellation = new();
-            Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, delayCancellation.Token));
-
-            if (firstTask != receivedInitMsgTask)
+            try
             {
-                if (Logger.IsTrace)
+                Task<MessageBase> receivedInitMsgTask = _initCompletionSource.Task;
+                CancellationTokenSource delayCancellation = new();
+                Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, delayCancellation.Token));
+
+                if (firstTask != receivedInitMsgTask)
                 {
-                    Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId}");
-                }
+                    if (Logger.IsTrace)
+                    {
+                        Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId}");
+                    }
 
-                Session.InitiateDisconnect(InitiateDisconnectReason.ProtocolInitTimeout, "protocol init timeout");
+                    Session.InitiateDisconnect(DisconnectReason.ProtocolInitTimeout, "protocol init timeout");
+                }
+                else
+                {
+                    delayCancellation.Cancel();
+                }
             }
-            else
+            catch (Exception e)
             {
-                delayCancellation.Cancel();
+                if (Logger.IsError)
+                {
+                    Logger.Error("Error during p2pProtocol handler timeout logic", e);
+                }
             }
         }
 
@@ -110,21 +127,21 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _initCompletionSource?.SetResult(msg);
         }
 
-        protected void ReportIn(MessageBase msg)
+        protected void ReportIn(MessageBase msg, int size)
         {
             if (Logger.IsTrace || NetworkDiagTracer.IsEnabled)
             {
-                ReportIn(msg.ToString());
+                ReportIn(msg.ToString(), size);
             }
         }
 
-        protected void ReportIn(string messageInfo)
+        protected void ReportIn(string messageInfo, int size)
         {
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {messageInfo}");
 
             if (NetworkDiagTracer.IsEnabled)
-                NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo);
+                NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo, size);
         }
 
         public abstract void Dispose();

@@ -6,37 +6,38 @@ using Nethermind.Specs;
 using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
 
-namespace Nethermind.Evm.Test
+namespace Nethermind.Evm.Test;
+
+public class Eip152Tests : VirtualMachineTestsBase
 {
-    public class Eip152Tests : VirtualMachineTestsBase
+    private const int InputLength = 213;
+    protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber + _blockNumberAdjustment;
+
+    private int _blockNumberAdjustment;
+
+    [TearDown]
+    public override void TearDown()
     {
-        private const int InputLength = 213;
-        protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber + _blockNumberAdjustment;
+        base.TearDown();
 
-        private int _blockNumberAdjustment;
+        _blockNumberAdjustment = 0;
+    }
 
-        [TearDown]
-        public void TearDown()
-        {
-            _blockNumberAdjustment = 0;
-        }
+    [Test]
+    public void before_istanbul()
+    {
+        _blockNumberAdjustment = -1;
+        Address precompileAddress = Blake2FPrecompile.Address;
+        Assert.That(precompileAddress.IsPrecompile(Spec), Is.False);
+    }
 
-        [Test]
-        public void before_istanbul()
-        {
-            _blockNumberAdjustment = -1;
-            Address precompileAddress = Blake2FPrecompile.Instance.Address;
-            Assert.False(precompileAddress.IsPrecompile(Spec));
-        }
-
-        [Test]
-        public void after_istanbul()
-        {
-            byte[] code = Prepare.EvmCode
-                .CallWithInput(Blake2FPrecompile.Instance.Address, 1000L, new byte[InputLength])
-                .Done;
-            TestAllTracerWithOutput result = Execute(code);
-            Assert.AreEqual(StatusCode.Success, result.StatusCode);
-        }
+    [Test]
+    public void after_istanbul()
+    {
+        byte[] code = Prepare.EvmCode
+            .CallWithInput(Blake2FPrecompile.Address, 1000L, new byte[InputLength])
+            .Done;
+        TestAllTracerWithOutput result = Execute(code);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 }

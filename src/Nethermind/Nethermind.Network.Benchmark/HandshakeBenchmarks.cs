@@ -21,11 +21,12 @@ namespace Nethermind.Network.Benchmarks
 
             _testRandom = new BenchmarkTestRandom(_trueCryptoRandom, 6);
 
-            _messageSerializationService = new MessageSerializationService();
-            _messageSerializationService.Register(new AuthMessageSerializer());
-            _messageSerializationService.Register(new AuthEip8MessageSerializer(new Eip8MessagePad(_testRandom)));
-            _messageSerializationService.Register(new AckMessageSerializer());
-            _messageSerializationService.Register(new AckEip8MessageSerializer(new Eip8MessagePad(_testRandom)));
+            _messageSerializationService = new MessageSerializationService(
+                SerializerInfo.Create(new AuthMessageSerializer()),
+                SerializerInfo.Create(new AuthEip8MessageSerializer(new Eip8MessagePad(_testRandom))),
+                SerializerInfo.Create(new AckMessageSerializer()),
+                SerializerInfo.Create(new AckEip8MessageSerializer(new Eip8MessagePad(_testRandom)))
+            );
 
             _eciesCipher = new EciesCipher(_trueCryptoRandom); // TODO: provide a separate test random with specific IV and ephemeral key for testing
 
@@ -76,7 +77,7 @@ namespace Nethermind.Network.Benchmarks
             }
         }
 
-        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
+        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(BlockchainIds.Sepolia); // TODO: separate general crypto signer from Ethereum transaction signing
 
         private IMessageSerializationService _messageSerializationService;
 

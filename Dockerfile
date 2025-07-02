@@ -1,41 +1,35 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:7.0-jammy AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0-noble AS build
 
-ARG TARGETPLATFORM
-ARG TARGETOS
-ARG TARGETARCH
-ARG BUILDPLATFORM
+ARG BUILD_CONFIG=release
 ARG BUILD_TIMESTAMP
+ARG CI
 ARG COMMIT_HASH
-
-COPY . .
-
-RUN if [ "$TARGETARCH" = "amd64" ] ; \
-    then dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-x64 -c release -p:Commit=$COMMIT_HASH -p:BuildTimestamp=$BUILD_TIMESTAMP -o out ; \
-    else dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -p:Commit=$COMMIT_HASH -p:BuildTimestamp=$BUILD_TIMESTAMP -o out ; \
-    fi
-
-FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:7.0-jammy
-
-ARG TARGETPLATFORM
-ARG TARGETOS
 ARG TARGETARCH
-ARG BUILDPLATFORM
 
-RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6
+COPY src/Nethermind src/Nethermind
+COPY Directory.*.props .
+COPY nuget.config .
+
+RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
+    dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \
+      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
+
+# A temporary symlink to support the old executable name
+RUN ln -s -r /publish/nethermind /publish/Nethermind.Runner
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-noble
 
 WORKDIR /nethermind
 
-COPY --from=build /out .
-
-LABEL git_commit=$COMMIT_HASH
+VOLUME /nethermind/keystore
+VOLUME /nethermind/logs
+VOLUME /nethermind/nethermind_db
 
 EXPOSE 8545 8551 30303
 
-VOLUME /nethermind/nethermind_db
-VOLUME /nethermind/logs
-VOLUME /nethermind/keystore
+COPY --from=build /publish .
 
-ENTRYPOINT ["./Nethermind.Runner"]
+ENTRYPOINT ["./nethermind"]

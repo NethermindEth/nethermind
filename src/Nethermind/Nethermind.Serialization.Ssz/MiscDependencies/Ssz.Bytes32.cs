@@ -12,9 +12,16 @@ public static partial class Ssz
 {
     public const int Bytes32Length = Bytes32.Length;
 
-    public static ReadOnlySpan<byte> DecodeBytes(ReadOnlySpan<byte> span)
+    public static byte[] DecodeBytes(ReadOnlySpan<byte> span)
     {
         return span.ToArray();
+    }
+
+    private static ReadOnlySpan<byte> DecodeBytes(ReadOnlySpan<byte> span, int count, ref int offset)
+    {
+        ReadOnlySpan<byte> bytes = span[offset..(offset + count)];
+        offset += count;
+        return bytes;
     }
 
     public static Bytes32 DecodeBytes32(ReadOnlySpan<byte> span)
@@ -26,7 +33,7 @@ public static partial class Ssz
     {
         if (span.Length == 0)
         {
-            return Array.Empty<Bytes32>();
+            return [];
         }
 
         int count = span.Length / Bytes32Length;

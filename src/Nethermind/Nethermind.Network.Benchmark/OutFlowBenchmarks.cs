@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test;
@@ -63,8 +62,9 @@ namespace Nethermind.Network.Benchmarks
 
             _newBlockMessage = new NewBlockMessage();
             _newBlockMessage.Block = _block;
-            _serializationService = new MessageSerializationService();
-            _serializationService.Register(_newBlockMessageSerializer);
+            _serializationService = new MessageSerializationService(
+                SerializerInfo.Create(_newBlockMessageSerializer)
+                );
             ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
         }
 

@@ -17,7 +17,6 @@ namespace Nethermind.Specs.Test
         [TestCase(12_244_000, true)]
         public void Berlin_eips(long blockNumber, bool isEnabled)
         {
-            _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2315Enabled.Should().Be(false);
             _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2537Enabled.Should().Be(false);
             _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2565Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2929Enabled.Should().Be(isEnabled);
@@ -39,12 +38,48 @@ namespace Nethermind.Specs.Test
             _specProvider.GetSpec((ForkActivation)blockNumber).IsEip3541Enabled.Should().Be(isEnabled);
         }
 
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp, false)]
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp, true)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp, false)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp, true)]
         public void Cancun_eips(long blockNumber, ulong timestamp, bool isEnabled)
         {
             _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip1153Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip4844Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip5656Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip4788Enabled.Should().Be(isEnabled);
+            if (isEnabled)
+            {
+                _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).Eip4788ContractAddress.Should().NotBeNull();
+            }
+            else
+            {
+                _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).Eip4788ContractAddress.Should().BeNull();
+            }
+        }
+
+        [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp, false)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.PragueBlockTimestamp, true)]
+        public void Prague_eips(long blockNumber, ulong timestamp, bool isEnabled)
+        {
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip2935Enabled.Should().Be(isEnabled);
+            if (isEnabled)
+            {
+                _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).Eip2935ContractAddress.Should().NotBeNull();
+            }
+            else
+            {
+                _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).Eip2935ContractAddress.Should().BeNull();
+            }
+            // EOF was once in Prague but moved to Osaka, so let's verify it's not enabled.
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEofEnabled.Should().Be(false);
+        }
+
+        [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.PragueBlockTimestamp, false)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.OsakaBlockTimestamp, true)]
+        public void Osaka_eips(long blockNumber, ulong timestamp, bool isEnabled)
+        {
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7594Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7823Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip7883Enabled.Should().Be(isEnabled);
         }
 
         [Test]

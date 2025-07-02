@@ -9,8 +9,8 @@ namespace Nethermind.Serialization.Json.PubSub
 {
     public class LogPublisher : IPublisher
     {
-        private ILogger _logger;
-        private IJsonSerializer _jsonSerializer;
+        private readonly ILogger _logger;
+        private readonly IJsonSerializer _jsonSerializer;
 
         public LogPublisher(IJsonSerializer jsonSerializer, ILogManager logManager)
         {

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -17,7 +16,7 @@ namespace Nethermind.Benchmarks.Core
         {
             new byte[]{0},
             new byte[]{1},
-            Keccak.Zero.Bytes,
+            Keccak.Zero.BytesToArray(),
             TestItem.AddressA.Bytes
         };
 

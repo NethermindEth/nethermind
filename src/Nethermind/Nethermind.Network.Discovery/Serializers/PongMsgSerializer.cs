@@ -1,18 +1,18 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
 public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<PongMsg>
 {
-    public PongMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : base(ecdsa, nodeKey, nodeIdResolver)
+    public PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : base(ecdsa, nodeKey, nodeIdResolver)
     {
     }
 
@@ -40,9 +40,9 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
 
     public PongMsg Deserialize(IByteBuffer msgBytes)
     {
-        (PublicKey FarPublicKey, Memory<byte> Mdc, IByteBuffer Data) results = PrepareForDeserialization(msgBytes);
+        (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
 
-        NettyRlpStream rlp = new(results.Data);
+        NettyRlpStream rlp = new(Data);
 
         rlp.ReadSequenceLength();
         rlp.ReadSequenceLength();
@@ -54,7 +54,7 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
         byte[] token = rlp.DecodeByteArray();
         long expirationTime = rlp.DecodeLong();
 
-        PongMsg msg = new(results.FarPublicKey, expirationTime, token);
+        PongMsg msg = new(FarPublicKey, expirationTime, token);
         return msg;
     }
 
@@ -64,7 +64,7 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
         return totalLength;
     }
 
-    private (int totalLength, int contentLength, int farAddressLength) GetLength(PongMsg message)
+    private static (int totalLength, int contentLength, int farAddressLength) GetLength(PongMsg message)
     {
         if (message.FarAddress is null)
         {

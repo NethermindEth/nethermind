@@ -3,33 +3,32 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Withdrawals;
-using Nethermind.Db;
+using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class NethDevPlugin : IConsensusPlugin
+    public class NethDevPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
+        public const string NethDev = "NethDev";
         private INethermindApi? _nethermindApi;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
-        public string Name => "NethDev";
+        public string Name => NethDev;
 
-        public string Description => "NethDev (Spaceneth)";
+        public string Description => $"{NethDev} (Spaceneth)";
 
         public string Author => "Nethermind";
+
+        public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
         public Task Init(INethermindApi nethermindApi)
         {
@@ -37,89 +36,52 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
+        public IBlockProducer InitBlockProducer()
         {
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.NethDev)
-            {
-                return Task.FromResult((IBlockProducer)null);
-            }
-            var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
-
-            ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
-            ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
-
-            ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
-                .WithBaseFeeFilter(getFromApi.SpecProvider)
-                .WithNullTxFilter()
-                .WithMinGasPriceFilter(_nethermindApi.Config<IBlocksConfig>(), getFromApi.SpecProvider)
-                .Build;
-
-            TxPoolTxSource txPoolTxSource = new(
-                getFromApi.TxPool,
-                getFromApi.SpecProvider,
-                getFromApi.TransactionComparerProvider!,
-                getFromApi.LogManager,
-                txFilterPipeline);
+            var (getFromApi, _) = _nethermindApi!.ForProducer;
 
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
-
-            ReadOnlyTxProcessingEnv producerEnv = new(
-                readOnlyDbProvider,
-                getFromApi.ReadOnlyTrieStore,
-                readOnlyBlockTree,
-                getFromApi.SpecProvider,
-                getFromApi.LogManager);
-
-            BlockProcessor producerProcessor = new(
-                getFromApi!.SpecProvider,
-                getFromApi!.BlockValidator,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockProductionTransactionsExecutor(producerEnv, getFromApi!.SpecProvider, getFromApi.LogManager),
-                producerEnv.StateProvider,
-                producerEnv.StorageProvider,
-                NullReceiptStorage.Instance,
-                NullWitnessCollector.Instance,
-                getFromApi.LogManager);
-
-            IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
-                readOnlyBlockTree,
-                producerProcessor,
-                getFromApi.BlockPreprocessor,
-                getFromApi.StateReader,
-                getFromApi.LogManager,
-                BlockchainProcessor.Options.NoReceipts);
-
-            DefaultBlockProductionTrigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
-                .IfPoolIsNotEmpty(getFromApi.TxPool)
-                .Or(getFromApi.ManualBlockProductionTrigger);
-
+            IBlockProducerEnv env = getFromApi.BlockProducerEnvFactory.Create();
             IBlockProducer blockProducer = new DevBlockProducer(
-                additionalTxSource.Then(txPoolTxSource).ServeTxsOneByOne(),
-                producerChainProcessor,
-                producerEnv.StateProvider,
+                env.TxSource,
+                env.ChainProcessor,
+                env.ReadOnlyStateProvider,
                 getFromApi.BlockTree,
-                blockProductionTrigger ?? DefaultBlockProductionTrigger,
                 getFromApi.Timestamper,
                 getFromApi.SpecProvider,
                 getFromApi.Config<IBlocksConfig>(),
                 getFromApi.LogManager);
 
-            return Task.FromResult(blockProducer);
+            return blockProducer;
         }
 
-        public string SealEngineType => Nethermind.Core.SealEngineType.NethDev;
-        public IBlockProductionTrigger DefaultBlockProductionTrigger { get; private set; }
+        public string SealEngineType => NethDev;
 
-        public Task InitNetworkProtocol()
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
         {
-            return Task.CompletedTask;
+            IBlockProductionTrigger trigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
+                .IfPoolIsNotEmpty(_nethermindApi.TxPool)
+                .Or(_nethermindApi.ManualBlockProductionTrigger);
+            return new StandardBlockProducerRunner(
+                trigger,
+                _nethermindApi.BlockTree,
+                blockProducer);
         }
 
-        public Task InitRpcModules()
+        public IModule Module => new NethDevPluginModule();
+
+        private class NethDevPluginModule : Module
         {
-            return Task.CompletedTask;
+            protected override void Load(ContainerBuilder builder)
+            {
+                base.Load(builder);
+
+                builder
+                    .AddSingleton<IBlockProducerTxSourceFactory, NethDevBlockProducerTxSourceFactory>()
+                    ;
+            }
         }
     }
 }

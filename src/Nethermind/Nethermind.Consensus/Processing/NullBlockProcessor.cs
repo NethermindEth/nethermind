@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
@@ -15,12 +17,16 @@ namespace Nethermind.Consensus.Processing
 
         public static IBlockProcessor Instance { get; } = new NullBlockProcessor();
 
-        public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
-        {
-            return suggestedBlocks.ToArray();
-        }
+        public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token) =>
+            suggestedBlocks.ToArray();
 
         public event EventHandler<BlocksProcessingEventArgs> BlocksProcessing
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<BlockEventArgs>? BlockProcessing
         {
             add { }
             remove { }

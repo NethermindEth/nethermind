@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Ethereum.Test.Base
 {
@@ -11,8 +12,7 @@ namespace Ethereum.Test.Base
         public TestBlockHeaderJson[]? UncleHeaders { get; set; }
         public string? Rlp { get; set; }
         public LegacyTransactionJson[]? Transactions { get; set; }
-
-        [JsonProperty("expectExceptionALL")]
+        [JsonPropertyName("expectException")]
         public string? ExpectedException { get; set; }
     }
 }

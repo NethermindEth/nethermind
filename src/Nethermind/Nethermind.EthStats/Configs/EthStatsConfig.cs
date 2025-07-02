@@ -10,5 +10,6 @@ namespace Nethermind.EthStats.Configs
         public string? Name { get; set; } = "Nethermind";
         public string? Secret { get; set; } = "secret";
         public string? Contact { get; set; } = "hello@nethermind.io";
+        public int SendInterval { get; set; } = 15;
     }
 }

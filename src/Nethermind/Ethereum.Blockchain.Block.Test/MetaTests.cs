@@ -43,7 +43,7 @@ namespace Ethereum.Blockchain.Block.Test
                 Console.WriteLine($"{missing} category is missing");
             }
 
-            Assert.AreEqual(0, missingCategories.Count);
+            Assert.That(missingCategories.Count, Is.EqualTo(0));
         }
 
         private static string ExpectedTypeName(string directory)
@@ -62,7 +62,12 @@ namespace Ethereum.Blockchain.Block.Test
                 }
             }
 
-            return prefix + expectedTypeName;
+            if (char.IsDigit(expectedTypeName.FirstOrDefault()))
+            {
+                prefix += "eip";
+            }
+
+            return prefix + expectedTypeName.Replace("-", "");
         }
     }
 }

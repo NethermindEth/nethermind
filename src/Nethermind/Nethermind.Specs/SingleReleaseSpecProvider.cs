@@ -42,16 +42,14 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GenesisSpec => _releaseSpec;
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _releaseSpec;
+        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => _releaseSpec;
 
         public long? DaoBlockNumber { get; }
+        public ulong? BeaconChainGenesisTimestamp { get; }
+
+        public string SealEngine { get; set; } = SealEngineType.Ethash;
     }
 
-    public class TestSingleReleaseSpecProvider : SingleReleaseSpecProvider
-    {
-        public TestSingleReleaseSpecProvider(IReleaseSpec releaseSpec)
-            : base(releaseSpec, TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId)
-        {
-        }
-    }
+    public class TestSingleReleaseSpecProvider(IReleaseSpec releaseSpec)
+        : SingleReleaseSpecProvider(releaseSpec, TestBlockchainIds.NetworkId, TestBlockchainIds.ChainId);
 }

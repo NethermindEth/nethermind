@@ -7,7 +7,6 @@ using System.IO.Abstractions;
 using System.Linq;
 using Nethermind.Blockchain.Data;
 using Nethermind.Core;
-using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
@@ -40,8 +39,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
             }
 
             public IEnumerable<T> Data => _localDataSource.Data is null
-                ? Enumerable.Empty<T>()
-                : _getData(_localDataSource.Data) ?? Enumerable.Empty<T>();
+                ? []
+                : _getData(_localDataSource.Data) ?? [];
 
             public event EventHandler Changed
             {
@@ -52,21 +51,21 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public class LocalData
         {
-            private Address[] _whitelist = Array.Empty<Address>();
-            private Destination[] _priorities = Array.Empty<Destination>();
-            private Destination[] _minGasPrices = Array.Empty<Destination>();
+            private Address[] _whitelist = [];
+            private Destination[] _priorities = [];
+            private Destination[] _minGasPrices = [];
 
             public Address[] Whitelist
             {
                 get => _whitelist;
-                set => _whitelist = value ?? Array.Empty<Address>();
+                set => _whitelist = value ?? [];
             }
 
             public Destination[] Priorities
             {
                 get => _priorities;
-                set => _priorities = (value ?? Array.Empty<Destination>()).Select(
-                    d => new Destination(d.Target, d.FnSignature, d.Value, DestinationSource.Local)).ToArray();
+                set => _priorities = (value ?? []).Select(
+                    static d => new Destination(d.Target, d.FnSignature, d.Value, DestinationSource.Local)).ToArray();
             }
 
             public Destination[] MinGasPrices
@@ -74,8 +73,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 get => _minGasPrices;
                 set
                 {
-                    _minGasPrices = (value ?? Array.Empty<Destination>()).Select(
-                        d => new Destination(d.Target, d.FnSignature, d.Value, DestinationSource.Local)).ToArray();
+                    _minGasPrices = (value ?? []).Select(
+                        static d => new Destination(d.Target, d.FnSignature, d.Value, DestinationSource.Local)).ToArray();
                 }
             }
 

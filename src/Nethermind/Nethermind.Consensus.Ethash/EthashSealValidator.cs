@@ -15,7 +15,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Ethash
 {
-    internal class EthashSealValidator : ISealValidator
+    public class EthashSealValidator : ISealValidator
     {
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly ICryptoRandom _cryptoRandom;
@@ -23,18 +23,18 @@ namespace Nethermind.Consensus.Ethash
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
 
-        private readonly LruCache<KeccakKey, bool> _sealCache = new(2048, 2048, "ethash seals");
+        private readonly LruCache<ValueHash256, bool> _sealCache = new(2048, 2048, "ethash seals");
         private const int SealValidationIntervalConstantComponent = 1024;
         private const long AllowedFutureBlockTimeSeconds = 15;
         private int _sealValidationInterval = SealValidationIntervalConstantComponent;
 
-        internal EthashSealValidator(ILogManager logManager, IDifficultyCalculator difficultyCalculator, ICryptoRandom cryptoRandom, IEthash ethash, ITimestamper timestamper)
+        public EthashSealValidator(ILogManager logManager, IDifficultyCalculator difficultyCalculator, ICryptoRandom cryptoRandom, IEthash ethash, ITimestamper timestamper)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _ethash = ethash ?? throw new ArgumentNullException(nameof(ethash));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             ResetValidationInterval();
         }

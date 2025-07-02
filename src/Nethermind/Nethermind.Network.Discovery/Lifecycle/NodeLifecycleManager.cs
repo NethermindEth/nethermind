@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -16,6 +17,7 @@ namespace Nethermind.Network.Discovery.Lifecycle;
 
 public class NodeLifecycleManager : INodeLifecycleManager
 {
+    private readonly static IPAddress _localhost = IPAddress.Parse("127.0.0.1");
     private readonly IDiscoveryManager _discoveryManager;
     private readonly INodeTable _nodeTable;
     private readonly ILogger _logger;
@@ -37,6 +39,8 @@ public class NodeLifecycleManager : INodeLifecycleManager
     // private bool _sentPong;
     private bool _receivedPong;
 
+    private int _lastNeighbourSize = 0;
+
     public NodeLifecycleManager(Node node,
         IDiscoveryManager discoveryManager,
         INodeTable nodeTable,
@@ -49,7 +53,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
     {
         _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
         _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _logger = logger;
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _evictionManager = evictionManager ?? throw new ArgumentNullException(nameof(evictionManager));
@@ -118,7 +122,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         }
         else
         {
-            if (_logger.IsDebug) _logger.Warn("Attempt to request ENR before bonding");
+            if (_logger.IsDebug) _logger.Debug("Attempt to request ENR before bonding");
         }
     }
 
@@ -166,25 +170,50 @@ public class NodeLifecycleManager : INodeLifecycleManager
             return;
         }
 
-        if (_isNeighborsExpected)
+        if (_lastNeighbourSize + msg.Nodes.Count == 16)
         {
-            NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
-            RefreshNodeContactTime();
-
-            foreach (Node node in msg.Nodes)
-            {
-                if (node.Address.Address.ToString().Contains("127.0.0.1"))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Received localhost as node address from: {msg.FarPublicKey}, node: {node}");
-                    continue;
-                }
-
-                //If node is new it will create a new nodeLifecycleManager and will update state to New, which will trigger Ping
-                _discoveryManager.GetNodeLifecycleManager(node);
-            }
+            // Turns out, other client will split the neighbour msg to two msg, whose size sum up to 16.
+            // Happens about 70% of the time.
+            ProcessNodes(msg);
+        }
+        else if (_isNeighborsExpected)
+        {
+            ProcessNodes(msg);
         }
 
+        _lastNeighbourSize = msg.Nodes.Count;
         _isNeighborsExpected = false;
+    }
+
+    private void ProcessNodes(NeighborsMsg msg)
+    {
+        NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
+        RefreshNodeContactTime();
+
+        IPAddress? externalIp = _discoveryManager.SelfNodeRecord?.GetObj<IPAddress>(EnrContentKey.Ip);
+        foreach (Node node in msg.Nodes)
+        {
+            if (node.Address.Address == _localhost)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Received localhost as node address from: {msg.FarPublicKey}, node: {node}");
+                continue;
+            }
+            if (node.Address.Address == externalIp)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Received self as node address from: {msg.FarPublicKey}, node: {node}");
+                // Ignore self
+                continue;
+            }
+            else if (!_discoveryManager.NodesFilter.Set(node.Address.Address))
+            {
+                // Already seen this node ip recently
+                continue;
+            }
+            //If node is new it will create a new nodeLifecycleManager and will update state to New, which will trigger Ping
+            _discoveryManager.GetNodeLifecycleManager(node);
+        }
     }
 
     public void ProcessFindNodeMsg(FindNodeMsg msg)
@@ -197,7 +226,16 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeIn);
         RefreshNodeContactTime();
 
-        Node[] nodes = _nodeTable.GetClosestNodes(msg.SearchedNodeId).ToArray();
+        // 12 otherwise the payload may become too big, which is out of spec.
+        var closestNodes = _nodeTable.GetClosestNodes(msg.SearchedNodeId, bucketSize: 12);
+        Node[] nodes = new Node[closestNodes.Count];
+        int count = 0;
+        foreach (Node node in closestNodes)
+        {
+            nodes[count] = node;
+            count++;
+        }
+
         SendNeighbors(nodes);
     }
 
@@ -205,7 +243,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     private long _lastEnrSequence;
 
-    public void SendFindNode(byte[] searchedNodeId)
+    public async Task SendFindNode(byte[] searchedNodeId)
     {
         if (!IsBonded)
         {
@@ -219,17 +257,17 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
         FindNodeMsg msg = new(ManagedNode.Address, CalculateExpirationTime(), searchedNodeId);
         _isNeighborsExpected = true;
-        _discoveryManager.SendMessage(msg);
+        await _discoveryManager.SendMessageAsync(msg);
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeOut);
     }
 
     private DateTime _lastPingSent = DateTime.MinValue;
 
-    public async Task SendPingAsync()
+    public Task SendPingAsync()
     {
         _lastPingSent = DateTime.UtcNow;
         _sentPing = true;
-        await CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
+        return CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
     }
 
     private long CalculateExpirationTime()
@@ -267,6 +305,14 @@ public class NodeLifecycleManager : INodeLifecycleManager
         UpdateState(NodeLifecycleState.EvictCandidate);
     }
 
+    public void ResetUnreachableStatus()
+    {
+        if (State == NodeLifecycleState.Unreachable)
+        {
+            UpdateState(NodeLifecycleState.New);
+        }
+    }
+
     public void LostEvictionProcess()
     {
         if (State == NodeLifecycleState.Active)
@@ -280,9 +326,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         if (newState == NodeLifecycleState.New)
         {
             //if node is just discovered we send ping to confirm it is active
-#pragma warning disable 4014
-            SendPingAsync();
-#pragma warning restore 4014
+            _ = SendPingAsync();
         }
         else if (newState == NodeLifecycleState.Active)
         {
@@ -310,9 +354,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
             if (DateTime.UtcNow - _lastPingSent > TimeSpan.FromSeconds(5))
             {
-#pragma warning disable 4014
-                SendPingAsync();
-#pragma warning restore 4014
+                _ = SendPingAsync();
             }
             else
             {
@@ -347,7 +389,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         try
         {
             _lastSentPing = msg;
-            _discoveryManager.SendMessage(msg);
+            await _discoveryManager.SendMessageAsync(msg);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingOut);
 
             bool result = await _discoveryManager.WasMessageReceived(ManagedNode.IdHash, MsgType.Pong, _discoveryConfig.PongTimeout);
@@ -357,8 +399,10 @@ public class NodeLifecycleManager : INodeLifecycleManager
                 {
                     await CreateAndSendPingAsync(counter - 1);
                 }
-
-                UpdateState(NodeLifecycleState.Unreachable);
+                else
+                {
+                    UpdateState(NodeLifecycleState.Unreachable);
+                }
             }
         }
         catch (Exception e)

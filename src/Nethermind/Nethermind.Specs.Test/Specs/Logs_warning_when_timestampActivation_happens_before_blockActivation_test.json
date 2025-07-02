@@ -1,11 +1,8 @@
 {
   "version": "1",
   "engine": {
-    "clique": {
+    "NethDev": {
       "params": {
-        "period": 1,
-        "epoch": 30000,
-        "blockReward": "0x0"
       }
     }
   },

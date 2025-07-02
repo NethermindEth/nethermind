@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections;
-using System.Collections.Generic;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
@@ -13,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -43,11 +40,11 @@ namespace Nethermind.AuRa.Test.Transactions
             IDictionaryContractDataStore<TxPriorityContract.Destination> dictionaryContractDataStore = Substitute.For<IDictionaryContractDataStore<TxPriorityContract.Destination>>();
             dictionaryContractDataStore.TryGetValue(
                     Arg.Any<BlockHeader>(),
-                    Arg.Is<TxPriorityContract.Destination>(d => d.Target == TestItem.AddressA),
+                    Arg.Is<TxPriorityContract.Destination>(static d => d.Target == TestItem.AddressA),
                     out Arg.Any<TxPriorityContract.Destination>())
-                .Returns(x =>
+                .Returns(static x =>
                 {
-                    x[2] = new TxPriorityContract.Destination(TestItem.AddressA, Array.Empty<byte>(), 5);
+                    x[2] = new TxPriorityContract.Destination(TestItem.AddressA, [], 5);
                     return true;
                 });
 

@@ -7,12 +7,16 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Stats.Model;
-using Newtonsoft.Json;
 
 namespace Nethermind.Network.StaticNodes
 {
@@ -30,6 +34,8 @@ namespace Nethermind.Network.StaticNodes
         }
 
         public IEnumerable<NetworkNode> Nodes => _nodes.Values;
+
+        private static readonly char[] separator = new[] { '\r', '\n' };
 
         public async Task InitAsync()
         {
@@ -63,7 +69,7 @@ namespace Nethermind.Network.StaticNodes
                 }
             }
 
-            _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(networkNodes.ToDictionary(n => n.NodeId, n => n));
+            _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(networkNodes.ToDictionary(static n => n.NodeId, static n => n));
         }
 
         private static string[] GetNodes(string data)
@@ -71,11 +77,11 @@ namespace Nethermind.Network.StaticNodes
             string[] nodes;
             try
             {
-                nodes = JsonConvert.DeserializeObject<string[]>(data) ?? Array.Empty<string>();
+                nodes = JsonSerializer.Deserialize<string[]>(data) ?? [];
             }
             catch (JsonException)
             {
-                nodes = data.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                nodes = data.Split(separator, StringSplitOptions.RemoveEmptyEntries);
             }
 
             return nodes.Distinct().ToArray();
@@ -125,19 +131,44 @@ namespace Nethermind.Network.StaticNodes
         {
             NetworkNode node = new(enode);
             return _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) && string.Equals(staticNode.Host,
-                node.Host, StringComparison.InvariantCultureIgnoreCase);
+                node.Host, StringComparison.OrdinalIgnoreCase);
         }
 
         private Task SaveFileAsync()
             => File.WriteAllTextAsync(_staticNodesPath,
-                JsonConvert.SerializeObject(_nodes.Select(n => n.Value.ToString()), Formatting.Indented));
+                JsonSerializer.Serialize(_nodes.Select(static n => n.Value.ToString()), EthereumJsonSerializer.JsonOptionsIndented));
 
-        public List<Node> LoadInitialList()
+        public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            return _nodes.Values.Select(n => new Node(n)).ToList();
+            Channel<Node> ch = Channel.CreateBounded<Node>(128); // Some reasonably large value
+
+            foreach (Node node in _nodes.Values.Select(n => new Node(n)))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return node;
+            }
+
+            void handler(object? _, NodeEventArgs args)
+            {
+                ch.Writer.TryWrite(args.Node);
+            }
+
+            try
+            {
+                NodeAdded += handler;
+
+                await foreach (Node node in ch.Reader.ReadAllAsync(cancellationToken))
+                {
+                    yield return node;
+                }
+            }
+            finally
+            {
+                NodeAdded -= handler;
+            }
         }
 
-        public event EventHandler<NodeEventArgs>? NodeAdded;
+        private event EventHandler<NodeEventArgs>? NodeAdded;
 
         public event EventHandler<NodeEventArgs>? NodeRemoved;
     }

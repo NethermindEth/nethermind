@@ -1,50 +1,74 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.IO.Abstractions;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc;
+using Nethermind.Int256;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.HealthChecks
 {
     public class CheckHealthResult
     {
         public bool Healthy { get; set; }
-
-        public ICollection<(string Message, string LongMessage)> Messages { get; set; }
+        public IEnumerable<(string Message, string LongMessage)> Messages { get; set; }
+        public bool IsSyncing { get; set; }
+        public IEnumerable<string> Errors { get; set; }
     }
 
     public class NodeHealthService : INodeHealthService
     {
         private readonly ISyncServer _syncServer;
         private readonly IBlockchainProcessor _blockchainProcessor;
-        private readonly IBlockProducer _blockProducer;
+        private readonly IBlockProducerRunner _blockProducerRunner;
         private readonly IHealthChecksConfig _healthChecksConfig;
         private readonly IHealthHintService _healthHintService;
         private readonly IEthSyncingInfo _ethSyncingInfo;
-        private readonly INethermindApi _api;
-        private readonly IRpcCapabilitiesProvider _rpcCapabilitiesProvider;
+        private readonly IClHealthTracker _clHealthTracker;
+        private readonly UInt256? _terminalTotalDifficulty;
         private readonly IDriveInfo[] _drives;
         private readonly bool _isMining;
 
-        public NodeHealthService(ISyncServer syncServer,
-            IBlockchainProcessor blockchainProcessor,
-            IBlockProducer blockProducer,
+        public NodeHealthService(
+            ISyncServer syncServer,
+            IMainProcessingContext mainProcessingContext,
+            IBlockProducerRunner blockProducerRunner,
             IHealthChecksConfig healthChecksConfig,
             IHealthHintService healthHintService,
             IEthSyncingInfo ethSyncingInfo,
-            IRpcCapabilitiesProvider rpcCapabilitiesProvider,
-            INethermindApi api,
+            IClHealthTracker clHealthTracker,
+            ISpecProvider specProvider,
+            [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives,
+            IInitConfig initConfig) : this(
+            syncServer,
+            mainProcessingContext.BlockchainProcessor,
+            blockProducerRunner,
+            healthChecksConfig,
+            healthHintService,
+            ethSyncingInfo,
+            clHealthTracker,
+            specProvider.TerminalTotalDifficulty,
+            drives,
+            initConfig.IsMining)
+        {
+        }
+
+        public NodeHealthService(ISyncServer syncServer,
+            IBlockchainProcessor blockchainProcessor,
+            IBlockProducerRunner blockProducerRunner,
+            IHealthChecksConfig healthChecksConfig,
+            IHealthHintService healthHintService,
+            IEthSyncingInfo ethSyncingInfo,
+            IClHealthTracker clHealthTracker,
+            UInt256? terminalTotalDifficulty,
             IDriveInfo[] drives,
             bool isMining)
         {
@@ -53,70 +77,66 @@ namespace Nethermind.HealthChecks
             _healthChecksConfig = healthChecksConfig;
             _healthHintService = healthHintService;
             _blockchainProcessor = blockchainProcessor;
-            _blockProducer = blockProducer;
+            _blockProducerRunner = blockProducerRunner;
             _ethSyncingInfo = ethSyncingInfo;
-            _rpcCapabilitiesProvider = rpcCapabilitiesProvider;
-            _api = api;
+            _clHealthTracker = clHealthTracker;
+            _terminalTotalDifficulty = terminalTotalDifficulty;
             _drives = drives;
         }
 
         public CheckHealthResult CheckHealth()
         {
             List<(string Message, string LongMessage)> messages = new();
+            List<string> errors = new();
             bool healthy = false;
             long netPeerCount = _syncServer.GetPeerCount();
             SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
 
-            if (_api.SpecProvider!.TerminalTotalDifficulty is not null)
+            if (_terminalTotalDifficulty is not null)
             {
-                if (syncingResult.IsSyncing)
-                {
-                    AddStillSyncingMessage(messages, syncingResult);
-                }
-                else
-                {
-                    AddFullySyncMessage(messages);
-                }
-                bool hasPeers = CheckPeers(messages, netPeerCount);
+                bool syncHealthy = CheckSyncPostMerge(messages, errors, syncingResult);
+
+                bool hasPeers = CheckPeers(messages, errors, netPeerCount);
 
                 bool clAlive = CheckClAlive();
 
                 if (!clAlive)
                 {
-                    AddClUnavailableMessage(messages);
+                    AddClUnavailableMessage(messages, errors);
                 }
 
-                healthy = !syncingResult.IsSyncing & clAlive & hasPeers;
+                healthy = syncHealthy & clAlive & hasPeers;
             }
             else
             {
                 if (!_isMining && syncingResult.IsSyncing)
                 {
                     AddStillSyncingMessage(messages, syncingResult);
-                    CheckPeers(messages, netPeerCount);
+                    CheckPeers(messages, errors, netPeerCount);
                 }
                 else if (!_isMining && !syncingResult.IsSyncing)
                 {
                     AddFullySyncMessage(messages);
-                    bool peers = CheckPeers(messages, netPeerCount);
-                    bool processing = IsProcessingBlocks(messages);
+                    bool peers = CheckPeers(messages, errors, netPeerCount);
+                    bool processing = IsProcessingBlocks(messages, errors);
                     healthy = peers && processing;
                 }
                 else if (_isMining && syncingResult.IsSyncing)
                 {
                     AddStillSyncingMessage(messages, syncingResult);
-                    healthy = CheckPeers(messages, netPeerCount);
+                    healthy = CheckPeers(messages, errors, netPeerCount);
                 }
                 else if (_isMining && !syncingResult.IsSyncing)
                 {
                     AddFullySyncMessage(messages);
-                    bool peers = CheckPeers(messages, netPeerCount);
-                    bool processing = IsProcessingBlocks(messages);
-                    bool producing = IsProducingBlocks(messages);
+                    bool peers = CheckPeers(messages, errors, netPeerCount);
+                    bool processing = IsProcessingBlocks(messages, errors);
+                    bool producing = IsProducingBlocks(messages, errors);
                     healthy = peers && processing && producing;
                 }
             }
 
+            bool isLowDiskSpaceErrorAdded = false;
             for (int index = 0; index < _drives.Length; index++)
             {
                 IDriveInfo drive = _drives[index];
@@ -124,12 +144,19 @@ namespace Nethermind.HealthChecks
                 if (freeSpacePercentage < _healthChecksConfig.LowStorageSpaceWarningThreshold)
                 {
                     AddLowDiskSpaceMessage(messages, drive, freeSpacePercentage);
+                    if (!isLowDiskSpaceErrorAdded)
+                    {
+                        errors.Add(ErrorStrings.LowDiskSpace);
+                        isLowDiskSpaceErrorAdded = true;
+                    }
                     healthy = false;
                 }
             }
 
-            return new CheckHealthResult() { Healthy = healthy, Messages = messages };
+            return new CheckHealthResult() { Healthy = healthy, Errors = errors, Messages = messages, IsSyncing = syncingResult.IsSyncing };
         }
+
+        public bool CheckClAlive() => _clHealthTracker?.CheckClAlive() ?? true;
 
         private ulong? GetBlockProcessorIntervalHint()
         {
@@ -143,47 +170,46 @@ namespace Nethermind.HealthChecks
                    _healthHintService.MaxSecondsIntervalForProducingBlocksHint();
         }
 
-        public bool CheckClAlive()
+        private static bool CheckSyncPostMerge(ICollection<(string Description, string LongDescription)> messages,
+            ICollection<string> errors, SyncingResult syncingResult)
         {
-            var now = _api.Timestamper.UtcNow;
-            var capabilities = _rpcCapabilitiesProvider.GetEngineCapabilities();
-            bool result = false;
-            foreach (var capability in capabilities)
+            if (syncingResult.IsSyncing)
             {
-                if (capability.Value)
+                if (syncingResult.SyncMode == SyncMode.Disconnected)
                 {
-                    result |= UpdateStatsAndCheckInvoked(capability.Key, now);
+                    messages.Add(("Sync degraded",
+                        $"Sync degraded(no useful peers), CurrentBlock: {syncingResult.CurrentBlock}, HighestBlock: {syncingResult.HighestBlock}"));
+                    errors.Add(ErrorStrings.SyncDegraded);
+                    return false;
                 }
+                messages.Add(("Still syncing",
+                    $"The node is still syncing, CurrentBlock: {syncingResult.CurrentBlock}, HighestBlock: {syncingResult.HighestBlock}"));
             }
-            return result;
-        }
-
-        private readonly ConcurrentDictionary<string, DateTime> _previousSuccessfulCheckTime = new();
-        private readonly ConcurrentDictionary<string, int> _previousMethodCallSuccesses = new();
-
-        private bool UpdateStatsAndCheckInvoked(string methodName, DateTime now)
-        {
-            var methodCallSuccesses = _api.JsonRpcLocalStats!.GetMethodStats(methodName).Successes;
-            var previousSuccesses = _previousMethodCallSuccesses.GetOrAdd(methodName, 0);
-            var lastSuccessfulCheckTime = _previousSuccessfulCheckTime.GetOrAdd(methodName, now);
-
-            if (methodCallSuccesses == previousSuccesses)
+            else
             {
-                int diff = (int)(Math.Floor((now - lastSuccessfulCheckTime).TotalSeconds));
-                return diff <= _healthChecksConfig.MaxIntervalClRequestTime;
+                AddFullySyncMessage(messages);
             }
 
-            _previousSuccessfulCheckTime[methodName] = now;
-            _previousMethodCallSuccesses[methodName] = methodCallSuccesses;
             return true;
         }
 
+        private static class ErrorStrings
+        {
+            public const string NoPeers = nameof(NoPeers);
+            public const string NotProducingBlocks = nameof(NotProducingBlocks);
+            public const string NotProcessingBlocks = nameof(NotProcessingBlocks);
+            public const string ClUnavailable = nameof(ClUnavailable);
+            public const string LowDiskSpace = nameof(LowDiskSpace);
+            public const string SyncDegraded = nameof(SyncDegraded);
+        }
+
         private static bool CheckPeers(ICollection<(string Description, string LongDescription)> messages,
-            long netPeerCount)
+            ICollection<string> errors, long netPeerCount)
         {
             bool hasPeers = netPeerCount > 0;
             if (hasPeers == false)
             {
+                errors.Add(ErrorStrings.NoPeers);
                 messages.Add(("Node is not connected to any peers", "Node is not connected to any peers"));
             }
             else
@@ -194,32 +220,35 @@ namespace Nethermind.HealthChecks
             return hasPeers;
         }
 
-        private bool IsProducingBlocks(ICollection<(string Description, string LongDescription)> messages)
+        private bool IsProducingBlocks(ICollection<(string Description, string LongDescription)> messages, ICollection<string> errors)
         {
             ulong? maxIntervalHint = GetBlockProducerIntervalHint();
-            bool producingBlocks = _blockProducer.IsProducingBlocks(maxIntervalHint);
+            bool producingBlocks = _blockProducerRunner.IsProducingBlocks(maxIntervalHint);
             if (producingBlocks == false)
             {
+                errors.Add(ErrorStrings.NotProducingBlocks);
                 messages.Add(("Stopped producing blocks", "The node stopped producing blocks"));
             }
 
             return producingBlocks;
         }
 
-        private bool IsProcessingBlocks(ICollection<(string Description, string LongDescription)> messages)
+        private bool IsProcessingBlocks(ICollection<(string Description, string LongDescription)> messages, ICollection<string> errors)
         {
             ulong? maxIntervalHint = GetBlockProcessorIntervalHint();
             bool processingBlocks = _blockchainProcessor.IsProcessingBlocks(maxIntervalHint);
             if (processingBlocks == false)
             {
+                errors.Add(ErrorStrings.NotProcessingBlocks);
                 messages.Add(("Stopped processing blocks", "The node stopped processing blocks"));
             }
 
             return processingBlocks;
         }
 
-        private static void AddClUnavailableMessage(ICollection<(string Description, string LongDescription)> messages)
+        private static void AddClUnavailableMessage(ICollection<(string Description, string LongDescription)> messages, ICollection<string> errors)
         {
+            errors.Add(ErrorStrings.ClUnavailable);
             messages.Add(("No messages from CL", "No new messages from CL after last check"));
         }
 

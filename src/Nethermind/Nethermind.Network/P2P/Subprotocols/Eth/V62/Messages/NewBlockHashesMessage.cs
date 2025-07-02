@@ -11,9 +11,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public override int PacketType { get; } = Eth62MessageCode.NewBlockHashes;
         public override string Protocol { get; } = "eth";
 
-        public (Keccak, long)[] BlockHashes { get; }
+        public (Hash256, long)[] BlockHashes { get; }
 
-        public NewBlockHashesMessage(params (Keccak, long)[] blockHashes)
+        public NewBlockHashesMessage(params (Hash256, long)[] blockHashes)
         {
             BlockHashes = blockHashes;
         }

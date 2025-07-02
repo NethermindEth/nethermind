@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -14,19 +13,22 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Client
 {
-    public class BasicJsonRpcClient : IJsonRpcClient
+    public class BasicJsonRpcClient : IJsonRpcClient, IDisposable
     {
         private readonly HttpClient _client;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly ILogger _logger;
 
-        public BasicJsonRpcClient(Uri uri, IJsonSerializer jsonSerializer, ILogManager logManager)
+        public BasicJsonRpcClient(Uri uri, IJsonSerializer jsonSerializer, ILogManager logManager) :
+            this(uri, jsonSerializer, logManager, /*support long block traces better, default 100s might be too small*/ TimeSpan.FromMinutes(5))
+        { }
+        public BasicJsonRpcClient(Uri uri, IJsonSerializer jsonSerializer, ILogManager logManager, TimeSpan timeout)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _jsonSerializer = jsonSerializer;
 
             _client = new HttpClient { BaseAddress = uri };
-            _client.Timeout = TimeSpan.FromMinutes(5); // support long block traces better, default 100s might be too small
+            _client.Timeout = timeout;
             _client.DefaultRequestHeaders.Accept.Clear();
             _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             AddAuthorizationHeader();
@@ -58,21 +60,15 @@ namespace Nethermind.JsonRpc.Client
 
                 return jsonResponse.Result;
             }
-            catch (NotSupportedException)
+            catch (Exception e) when
+            (
+                e is not TaskCanceledException &&
+                e is not HttpRequestException &&
+                e is not NotImplementedException &&
+                e is not NotSupportedException
+            )
             {
-                throw;
-            }
-            catch (NotImplementedException)
-            {
-                throw;
-            }
-            catch (HttpRequestException)
-            {
-                throw;
-            }
-            catch (Exception)
-            {
-                throw new DataException($"Cannot deserialize {responseString}");
+                throw new DataException($"Cannot deserialize {responseString}", e);
             }
         }
 
@@ -82,7 +78,7 @@ namespace Nethermind.JsonRpc.Client
             {
                 jsonrpc = "2.0",
                 method,
-                @params = parameters ?? Enumerable.Empty<object>(),
+                @params = parameters ?? [],
                 id = 67
             };
 
@@ -92,7 +88,7 @@ namespace Nethermind.JsonRpc.Client
         private void AddAuthorizationHeader()
         {
             var url = _client.BaseAddress.ToString();
-            if (!url.Contains("@"))
+            if (!url.Contains('@'))
             {
                 return;
             }
@@ -105,5 +101,10 @@ namespace Nethermind.JsonRpc.Client
 
         private static string Base64Encode(string plainText)
             => Convert.ToBase64String(Encoding.UTF8.GetBytes(plainText));
+
+        public virtual void Dispose()
+        {
+            _client.Dispose();
+        }
     }
 }

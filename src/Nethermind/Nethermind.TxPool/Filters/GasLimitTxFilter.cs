@@ -24,7 +24,7 @@ namespace Nethermind.TxPool.Filters
             _configuredGasLimit = txPoolConfig.GasLimit ?? long.MaxValue;
         }
 
-        public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             long gasLimit = Math.Min(_chainHeadInfoProvider.BlockGasLimit ?? long.MaxValue, _configuredGasLimit);
             if (tx.GasLimit > gasLimit)

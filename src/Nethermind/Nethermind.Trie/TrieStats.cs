@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Text;
 
 namespace Nethermind.Trie
@@ -9,50 +8,50 @@ namespace Nethermind.Trie
     public class TrieStats
     {
         private const int Levels = 128;
-        internal int _stateBranchCount;
-        internal int _stateExtensionCount;
-        internal int _accountCount;
-        internal int _storageBranchCount;
-        internal int _storageExtensionCount;
-        internal int _storageLeafCount;
-        internal int _codeCount;
-        internal int _missingState;
-        internal int _missingCode;
-        internal int _missingStorage;
+        internal long _stateBranchCount;
+        internal long _stateExtensionCount;
+        internal long _accountCount;
+        internal long _storageBranchCount;
+        internal long _storageExtensionCount;
+        internal long _storageLeafCount;
+        internal long _codeCount;
+        internal long _missingState;
+        internal long _missingCode;
+        internal long _missingStorage;
         internal long _storageSize;
         internal long _codeSize;
         internal long _stateSize;
-        internal readonly int[] _stateLevels = new int[Levels];
-        internal readonly int[] _storageLevels = new int[Levels];
-        internal readonly int[] _codeLevels = new int[Levels];
+        internal readonly long[] _stateLevels = new long[Levels];
+        internal readonly long[] _storageLevels = new long[Levels];
+        internal readonly long[] _codeLevels = new long[Levels];
 
-        public int StateBranchCount => _stateBranchCount;
+        public long StateBranchCount => _stateBranchCount;
 
-        public int StateExtensionCount => _stateExtensionCount;
+        public long StateExtensionCount => _stateExtensionCount;
 
-        public int AccountCount => _accountCount;
+        public long AccountCount => _accountCount;
 
-        public int StorageBranchCount => _storageBranchCount;
+        public long StorageBranchCount => _storageBranchCount;
 
-        public int StorageExtensionCount => _storageExtensionCount;
+        public long StorageExtensionCount => _storageExtensionCount;
 
-        public int StorageLeafCount => _storageLeafCount;
+        public long StorageLeafCount => _storageLeafCount;
 
-        public int CodeCount => _codeCount;
+        public long CodeCount => _codeCount;
 
-        public int MissingState => _missingState;
+        public long MissingState => _missingState;
 
-        public int MissingCode => _missingCode;
+        public long MissingCode => _missingCode;
 
-        public int MissingStorage => _missingStorage;
+        public long MissingStorage => _missingStorage;
 
-        public int MissingNodes => MissingCode + MissingState + MissingStorage;
+        public long MissingNodes => MissingCode + MissingState + MissingStorage;
 
-        public int StorageCount => StorageLeafCount + StorageExtensionCount + StorageBranchCount;
+        public long StorageCount => StorageLeafCount + StorageExtensionCount + StorageBranchCount;
 
-        public int StateCount => AccountCount + StateExtensionCount + StateBranchCount;
+        public long StateCount => AccountCount + StateExtensionCount + StateBranchCount;
 
-        public int NodesCount => StorageCount + StateCount + CodeCount;
+        public long NodesCount => StorageCount + StateCount + CodeCount;
 
         public long StorageSize => _storageSize;
 
@@ -64,14 +63,14 @@ namespace Nethermind.Trie
 
         //        public List<string> MissingNodes { get; set; } = new List<string>();
 
-        public int[] StateLevels => _stateLevels;
-        public int[] StorageLevels => _storageLevels;
-        public int[] CodeLevels => _codeLevels;
-        public int[] AllLevels
+        public long[] StateLevels => _stateLevels;
+        public long[] StorageLevels => _storageLevels;
+        public long[] CodeLevels => _codeLevels;
+        public long[] AllLevels
         {
             get
             {
-                int[] result = new int[Levels];
+                long[] result = new long[Levels];
                 for (int i = 0; i < result.Length; i++)
                 {
                     result[i] = _stateLevels[i] + _storageLevels[i] + _codeLevels[i];

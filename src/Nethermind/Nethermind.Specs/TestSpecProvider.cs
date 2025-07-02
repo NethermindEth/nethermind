@@ -31,11 +31,12 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GenesisSpec { get; set; }
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) => SpecToReturn;
+        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => SpecToReturn;
 
         public IReleaseSpec SpecToReturn { get; set; }
 
         public long? DaoBlockNumber { get; set; }
+        public ulong? BeaconChainGenesisTimestamp { get; set; }
         public ulong? _networkId;
         public ulong NetworkId { get { return _networkId ?? TestBlockchainIds.NetworkId; } set { _networkId = value; } }
 

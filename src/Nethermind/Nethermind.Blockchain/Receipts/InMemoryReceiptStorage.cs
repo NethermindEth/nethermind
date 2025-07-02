@@ -2,55 +2,57 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
-using System.Linq;
+using NonBlocking;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Receipts
 {
     public class InMemoryReceiptStorage : IReceiptStorage
     {
         private readonly bool _allowReceiptIterator;
-        private readonly ConcurrentDictionary<Keccak, TxReceipt[]> _receipts = new();
+        private readonly IBlockTree? _blockTree;
+        private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt[]> _receipts = new();
 
-        private readonly ConcurrentDictionary<Keccak, TxReceipt> _transactions = new();
+        private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt> _transactions = new();
 
-        public InMemoryReceiptStorage(bool allowReceiptIterator = true)
+#pragma warning disable CS0067
+        public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+#pragma warning restore CS0067
+
+        public InMemoryReceiptStorage(bool allowReceiptIterator = true, IBlockTree? blockTree = null)
         {
             _allowReceiptIterator = allowReceiptIterator;
+            _blockTree = blockTree;
+            if (_blockTree is not null)
+                _blockTree.BlockAddedToMain += BlockTree_BlockAddedToMain;
         }
 
-        public Keccak FindBlockHash(Keccak txHash)
+        private void BlockTree_BlockAddedToMain(object? sender, BlockReplacementEventArgs e)
+        {
+            EnsureCanonical(e.Block);
+            ReceiptsInserted?.Invoke(this, e);
+        }
+
+        public Hash256 FindBlockHash(Hash256 txHash)
         {
             _transactions.TryGetValue(txHash, out var receipt);
             return receipt?.BlockHash;
         }
 
-        public TxReceipt[] Get(Block block) => Get(block.Hash);
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => Get(block.Hash);
 
-        public TxReceipt[] Get(Keccak blockHash)
-        {
-            if (_receipts.TryGetValue(blockHash, out var receipts))
-            {
-                return receipts;
-            }
-
-            return new TxReceipt[] { };
-        }
+        public TxReceipt[] Get(Hash256 blockHash, bool recover = true) =>
+            _receipts.TryGetValue(blockHash, out TxReceipt[] receipts) ? receipts : [];
 
         public bool CanGetReceiptsByHash(long blockNumber) => true;
-        public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator)
+        public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
         {
             if (_allowReceiptIterator && _receipts.TryGetValue(blockHash, out var receipts))
             {
 #pragma warning disable 618
-                ReceiptStorageDecoder decoder = ReceiptStorageDecoder.Instance;
-                RlpStream stream = new RlpStream(decoder.GetLength(receipts, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts));
-                decoder.Encode(stream, receipts, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
-                iterator = new ReceiptsIterator(stream.Data, new MemDb());
+                iterator = new ReceiptsIterator(receipts);
 #pragma warning restore 618
                 return true;
             }
@@ -61,7 +63,10 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true)
+        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
+            => Insert(block, txReceipts, null, ensureCanonical, writeFlags, lastBlockNumber);
+
+        public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
         {
             _receipts[block.Hash] = txReceipts;
             if (ensureCanonical)
@@ -70,7 +75,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public bool HasBlock(Keccak hash)
+        public bool HasBlock(long blockNumber, Hash256 hash)
         {
             return _receipts.ContainsKey(hash);
         }
@@ -85,8 +90,6 @@ namespace Nethermind.Blockchain.Receipts
                 _transactions[txReceipt.TxHash] = txReceipt;
             }
         }
-
-        public long? LowestInsertedReceiptBlockNumber { get; set; }
 
         public long MigratedBlockNumber { get; set; }
 

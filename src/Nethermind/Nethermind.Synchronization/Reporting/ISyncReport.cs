@@ -3,29 +3,23 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.Reporting
 {
     public interface ISyncReport : IDisposable
     {
-        MeasuredProgress FullSyncBlocksDownloaded { get; }
+        void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e);
 
-        long FullSyncBlocksKnown { get; set; }
+        ProgressLogger FullSyncBlocksDownloaded { get; }
 
-        MeasuredProgress HeadersInQueue { get; }
+        ProgressLogger FastBlocksHeaders { get; }
 
-        MeasuredProgress BodiesInQueue { get; }
+        ProgressLogger FastBlocksBodies { get; }
 
-        MeasuredProgress ReceiptsInQueue { get; }
+        ProgressLogger FastBlocksReceipts { get; }
 
-        MeasuredProgress FastBlocksHeaders { get; }
+        ProgressLogger BeaconHeaders { get; }
 
-        MeasuredProgress FastBlocksBodies { get; }
-
-        MeasuredProgress FastBlocksReceipts { get; }
-
-        MeasuredProgress BeaconHeaders { get; }
-
-        MeasuredProgress BeaconHeadersInQueue { get; }
     }
 }

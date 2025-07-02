@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Validators
             for (int i = 0; i < uncles.Length; i++)
             {
                 BlockHeader uncle = uncles[i];
-                if (!_headerValidator.Validate(uncle, true))
+                if (!_headerValidator.Validate(uncle, true, out _))
                 {
                     _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncle's header invalid");
                     return false;

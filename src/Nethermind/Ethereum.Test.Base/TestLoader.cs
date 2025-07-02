@@ -7,67 +7,77 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 using NUnit.Framework;
 
-namespace Ethereum.Test.Base
+namespace Ethereum.Test.Base;
+
+public static class TestLoader
 {
-    public static class TestLoader
+    public static object PrepareInput(object input)
     {
-        public static object PrepareInput(object input)
+        if (input is string s && s.StartsWith("#"))
         {
-            string s = input as string;
-            if (s != null && s.StartsWith("#"))
-            {
-                BigInteger bigInteger = BigInteger.Parse(s.Substring(1));
-                input = bigInteger;
-            }
-
-            if (input is JArray)
-            {
-                input = ((JArray)input).Select(PrepareInput).ToArray();
-            }
-
-            JToken token = input as JToken;
-            if (token != null)
-            {
-                if (token.Type == JTokenType.String)
-                {
-                    return token.Value<string>();
-                }
-
-                if (token.Type == JTokenType.Integer)
-                {
-                    return token.Value<long>();
-                }
-            }
-
-            return input;
+            BigInteger bigInteger = BigInteger.Parse(s.Substring(1));
+            input = bigInteger;
         }
 
-        public static IEnumerable<TTest> LoadFromFile<TContainer, TTest>(
-            string testFileName,
-            Func<TContainer, IEnumerable<TTest>> testExtractor)
+        JsonElement token = (JsonElement)input;
+
+        if (token.ValueKind == JsonValueKind.Array)
         {
-            Assembly assembly = typeof(TTest).Assembly;
-            string[] resourceNames = assembly.GetManifestResourceNames();
-            string resourceName = resourceNames.SingleOrDefault(r => r.Contains(testFileName));
-            if (resourceName == null)
+            object[] array = new object[token.GetArrayLength()];
+            for (int i = 0; i < array.Length; i++)
             {
-                throw new ArgumentException($"Cannot find test resource: {testFileName}");
+                array[i] = PrepareInput(token[i]);
             }
 
-            using (Stream stream = assembly.GetManifestResourceStream(resourceName))
+            input = array;
+        }
+
+        if (token.ValueKind == JsonValueKind.String)
+        {
+            return token.GetString()!;
+        }
+
+        if (token.ValueKind == JsonValueKind.Number)
+        {
+            return token.GetInt64();
+        }
+
+        return input;
+    }
+
+    public static IEnumerable<TTest> LoadFromFile<TContainer, TTest>(
+        string testFileName,
+        Func<TContainer, IEnumerable<TTest>> testExtractor)
+    {
+        Assembly assembly = typeof(TTest).Assembly;
+        string[] resourceNames = assembly.GetManifestResourceNames();
+        string resourceName = resourceNames.SingleOrDefault(r => r.Contains(testFileName));
+        if (resourceName is null)
+        {
+            throw new ArgumentException($"Cannot find test resource: {testFileName}");
+        }
+
+        var jsonOptions = new JsonSerializerOptions()
+        {
+            PropertyNameCaseInsensitive = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
+            NumberHandling = JsonNumberHandling.AllowReadingFromString
+        };
+        using (Stream stream = assembly.GetManifestResourceStream(resourceName))
+        {
+            Assert.That(stream, Is.Not.Null);
+            using (StreamReader reader = new(stream))
             {
-                Assert.NotNull(stream);
-                using (StreamReader reader = new(stream))
-                {
-                    string testJson = reader.ReadToEnd();
-                    TContainer testSpecs =
-                        JsonConvert.DeserializeObject<TContainer>(testJson);
-                    return testExtractor(testSpecs);
-                }
+                string testJson = reader.ReadToEnd();
+                TContainer testSpecs =
+                    JsonSerializer.Deserialize<TContainer>(testJson, jsonOptions);
+                return testExtractor(testSpecs);
             }
         }
     }

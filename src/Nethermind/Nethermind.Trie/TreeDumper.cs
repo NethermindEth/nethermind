@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -9,79 +10,83 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie
 {
-    public class TreeDumper : ITreeVisitor
+    public class TreeDumper : ITreeVisitor<OldStyleTrieVisitContext>
     {
-        private StringBuilder _builder = new();
+        private readonly StringBuilder _builder = new();
 
         public void Reset()
         {
             _builder.Clear();
         }
 
-        public bool ShouldVisit(Keccak nextNode)
+        public bool IsFullDbScan { get; init; } = true;
+
+        public bool ShouldVisit(in OldStyleTrieVisitContext _, in ValueHash256 nextNode)
         {
             return true;
         }
 
-        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(in OldStyleTrieVisitContext context, in ValueHash256 rootHash)
         {
             if (rootHash == Keccak.EmptyTreeHash)
             {
-                _builder.AppendLine("EMPTY TREEE");
+                _builder.AppendLine("EMPTY TREE");
             }
             else
             {
-                _builder.AppendLine(trieVisitContext.IsStorage ? "STORAGE TREE" : "STATE TREE");
+                _builder.AppendLine(context.IsStorage ? "STORAGE TREE" : "STATE TREE");
             }
         }
 
-        private string GetPrefix(TrieVisitContext context) => string.Concat($"{GetIndent(context.Level)}", context.IsStorage ? "STORAGE " : string.Empty, $"{GetChildIndex(context)}");
+        private static string GetPrefix(in OldStyleTrieVisitContext context) => string.Concat($"{GetIndent(context.Level)}", context.IsStorage ? "STORAGE " : string.Empty, $"{GetChildIndex(context)}");
 
-        private string GetIndent(int level) => new('+', level * 2);
-        private string GetChildIndex(TrieVisitContext context) => context.BranchChildIndex is null ? string.Empty : $"{context.BranchChildIndex:x2} ";
+        private static string GetIndent(int level) => new('+', level * 2);
+        private static string GetChildIndex(in OldStyleTrieVisitContext context) => context.BranchChildIndex is null ? string.Empty : $"{context.BranchChildIndex:x2} ";
 
-        public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in OldStyleTrieVisitContext context, in ValueHash256 nodeHash)
         {
-            _builder.AppendLine($"{GetIndent(trieVisitContext.Level)}{GetChildIndex(trieVisitContext)}MISSING {nodeHash}");
+            _builder.AppendLine($"{GetIndent(context.Level)}{GetChildIndex(context)}MISSING {nodeHash}");
         }
 
-        public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in OldStyleTrieVisitContext context, TrieNode node)
         {
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}BRANCH | -> {(node.Keccak?.Bytes ?? node.FullRlp)?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(context)}BRANCH | -> {KeccakOrRlpStringOfNode(node)}");
         }
 
-        public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(in OldStyleTrieVisitContext context, TrieNode node)
         {
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {(node.Keccak?.Bytes ?? node.FullRlp)?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(context)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
         }
 
-        private AccountDecoder decoder = new();
-
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
+        public void VisitLeaf(in OldStyleTrieVisitContext context, TrieNode node)
         {
-            string leafDescription = trieVisitContext.IsStorage ? "LEAF " : "ACCOUNT ";
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {(node.Keccak?.Bytes ?? node.FullRlp)?.ToHexString()}");
-            if (!trieVisitContext.IsStorage)
+        }
+
+        public void VisitAccount(in OldStyleTrieVisitContext context, TrieNode node, in AccountStruct account)
+        {
+            string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
+            _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+            Rlp.ValueDecoderContext valueDecoderContext = new(node.Value.Span);
+            if (!context.IsStorage)
             {
-                Account account = decoder.Decode(new RlpStream(value));
-                _builder.AppendLine($"{GetPrefix(trieVisitContext)}  NONCE: {account.Nonce}");
-                _builder.AppendLine($"{GetPrefix(trieVisitContext)}  BALANCE: {account.Balance}");
-                _builder.AppendLine($"{GetPrefix(trieVisitContext)}  IS_CONTRACT: {account.IsContract}");
+                _builder.AppendLine($"{GetPrefix(context)}  NONCE: {account.Nonce}");
+                _builder.AppendLine($"{GetPrefix(context)}  BALANCE: {account.Balance}");
+                _builder.AppendLine($"{GetPrefix(context)}  IS_CONTRACT: {account.IsContract}");
             }
             else
             {
-                _builder.AppendLine($"{GetPrefix(trieVisitContext)}  VALUE: {new RlpStream(value).DecodeByteArray().ToHexString(true, true)}");
+                _builder.AppendLine($"{GetPrefix(context)}  VALUE: {valueDecoderContext.DecodeByteArray().ToHexString(true, true)}");
             }
-        }
-
-        public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
-        {
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}CODE {codeHash}");
         }
 
         public override string ToString()
         {
             return _builder.ToString();
+        }
+
+        private static string? KeccakOrRlpStringOfNode(TrieNode node)
+        {
+            return node.Keccak is not null ? node.Keccak!.Bytes.ToHexString() : node.FullRlp.Span.ToHexString();
         }
     }
 }

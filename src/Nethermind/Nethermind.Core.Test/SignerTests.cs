@@ -6,7 +6,6 @@ using System.IO;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -26,29 +25,29 @@ namespace Nethermind.Core.Test
         {
             Signature signature = new(hexSignature);
             string hexAgain = signature.ToString();
-            Assert.AreEqual(hexSignature, hexAgain);
+            Assert.That(hexAgain, Is.EqualTo(hexSignature));
         }
 
         [Test]
         public void Sign_and_recover()
         {
-            EthereumEcdsa ethereumEcdsa = new(BlockchainIds.Olympic, LimboLogs.Instance);
+            EthereumEcdsa ethereumEcdsa = new(BlockchainIds.Olympic);
 
-            Keccak message = Keccak.Compute("Test message");
+            ValueHash256 message = ValueKeccak.Compute("Test message");
             PrivateKey privateKey = Build.A.PrivateKey.TestObject;
-            Signature signature = ethereumEcdsa.Sign(privateKey, message);
-            Assert.AreEqual(privateKey.Address, ethereumEcdsa.RecoverAddress(signature, message));
+            Signature signature = ethereumEcdsa.Sign(privateKey, in message);
+            Assert.That(ethereumEcdsa.RecoverAddress(signature, in message), Is.EqualTo(privateKey.Address));
         }
 
         [Test]
         public void Decompress()
         {
-            EthereumEcdsa ethereumEcdsa = new(BlockchainIds.Olympic, LimboLogs.Instance);
+            _ = new EthereumEcdsa(BlockchainIds.Olympic);
             PrivateKey privateKey = Build.A.PrivateKey.TestObject;
             CompressedPublicKey compressedPublicKey = privateKey.CompressedPublicKey;
             PublicKey expected = privateKey.PublicKey;
-            PublicKey actual = ethereumEcdsa.Decompress(compressedPublicKey);
-            Assert.AreEqual(expected, actual);
+            PublicKey actual = EthereumEcdsa.Decompress(compressedPublicKey);
+            Assert.That(actual, Is.EqualTo(expected));
         }
     }
 }

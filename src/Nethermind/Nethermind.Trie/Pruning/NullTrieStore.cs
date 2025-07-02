@@ -1,49 +1,31 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class NullTrieStore : IReadOnlyTrieStore
+    public class NullTrieStore : IScopedTrieStore
     {
         private NullTrieStore() { }
 
         public static NullTrieStore Instance { get; } = new();
 
-        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
+        public TrieNode FindCachedOrUnknown(in TreePath treePath, Hash256 hash) => new(NodeType.Unknown, hash);
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root) { }
+        public byte[] LoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None) => [];
 
-        public void HackPersistOnShutdown() { }
+        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => [];
 
-        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
-        {
-            return this;
-        }
+        public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => NullCommitter.Instance;
 
-        public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
-        {
-            add { }
-            remove { }
-        }
+        public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => true;
 
-        public TrieNode FindCachedOrUnknown(Keccak hash)
-        {
-            return new(NodeType.Unknown, hash);
-        }
+        public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp) { }
 
-        public byte[] LoadRlp(Keccak hash)
-        {
-            return Array.Empty<byte>();
-        }
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 storageRoot) => this;
 
-        public bool IsPersisted(Keccak keccak) => true;
-
-        public void Dispose() { }
-
-        public byte[]? this[byte[] key] => null;
+        public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
     }
 }

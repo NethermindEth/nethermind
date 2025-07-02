@@ -2,18 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
     internal class EmptyDataContract<T> : IDataContract<T>
     {
-        public IEnumerable<T> GetAllItemsFromBlock(BlockHeader blockHeader) => Enumerable.Empty<T>();
+        public IEnumerable<T> GetAllItemsFromBlock(BlockHeader blockHeader) => [];
 
         public bool TryGetItemsChangedFromBlock(BlockHeader header, TxReceipt[] receipts, out IEnumerable<T> items)
         {
-            items = Enumerable.Empty<T>();
+            items = [];
             return false;
         }
 

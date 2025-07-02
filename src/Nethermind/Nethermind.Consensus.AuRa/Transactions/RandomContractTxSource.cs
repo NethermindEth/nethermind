@@ -1,22 +1,21 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+extern alias BouncyCastle;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.State;
-using Org.BouncyCastle.Crypto;
+using BouncyCastle::Org.BouncyCastle.Crypto;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -28,16 +27,18 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly IEciesCipher _eciesCipher;
         private readonly ISigner _signer;
-        private readonly ProtectedPrivateKey _previousCryptoKey;
+        private readonly IProtectedPrivateKey _previousCryptoKey;
         private readonly IList<IRandomContract> _contracts;
         private readonly ICryptoRandom _random;
         private readonly ILogger _logger;
+
+        public bool SupportsBlobs => false;
 
         public RandomContractTxSource(
             IList<IRandomContract> contracts,
             IEciesCipher eciesCipher,
             ISigner signer,
-            ProtectedPrivateKey previousCryptoKey, // this is for backwards-compability when upgrading validator node 
+            IProtectedPrivateKey previousCryptoKey, // this is for backwards-compability when upgrading validator node
             ICryptoRandom cryptoRandom,
             ILogManager logManager)
         {
@@ -49,7 +50,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<RandomContractTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttribute, bool filterSources)
         {
             if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
             {
@@ -94,7 +95,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                                 {
                                     using (privateKey)
                                     {
-                                        bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
+                                        bytes = _eciesCipher.Decrypt(privateKey, cipher).PlainText;
                                     }
                                 }
                                 else
@@ -108,7 +109,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                                 // But we need to fallback to node key here when we upgrade version.
                                 // This is temporary code after all validators are upgraded we can remove it.
                                 using PrivateKey privateKey = _previousCryptoKey.Unprotect();
-                                bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
+                                bytes = _eciesCipher.Decrypt(privateKey, cipher).PlainText;
                             }
 
                             if (bytes?.Length != 32)

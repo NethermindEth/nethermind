@@ -15,13 +15,13 @@ namespace Ethereum.Blockchain.Test
         [Retry(3)]
         public void Test(GeneralStateTest test)
         {
-            Assert.True(RunTest(test).Pass);
+            Assert.That(RunTest(test).Pass, Is.True);
         }
 
         public static IEnumerable<GeneralStateTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stMemoryTest");
-            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+            return loader.LoadTests<GeneralStateTest>();
         }
     }
 }

@@ -14,10 +14,10 @@ namespace Nethermind.Network.Rlpx
 {
     public class ZeroFrameMerger : ByteToMessageDecoder
     {
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         private ZeroPacket? _zeroPacket;
-        private FrameHeaderReader _headerReader = new();
+        private readonly FrameHeaderReader _headerReader = new();
 
         public ZeroFrameMerger(ILogManager logManager)
         {
@@ -69,13 +69,13 @@ namespace Nethermind.Network.Rlpx
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ReadChunk(IByteBuffer input, FrameHeaderReader.FrameInfo frame)
+        private void ReadChunk(IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
         {
             input.ReadBytes(_zeroPacket.Content, frame.Size);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ReadFirstChunk(IChannelHandlerContext context, IByteBuffer input, FrameHeaderReader.FrameInfo frame)
+        private void ReadFirstChunk(IChannelHandlerContext context, IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
         {
             byte packetTypeRlp = input.ReadByte();
             IByteBuffer content;

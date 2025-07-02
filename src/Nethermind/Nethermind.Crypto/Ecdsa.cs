@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Crypto;
-using Nethermind.Secp256k1;
 
 namespace Nethermind.Crypto
 {
@@ -13,29 +14,14 @@ namespace Nethermind.Crypto
     /// </summary>
     public class Ecdsa : IEcdsa
     {
-        public Signature Sign(PrivateKey privateKey, Keccak message)
+        public Signature Sign(PrivateKey privateKey, in ValueHash256 message)
         {
-            if (!Proxy.VerifyPrivateKey(privateKey.KeyBytes))
+            if (!SecP256k1.VerifyPrivateKey(privateKey.KeyBytes))
             {
-                throw new ArgumentException("Invalid private key", nameof(privateKey));
+                InvalidPrivateKey();
             }
 
-            byte[] signatureBytes = Proxy.SignCompact(message.Bytes, privateKey.KeyBytes, out int recoveryId);
-
-            //// https://bitcoin.stackexchange.com/questions/59820/sign-a-tx-with-low-s-value-using-openssl
-
-            //byte[] sBytes = signatureBytes.Slice(32, 32);
-            //BigInteger s = sBytes.ToUnsignedBigInteger();
-            //if (s > MaxLowS)
-            //{
-            //    s = LowSTransform - s;
-            //    byte[] newSBytes = s.ToBigEndianByteArray();
-            //    for (int i = 0; i < 32; i++)
-            //    {
-            //        signatureBytes[32 + 1] = newSBytes[i];
-            //    }
-            //}
-
+            byte[] signatureBytes = SpanSecP256k1.SignCompact(message.Bytes, privateKey.KeyBytes, out int recoveryId);
             Signature signature = new(signatureBytes, recoveryId);
 
 #if DEBUG
@@ -45,14 +31,16 @@ namespace Nethermind.Crypto
                 throw new InvalidOperationException("After signing recovery returns different address than ecdsa's");
             }
 #endif
-
             return signature;
+
+            [DoesNotReturn, StackTraceHidden]
+            static void InvalidPrivateKey() => throw new ArgumentException("Invalid private key");
         }
 
-        public PublicKey? RecoverPublicKey(Signature signature, Keccak message)
+        public PublicKey? RecoverPublicKey(Signature signature, in ValueHash256 message)
         {
             Span<byte> publicKey = stackalloc byte[65];
-            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);
+            bool success = SpanSecP256k1.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);
             if (!success)
             {
                 return null;
@@ -61,10 +49,10 @@ namespace Nethermind.Crypto
             return new PublicKey(publicKey);
         }
 
-        public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, Keccak message)
+        public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, in ValueHash256 message)
         {
             Span<byte> publicKey = stackalloc byte[33];
-            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, true);
+            bool success = SpanSecP256k1.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, true);
             if (!success)
             {
                 return null;
@@ -73,9 +61,9 @@ namespace Nethermind.Crypto
             return new CompressedPublicKey(publicKey);
         }
 
-        public PublicKey Decompress(CompressedPublicKey compressedPublicKey)
+        public static PublicKey Decompress(CompressedPublicKey compressedPublicKey)
         {
-            byte[] deserialized = Proxy.Decompress(compressedPublicKey.Bytes);
+            byte[] deserialized = SecP256k1.Decompress(compressedPublicKey.Bytes);
             return new PublicKey(deserialized);
         }
     }

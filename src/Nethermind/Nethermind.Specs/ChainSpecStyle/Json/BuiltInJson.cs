@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Newtonsoft.Json.Linq;
+
+using System.Text.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
-    internal class BuiltInJson
+    public class BuiltInJson
     {
         public string Name { get; set; }
-        public Dictionary<string, JObject> Pricing { get; set; }
+        public Dictionary<string, JsonElement> Pricing { get; set; }
     }
 }

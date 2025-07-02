@@ -18,6 +18,10 @@ namespace Nethermind.Network.Contract.P2P
         /// </summary>
         public const string Snap = "snap";
         /// <summary>
+        /// Node Data
+        /// </summary>
+        public const string NodeData = "nodedata";
+        /// <summary>
         /// Whisper
         /// </summary>
         public const string Shh = "shh";
@@ -26,10 +30,6 @@ namespace Nethermind.Network.Contract.P2P
         /// </summary>
         public const string Bzz = "bzz";
         /// <summary>
-        /// Lightweight Clients
-        /// </summary>
-        public const string Les = "les";
-        /// <summary>
         /// Parity Warp Sync
         /// </summary>
         public const string Par = "par";
@@ -37,10 +37,6 @@ namespace Nethermind.Network.Contract.P2P
         /// Nethermind Data Marketplace
         /// </summary>
         public const string Ndm = "ndm";
-        /// <summary>
-        /// Witness
-        /// </summary>
-        public const string Wit = "wit";
         /// <summary>
         /// Account Abstraction
         /// </summary>

@@ -6,5 +6,6 @@ namespace Nethermind.Core.Test.Builders
     public partial class Build
     {
         public BlockHeaderBuilder BlockHeader => new();
+        public BlockHeader EmptyBlockHeader => BlockHeader.TestObject;
     }
 }

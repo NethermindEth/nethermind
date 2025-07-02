@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
@@ -18,25 +20,21 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             _api = api;
         }
 
-        protected override void Load()
+        protected override void Load(IMainProcessingContext mainProcessingContext)
         {
-            CreateSystemAccounts();
-            base.Load();
+            CreateSystemAccounts(mainProcessingContext.WorldState);
+            base.Load(mainProcessingContext);
         }
 
-        private void CreateSystemAccounts()
+        private void CreateSystemAccounts(IWorldState worldState)
         {
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
-            bool hasConstructorAllocation = _api.ChainSpec.Allocations.Values.Any(a => a.Constructor is not null);
+            bool hasConstructorAllocation = _api.ChainSpec.Allocations.Values.Any(static a => a.Constructor is not null);
             if (hasConstructorAllocation)
             {
-                if (_api.StateProvider is null) throw new StepDependencyException(nameof(_api.StateProvider));
-                if (_api.StorageProvider is null) throw new StepDependencyException(nameof(_api.StorageProvider));
-
-                _api.StateProvider.CreateAccount(Address.Zero, UInt256.Zero);
-                _api.StorageProvider.Commit();
-                _api.StateProvider.Commit(Homestead.Instance);
+                worldState.CreateAccount(Address.Zero, UInt256.Zero);
+                worldState.Commit(Homestead.Instance);
             }
         }
     }

@@ -35,6 +35,22 @@ _Please choose one of the keywords above to refer to the issue this PR solves fo
 
 _Optional. Remove if not applicable._
 
+## Documentation
+
+#### Requires documentation update
+
+- [ ] Yes
+- [ ] No
+
+_If yes, link the PR to the docs update or the issue with the details labeled `docs`. Remove if not applicable._
+
+#### Requires explanation in Release Notes
+
+- [ ] Yes
+- [ ] No
+
+_If yes, fill in the details here. Remove if not applicable._
+
 ## Remarks
 
 _Optional. Remove if not applicable._

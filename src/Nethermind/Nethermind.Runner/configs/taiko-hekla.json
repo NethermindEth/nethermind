@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/taiko-hekla.json",
+    "GenesisHash": "0x1f5554042aa50dc0712936ae234d8803b80b84251f85d074756a2f391896e109",
+    "BaseDbPath": "nethermind_db/taiko-hekla",
+    "LogFileName": "taiko-hekla.log",
+    "DisableGcOnNewPayload": false
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "PivotNumber": 882786,
+    "PivotHash": "0x76e654042380ab94b86398fdb3515d7e699c7c070ffbbf6a49e581eb2b8f3f00",
+    "PivotTotalDifficulty": 0
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "EnginePort": 8551
+  }
+}

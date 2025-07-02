@@ -4,7 +4,6 @@
 using System;
 using System.Numerics;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 
 namespace Nethermind.Abi
 {
@@ -20,34 +19,12 @@ namespace Nethermind.Abi
         public static new readonly AbiInt Int96 = new(96);
         public static new readonly AbiInt Int256 = new(256);
 
-        static AbiInt()
-        {
-            RegisterMapping<sbyte>(Int8);
-            RegisterMapping<short>(Int16);
-            RegisterMapping<int>(Int32);
-            RegisterMapping<long>(Int64);
-            RegisterMapping<Int256.Int256>(Int256);
-        }
-
         public AbiInt(int length)
         {
-            if (length % 8 != 0)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiInt)} has to be a multiple of 8");
-            }
+            ThrowIfNotMultipleOf8(length);
 
-            if (length > MaxSize)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiInt)} has to be less or equal to {MinSize}");
-            }
-
-            if (length <= MinSize)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiInt)} has to be greater than {MinSize}");
-            }
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxSize);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(length, MinSize);
 
             Length = length;
             Name = $"int{Length}";
@@ -64,19 +41,14 @@ namespace Nethermind.Abi
         {
             var (value, length) = DecodeInt(data, position, packed);
 
-            switch (Length)
+            return Length switch
             {
-                case { } n when n <= 8:
-                    return ((sbyte)value, length);
-                case { } n when n <= 16:
-                    return ((short)value, length);
-                case { } n when n <= 32:
-                    return ((int)value, length);
-                case { } n when n <= 64:
-                    return ((long)value, length);
-                default:
-                    return (value, length);
-            }
+                { } n when n <= 8 => ((object, int))((sbyte)value, length),
+                { } n when n <= 16 => ((object, int))((short)value, length),
+                { } n when n <= 32 => ((object, int))((int)value, length),
+                { } n when n <= 64 => ((object, int))((long)value, length),
+                _ => ((object, int))(value, length),
+            };
         }
 
         public (BigInteger, int) DecodeInt(byte[] data, int position, bool packed)
@@ -100,19 +72,14 @@ namespace Nethermind.Abi
 
         private Type GetCSharpType()
         {
-            switch (Length)
+            return Length switch
             {
-                case { } n when n <= 8:
-                    return typeof(sbyte);
-                case { } n when n <= 16:
-                    return typeof(short);
-                case { } n when n <= 32:
-                    return typeof(int);
-                case { } n when n <= 64:
-                    return typeof(long);
-                default:
-                    return typeof(BigInteger);
-            }
+                { } n when n <= 8 => typeof(sbyte),
+                { } n when n <= 16 => typeof(short),
+                { } n when n <= 32 => typeof(int),
+                { } n when n <= 64 => typeof(long),
+                _ => typeof(BigInteger),
+            };
         }
     }
 }

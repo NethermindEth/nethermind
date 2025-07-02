@@ -20,7 +20,7 @@ namespace Nethermind.Core
 
     public class BlockInfo
     {
-        public BlockInfo(Keccak blockHash, in UInt256 totalDifficulty, BlockMetadata metadata = BlockMetadata.None)
+        public BlockInfo(Hash256 blockHash, in UInt256 totalDifficulty, BlockMetadata metadata = BlockMetadata.None)
         {
             BlockHash = blockHash;
             TotalDifficulty = totalDifficulty;
@@ -31,7 +31,7 @@ namespace Nethermind.Core
 
         public bool WasProcessed { get; set; }
 
-        public Keccak BlockHash { get; }
+        public Hash256 BlockHash { get; }
 
         public bool IsFinalized
         {
@@ -78,5 +78,11 @@ namespace Nethermind.Core
         public long BlockNumber { get; set; }
 
         public override string ToString() => BlockHash.ToString();
+
+        public bool EqualsIgnoringWasProcessed(BlockInfo other) =>
+            TotalDifficulty.Equals(other.TotalDifficulty)
+            && BlockHash.Equals(other.BlockHash)
+            && Metadata == other.Metadata
+            && BlockNumber == other.BlockNumber;
     }
 }

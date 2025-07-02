@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
+
+using Nethermind.Blockchain.Contracts.Json;
 
 namespace Nethermind.Abi
 {
+    [JsonConverter(typeof(AbiDefinitionConverter))]
     public class AbiDefinition
     {
         private readonly List<AbiFunctionDescription> _constructors = new();
@@ -62,6 +66,6 @@ namespace Nethermind.Abi
         public AbiEventDescription GetEvent(string name, bool camelCase = false) => _events[camelCase ? GetName(name) : name];
         public AbiErrorDescription GetError(string name, bool camelCase = false) => _errors[camelCase ? GetName(name) : name];
 
-        public static string GetName(string name) => char.IsUpper(name[0]) ? char.ToLowerInvariant(name[0]) + name.Substring(1) : name;
+        public static string GetName(string name) => char.IsUpper(name[0]) ? char.ToLowerInvariant(name[0]) + name[1..] : name;
     }
 }

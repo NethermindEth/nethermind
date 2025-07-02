@@ -3,10 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
-using System.Threading;
 using Nethermind.Core.Timers;
 
 namespace Nethermind.Blockchain.FullPruning
@@ -99,7 +97,7 @@ namespace Nethermind.Blockchain.FullPruning
         private long GetPathSize(string path)
         {
             IEnumerable<IFileInfo> files = _fileSystem.DirectoryInfo.New(path).EnumerateFiles();
-            long size = files.Sum(f => f.Length);
+            long size = files.Sum(static f => f.Length);
             return size;
         }
 

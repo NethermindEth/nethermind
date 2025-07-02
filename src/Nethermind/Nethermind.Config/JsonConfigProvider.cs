@@ -7,7 +7,7 @@ namespace Nethermind.Config
 {
     public class JsonConfigProvider : IConfigProvider
     {
-        private ConfigProvider _provider = new();
+        private readonly ConfigProvider _provider = new();
 
         public JsonConfigProvider(string jsonConfigFile)
         {
@@ -17,6 +17,11 @@ namespace Nethermind.Config
         public T GetConfig<T>() where T : IConfig
         {
             return _provider.GetConfig<T>();
+        }
+
+        public IConfig GetConfig(Type configType)
+        {
+            return _provider.GetConfig(configType);
         }
 
         public object GetRawValue(string category, string name)

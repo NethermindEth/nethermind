@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Nethermind.Logging
@@ -17,26 +18,12 @@ namespace Nethermind.Logging
 
         private static NoErrorLimboLogs _instance;
 
-        public static NoErrorLimboLogs Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new NoErrorLimboLogs());
+        public static NoErrorLimboLogs Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, static () => new NoErrorLimboLogs());
 
-        public ILogger GetClassLogger(Type type)
-        {
-            return LimboNoErrorLogger.Instance;
-        }
+        public ILogger GetClassLogger<T>() => LimboNoErrorLogger.Instance;
 
-        public ILogger GetClassLogger<T>()
-        {
-            return LimboNoErrorLogger.Instance;
-        }
+        public ILogger GetClassLogger([CallerFilePath] string filePath = "") => LimboNoErrorLogger.Instance;
 
-        public ILogger GetClassLogger()
-        {
-            return LimboNoErrorLogger.Instance;
-        }
-
-        public ILogger GetLogger(string loggerName)
-        {
-            return LimboNoErrorLogger.Instance;
-        }
+        public ILogger GetLogger(string loggerName) => LimboNoErrorLogger.Instance;
     }
 }

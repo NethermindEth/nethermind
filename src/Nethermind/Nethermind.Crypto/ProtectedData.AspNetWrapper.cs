@@ -52,14 +52,14 @@ namespace Nethermind.Crypto
                 return provider.CreateProtector(purpose);
             }
 
-            private IDataProtector GetMachineProtector(byte[] optionalEntropy)
+            private static IDataProtector GetMachineProtector(byte[] optionalEntropy)
             {
                 var provider = DataProtectionProvider.Create(AppName);
                 var purpose = CreatePurpose(optionalEntropy);
                 return provider.CreateProtector(purpose);
             }
 
-            private string CreatePurpose(byte[] optionalEntropy)
+            private static string CreatePurpose(byte[] optionalEntropy)
             {
                 var result = BaseName + Convert.ToBase64String(optionalEntropy);
                 return Uri.EscapeDataString(result);

@@ -9,7 +9,7 @@ namespace Nethermind.Merkleization;
 
 public interface IMerkleList
 {
-    Root Root { get; }
+    Root? Root { get; }
 
     uint Count { get; }
 

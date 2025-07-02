@@ -15,17 +15,13 @@ namespace Nethermind.Network.IP
         public static bool IsInternal(this IPAddress toTest)
         {
             byte[] bytes = toTest.GetAddressBytes();
-            switch (bytes[0])
+            return bytes[0] switch
             {
-                case 10:
-                    return true;
-                case 172:
-                    return bytes[1] < 32 && bytes[1] >= 16;
-                case 192:
-                    return bytes[1] == 168;
-                default:
-                    return false;
-            }
+                10 => true,
+                172 => bytes[1] < 32 && bytes[1] >= 16,
+                192 => bytes[1] == 168,
+                _ => false,
+            };
         }
     }
 }

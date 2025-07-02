@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus
@@ -14,7 +13,7 @@ namespace Nethermind.Consensus
             long adjustedGasLimit = gasLimit;
             if (releaseSpec.Eip1559TransitionBlock == blockNumber)
             {
-                adjustedGasLimit *= Eip1559Constants.ElasticityMultiplier;
+                adjustedGasLimit *= releaseSpec.ElasticityMultiplier;
             }
 
             return adjustedGasLimit;

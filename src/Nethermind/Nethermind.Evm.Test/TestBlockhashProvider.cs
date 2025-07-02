@@ -3,20 +3,25 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Test
 {
     public class TestBlockhashProvider : IBlockhashProvider
     {
-        public static TestBlockhashProvider Instance = new();
-
-        private TestBlockhashProvider()
+        private readonly ISpecProvider _specProvider;
+        public TestBlockhashProvider(ISpecProvider specProvider)
         {
+            _specProvider = specProvider;
         }
+        public Hash256 GetBlockhash(BlockHeader currentBlock, long number)
+            => GetBlockhash(currentBlock, number, _specProvider.GetSpec(currentBlock));
 
-        public Keccak GetBlockhash(BlockHeader currentBlock, in long number)
+        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec)
         {
-            return Keccak.Compute(number.ToString());
+            return Keccak.Compute(spec.IsBlockHashInStateAvailable
+                ? (Eip2935Constants.RingBufferSize + number).ToString()
+                : (number).ToString());
         }
     }
 }

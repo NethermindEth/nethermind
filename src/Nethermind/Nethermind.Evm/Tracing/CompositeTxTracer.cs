@@ -5,484 +5,517 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm.Tracing
+namespace Nethermind.Evm.Tracing;
+
+public class CompositeTxTracer : ITxTracer
 {
-    public class CompositeTxTracer : ITxTracer
+    internal readonly IList<ITxTracer> _txTracers;
+
+    public CompositeTxTracer(params ITxTracer[] txTracers) : this((IList<ITxTracer>)txTracers)
     {
-        private readonly IList<ITxTracer> _txTracers;
+    }
 
-        public CompositeTxTracer(params ITxTracer[] txTracers) : this((IList<ITxTracer>)txTracers)
+    public CompositeTxTracer(IList<ITxTracer> txTracers)
+    {
+        _txTracers = txTracers;
+        for (int index = 0; index < txTracers.Count; index++)
         {
+            ITxTracer t = txTracers[index];
+            IsTracingState |= t.IsTracingState;
+            IsTracingReceipt |= t.IsTracingReceipt;
+            IsTracingActions |= t.IsTracingActions;
+            IsTracingOpLevelStorage |= t.IsTracingOpLevelStorage;
+            IsTracingMemory |= t.IsTracingMemory;
+            IsTracingInstructions |= t.IsTracingInstructions;
+            IsTracingRefunds |= t.IsTracingRefunds;
+            IsTracingCode |= t.IsTracingCode;
+            IsTracingStack |= t.IsTracingStack;
+            IsTracingBlockHash |= t.IsTracingBlockHash;
+            IsTracingStorage |= t.IsTracingStorage;
+            IsTracingAccess |= t.IsTracingAccess;
+            IsTracingFees |= t.IsTracingFees;
         }
+    }
 
-        public CompositeTxTracer(IList<ITxTracer> txTracers)
+    public bool IsTracingState { get; }
+    public bool IsTracingStorage { get; }
+    public bool IsTracingReceipt { get; }
+    public bool IsTracingActions { get; }
+    public bool IsTracingOpLevelStorage { get; }
+    public bool IsTracingMemory { get; }
+    public bool IsTracingInstructions { get; }
+    public bool IsTracingRefunds { get; }
+    public bool IsTracingCode { get; }
+    public bool IsTracingStack { get; }
+    public bool IsTracingBlockHash { get; }
+    public bool IsTracingAccess { get; }
+    public bool IsTracingFees { get; }
+    public bool IsTracingLogs { get; }
+
+    public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            _txTracers = txTracers;
-            for (int index = 0; index < txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingState)
             {
-                ITxTracer t = txTracers[index];
-                IsTracingState |= t.IsTracingState;
-                IsTracingReceipt |= t.IsTracingReceipt;
-                IsTracingActions |= t.IsTracingActions;
-                IsTracingOpLevelStorage |= t.IsTracingOpLevelStorage;
-                IsTracingMemory |= t.IsTracingMemory;
-                IsTracingInstructions |= t.IsTracingInstructions;
-                IsTracingRefunds |= t.IsTracingRefunds;
-                IsTracingCode |= t.IsTracingCode;
-                IsTracingStack |= t.IsTracingStack;
-                IsTracingBlockHash |= t.IsTracingBlockHash;
-                IsTracingStorage |= t.IsTracingStorage;
-                IsTracingAccess |= t.IsTracingAccess;
-                IsTracingFees |= t.IsTracingFees;
+                innerTracer.ReportBalanceChange(address, before, after);
             }
         }
+    }
 
-        public bool IsTracingState { get; }
-        public bool IsTracingStorage { get; }
-        public bool IsTracingReceipt { get; }
-        public bool IsTracingActions { get; }
-        public bool IsTracingOpLevelStorage { get; }
-        public bool IsTracingMemory { get; }
-        public bool IsTracingInstructions { get; }
-        public bool IsTracingRefunds { get; }
-        public bool IsTracingCode { get; }
-        public bool IsTracingStack { get; }
-        public bool IsTracingBlockHash { get; }
-        public bool IsTracingAccess { get; }
-        public bool IsTracingFees { get; }
-
-        public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
+    public void ReportCodeChange(Address address, byte[] before, byte[] after)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingState)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingState)
-                {
-                    innerTracer.ReportBalanceChange(address, before, after);
-                }
+                innerTracer.ReportCodeChange(address, before, after);
             }
         }
+    }
 
-        public void ReportCodeChange(Address address, byte[] before, byte[] after)
+    public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingState)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingState)
-                {
-                    innerTracer.ReportCodeChange(address, before, after);
-                }
+                innerTracer.ReportNonceChange(address, before, after);
             }
         }
+    }
 
-        public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
+    public void ReportAccountRead(Address address)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingState)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingState)
-                {
-                    innerTracer.ReportNonceChange(address, before, after);
-                }
+                innerTracer.ReportAccountRead(address);
             }
         }
+    }
 
-        public void ReportAccountRead(Address address)
+    public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingStorage)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingState)
-                {
-                    innerTracer.ReportAccountRead(address);
-                }
+                innerTracer.ReportStorageChange(storageCell, before, after);
             }
         }
+    }
 
-        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+    public void ReportStorageRead(in StorageCell storageCell)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingStorage)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingStorage)
-                {
-                    innerTracer.ReportStorageChange(storageCell, before, after);
-                }
+                innerTracer.ReportStorageRead(storageCell);
             }
         }
+    }
 
-        public void ReportStorageRead(in StorageCell storageCell)
+    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingReceipt)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingStorage)
-                {
-                    innerTracer.ReportStorageRead(storageCell);
-                }
+                innerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
             }
         }
+    }
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingReceipt)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingReceipt)
-                {
-                    innerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
-                }
+                innerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
             }
         }
+    }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingReceipt)
-                {
-                    innerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
-                }
+                innerTracer.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
             }
         }
+    }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+    public void ReportOperationError(EvmExceptionType error)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingInstructions)
-                {
-                    innerTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
-                }
+                innerTracer.ReportOperationError(error);
             }
         }
+    }
 
-        public void ReportOperationError(EvmExceptionType error)
+    public void ReportOperationRemainingGas(long gas)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingInstructions)
-                {
-                    innerTracer.ReportOperationError(error);
-                }
+                innerTracer.ReportOperationRemainingGas(gas);
             }
         }
+    }
 
-        public void ReportOperationRemainingGas(long gas)
+    public void ReportOperationLogs(LogEntry log)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions && innerTracer.IsTracingLogs)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingInstructions)
-                {
-                    innerTracer.ReportOperationRemainingGas(gas);
-                }
+                innerTracer.ReportLog(log);
             }
         }
+    }
 
-        public void SetOperationStack(List<string> stackTrace)
+    public void ReportLog(LogEntry log)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingStack)
-                {
-                    innerTracer.SetOperationStack(stackTrace);
-                }
+                innerTracer.ReportLog(log);
             }
         }
+    }
 
-        public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
+    public void SetOperationStack(TraceStack stack)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingStack)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingInstructions)
-                {
-                    innerTracer.ReportStackPush(stackItem);
-                }
+                innerTracer.SetOperationStack(stack);
             }
         }
+    }
 
-        public void ReportStackPush(in ZeroPaddedSpan stackItem)
+    public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingInstructions)
-                {
-                    innerTracer.ReportStackPush(stackItem);
-                }
+                innerTracer.ReportStackPush(stackItem);
             }
         }
+    }
 
-        public void ReportStackPush(byte stackItem)
+    public void ReportStackPush(in ZeroPaddedSpan stackItem)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingInstructions)
-                {
-                    innerTracer.ReportStackPush(stackItem);
-                }
+                innerTracer.ReportStackPush(stackItem);
             }
         }
+    }
 
-        public void SetOperationMemory(List<string> memoryTrace)
+    public void ReportStackPush(byte stackItem)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingMemory)
-                {
-                    innerTracer.SetOperationMemory(memoryTrace);
-                }
+                innerTracer.ReportStackPush(stackItem);
             }
         }
+    }
 
-        public void SetOperationMemorySize(ulong newSize)
+    public void SetOperationMemory(TraceMemory memoryTrace)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingMemory)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingMemory)
-                {
-                    innerTracer.SetOperationMemorySize(newSize);
-                }
+                innerTracer.SetOperationMemory(memoryTrace);
             }
         }
+    }
 
-        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
+    public void SetOperationMemorySize(ulong newSize)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingMemory)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingInstructions)
-                {
-                    innerTracer.ReportMemoryChange(offset, data);
-                }
+                innerTracer.SetOperationMemorySize(newSize);
             }
         }
+    }
 
-        public void ReportMemoryChange(long offset, in ZeroPaddedSpan data)
+    public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingInstructions)
-                {
-                    innerTracer.ReportMemoryChange(offset, data);
-                }
+                innerTracer.ReportMemoryChange(offset, data);
             }
         }
+    }
 
-        public void ReportMemoryChange(long offset, byte data)
+    public void ReportMemoryChange(UInt256 offset, in ZeroPaddedSpan data)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingInstructions)
-                {
-                    innerTracer.ReportMemoryChange(offset, data);
-                }
+                innerTracer.ReportMemoryChange(offset, data);
             }
         }
+    }
 
-        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public void ReportMemoryChange(UInt256 offset, byte data)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingInstructions)
-                {
-                    innerTracer.ReportStorageChange(key, value);
-                }
+                innerTracer.ReportMemoryChange(offset, data);
             }
         }
+    }
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingOpLevelStorage)
-                {
-                    innerTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
-                }
+                innerTracer.ReportStorageChange(key, value);
             }
         }
+    }
 
-        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingOpLevelStorage)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingOpLevelStorage)
-                {
-                    innerTracer.LoadOperationStorage(address, storageIndex, value);
-                }
+                innerTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
             }
         }
+    }
 
-        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+    public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingOpLevelStorage)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingActions)
-                {
-                    innerTracer.ReportSelfDestruct(address, balance, refundAddress);
-                }
+                innerTracer.LoadOperationStorage(address, storageIndex, value);
             }
         }
+    }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingActions)
-                {
-                    innerTracer.ReportAction(gas, value, @from, to, input, callType, isPrecompileCall);
-                }
+                innerTracer.ReportSelfDestruct(address, balance, refundAddress);
             }
         }
+    }
 
-        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingActions)
-                {
-                    innerTracer.ReportActionEnd(gas, output);
-                }
+                innerTracer.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
             }
         }
+    }
 
-        public void ReportActionError(EvmExceptionType evmExceptionType)
+    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingActions)
-                {
-                    innerTracer.ReportActionError(evmExceptionType);
-                }
+                innerTracer.ReportActionEnd(gas, output);
             }
         }
+    }
 
-        public void ReportActionError(EvmExceptionType evmExceptionType, long gasLeft)
+    public void ReportActionError(EvmExceptionType evmExceptionType)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingActions)
-                {
-                    innerTracer.ReportActionError(evmExceptionType, gasLeft);
-                }
+                innerTracer.ReportActionError(evmExceptionType);
             }
         }
+    }
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingActions)
-                {
-                    innerTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
-                }
+                innerTracer.ReportActionRevert(gasLeft, output);
             }
         }
+    }
 
-        public void ReportBlockHash(Keccak blockHash)
+    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingBlockHash)
-                {
-                    innerTracer.ReportBlockHash(blockHash);
-                }
+                innerTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
             }
         }
+    }
 
-        public void ReportByteCode(byte[] byteCode)
+    public void ReportBlockHash(Hash256 blockHash)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingBlockHash)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingCode)
-                {
-                    innerTracer.ReportByteCode(byteCode);
-                }
+                innerTracer.ReportBlockHash(blockHash);
             }
         }
+    }
 
-        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
+    public void ReportByteCode(ReadOnlyMemory<byte> byteCode)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingCode)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingInstructions)
-                {
-                    innerTracer.ReportGasUpdateForVmTrace(refund, gasAvailable);
-                }
+                innerTracer.ReportByteCode(byteCode);
             }
         }
+    }
 
-        public void ReportRefund(long refund)
+    public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingInstructions)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingRefunds)
-                {
-                    innerTracer.ReportRefund(refund);
-                }
+                innerTracer.ReportGasUpdateForVmTrace(refund, gasAvailable);
             }
         }
+    }
 
-        public void ReportExtraGasPressure(long extraGasPressure)
+    public void ReportRefund(long refund)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingRefunds)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingRefunds)
-                {
-                    innerTracer.ReportExtraGasPressure(extraGasPressure);
-                }
+                innerTracer.ReportRefund(refund);
             }
         }
+    }
 
-        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+    public void ReportExtraGasPressure(long extraGasPressure)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingRefunds)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingAccess)
-                {
-                    innerTracer.ReportAccess(accessedAddresses, accessedStorageCells);
-                }
+                innerTracer.ReportExtraGasPressure(extraGasPressure);
             }
         }
+    }
 
-        public void ReportFees(UInt256 fees, UInt256 burntFees)
+    public void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
         {
-            for (int index = 0; index < _txTracers.Count; index++)
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingAccess)
             {
-                ITxTracer innerTracer = _txTracers[index];
-                if (innerTracer.IsTracingFees)
-                {
-                    innerTracer.ReportFees(fees, burntFees);
-                }
+                innerTracer.ReportAccess(accessedAddresses, accessedStorageCells);
             }
+        }
+    }
+
+    public void ReportFees(UInt256 fees, UInt256 burntFees)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingFees)
+            {
+                innerTracer.ReportFees(fees, burntFees);
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            _txTracers[index].Dispose();
         }
     }
 }

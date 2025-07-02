@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions
 {
@@ -38,18 +40,18 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-        public static void Or(this Span<byte> thisSpam, Span<byte> valueSpam)
+        public static void Or(this Span<byte> thisSpan, ReadOnlySpan<byte> valueSpan)
         {
-            var length = thisSpam.Length;
-            if (length != valueSpam.Length)
+            var length = thisSpan.Length;
+            if (length != valueSpan.Length)
             {
                 throw new ArgumentException("Both byte spans has to be same length.");
             }
 
             int i = 0;
 
-            fixed (byte* thisPtr = thisSpam)
-            fixed (byte* valuePtr = valueSpam)
+            fixed (byte* thisPtr = thisSpan)
+            fixed (byte* valuePtr = valueSpan)
             {
                 if (Avx2.IsSupported)
                 {
@@ -73,7 +75,47 @@ namespace Nethermind.Core.Extensions
 
             for (; i < length; i++)
             {
-                thisSpam[i] |= valueSpam[i];
+                thisSpan[i] |= valueSpan[i];
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+        public static void Xor(this Span<byte> thisSpan, ReadOnlySpan<byte> valueSpan)
+        {
+            var length = thisSpan.Length;
+            if (length != valueSpan.Length)
+            {
+                throw new ArgumentException("Both byte spans has to be same length.");
+            }
+
+            int i = 0;
+
+            fixed (byte* thisPtr = thisSpan)
+            fixed (byte* valuePtr = valueSpan)
+            {
+                if (Avx2.IsSupported)
+                {
+                    for (; i < length - (Vector256<byte>.Count - 1); i += Vector256<byte>.Count)
+                    {
+                        Vector256<byte> b1 = Avx2.LoadVector256(thisPtr + i);
+                        Vector256<byte> b2 = Avx2.LoadVector256(valuePtr + i);
+                        Avx2.Store(thisPtr + i, Avx2.Xor(b1, b2));
+                    }
+                }
+                else if (Sse2.IsSupported)
+                {
+                    for (; i < length - (Vector128<byte>.Count - 1); i += Vector128<byte>.Count)
+                    {
+                        Vector128<byte> b1 = Sse2.LoadVector128(thisPtr + i);
+                        Vector128<byte> b2 = Sse2.LoadVector128(valuePtr + i);
+                        Sse2.Store(thisPtr + i, Sse2.Xor(b1, b2));
+                    }
+                }
+            }
+
+            for (; i < length; i++)
+            {
+                thisSpan[i] ^= valueSpan[i];
             }
         }
 
@@ -102,6 +144,27 @@ namespace Nethermind.Core.Extensions
             }
 
             return result;
+        }
+
+        public static int CountLeadingZeroBits(this in Vector256<byte> v)
+        {
+            if (Vector256<byte>.IsSupported)
+            {
+                var cmp = Vector256.Equals(v, Vector256<byte>.Zero);
+                uint nonZeroMask = ~cmp.ExtractMostSignificantBits();
+                if (nonZeroMask == 0)
+                    return 256;
+
+                int firstIdx = BitOperations.TrailingZeroCount(nonZeroMask);
+                byte b = v.GetElement(firstIdx);
+                int lzInByte = BitOperations.LeadingZeroCount(b) - 24;
+                return firstIdx * 8 + lzInByte;
+            }
+
+            ref byte first = ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in v));
+            ReadOnlySpan<byte> span = MemoryMarshal.CreateReadOnlySpan(ref first, Vector256<byte>.Count);
+            UInt256 uint256 = new(span, true);
+            return uint256.CountLeadingZeros();
         }
     }
 }

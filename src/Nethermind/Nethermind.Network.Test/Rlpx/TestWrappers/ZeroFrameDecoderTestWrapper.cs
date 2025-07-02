@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
@@ -37,7 +36,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
                 }
             }
 
-            if (result.Any())
+            if (result.Count != 0)
             {
                 return (IByteBuffer)result[0];
             }

@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs.Forks
 {
-    public class Olympic : ReleaseSpec
+    public class Olympic : ReleaseSpec, INamedReleaseSpec
     {
         private static IReleaseSpec _instance;
 
@@ -26,9 +26,15 @@ namespace Nethermind.Specs.Forks
             Eip1559TransitionBlock = long.MaxValue;
             ValidateChainId = true;
             ValidateReceipts = true;
+
+            // The below addresses are added for all forks, but the given EIPs can be enabled at a specific timestamp or block.
+            Eip7251ContractAddress = Eip7251Constants.ConsolidationRequestPredeployAddress;
+            Eip7002ContractAddress = Eip7002Constants.WithdrawalRequestPredeployAddress;
+            DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
         }
 
-        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Olympic());
-        public override bool IsEip158IgnoredAccount(Address address) => false;
+        public bool Released { get; protected set; } = true;
+
+        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Olympic());
     }
 }

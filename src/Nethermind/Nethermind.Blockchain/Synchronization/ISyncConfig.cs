@@ -5,90 +5,172 @@ using System;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
-namespace Nethermind.Blockchain.Synchronization
+namespace Nethermind.Blockchain.Synchronization;
+
+public interface ISyncConfig : IConfig
 {
-    public interface ISyncConfig : IConfig
-    {
-        [ConfigItem(Description = "If 'false' then the node does not connect to peers.", DefaultValue = "true")]
-        bool NetworkingEnabled { get; set; }
+    [ConfigItem(Description = "Whether to connect to peers and sync.", DefaultValue = "true")]
+    bool NetworkingEnabled { get; set; }
 
-        [ConfigItem(Description = "If 'false' then the node does not download/process new blocks.", DefaultValue = "true")]
-        bool SynchronizationEnabled { get; set; }
+    [ConfigItem(Description = "Whether to download and process new blocks.", DefaultValue = "true")]
+    bool SynchronizationEnabled { get; set; }
 
-        [ConfigItem(
-            Description = "If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.",
-            DefaultValue = "false")]
-        bool FastSync { get; set; }
+    [ConfigItem(
+        Description = "Whether to use the Fast sync mode (the eth/63 synchronization algorithm).",
+        DefaultValue = "false")]
+    bool FastSync { get; set; }
 
-        // Minimum is taken from MultiSyncModeSelector.StickyStateNodesDelta
-        [ConfigItem(Description = "Relevant only if 'FastSync' is 'true'. If set to a value, then it will set a minimum height threshold limit up to which FullSync, if already on, will stay on when chain will be behind network. If this limit will be exceeded, it will switch back to FastSync. In normal usage we do not recommend setting this to less than 32 as this can cause issues with chain reorgs. Please note that last 2 blocks will always be processed in FullSync, so setting it to less than 2 will have no effect.", DefaultValue = "8192")]
-        long? FastSyncCatchUpHeightDelta { get; set; }
+    // Minimum is taken from MultiSyncModeSelector.StickyStateNodesDelta
+    [ConfigItem(Description = "In Fast sync mode, the min height threshold limit up to which the Full sync, if already on, stays on when the chain is behind the network head. If the limit is exceeded, it switches back to Fast sync. For regular usage scenarios, setting this value lower than 32 is not recommended as this can cause issues with chain reorgs. Note that the last 2 blocks are always processed in Full sync, so setting it lower than 2 has no effect.", DefaultValue = "8192")]
+    long? FastSyncCatchUpHeightDelta { get; set; }
 
-        [ConfigItem(Description = "If set to 'true' then in the Fast Sync mode blocks will be first downloaded from the provided PivotNumber downwards. This allows for parallelization of requests with many sync peers and with no need to worry about syncing a valid branch (syncing downwards to 0). You need to enter the pivot block number, hash and total difficulty from a trusted source (you can use etherscan and confirm with other sources if you wan to change it).", DefaultValue = "false")]
-        bool FastBlocks { get; set; }
+    [Obsolete]
+    [ConfigItem(Description = "Deprecated.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool FastBlocks { get; set; }
 
-        [ConfigItem(Description = "If set to 'true' then in the Fast Blocks mode Nethermind generates smaller requests to avoid Geth from disconnecting. On the Geth heavy networks (mainnet) it is desired while on Parity or Nethermind heavy networks (Goerli, AuRa) it slows down the sync by a factor of ~4", DefaultValue = "true")]
-        public bool UseGethLimitsInFastBlocks { get; set; }
+    [ConfigItem(Description = "Whether to make smaller requests, in Fast Blocks mode, to avoid Geth from disconnecting. On the Geth-heavy networks (e.g., Mainnet), it's  a desired behavior while on Nethermind- or OpenEthereum-heavy networks (Aura), it slows down the sync by a factor of ~4.", DefaultValue = "true")]
+    public bool UseGethLimitsInFastBlocks { get; set; }
 
-        [ConfigItem(Description = "If set to 'false' then fast sync will only download recent blocks.", DefaultValue = "true")]
-        bool DownloadHeadersInFastSync { get; set; }
+    [ConfigItem(Description = "Whether to download the old block headers in the Fast sync mode. If `false`, Nethermind downloads only recent blocks headers.", DefaultValue = "true")]
+    bool DownloadHeadersInFastSync { get; set; }
 
-        [ConfigItem(Description = "If set to 'true' then the block bodies will be downloaded in the Fast Sync mode.", DefaultValue = "true")]
-        bool DownloadBodiesInFastSync { get; set; }
+    [ConfigItem(Description = "Whether to download the block bodies in the Fast sync mode.", DefaultValue = "true")]
+    bool DownloadBodiesInFastSync { get; set; }
 
-        [ConfigItem(Description = "If set to 'true' then the receipts will be downloaded in the Fast Sync mode. This will slow down the process by a few hours but will allow you to interact with dApps that execute extensive historical logs searches (like Maker CDPs).", DefaultValue = "true")]
-        bool DownloadReceiptsInFastSync { get; set; }
+    [ConfigItem(Description = "Whether to download receipts in the Fast sync mode. This slows down the process by a few hours but allows to interact with dApps that perform extensive historical logs searches.", DefaultValue = "true")]
+    bool DownloadReceiptsInFastSync { get; set; }
 
-        [ConfigItem(Description = "Total Difficulty of the pivot block for the Fast Blocks sync (not - this is total difficulty and not difficulty).", DefaultValue = "null")]
-        string PivotTotalDifficulty { get; }
+    [ConfigItem(Description = "The total difficulty of the pivot block for the Fast sync mode.", DefaultValue = "null")]
+    string PivotTotalDifficulty { get; }
 
-        [ConfigItem(Description = "Number of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
-        string PivotNumber { get; set; }
+    [ConfigItem(Description = "The number of the pivot block for the Fast sync mode.", DefaultValue = "0")]
+    string PivotNumber { get; set; }
 
-        [ConfigItem(Description = "Hash of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
-        string PivotHash { get; set; }
+    [ConfigItem(Description = "The hash of the pivot block for the Fast sync mode.", DefaultValue = "null")]
+    string? PivotHash { get; set; }
 
-        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
-        long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
+    [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
+    private long PivotNumberParsed => LongConverter.FromString(PivotNumber);
 
-        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
-        UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
+    [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
+    UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
 
-        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
-        Keccak PivotHashParsed => PivotHash is null ? null : new Keccak(Bytes.FromHexString(PivotHash));
+    [ConfigItem(Description = "The max number of attempts to update the pivot block based on the FCU message from the consensus client.", DefaultValue = "2147483647")]
+    int MaxAttemptsToUpdatePivot { get; set; }
 
-        [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest body downloaded in fast sync when DownloadBodiesInFastSync is enabled. Actual values used will be Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier))", DefaultValue = "0")]
-        public long AncientBodiesBarrier { get; set; }
+    [ConfigItem(Description = $$"""
+        The earliest body downloaded with fast sync when `{{nameof(DownloadBodiesInFastSync)}}` is set to `true`. The actual value is determined as follows:
 
-        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-        public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, AncientBodiesBarrier));
+        ```
+        max{ 1, min{ PivotNumber, AncientBodiesBarrier } }
+        ```
 
-        [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest receipts downloaded in fast sync when DownloadReceiptsInFastSync is enabled. Actual value used will be Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)))", DefaultValue = "0")]
-        public long AncientReceiptsBarrier { get; set; }
+        """,
+        DefaultValue = "0")]
+    public long AncientBodiesBarrier { get; set; }
 
-        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-        public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
+    [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
+    public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, AncientBodiesBarrier));
 
-        [ConfigItem(Description = "Enables witness protocol.", DefaultValue = "false")]
-        public bool WitnessProtocolEnabled { get; set; }
+    [ConfigItem(Description = $$"""
+        The earliest receipt downloaded with fast sync when `{{nameof(DownloadReceiptsInFastSync)}}` is set to `true`. The actual value is determined as follows:
 
-        [ConfigItem(Description = "Enables SNAP sync protocol.", DefaultValue = "false")]
-        public bool SnapSync { get; set; }
+        ```
+        max{ 1, min{ PivotNumber, max{ AncientBodiesBarrier, AncientReceiptsBarrier } } }
+        ```
 
-        [ConfigItem(Description = "Number of account range partition to create. Increase snap sync request concurrency. Value must be between 1 to 256 (inclusive).", DefaultValue = "8")]
-        int SnapSyncAccountRangePartitionCount { get; set; }
+        """,
+        DefaultValue = "0")]
+    public long AncientReceiptsBarrier { get; set; }
 
-        [ConfigItem(Description = "[ONLY FOR MISSING RECEIPTS ISSUE] Turns on receipts validation that checks for ones that might be missing due to previous bug. It downloads them from network if needed." +
-                                  "If used please check that PivotNumber is same as original used when syncing the node as its used as a cut-off point.", DefaultValue = "false")]
-        public bool FixReceipts { get; set; }
+    [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
+    public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
 
-        [ConfigItem(Description = "Disable some optimization and run a more extensive sync. Useful for broken sync state but normally not needed", DefaultValue = "false")]
-        public bool StrictMode { get; set; }
+    [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
+    public bool SnapSync { get; set; }
 
-        [ConfigItem(Description = "[EXPERIMENTAL] Only for non validator nodes! If set to true, DownloadReceiptsInFastSync and/or DownloadBodiesInFastSync can be set to false.", DefaultValue = "false")]
-        public bool NonValidatorNode { get; set; }
-    }
+    [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between between 1 and 256.", DefaultValue = "8")]
+    int SnapSyncAccountRangePartitionCount { get; set; }
+
+    [ConfigItem(Description = "Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. If `true`, the pivot number must be same one used originally as it's used as a cut-off point.", DefaultValue = "false")]
+    public bool FixReceipts { get; set; }
+
+    [ConfigItem(Description = $"Whether to recalculate the total difficulty from `{nameof(FixTotalDifficultyStartingBlock)}` to `{nameof(FixTotalDifficultyLastBlock)}`.", DefaultValue = "false")]
+    public bool FixTotalDifficulty { get; set; }
+
+    [ConfigItem(Description = "The first block to recalculate the total difficulty for.", DefaultValue = "1")]
+    public long FixTotalDifficultyStartingBlock { get; set; }
+
+    [ConfigItem(Description = "The last block to recalculate the total difficulty for. If not specified, the best known block is used.\n", DefaultValue = "null")]
+    public long? FixTotalDifficultyLastBlock { get; set; }
+
+    [ConfigItem(Description = "Whether to disable some optimizations and do a more extensive sync. Useful when sync state is corrupted.", DefaultValue = "false")]
+    public bool StrictMode { get; set; }
+
+    [ConfigItem(Description = $"Whether to operate as a non-validator. If `true`, the `{nameof(DownloadReceiptsInFastSync)}` and `{nameof(DownloadBodiesInFastSync)}` can be set to `false`.", DefaultValue = "false")]
+    public bool NonValidatorNode { get; set; }
+
+    [ConfigItem(Description = "Configure the database for write optimizations during sync. Significantly reduces the total number of writes and sync time if you are not network limited.", DefaultValue = nameof(ITunableDb.TuneType.HeavyWrite), HiddenFromDocs = true)]
+    public ITunableDb.TuneType TuneDbMode { get; set; }
+
+    [ConfigItem(Description = "Configure the blocks database for write optimizations during sync.", DefaultValue = nameof(ITunableDb.TuneType.EnableBlobFiles), HiddenFromDocs = true)]
+    ITunableDb.TuneType BlocksDbTuneDbMode { get; set; }
+
+    [ConfigItem(Description = "The max number of threads used for syncing. `0` to use the number of logical processors.", DefaultValue = "0")]
+    public int MaxProcessingThreads { get; set; }
+
+    [ConfigItem(Description = "Enables healing trie from network when state is corrupted.", DefaultValue = "true", HiddenFromDocs = true)]
+    public bool TrieHealing { get; set; }
+
+    [ConfigItem(Description = "Whether to shut down Nethermind once sync is finished.", DefaultValue = "false")]
+    public bool ExitOnSynced { get; set; }
+
+    [ConfigItem(Description = "The time, in seconds, to wait before shutting down Nethermind once sync is finished.", DefaultValue = "60")]
+    public int ExitOnSyncedWaitTimeSec { get; set; }
+
+    [ConfigItem(Description = "Interval, in seconds, between `malloc_trim` calls during sync.", DefaultValue = "300", HiddenFromDocs = true)]
+    public int MallocTrimIntervalSec { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Whether to enable snap serving. WARNING: Very slow on hash db layout. Default is to enable on halfpath layout.", DefaultValue = "null", HiddenFromDocs = true)]
+    bool? SnapServingEnabled { get; set; }
+
+    [ConfigItem(Description = "_Technical._ MultiSyncModeSelector sync mode timer loop interval. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
+    int MultiSyncModeSelectorLoopTimerMs { get; set; }
+
+    [ConfigItem(Description = "_Technical._ SyncDispatcher delay on empty request. Used for testing.", DefaultValue = "10", HiddenFromDocs = true)]
+    int SyncDispatcherEmptyRequestDelayMs { get; set; }
+
+    [ConfigItem(Description = "_Technical._ SyncDispatcher allocation timeout. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
+    int SyncDispatcherAllocateTimeoutMs { get; set; }
+
+    [ConfigItem(Description = "_Technical._ MultiSyncModeSelector will wait for header to completely sync first.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool NeedToWaitForHeader { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Run verify trie on state sync is finished.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool VerifyTrieOnStateSyncFinished { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Max distance of state sync from best suggested header.", DefaultValue = "128", HiddenFromDocs = true)]
+    int StateMaxDistanceFromHead { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Min distance of state sync from best suggested header.", DefaultValue = "32", HiddenFromDocs = true)]
+    int StateMinDistanceFromHead { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Run explicit GC after state sync finished.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool GCOnFeedFinished { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Max distance between best suggested header and available state to assume state is synced.", DefaultValue = "0", HiddenFromDocs = true)]
+    int HeaderStateDistance { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "0", HiddenFromDocs = true)]
+    ulong FastHeadersMemoryBudget { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Enable storage range split.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool EnableSnapSyncStorageRangeSplit { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Max tx in forward sync buffer.", DefaultValue = "200000", HiddenFromDocs = true)]
+    int MaxTxInForwardSyncBuffer { get; set; }
 }

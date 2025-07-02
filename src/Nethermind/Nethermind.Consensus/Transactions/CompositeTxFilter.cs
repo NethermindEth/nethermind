@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.TxPool;
@@ -14,7 +13,7 @@ namespace Nethermind.Consensus.Transactions
 
         public CompositeTxFilter(params ITxFilter[] txFilters)
         {
-            _txFilters = txFilters?.Where(f => f is not null).ToArray() ?? Array.Empty<ITxFilter>();
+            _txFilters = txFilters?.Where(static f => f is not null).ToArray() ?? [];
         }
 
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)

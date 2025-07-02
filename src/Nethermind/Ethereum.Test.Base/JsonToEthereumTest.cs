@@ -5,66 +5,52 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs.Forks;
+using Nethermind.Specs;
 
 namespace Ethereum.Test.Base
 {
     public static class JsonToEthereumTest
     {
-        private static IReleaseSpec ParseSpec(string network)
+        private static ForkActivation TransitionForkActivation(string transitionInfo)
         {
-            network = network.Replace("EIP150", "TangerineWhistle");
-            network = network.Replace("EIP158", "SpuriousDragon");
-            network = network.Replace("DAO", "Dao");
-            network = network.Replace("Merged", "GrayGlacier");
-            network = network.Replace("Merge", "GrayGlacier");
-            network = network.Replace("London+3540+3670", "Shanghai");
-            network = network.Replace("GrayGlacier+3540+3670", "Shanghai");
-            network = network.Replace("GrayGlacier+3860", "Shanghai");
-            network = network.Replace("GrayGlacier+3855", "Shanghai");
-            network = network.Replace("Merge+3540+3670", "Shanghai");
-            network = network.Replace("Shanghai+3855", "Shanghai");
-            network = network.Replace("Shanghai+3860", "Shanghai");
-            return network switch
+            const string timestampPrefix = "Time";
+            const char kSuffix = 'k';
+            if (!transitionInfo.StartsWith(timestampPrefix))
             {
-                "Frontier" => Frontier.Instance,
-                "Homestead" => Homestead.Instance,
-                "TangerineWhistle" => TangerineWhistle.Instance,
-                "SpuriousDragon" => SpuriousDragon.Instance,
-                "EIP150" => TangerineWhistle.Instance,
-                "EIP158" => SpuriousDragon.Instance,
-                "Dao" => Dao.Instance,
-                "Constantinople" => Constantinople.Instance,
-                "ConstantinopleFix" => ConstantinopleFix.Instance,
-                "Byzantium" => Byzantium.Instance,
-                "Istanbul" => Istanbul.Instance,
-                "Berlin" => Berlin.Instance,
-                "London" => London.Instance,
-                "GrayGlacier" => GrayGlacier.Instance,
-                "Shanghai" => Shanghai.Instance,
-                _ => throw new NotSupportedException()
-            };
+                return new ForkActivation(int.Parse(transitionInfo));
+            }
+
+            transitionInfo = transitionInfo.Remove(0, timestampPrefix.Length);
+            if (!transitionInfo.EndsWith(kSuffix))
+            {
+                return ForkActivation.TimestampOnly(ulong.Parse(transitionInfo));
+            }
+
+            transitionInfo = transitionInfo.RemoveEnd(kSuffix);
+            return ForkActivation.TimestampOnly(ulong.Parse(transitionInfo) * 1000);
         }
 
         public static BlockHeader Convert(TestBlockHeaderJson? headerJson)
         {
-            if (headerJson == null)
+            if (headerJson is null)
             {
                 throw new InvalidDataException("Header JSON was null when constructing test.");
             }
 
             BlockHeader header = new(
-                new Keccak(headerJson.ParentHash),
-                new Keccak(headerJson.UncleHash),
+                new Hash256(headerJson.ParentHash),
+                new Hash256(headerJson.UncleHash),
                 new Address(headerJson.Coinbase),
                 Bytes.FromHexString(headerJson.Difficulty).ToUInt256(),
                 (long)Bytes.FromHexString(headerJson.Number).ToUInt256(),
@@ -75,30 +61,20 @@ namespace Ethereum.Test.Base
 
             header.Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom));
             header.GasUsed = (long)Bytes.FromHexString(headerJson.GasUsed).ToUnsignedBigInteger();
-            header.Hash = new Keccak(headerJson.Hash);
-            header.MixHash = new Keccak(headerJson.MixHash);
+            header.Hash = new Hash256(headerJson.Hash);
+            header.MixHash = new Hash256(headerJson.MixHash);
             header.Nonce = (ulong)Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger();
-            header.ReceiptsRoot = new Keccak(headerJson.ReceiptTrie);
-            header.StateRoot = new Keccak(headerJson.StateRoot);
-            header.TxRoot = new Keccak(headerJson.TransactionsTrie);
+            header.ReceiptsRoot = new Hash256(headerJson.ReceiptTrie);
+            header.StateRoot = new Hash256(headerJson.StateRoot);
+            header.TxRoot = new Hash256(headerJson.TransactionsTrie);
             return header;
-        }
-
-        public static Block Convert(PostStateJson postStateJson, TestBlockJson testBlockJson)
-        {
-            BlockHeader? header = Convert(testBlockJson.BlockHeader);
-            BlockHeader[] uncles = testBlockJson.UncleHeaders?.Select(Convert).ToArray()
-                                   ?? Array.Empty<BlockHeader>();
-            Transaction[] transactions = testBlockJson.Transactions?.Select(Convert).ToArray()
-                                         ?? Array.Empty<Transaction>();
-            Block block = new(header, transactions, uncles);
-            return block;
         }
 
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
         {
             Transaction transaction = new();
 
+            transaction.Type = transactionJson.Type;
             transaction.Value = transactionJson.Value[postStateJson.Indexes.Value];
             transaction.GasLimit = transactionJson.GasLimit[postStateJson.Indexes.Gas];
             transaction.GasPrice = transactionJson.GasPrice ?? transactionJson.MaxPriorityFeePerGas ?? 0;
@@ -108,26 +84,81 @@ namespace Ethereum.Test.Base
             transaction.Data = transactionJson.Data[postStateJson.Indexes.Data];
             transaction.SenderAddress = new PrivateKey(transactionJson.SecretKey).Address;
             transaction.Signature = new Signature(1, 1, 27);
+            transaction.BlobVersionedHashes = transactionJson.BlobVersionedHashes;
+            transaction.MaxFeePerBlobGas = transactionJson.MaxFeePerBlobGas;
             transaction.Hash = transaction.CalculateHash();
 
-            AccessListBuilder builder = new();
+            AccessList.Builder builder = new();
             ProcessAccessList(transactionJson.AccessLists is not null
                 ? transactionJson.AccessLists[postStateJson.Indexes.Data]
                 : transactionJson.AccessList, builder);
-            transaction.AccessList = builder.ToAccessList();
+            transaction.AccessList = builder.Build();
 
-            if (transaction.AccessList.Data.Count != 0)
+            if (transaction.AccessList.AsEnumerable().Count() != 0)
                 transaction.Type = TxType.AccessList;
             else
                 transaction.AccessList = null;
 
-            if (transactionJson.MaxFeePerGas != null)
+            if (transactionJson.MaxFeePerGas is not null)
                 transaction.Type = TxType.EIP1559;
+
+            if (transaction.BlobVersionedHashes?.Length > 0)
+                transaction.Type = TxType.Blob;
+
+            if (transactionJson.AuthorizationList is not null)
+            {
+                transaction.AuthorizationList =
+                    transactionJson.AuthorizationList
+                    .Select(i =>
+                    {
+                        if (i.Nonce > ulong.MaxValue)
+                        {
+                            i.Nonce = 0;
+                            transaction.SenderAddress = Address.Zero;
+                        }
+                        UInt256 s = UInt256.Zero;
+                        if (i.S.Length > 66)
+                        {
+                            i.S = "0x0";
+                            transaction.SenderAddress = Address.Zero;
+                        }
+                        else
+                        {
+                            s = UInt256.Parse(i.S);
+                        }
+                        UInt256 r = UInt256.Zero;
+                        if (i.R.Length > 66)
+                        {
+                            i.R = "0x0";
+                            transaction.SenderAddress = Address.Zero;
+                        }
+                        else
+                        {
+                            r = UInt256.Parse(i.R);
+                        }
+                        if (i.V > byte.MaxValue)
+                        {
+                            i.V = 0;
+                            transaction.SenderAddress = Address.Zero;
+                        }
+                        return new AuthorizationTuple(
+                            i.ChainId,
+                            i.Address,
+                            i.Nonce.u0,
+                            (byte)i.V,
+                            r,
+                            s);
+                    }).ToArray();
+                if (transaction.AuthorizationList.Any())
+                {
+                    transaction.Type = TxType.SetCode;
+                }
+            }
 
             return transaction;
         }
 
-        private static void ProcessAccessList(AccessListItemJson[]? accessList, AccessListBuilder builder)
+        public static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)
         {
             foreach (AccessListItemJson accessListItemJson in accessList ?? Array.Empty<AccessListItemJson>())
             {
@@ -153,32 +184,17 @@ namespace Ethereum.Test.Base
             return transaction;
         }
 
-        private static AccountState Convert(AccountStateJson accountStateJson)
+        public static IEnumerable<GeneralStateTest> Convert(string name, string category, GeneralStateTestJson testJson)
         {
-            AccountState state = new();
-            state.Balance = accountStateJson.Balance is not null ? Bytes.FromHexString(accountStateJson.Balance).ToUInt256() : 0;
-            state.Code = accountStateJson.Code is not null ? Bytes.FromHexString(accountStateJson.Code) : Array.Empty<byte>();
-            state.Nonce = accountStateJson.Nonce is not null ? Bytes.FromHexString(accountStateJson.Nonce).ToUInt256() : 0;
-            state.Storage = accountStateJson.Storage is not null
-                ? accountStateJson.Storage.ToDictionary(
-                    p => Bytes.FromHexString(p.Key).ToUInt256(),
-                    p => Bytes.FromHexString(p.Value))
-                : new();
-            return state;
-        }
-
-        public static IEnumerable<GeneralStateTest> Convert(string name, GeneralStateTestJson testJson)
-        {
-            if (testJson.LoadFailure != null)
+            if (testJson.LoadFailure is not null)
             {
-                return Enumerable.Repeat(new GeneralStateTest { Name = name, LoadFailure = testJson.LoadFailure }, 1);
+                return Enumerable.Repeat(new GeneralStateTest { Name = name, Category = category, LoadFailure = testJson.LoadFailure }, 1);
             }
 
             List<GeneralStateTest> blockchainTests = new();
             foreach (KeyValuePair<string, PostStateJson[]> postStateBySpec in testJson.Post)
             {
                 int iterationNumber = 0;
-                int testIndex = testJson.Info?.Labels?.Select(x => System.Convert.ToInt32(x.Key)).FirstOrDefault() ?? 0;
                 foreach (PostStateJson stateJson in postStateBySpec.Value)
                 {
                     GeneralStateTest test = new();
@@ -188,13 +204,10 @@ namespace Ethereum.Test.Base
                     {
                         test.Name += testJson.Info?.Labels?[iterationNumber.ToString()]?.Replace(":label ", string.Empty);
                     }
-                    else
-                    {
-                        test.Name += string.Empty;
-                    }
+                    test.Category = category;
 
                     test.ForkName = postStateBySpec.Key;
-                    test.Fork = ParseSpec(postStateBySpec.Key);
+                    test.Fork = SpecNameParser.Parse(postStateBySpec.Key);
                     test.PreviousHash = testJson.Env.PreviousHash;
                     test.CurrentCoinbase = testJson.Env.CurrentCoinbase;
                     test.CurrentDifficulty = testJson.Env.CurrentDifficulty;
@@ -203,9 +216,14 @@ namespace Ethereum.Test.Base
                     test.CurrentTimestamp = testJson.Env.CurrentTimestamp;
                     test.CurrentBaseFee = testJson.Env.CurrentBaseFee;
                     test.CurrentRandom = testJson.Env.CurrentRandom;
+                    test.CurrentBeaconRoot = testJson.Env.CurrentBeaconRoot;
+                    test.CurrentWithdrawalsRoot = testJson.Env.CurrentWithdrawalsRoot;
+                    test.CurrentExcessBlobGas = testJson.Env.CurrentExcessBlobGas;
+                    test.ParentBlobGasUsed = testJson.Env.ParentBlobGasUsed;
+                    test.ParentExcessBlobGas = testJson.Env.ParentExcessBlobGas;
                     test.PostReceiptsRoot = stateJson.Logs;
                     test.PostHash = stateJson.Hash;
-                    test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+                    test.Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value);
                     test.Transaction = Convert(stateJson, testJson.Transaction);
 
                     blockchainTests.Add(test);
@@ -216,32 +234,33 @@ namespace Ethereum.Test.Base
             return blockchainTests;
         }
 
-        public static BlockchainTest Convert(string name, BlockchainTestJson testJson)
+        public static BlockchainTest Convert(string name, string category, BlockchainTestJson testJson)
         {
-            if (testJson.LoadFailure != null)
+            if (testJson.LoadFailure is not null)
             {
-                return new BlockchainTest { Name = name, LoadFailure = testJson.LoadFailure };
+                return new BlockchainTest { Name = name, Category = category, LoadFailure = testJson.LoadFailure };
             }
 
             BlockchainTest test = new();
             test.Name = name;
+            test.Category = category;
             test.Network = testJson.EthereumNetwork;
             test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
-            test.TransitionBlockNumber = testJson.TransitionBlockNumber;
-            test.LastBlockHash = new Keccak(testJson.LastBlockHash);
-            test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
+            test.TransitionForkActivation = testJson.TransitionForkActivation;
+            test.LastBlockHash = new Hash256(testJson.LastBlockHash);
+            test.GenesisRlp = testJson.GenesisRlp is null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;
             test.Blocks = testJson.Blocks;
-            test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+            test.Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value);
 
             HalfBlockchainTestJson half = testJson as HalfBlockchainTestJson;
-            if (half != null)
+            if (half is not null)
             {
                 test.PostStateRoot = half.PostState;
             }
             else
             {
-                test.PostState = testJson.PostState?.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+                test.PostState = testJson.PostState?.ToDictionary(p => p.Key, p => p.Value);
                 test.PostStateRoot = testJson.PostStateHash;
             }
 
@@ -250,14 +269,74 @@ namespace Ethereum.Test.Base
 
         private static readonly EthereumJsonSerializer _serializer = new();
 
-        public static IEnumerable<GeneralStateTest> Convert(string json)
+        public static IEnumerable<EofTest> ConvertToEofTests(string json)
+        {
+            Dictionary<string, EofTestJson> testsInFile = _serializer.Deserialize<Dictionary<string, EofTestJson>>(json);
+            List<EofTest> tests = new();
+            foreach (KeyValuePair<string, EofTestJson> namedTest in testsInFile)
+            {
+                (string name, string category) = GetNameAndCategory(namedTest.Key);
+                GetTestMetaData(namedTest, out string? description, out string? url, out string? spec);
+
+                foreach (KeyValuePair<string, VectorTestJson> pair in namedTest.Value.Vectors)
+                {
+                    VectorTestJson vectorJson = pair.Value;
+                    VectorTest vector = new();
+                    vector.Code = Bytes.FromHexString(vectorJson.Code);
+                    vector.ContainerKind = ParseContainerKind(vectorJson.ContainerKind);
+
+                    foreach (var result in vectorJson.Results)
+                    {
+                        EofTest test = new()
+                        {
+                            Name = $"{name}",
+                            Category = $"{category} [{result.Key}]",
+                            Url = url,
+                            Description = description,
+                            Spec = spec
+                        };
+                        test.Vector = vector;
+                        test.Result = result.ToTestResult();
+                        tests.Add(test);
+                    }
+                }
+            }
+
+            return tests;
+
+            static ValidationStrategy ParseContainerKind(string containerKind)
+                => ("INITCODE".Equals(containerKind) ? ValidationStrategy.ValidateInitCodeMode : ValidationStrategy.ValidateRuntimeMode);
+
+            static void GetTestMetaData(KeyValuePair<string, EofTestJson> namedTest, out string? description, out string? url, out string? spec)
+            {
+                description = null;
+                url = null;
+                spec = null;
+                GeneralStateTestInfoJson info = namedTest.Value?.Info;
+                if (info is not null)
+                {
+                    description = info.Description;
+                    url = info.Url;
+                    spec = info.Spec;
+                }
+            }
+        }
+
+        private static Result ToTestResult(this KeyValuePair<string, TestResultJson> result)
+            => result.Value.Result ?
+                new Result { Fork = result.Key, Success = true } :
+                new Result { Fork = result.Key, Success = false, Error = result.Value.Exception };
+
+        public static IEnumerable<GeneralStateTest> ConvertStateTest(string json)
         {
             Dictionary<string, GeneralStateTestJson> testsInFile =
                 _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
+
             List<GeneralStateTest> tests = new();
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {
-                tests.AddRange(Convert(namedTest.Key, namedTest.Value));
+                (string name, string category) = GetNameAndCategory(namedTest.Key);
+                tests.AddRange(Convert(name, category, namedTest.Value));
             }
 
             return tests;
@@ -286,17 +365,49 @@ namespace Ethereum.Test.Base
                 string[] transitionInfo = testSpec.Network.Split("At");
                 string[] networks = transitionInfo[0].Split("To");
 
-                testSpec.EthereumNetwork = ParseSpec(networks[0]);
+                testSpec.EthereumNetwork = SpecNameParser.Parse(networks[0]);
                 if (transitionInfo.Length > 1)
                 {
-                    testSpec.TransitionBlockNumber = int.Parse(transitionInfo[1]);
-                    testSpec.EthereumNetworkAfterTransition = ParseSpec(networks[1]);
+                    testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
+                    testSpec.EthereumNetworkAfterTransition = SpecNameParser.Parse(networks[1]);
                 }
 
-                testsByName.Add(Convert(testName, testSpec));
+                (string name, string category) = GetNameAndCategory(testName);
+                testsByName.Add(Convert(name, category, testSpec));
             }
 
             return testsByName;
+        }
+
+        private static (string name, string category) GetNameAndCategory(string key)
+        {
+            key = key.Replace('\\', '/');
+            var index = key.IndexOf(".py::");
+            if (index < 0)
+            {
+                return (key, "");
+            }
+            var name = key.Substring(index + 5);
+            string category = key.Substring(0, index);
+            int startIndex = 0;
+            for (var i = 0; i < 3; i++)
+            {
+                int newIndex = category.IndexOf("/", startIndex);
+                if (newIndex < 0)
+                {
+                    break;
+                }
+                if (index + 1 < category.Length)
+                {
+                    startIndex = newIndex + 1;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            category = category.Substring(startIndex);
+            return (name, category);
         }
     }
 }

@@ -1,17 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Overseer.Test.Framework;
-using Newtonsoft.Json;
+
 using NUnit.Framework;
 
 namespace Nethermind.Overseer.Test
@@ -65,7 +59,7 @@ namespace Nethermind.Overseer.Test
 
             var expectedCount = 14;
 
-            auRaState.BlocksCount.Should().BeGreaterOrEqualTo(expectedCount, $"at least {expectedCount} steps.");
+            auRaState.BlocksCount.Should().BeGreaterThanOrEqualTo(expectedCount, $"at least {expectedCount} steps.");
 
             var blockNumbers = auRaState.Blocks.Take(expectedCount).Select(v => v.Key);
             blockNumbers.Should().BeEquivalentTo(Enumerable.Range(1, expectedCount), "block numbers sequential from 1.");

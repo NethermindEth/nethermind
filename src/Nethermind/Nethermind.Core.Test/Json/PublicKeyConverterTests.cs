@@ -12,13 +12,13 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Null_handling()
         {
-            TestConverter(null!, (key, publicKey) => key == publicKey, new PublicKeyConverter());
+            TestConverter(null!, static (key, publicKey) => key == publicKey, new PublicKeyConverter());
         }
 
         [Test]
         public void Zero_handling()
         {
-            TestConverter(new PublicKey(new byte[64]), (key, publicKey) => key == publicKey, new PublicKeyConverter());
+            TestConverter(new PublicKey(new byte[64]), static (key, publicKey) => key == publicKey, new PublicKeyConverter());
         }
     }
 }

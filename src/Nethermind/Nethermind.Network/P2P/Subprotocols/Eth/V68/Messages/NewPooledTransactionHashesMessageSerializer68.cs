@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -15,45 +15,45 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         {
             NettyRlpStream rlpStream = new(byteBuffer);
             rlpStream.ReadSequenceLength();
-            byte[] types = rlpStream.DecodeByteArray();
-            int[] sizes = rlpStream.DecodeArray(item => item.DecodeInt());
-            Keccak[] hashes = rlpStream.DecodeArray(item => item.DecodeKeccak());
+            ArrayPoolList<byte> types = rlpStream.DecodeByteArrayPoolList();
+            ArrayPoolList<int> sizes = rlpStream.DecodeArrayPoolList(static item => item.DecodeInt());
+            ArrayPoolList<Hash256> hashes = rlpStream.DecodeArrayPoolList(static item => item.DecodeKeccak());
             return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
         }
 
         public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage68 message)
         {
             int sizesLength = 0;
-            for (int i = 0; i < message.Sizes.Count; i++)
+            foreach (int size in message.Sizes.AsSpan())
             {
-                sizesLength += Rlp.LengthOf(message.Sizes[i]);
+                sizesLength += Rlp.LengthOf(size);
             }
 
             int hashesLength = 0;
-            for (int i = 0; i < message.Hashes.Count; i++)
+            foreach (Hash256 hash in message.Hashes.AsSpan())
             {
-                hashesLength += Rlp.LengthOf(message.Hashes[i]);
+                hashesLength += Rlp.LengthOf(hash);
             }
 
             int totalSize = Rlp.LengthOf(message.Types) + Rlp.LengthOfSequence(sizesLength) + Rlp.LengthOfSequence(hashesLength);
 
-            byteBuffer.EnsureWritable(totalSize, true);
+            byteBuffer.EnsureWritable(totalSize);
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
             rlpStream.StartSequence(totalSize);
-            rlpStream.Encode(message.Types);
+            rlpStream.Encode(message.Types.AsSpan());
 
             rlpStream.StartSequence(sizesLength);
-            for (int i = 0; i < message.Sizes.Count; ++i)
+            foreach (int size in message.Sizes.AsSpan())
             {
-                rlpStream.Encode(message.Sizes[i]);
+                rlpStream.Encode(size);
             }
 
             rlpStream.StartSequence(hashesLength);
-            for (int i = 0; i < message.Hashes.Count; ++i)
+            foreach (Hash256 hash in message.Hashes.AsSpan())
             {
-                rlpStream.Encode(message.Hashes[i]);
+                rlpStream.Encode(hash);
             }
         }
     }

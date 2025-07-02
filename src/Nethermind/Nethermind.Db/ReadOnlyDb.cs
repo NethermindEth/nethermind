@@ -3,49 +3,42 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public class ReadOnlyDb : IReadOnlyDb, IDbWithSpan
+    public class ReadOnlyDb(IDb wrappedDb, bool createInMemWriteStore) : IReadOnlyDb
     {
         private readonly MemDb _memDb = new();
-
-        private readonly IDb _wrappedDb;
-        private readonly bool _createInMemWriteStore;
-
-        public ReadOnlyDb(IDb wrappedDb, bool createInMemWriteStore)
-        {
-            _wrappedDb = wrappedDb;
-            _createInMemWriteStore = createInMemWriteStore;
-        }
 
         public void Dispose()
         {
             _memDb.Dispose();
         }
 
-        public string Name { get; } = "ReadOnlyDb";
+        public string Name { get => wrappedDb.Name; }
 
-        public byte[]? this[byte[] key]
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            get => _memDb[key] ?? _wrappedDb[key];
-            set
-            {
-                if (!_createInMemWriteStore)
-                {
-                    throw new InvalidOperationException($"This {nameof(ReadOnlyDb)} did not expect any writes.");
-                }
+            return _memDb.Get(key, flags) ?? wrappedDb.Get(key, flags);
+        }
 
-                _memDb[key] = value;
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (!createInMemWriteStore)
+            {
+                throw new InvalidOperationException($"This {nameof(ReadOnlyDb)} did not expect any writes.");
             }
+
+            _memDb.Set(key, value, flags);
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys]
         {
             get
             {
-                var result = _wrappedDb[keys];
+                var result = wrappedDb[keys];
                 var memResult = _memDb[keys];
                 for (int i = 0; i < memResult.Length; i++)
                 {
@@ -60,46 +53,39 @@ namespace Nethermind.Db
             }
         }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _memDb.GetAll();
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _memDb.GetAll().Union(wrappedDb.GetAll());
 
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _memDb.GetAllValues();
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _memDb.GetAllKeys().Union(wrappedDb.GetAllKeys());
 
-        public IBatch StartBatch()
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _memDb.GetAllValues().Union(wrappedDb.GetAllValues());
+
+        public IWriteBatch StartWriteBatch() => this.LikeABatch();
+
+        public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false) => wrappedDb.GatherMetric(includeSharedCache);
+
+        public void Remove(ReadOnlySpan<byte> key) { }
+
+        public bool KeyExists(ReadOnlySpan<byte> key) => _memDb.KeyExists(key) || wrappedDb.KeyExists(key);
+
+        public void Flush(bool onlyWal) { }
+
+        public void Clear() => throw new InvalidOperationException();
+
+        public virtual void ClearTempChanges() => _memDb.Clear();
+
+        public Span<byte> GetSpan(ReadOnlySpan<byte> key) => Get(key).AsSpan();
+        public void PutSpan(ReadOnlySpan<byte> keyBytes, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
         {
-            return this.LikeABatch();
-        }
-
-        public void Remove(byte[] key) { }
-
-        public bool KeyExists(byte[] key)
-        {
-            return _memDb.KeyExists(key) || _wrappedDb.KeyExists(key);
-        }
-
-        public void Flush()
-        {
-            _wrappedDb.Flush();
-            _memDb.Flush();
-        }
-
-        public void Clear() { throw new InvalidOperationException(); }
-
-        public virtual void ClearTempChanges()
-        {
-            _memDb.Clear();
-        }
-
-        public Span<byte> GetSpan(byte[] key) => this[key].AsSpan();
-        public void PutSpan(byte[] keyBytes, ReadOnlySpan<byte> value)
-        {
-            if (!_createInMemWriteStore)
+            if (!createInMemWriteStore)
             {
                 throw new InvalidOperationException($"This {nameof(ReadOnlyDb)} did not expect any writes.");
             }
 
-            _memDb[keyBytes] = value.ToArray();
+            _memDb.Set(keyBytes, value.ToArray(), writeFlags);
         }
 
-        public void DangerousReleaseMemory(in Span<byte> span) { }
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
+
+        public bool PreferWriteByArray => true; // Because of memdb buffer
     }
 }

@@ -10,7 +10,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
-using NUnit.Framework.Internal.Commands;
 
 namespace Nethermind.Network.Enr.Test;
 
@@ -55,7 +54,7 @@ public class NodeRecordSignerTests
 
         signer.Sign(nodeRecord);
         string enrString = nodeRecord.EnrString;
-        Assert.AreEqual(expectedEnrString, enrString);
+        Assert.That(enrString, Is.EqualTo(expectedEnrString));
     }
 
     [Test(Description = "https://eips.ethereum.org/EIPS/eip-778")]
@@ -95,7 +94,7 @@ public class NodeRecordSignerTests
         nodeRecord.EnrSequence = 1; // override
 
         signer.Sign(nodeRecord);
-        Assert.IsTrue(signer.Verify(nodeRecord));
+        Assert.That(signer.Verify(nodeRecord), Is.True);
     }
 
     [TestCase]
@@ -107,7 +106,7 @@ public class NodeRecordSignerTests
         Span<byte> bytes = Bytes.FromHexString("540b38f8b160f23b1cd30972338a09ba4a296e2f0cb63f76ce0b38201a8dd9aa2a9c306370904877ddab397f7845ff67ea0a1dbf094b86794bb5d739e6bda891a486098717e2fb744e04c4665d307a590c6e4141a3805de15eb1eb62b0c6ff0aa75db9559545e294e158b7dc9e4a118cf0c2c6259af2df7c1742731064df376182b2df2e714df9e87ec6492effb4de8e2a92bdb405bbe3d8ddf96622bbcb11592fdb2600356cb39fd2c36cac66e19cd1b136ac3be993ef0ed07905d95f16cc67cfbe9bc7c180b90023d55d9218bef9e052c9f655a5c2464abe24271cc1dc2f3df7d3abd926f4657b724b0435868a09f7136ec115cbc3ec1c675972315e4cc140907e4772c118d51917b16a00a7809cfa767ea3ae5557c0b972c37f77d85062910e3e15ae4613cac178220deadc6d729da20c85166e8532d8f88cd246e6102f5268cd5e29796d06713d0f684e096e5edfca6b6c7adf9e51e10f5140d92216123eb31984a61d5a9caf904a2e12f3f479b27d75aeafe0d35b8995468aa12ba7d8f17fbb0aeea63b4d2c74e43b60e06a62bed5ee3ae34f5d74465087b5932865a2cb41f1fdaa9b2b9143fe1923d7f0e4b18a3139ee469df8e6cfea46101674e5fde4c84f9f9d77dee3d0545897a69d9eb42ccc48b699baa9d932dc36783da3580a78abc68b20a1f8bda90afb5ed78a9ac46e63792182b7669e4daaf3ca7e9b5690a3bbf0a184b14470f899582d4a0423897a295441b4bf27db3d2e8adf41824538942198a064bc489fd0936e11f5266146432a8efc992e1d304a4ab6bf661fa1ab3b59d1f14155c5e6a8d1e9eed717bee86a9b6bdabde638c0d1");
         RlpStream rlpStream = new RlpStream(600);
         rlpStream.StartSequence(500);
-        rlpStream.Encode(bytes.Slice(0, 500));
+        rlpStream.Encode(bytes[..500]);
         rlpStream.Position = 0;
         signer.Invoking(s => s.Deserialize(rlpStream)).Should().Throw<NetworkingException>()
             .Where(ex => ex.NetworkExceptionType == NetworkExceptionType.Discovery);
@@ -126,7 +125,7 @@ public class NodeRecordSignerTests
         string hex = nodeRecord.GetHex();
         Console.WriteLine(testCase);
         Console.WriteLine(hex);
-        Assert.IsTrue(signer.Verify(nodeRecord));
+        Assert.That(signer.Verify(nodeRecord), Is.True);
     }
 
 

@@ -2,13 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
-using DotNetty.Common;
-using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
@@ -20,19 +15,19 @@ namespace Nethermind.Network.P2P
         private readonly IMessageSerializationService _messageSerializationService;
         private readonly ILogger _logger;
         private IChannelHandlerContext _context;
-        private TimeSpan _sendLatency;
+        private readonly TimeSpan _sendLatency;
 
         public PacketSender(IMessageSerializationService messageSerializationService, ILogManager logManager,
             TimeSpan sendLatency)
         {
             _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
-            _logger = logManager.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
             _sendLatency = sendLatency;
         }
 
         public int Enqueue<T>(T message) where T : P2PMessage
         {
-            if (!_context.Channel.Active)
+            if (!_context.Channel.IsWritable || !_context.Channel.Active)
             {
                 return 0;
             }
@@ -41,9 +36,7 @@ namespace Nethermind.Network.P2P
             int length = buffer.ReadableBytes;
 
             // Running in background
-#pragma warning disable CS4014
-            SendBuffer(buffer);
-#pragma warning restore CS4014
+            _ = SendBuffer(buffer);
 
             return length;
         }

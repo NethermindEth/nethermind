@@ -4,7 +4,6 @@
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 
 namespace Nethermind.Specs.Forks
 {
@@ -15,13 +14,13 @@ namespace Nethermind.Specs.Forks
         protected SpuriousDragon()
         {
             Name = "Spurious Dragon";
-            MaxCodeSize = 24576;
+            MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
             IsEip155Enabled = true;
             IsEip158Enabled = true;
             IsEip160Enabled = true;
             IsEip170Enabled = true;
         }
 
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new SpuriousDragon());
+        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new SpuriousDragon());
     }
 }

@@ -8,7 +8,7 @@ namespace Nethermind.KeyStore
 {
     public class BaseKeyStoreIOSettingsProvider
     {
-        public string GetStoreDirectory(string keyStoreFolderName)
+        public static string GetStoreDirectory(string keyStoreFolderName)
         {
             // TODO - we should have a file system implementation that does this
             var directory = keyStoreFolderName.GetApplicationResourcePath();

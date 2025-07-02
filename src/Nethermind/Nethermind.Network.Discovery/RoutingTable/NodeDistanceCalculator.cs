@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Network.Config;
-
 namespace Nethermind.Network.Discovery.RoutingTable;
 
 public class NodeDistanceCalculator : INodeDistanceCalculator
@@ -16,7 +14,7 @@ public class NodeDistanceCalculator : INodeDistanceCalculator
         _bitsPerHoop = discoveryConfig.BitsPerHop;
     }
 
-    public int CalculateDistance(byte[] sourceId, byte[] destinationId)
+    public int CalculateDistance(ReadOnlySpan<byte> sourceId, ReadOnlySpan<byte> destinationId)
     {
         int lowerLength = Math.Min(sourceId.Length, destinationId.Length);
         int distance = _maxDistance;

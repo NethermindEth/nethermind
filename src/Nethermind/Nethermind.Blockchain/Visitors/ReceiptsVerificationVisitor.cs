@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Visitors
             return Task.FromResult(LevelVisitOutcome.None);
         }
 
-        public Task<bool> VisitMissing(Keccak hash, CancellationToken cancellationToken) =>
+        public Task<bool> VisitMissing(Hash256 hash, CancellationToken cancellationToken) =>
             Task.FromResult(true);
 
         public Task<HeaderVisitOutcome> VisitHeader(BlockHeader header, CancellationToken cancellationToken) =>
@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain.Visitors
             }
             else
             {
-                return _receiptStorage.Get(block)?.Where(r => r is not null).Count() ?? 0;
+                return _receiptStorage.Get(block)?.Where(static r => r is not null).Count() ?? 0;
             }
         }
 

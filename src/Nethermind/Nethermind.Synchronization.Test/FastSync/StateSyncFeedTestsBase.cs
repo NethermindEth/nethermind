@@ -3,363 +3,384 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Timers;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.State;
-using Nethermind.Stats;
+using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.StateSync;
+using Nethermind.Synchronization.Test.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
-using BlockTree = Nethermind.Blockchain.BlockTree;
 
-namespace Nethermind.Synchronization.Test.FastSync
+namespace Nethermind.Synchronization.Test.FastSync;
+
+public abstract class StateSyncFeedTestsBase
 {
-    public class StateSyncFeedTestsBase
+    public const int TimeoutLength = 20000;
+
+    private static IBlockTree? _blockTree;
+    protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, static () => Build.A.BlockTree().OfChainLength(100).TestObject);
+
+    protected ILogger _logger;
+    protected ILogManager _logManager = null!;
+
+    private readonly int _defaultPeerCount;
+    private readonly int _defaultPeerMaxRandomLatency;
+
+    public StateSyncFeedTestsBase(int defaultPeerCount = 1, int defaultPeerMaxRandomLatency = 0)
     {
-        private const int TimeoutLength = 2000;
+        _defaultPeerCount = defaultPeerCount;
+        _defaultPeerMaxRandomLatency = defaultPeerMaxRandomLatency;
+    }
 
-        protected static IBlockTree _blockTree;
-        protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
+    public static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] Scenarios => TrieScenarios.Scenarios;
 
-        protected ILogger _logger;
-        protected ILogManager _logManager;
+    [SetUp]
+    public void Setup()
+    {
+        _logManager = LimboLogs.Instance;
+        _logger = LimboTraceLogger.Instance;
+        TrieScenarios.InitOnce();
+    }
 
-        private readonly int _defaultPeerCount;
-        private readonly int _defaultPeerMaxRandomLatency;
+    [TearDown]
+    public void TearDown()
+    {
+        (_logger.UnderlyingLogger as ConsoleAsyncLogger)?.Flush();
+    }
 
-        public StateSyncFeedTestsBase(int defaultPeerCount = 1, int defaultPeerMaxRandomLatency = 0)
+    protected static StorageTree SetStorage(ITrieStore trieStore, byte i, Address address)
+    {
+        StorageTree remoteStorageTree = new StorageTree(trieStore.GetTrieStore(address), Keccak.EmptyTreeHash, LimboLogs.Instance);
+        for (int j = 0; j < i; j++) remoteStorageTree.Set((UInt256)j, [(byte)j, i]);
+
+        remoteStorageTree.Commit();
+        return remoteStorageTree;
+    }
+
+    protected IContainer PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null, int syncDispatcherAllocateTimeoutMs = 10)
+    {
+        SyncPeerMock[] syncPeers = new SyncPeerMock[_defaultPeerCount];
+        for (int i = 0; i < _defaultPeerCount; i++)
         {
-            _defaultPeerCount = defaultPeerCount;
-            _defaultPeerMaxRandomLatency = defaultPeerMaxRandomLatency;
-        }
-
-        public static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] Scenarios => TrieScenarios.Scenarios;
-
-        [SetUp]
-        public void Setup()
-        {
-            _logManager = LimboLogs.Instance;
-            _logger = LimboTraceLogger.Instance;
-            TrieScenarios.InitOnce();
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            (_logger as ConsoleAsyncLogger)?.Flush();
-        }
-
-        protected static StorageTree SetStorage(ITrieStore trieStore, byte i)
-        {
-            StorageTree remoteStorageTree = new StorageTree(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
-            for (int j = 0; j < i; j++) remoteStorageTree.Set((UInt256)j, new[] { (byte)j, i });
-
-            remoteStorageTree.Commit(0);
-            return remoteStorageTree;
-        }
-
-        protected SafeContext PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null)
-        {
-            SyncPeerMock[] syncPeers = new SyncPeerMock[_defaultPeerCount];
-            for (int i = 0; i < _defaultPeerCount; i++)
+            Node node = new Node(TestItem.PublicKeys[i], $"127.0.0.{i}", 30302, true)
             {
-                Node node = new Node(TestItem.PublicKeys[i], $"127.0.0.{i}", 30302, true)
-                {
-                    EthDetails = "eth66",
-                };
-                SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb, node: node, maxRandomizedLatencyMs: _defaultPeerMaxRandomLatency);
-                mockMutator?.Invoke(mock);
-                syncPeers[i] = mock;
-            }
-
-            SafeContext ctx = PrepareDownloaderWithPeer(dbContext, syncPeers);
-            ctx.SyncPeerMocks = syncPeers;
-            return ctx;
-        }
-
-        protected SafeContext PrepareDownloaderWithPeer(DbContext dbContext, params ISyncPeer[] syncPeers)
-        {
-            SafeContext ctx = new SafeContext();
-            ctx = new SafeContext();
-            BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader.Number).TestObject;
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            ctx.Pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), 25, LimboLogs.Instance);
-            ctx.Pool.Start();
-
-            for (int i = 0; i < syncPeers.Length; i++)
-            {
-                ctx.Pool.AddPeer(syncPeers[i]);
-            }
-
-            SyncConfig syncConfig = new SyncConfig();
-            syncConfig.FastSync = true;
-            ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
-            ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
-            ctx.StateSyncDispatcher =
-                new StateSyncDispatcher(ctx.Feed, ctx.Pool, new StateSyncAllocationStrategyFactory(), _logManager);
-            ctx.StateSyncDispatcher.Start(CancellationToken.None);
-            return ctx;
-        }
-
-        protected async Task ActivateAndWait(SafeContext safeContext, DbContext dbContext, long blockNumber, int timeout = TimeoutLength)
-        {
-            DotNetty.Common.Concurrency.TaskCompletionSource dormantAgainSource = new DotNetty.Common.Concurrency.TaskCompletionSource();
-            safeContext.Feed.StateChanged += (s, e) =>
-            {
-                if (e.NewState == SyncFeedState.Dormant)
-                {
-                    dormantAgainSource.TrySetResult(0);
-                }
+                EthDetails = "eth66",
             };
-
-            safeContext.TreeFeed.ResetStateRoot(blockNumber, dbContext.RemoteStateTree.RootHash, safeContext.Feed.CurrentState);
-            safeContext.Feed.Activate();
-            var watch = Stopwatch.StartNew();
-            await Task.WhenAny(
-                dormantAgainSource.Task,
-                Task.Delay(timeout));
+            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb, node: node, maxRandomizedLatencyMs: _defaultPeerMaxRandomLatency);
+            mockMutator?.Invoke(mock);
+            syncPeers[i] = mock;
         }
 
-        protected class SafeContext
+        ContainerBuilder builder = BuildTestContainerBuilder(dbContext, syncDispatcherAllocateTimeoutMs)
+            .AddSingleton<SyncPeerMock[]>(syncPeers);
+
+        builder.RegisterBuildCallback((ctx) =>
         {
-            public ISyncModeSelector SyncModeSelector;
-            public SyncPeerMock[] SyncPeerMocks;
-            public ISyncPeerPool Pool;
-            public TreeSync TreeFeed;
-            public StateSyncFeed Feed;
-            public StateSyncDispatcher StateSyncDispatcher;
+            ISyncPeerPool peerPool = ctx.Resolve<ISyncPeerPool>();
+            foreach (ISyncPeer syncPeer in syncPeers)
+            {
+                peerPool.AddPeer(syncPeer);
+            }
+        });
+
+        return builder.Build();
+    }
+
+    protected ContainerBuilder BuildTestContainerBuilder(DbContext dbContext, int syncDispatcherAllocateTimeoutMs = 10)
+    {
+        ContainerBuilder containerBuilder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ConfigProvider(new SyncConfig()
+            {
+                FastSync = true
+            })))
+            .AddDecorator<ISyncConfig>((_, syncConfig) => // Need to be a decorator because `TestEnvironmentModule` override `SyncDispatcherAllocateTimeoutMs` for other tests, but we need specific value.
+            {
+                syncConfig.SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs; // there is a test for requested nodes which get affected if allocate timeout
+                return syncConfig;
+            })
+            .AddSingleton<ILogManager>(_logManager)
+            .AddKeyedSingleton<IDb>(DbNames.Code, dbContext.LocalCodeDb)
+            .AddKeyedSingleton<IDb>(DbNames.State, dbContext.LocalStateDb)
+            .AddSingleton<INodeStorage>(dbContext.LocalNodeStorage)
+
+            // Use factory function to make it lazy in case test need to replace IBlockTree
+            .AddSingleton<IBlockTree>((ctx) => CachedBlockTreeBuilder.BuildCached(
+                $"{nameof(StateSyncFeedTestsBase)}{dbContext.RemoteStateTree.RootHash}{BlockTree.BestSuggestedHeader!.Number}",
+                () => Build.A.BlockTree().WithStateRoot(dbContext.RemoteStateTree.RootHash).OfChainLength((int)BlockTree.BestSuggestedHeader!.Number)))
+
+            .Add<SafeContext>();
+
+        containerBuilder.RegisterBuildCallback((ctx) =>
+        {
+            ctx.Resolve<ISyncPeerPool>().Start();
+        });
+
+        return containerBuilder;
+    }
+
+    protected async Task ActivateAndWait(SafeContext safeContext, int timeout = TimeoutLength)
+    {
+        // Note: The `RunContinuationsAsynchronously` is very important, or the thread might continue synchronously
+        // which causes unexpected hang.
+        TaskCompletionSource dormantAgainSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        safeContext.Feed.StateChanged += (_, e) =>
+        {
+            if (e.NewState == SyncFeedState.Dormant)
+            {
+                dormantAgainSource.TrySetResult();
+            }
+        };
+
+        safeContext.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
+        safeContext.StartDispatcher(safeContext.CancellationToken);
+
+        await Task.WhenAny(
+            dormantAgainSource.Task,
+            Task.Delay(timeout));
+    }
+
+    protected class SafeContext(
+        Lazy<SyncPeerMock[]> syncPeerMocks,
+        Lazy<ISyncPeerPool> syncPeerPool,
+        Lazy<TreeSync> treeSync,
+        Lazy<StateSyncFeed> stateSyncFeed,
+        Lazy<SyncDispatcher<StateSyncBatch>> syncDispatcher,
+        IBlockTree blockTree
+    ) : IDisposable
+    {
+        public SyncPeerMock[] SyncPeerMocks => syncPeerMocks.Value;
+        public ISyncPeerPool Pool => syncPeerPool.Value;
+        public TreeSync TreeFeed => treeSync.Value;
+        public StateSyncFeed Feed => stateSyncFeed.Value;
+
+        private readonly AutoCancelTokenSource _autoCancelTokenSource = new AutoCancelTokenSource();
+        public CancellationToken CancellationToken => _autoCancelTokenSource.Token;
+
+        private bool _isDisposed;
+
+        public void SuggestBlocksWithUpdatedRootHash(Hash256 newRootHash)
+        {
+            Block newBlock = Build.A.Block
+                .WithParent(blockTree.BestSuggestedHeader!)
+                .WithStateRoot(newRootHash)
+                .TestObject;
+
+            blockTree.SuggestBlock(newBlock).Should().Be(AddBlockResult.Added);
+            blockTree.UpdateMainChain([newBlock], false, true);
         }
 
-        protected class DbContext
+        public void StartDispatcher(CancellationToken cancellationToken)
         {
-            private readonly ILogger _logger;
+            Task _ = syncDispatcher.Value.Start(cancellationToken);
+        }
 
-            public DbContext(ILogger logger, ILogManager logManager)
+        public void Dispose()
+        {
+            if (_isDisposed) return;
+            _isDisposed = true;
+            _autoCancelTokenSource.Dispose();
+        }
+    }
+
+    protected class DbContext
+    {
+        private readonly ILogger _logger;
+
+        public DbContext(ILogger logger, ILogManager logManager)
+        {
+            _logger = logger;
+            RemoteDb = new MemDb();
+            LocalDb = new TestMemDb();
+            RemoteStateDb = RemoteDb;
+            LocalStateDb = LocalDb;
+            LocalNodeStorage = new NodeStorage(LocalDb);
+            LocalCodeDb = new TestMemDb();
+            RemoteCodeDb = new MemDb();
+            RemoteTrieStore = TestTrieStoreFactory.Build(RemoteStateDb, logManager);
+
+            RemoteStateTree = new StateTree(RemoteTrieStore, logManager);
+            LocalStateTree = new StateTree(TestTrieStoreFactory.Build(LocalStateDb, logManager), logManager);
+        }
+
+        public MemDb RemoteCodeDb { get; }
+        public TestMemDb LocalCodeDb { get; }
+        public MemDb RemoteDb { get; }
+        public TestMemDb LocalDb { get; }
+        public ITrieStore RemoteTrieStore { get; }
+        public IDb RemoteStateDb { get; }
+        public IDb LocalStateDb { get; }
+        public NodeStorage LocalNodeStorage { get; }
+        public StateTree RemoteStateTree { get; }
+        public StateTree LocalStateTree { get; }
+
+        public void CompareTrees(string stage, bool skipLogs = false)
+        {
+            if (!skipLogs) _logger.Info($"==================== {stage} ====================");
+            LocalStateTree.RootHash = RemoteStateTree.RootHash;
+
+            if (!skipLogs) _logger.Info("-------------------- REMOTE --------------------");
+            TreeDumper dumper = new TreeDumper();
+            RemoteStateTree.Accept(dumper, RemoteStateTree.RootHash);
+            string remote = dumper.ToString();
+            if (!skipLogs) _logger.Info(remote);
+            if (!skipLogs) _logger.Info("-------------------- LOCAL --------------------");
+            dumper.Reset();
+            LocalStateTree.Accept(dumper, LocalStateTree.RootHash);
+            string local = dumper.ToString();
+            if (!skipLogs) _logger.Info(local);
+
+            if (stage == "END")
             {
-                _logger = logger;
-                RemoteDb = new MemDb();
-                LocalDb = new MemDb();
-                RemoteStateDb = RemoteDb;
-                LocalStateDb = LocalDb;
-                LocalCodeDb = new MemDb();
-                RemoteCodeDb = new MemDb();
-                RemoteTrieStore = new TrieStore(RemoteStateDb, logManager);
-
-                RemoteStateTree = new StateTree(RemoteTrieStore, logManager);
-                LocalStateTree = new StateTree(new TrieStore(LocalStateDb, logManager), logManager);
-            }
-
-            public IDb RemoteCodeDb { get; }
-            public IDb LocalCodeDb { get; }
-            public MemDb RemoteDb { get; }
-            public MemDb LocalDb { get; }
-            public ITrieStore RemoteTrieStore { get; }
-            public IDb RemoteStateDb { get; }
-            public IDb LocalStateDb { get; }
-            public StateTree RemoteStateTree { get; }
-            public StateTree LocalStateTree { get; }
-
-            public void CompareTrees(string stage, bool skipLogs = false)
-            {
-                if (!skipLogs) _logger.Info($"==================== {stage} ====================");
-                LocalStateTree.RootHash = RemoteStateTree.RootHash;
-
-                if (!skipLogs) _logger.Info("-------------------- REMOTE --------------------");
-                TreeDumper dumper = new TreeDumper();
-                RemoteStateTree.Accept(dumper, RemoteStateTree.RootHash);
-                string remote = dumper.ToString();
-                if (!skipLogs) _logger.Info(remote);
-                if (!skipLogs) _logger.Info("-------------------- LOCAL --------------------");
-                dumper.Reset();
-                LocalStateTree.Accept(dumper, LocalStateTree.RootHash);
-                string local = dumper.ToString();
-                if (!skipLogs) _logger.Info(local);
-
-                if (stage == "END")
-                {
-                    Assert.AreEqual(remote, local, $"{remote}{Environment.NewLine}{local}");
-                    TrieStatsCollector collector = new(LocalCodeDb, LimboLogs.Instance);
-                    LocalStateTree.Accept(collector, LocalStateTree.RootHash);
-                    Assert.AreEqual(0, collector.Stats.MissingNodes);
-                    Assert.AreEqual(0, collector.Stats.MissingCode);
-                }
-
-                //            Assert.AreEqual(dbContext._remoteCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), dbContext._localCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
-                //            Assert.AreEqual(dbContext._remoteCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), dbContext._localCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
-                //
-                //            Assert.AreEqual(dbContext._remoteDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
-                //            Assert.AreEqual(dbContext._remoteDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
-            }
-
-            public void CompareCodeDbs()
-            {
-                //            Assert.AreEqual(dbContext._remoteCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), dbContext._localCodeDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
-                //            Assert.AreEqual(dbContext._remoteCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), dbContext._localCodeDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
-
-                //            Assert.AreEqual(dbContext._remoteDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Keys.OrderBy(k => k, Bytes.Comparer).ToArray(), "keys");
-                //            Assert.AreEqual(dbContext._remoteDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), _localDb.Values.OrderBy(k => k, Bytes.Comparer).ToArray(), "values");
+                Assert.That(local, Is.EqualTo(remote), $"{stage}{Environment.NewLine}{remote}{Environment.NewLine}{local}");
+                TrieStatsCollector collector = new(LocalCodeDb, LimboLogs.Instance);
+                LocalStateTree.Accept(collector, LocalStateTree.RootHash);
+                Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
+                Assert.That(collector.Stats.MissingCode, Is.EqualTo(0));
             }
         }
 
-        protected class SyncPeerMock : ISyncPeer
+        public void AssertFlushed()
         {
-            public static Func<IList<Keccak>, Task<byte[][]>> NotPreimage = request =>
+            LocalDb.WasFlushed.Should().BeTrue();
+            LocalCodeDb.WasFlushed.Should().BeTrue();
+        }
+    }
+
+    protected class SyncPeerMock : BaseSyncPeerMock
+    {
+        public override string Name => "Mock";
+
+        private readonly IDb _codeDb;
+        private readonly IReadOnlyKeyValueStore _stateDb;
+        private readonly ISnapServer _snapServer;
+
+        private Hash256[]? _filter;
+        private readonly Func<IReadOnlyList<Hash256>, Task<IOwnedReadOnlyList<byte[]>>>? _executorResultFunction;
+        private readonly long _maxRandomizedLatencyMs;
+
+        public SyncPeerMock(
+            IDb stateDb,
+            IDb codeDb,
+            Func<IReadOnlyList<Hash256>, Task<IOwnedReadOnlyList<byte[]>>>? executorResultFunction = null,
+            long? maxRandomizedLatencyMs = null,
+            Node? node = null
+        )
+        {
+            _codeDb = codeDb;
+            _executorResultFunction = executorResultFunction;
+
+            Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth67" };
+            _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
+
+            IStateReader alwaysAvailableRootTracker = Substitute.For<IStateReader>();
+            alwaysAvailableRootTracker.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
+            TrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
+                Persist.EveryBlock, new PruningConfig(), LimboLogs.Instance);
+            _stateDb = trieStore.TrieNodeRlpStore;
+            _snapServer = new SnapServer(
+                trieStore.AsReadOnly(),
+                codeDb,
+                alwaysAvailableRootTracker,
+                LimboLogs.Instance);
+        }
+
+        public int MaxResponseLength { get; set; } = int.MaxValue;
+        public override byte ProtocolVersion { get; } = 67;
+        public override string ClientId => "executorMock";
+        public override PublicKey Id => Node.Id;
+
+        public override async Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+        {
+            if (_maxRandomizedLatencyMs != 0)
             {
-                var result = new byte[request.Count][];
-
-                int i = 0;
-                foreach (Keccak _ in request) result[i++] = new byte[] { 1, 2, 3 };
-
-                return Task.FromResult(result);
-            };
-
-            public static Func<IList<Keccak>, Task<byte[][]>> EmptyArraysInResponses = request =>
-            {
-                var result = new byte[request.Count][];
-
-                int i = 0;
-                foreach (Keccak _ in request) result[i++] = new byte[0];
-
-                return Task.FromResult(result);
-            };
-
-            private readonly IDb _codeDb;
-            private readonly IDb _stateDb;
-
-            private Func<IReadOnlyList<Keccak>, Task<byte[][]>> _executorResultFunction;
-
-            private Keccak[] _filter;
-
-            private readonly long _maxRandomizedLatencyMs;
-
-            public SyncPeerMock(
-                IDb stateDb,
-                IDb codeDb,
-                Func<IReadOnlyList<Keccak>, Task<byte[][]>> executorResultFunction = null,
-                long? maxRandomizedLatencyMs = null,
-                Node? node = null
-            )
-            {
-                _stateDb = stateDb;
-                _codeDb = codeDb;
-
-                if (executorResultFunction is not null) _executorResultFunction = executorResultFunction;
-
-                Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth66" };
-                _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
+                await Task.Delay(TimeSpan.FromMilliseconds(TestContext.CurrentContext.Random.NextLong() % _maxRandomizedLatencyMs));
             }
 
-            public int MaxResponseLength { get; set; } = int.MaxValue;
+            if (_executorResultFunction is not null) return await _executorResultFunction(hashes);
 
-            public Node Node { get; }
-            public string ClientId => "executorMock";
-            public Keccak HeadHash { get; set; }
-            public long HeadNumber { get; set; }
-            public UInt256 TotalDifficulty { get; set; }
-            public bool IsInitialized { get; set; }
-            public bool IsPriority { get; set; }
-            public byte ProtocolVersion { get; }
-            public string ProtocolCode { get; }
+            ArrayPoolList<byte[]> responses = new(hashes.Count, hashes.Count);
 
-            public void Disconnect(InitiateDisconnectReason reason, string details)
+            int i = 0;
+            foreach (Hash256 item in hashes)
             {
-                throw new NotImplementedException();
-            }
+                if (i >= MaxResponseLength) break;
 
-            public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
-            {
-                return Task.FromResult(BlockTree.Head?.Header);
-            }
-
-            public void NotifyOfNewBlock(Block block, SendBlockMode mode)
-            {
-                throw new NotImplementedException();
-            }
-
-            public PublicKey Id => Node.Id;
-
-            public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
-            {
-                throw new NotImplementedException();
-            }
-
-            public async Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
-            {
-                if (_maxRandomizedLatencyMs != 0)
+                if (_filter is null || _filter.Contains(item))
                 {
-                    await Task.Delay(TimeSpan.FromMilliseconds(TestContext.CurrentContext.Random.NextLong() % _maxRandomizedLatencyMs));
+                    responses[i] = _codeDb[item.Bytes] ?? _stateDb[item.Bytes]!;
                 }
 
-                if (_executorResultFunction is not null) return await _executorResultFunction(hashes);
-
-                var responses = new byte[hashes.Count][];
-
-                int i = 0;
-                foreach (Keccak item in hashes)
-                {
-                    if (i >= MaxResponseLength) break;
-
-                    if (_filter is null || _filter.Contains(item)) responses[i] = _stateDb[item.Bytes] ?? _codeDb[item.Bytes];
-
-                    i++;
-                }
-
-                return responses;
+                i++;
             }
 
-            public void SetFilter(Keccak[] availableHashes)
+            return responses;
+        }
+
+        public void SetFilter(Hash256[]? availableHashes)
+        {
+            _filter = availableHashes;
+        }
+
+        public override bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
+        {
+            if (protocol == Protocol.Snap)
             {
-                _filter = availableHashes;
+                protocolHandler = (this as T)!;
+                return true;
             }
+            protocolHandler = null!;
+            return false;
+        }
 
-            public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
-            {
-                throw new NotImplementedException();
-            }
+        public override Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
+        {
+            return Task.FromResult(BlockTree.Head?.Header);
+        }
 
-            public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
+        public override Task<IOwnedReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
+        {
+            return Task.FromResult(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token));
+        }
+
+        public override Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
+        {
+            IOwnedReadOnlyList<PathGroup> groups = SnapProtocolHandler.GetPathGroups(request);
+            return GetTrieNodes(new GetTrieNodesRequest()
             {
-                protocolHandler = null;
-                return false;
-            }
+                RootHash = request.RootHash,
+                AccountAndStoragePaths = groups,
+            }, token);
+        }
+
+        public override Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+        {
+            var nodes = _snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
+            return Task.FromResult(nodes!);
         }
     }
 }

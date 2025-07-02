@@ -11,7 +11,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Visitors
 {
-    public class DbBlocksLoader : IBlockTreeVisitor
+    public class DbBlocksLoader : IBlockTreeVisitor, IDisposable
     {
         public const int DefaultBatchSize = 4000;
 
@@ -20,8 +20,7 @@ namespace Nethermind.Blockchain.Visitors
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
-        private TaskCompletionSource<object> _dbBatchProcessed;
-        private long _currentDbLoadBatchEnd;
+        private readonly BlockTreeSuggestPacer _blockTreeSuggestPacer;
 
         public DbBlocksLoader(IBlockTree blockTree,
             ILogger logger,
@@ -30,32 +29,15 @@ namespace Nethermind.Blockchain.Visitors
             long maxBlocksToLoad = long.MaxValue)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _blockTreeSuggestPacer = new BlockTreeSuggestPacer(_blockTree, batchSize, batchSize / 2);
+            _logger = logger;
 
             _batchSize = batchSize;
             StartLevelInclusive = Math.Max(0L, startBlockNumber ?? (_blockTree.Head?.Number + 1) ?? 0L);
             _blocksToLoad = Math.Min(maxBlocksToLoad, _blockTree.BestKnownNumber - StartLevelInclusive);
             EndLevelExclusive = StartLevelInclusive + _blocksToLoad + 1;
 
-            if (_blocksToLoad != 0)
-            {
-                _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
-            }
-
             LogPlannedOperation();
-        }
-
-        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
-        {
-            if (_dbBatchProcessed is not null)
-            {
-                if (e.Block.Number == _currentDbLoadBatchEnd)
-                {
-                    TaskCompletionSource<object> completionSource = _dbBatchProcessed;
-                    _dbBatchProcessed = null;
-                    completionSource.SetResult(null);
-                }
-            }
         }
 
         public bool PreventsAcceptingNewBlocks => true;
@@ -80,7 +62,7 @@ namespace Nethermind.Blockchain.Visitors
             return Task.FromResult(LevelVisitOutcome.None);
         }
 
-        Task<bool> IBlockTreeVisitor.VisitMissing(Keccak hash, CancellationToken cancellationToken)
+        Task<bool> IBlockTreeVisitor.VisitMissing(Hash256 hash, CancellationToken cancellationToken)
         {
             throw new InvalidDataException($"Block {hash} is missing from the database when loading blocks.");
         }
@@ -99,20 +81,17 @@ namespace Nethermind.Blockchain.Visitors
         async Task<BlockVisitOutcome> IBlockTreeVisitor.VisitBlock(Block block, CancellationToken cancellationToken)
         {
             // this will hang
+            Task waitTask = _blockTreeSuggestPacer.WaitForQueue(block.Number, cancellationToken);
+
             long i = block.Number - StartLevelInclusive;
-            if (i % _batchSize == _batchSize - 1 && i != _blocksToLoad - 1 && _blockTree.Head.Number + _batchSize < block.Number)
+            if (!waitTask.IsCompleted)
             {
                 if (_logger.IsInfo)
                 {
                     _logger.Info($"Loaded {i + 1} out of {_blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
                 }
 
-                _dbBatchProcessed = new TaskCompletionSource<object>();
-                await using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
-                {
-                    _currentDbLoadBatchEnd = block.Number - _batchSize;
-                    await _dbBatchProcessed.Task;
-                }
+                await waitTask;
             }
 
             return BlockVisitOutcome.Suggest;
@@ -133,6 +112,11 @@ namespace Nethermind.Blockchain.Visitors
             {
                 if (_logger.IsInfo) _logger.Info($"Found {_blocksToLoad} blocks to load from DB starting from current head block {_blockTree.Head?.ToString(Block.Format.Short)}");
             }
+        }
+
+        public void Dispose()
+        {
+            _blockTreeSuggestPacer.Dispose();
         }
     }
 }

@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Data
             TransactionHash = receipt.TxHash;
             BlockHash = receipt.BlockHash;
             BlockNumber = receipt.BlockNumber;
-            Address = logEntry.LoggersAddress;
+            Address = logEntry.Address;
             Data = logEntry.Data;
             Topics = logEntry.Topics;
         }
@@ -28,12 +28,12 @@ namespace Nethermind.JsonRpc.Data
         public bool? Removed { get; set; }
         public long? LogIndex { get; set; }
         public long? TransactionIndex { get; set; }
-        public Keccak TransactionHash { get; set; }
-        public Keccak BlockHash { get; set; }
+        public Hash256 TransactionHash { get; set; }
+        public Hash256 BlockHash { get; set; }
         public long? BlockNumber { get; set; }
         public Address Address { get; set; }
         public byte[] Data { get; set; }
-        public Keccak[] Topics { get; set; }
+        public Hash256[] Topics { get; set; }
 
         public LogEntry ToLogEntry()
         {

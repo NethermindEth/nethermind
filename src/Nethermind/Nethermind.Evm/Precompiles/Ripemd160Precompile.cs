@@ -9,9 +9,9 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class Ripemd160Precompile : IPrecompile
+    public class Ripemd160Precompile : IPrecompile<Ripemd160Precompile>
     {
-        public static readonly IPrecompile Instance = new Ripemd160Precompile();
+        public static readonly Ripemd160Precompile Instance = new();
 
         // missing in .NET Core
         //        private static RIPEMD160 _ripemd;
@@ -23,19 +23,13 @@ namespace Nethermind.Evm.Precompiles
             //            _ripemd.Initialize();
         }
 
-        public Address Address { get; } = Address.FromNumber(3);
+        public static Address Address { get; } = Address.FromNumber(3);
 
-        public long BaseGasCost(IReleaseSpec releaseSpec)
-        {
-            return 600L;
-        }
+        public long BaseGasCost(IReleaseSpec releaseSpec) => 600L;
 
-        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-        {
-            return 120L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
-        }
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 120L * EvmInstructions.Div32Ceiling((ulong)inputData.Length);
 
-        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.Ripemd160Precompile++;
 

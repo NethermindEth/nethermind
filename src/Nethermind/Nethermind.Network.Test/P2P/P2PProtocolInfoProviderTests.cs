@@ -11,17 +11,10 @@ namespace Nethermind.Network.Test.P2P
     public class P2PProtocolInfoProviderTests
     {
         [Test]
-        public void GetHighestVersionOfEthProtocol_ReturnExpectedResult()
-        {
-            int result = P2PProtocolInfoProvider.GetHighestVersionOfEthProtocol();
-            Assert.AreEqual(66, result);
-        }
-
-        [Test]
         public void DefaultCapabilitiesToString_ReturnExpectedResult()
         {
             string result = P2PProtocolInfoProvider.DefaultCapabilitiesToString();
-            Assert.AreEqual("eth/66", result);
+            Assert.That(result, Is.EqualTo("eth/68,eth/67,eth/66,nodedata/1"));
         }
     }
 }

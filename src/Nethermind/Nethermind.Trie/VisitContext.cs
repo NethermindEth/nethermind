@@ -2,59 +2,98 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
+using System.Runtime.InteropServices;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie
 {
+    public readonly struct OldStyleTrieVisitContext(int level, bool isStorage, int? branchChildIndex) : INodeContext<OldStyleTrieVisitContext>
+    {
+        public readonly int Level = level;
+        public readonly bool IsStorage = isStorage;
+        public readonly int? BranchChildIndex = branchChildIndex;
+
+        public OldStyleTrieVisitContext Add(ReadOnlySpan<byte> nibblePath)
+        {
+            return new(Level + 1, IsStorage, null);
+        }
+
+        public OldStyleTrieVisitContext Add(byte nibble)
+        {
+            return new(Level + 1, IsStorage, nibble);
+        }
+
+        public OldStyleTrieVisitContext AddStorage(in ValueHash256 storage)
+        {
+            return new(Level + 1, true, null);
+        }
+    }
+
     public class TrieVisitContext : IDisposable
     {
-        private SemaphoreSlim? _semaphore;
         private readonly int _maxDegreeOfParallelism = 1;
-        private int _visitedNodes;
-
-        public int Level { get; internal set; }
-        public bool IsStorage { get; internal set; }
-        public int? BranchChildIndex { get; internal set; }
-        public bool ExpectAccounts { get; init; }
-        public int VisitedNodes => _visitedNodes;
 
         public int MaxDegreeOfParallelism
         {
             get => _maxDegreeOfParallelism;
-            internal init => _maxDegreeOfParallelism = value == 0 ? Environment.ProcessorCount : value;
-        }
-
-        public SemaphoreSlim Semaphore
-        {
-            get
+            internal init
             {
-                if (_semaphore is null)
-                {
-                    if (MaxDegreeOfParallelism == 1) throw new InvalidOperationException("Can not create semaphore for single threaded trie visitor.");
-                    _semaphore = new SemaphoreSlim(MaxDegreeOfParallelism, MaxDegreeOfParallelism);
-                }
-
-                return _semaphore;
+                _maxDegreeOfParallelism = VisitingOptions.AdjustMaxDegreeOfParallelism(value);
             }
         }
 
-        public TrieVisitContext Clone() => (TrieVisitContext)MemberwiseClone();
+        public bool IsStorage { get; set; }
 
         public void Dispose()
         {
-            _semaphore?.Dispose();
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct SmallTrieVisitContext
+    {
+        public SmallTrieVisitContext(TrieVisitContext trieVisitContext)
+        {
+            IsStorage = trieVisitContext.IsStorage;
         }
 
-        public void AddVisited()
+        public byte Level { get; internal set; }
+        private byte _branchChildIndex = 255;
+        private byte _flags = 0;
+
+        private const byte StorageFlag = 1;
+        private const byte ExpectAccountsFlag = 2;
+
+        public bool IsStorage
         {
-            int visitedNodes = Interlocked.Increment(ref _visitedNodes);
-
-            // TODO: Fine tune interval? Use TrieNode.GetMemorySize(false) to calculate memory usage?
-            if (visitedNodes % 1_000_000 == 0)
+            readonly get => (_flags & StorageFlag) == StorageFlag;
+            internal set
             {
-                GC.Collect();
+                if (value)
+                {
+                    _flags = (byte)(_flags | StorageFlag);
+                }
+                else
+                {
+                    _flags = (byte)(_flags & ~StorageFlag);
+                }
             }
+        }
 
+        public bool ExpectAccounts
+        {
+            readonly get => (_flags & ExpectAccountsFlag) == ExpectAccountsFlag;
+            internal set
+            {
+                if (value)
+                {
+                    _flags = (byte)(_flags | ExpectAccountsFlag);
+                }
+                else
+                {
+                    _flags = (byte)(_flags & ~ExpectAccountsFlag);
+                }
+            }
         }
     }
 }

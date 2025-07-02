@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
@@ -46,12 +45,13 @@ namespace Nethermind.EthStats.Integrations
         private readonly IGasPriceOracle _gasPriceOracle;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly bool _isMining;
+        private readonly TimeSpan _sendStatsInterval;
+
         private IWebsocketClient? _websocketClient;
         private bool _connected;
         private long _lastBlockProcessedTimestamp;
         private Timer? _timer;
         private const int ThrottlingThreshold = 250;
-        private const int SendStatsInterval = 1000;
 
         public EthStatsIntegration(
             string name,
@@ -64,15 +64,16 @@ namespace Nethermind.EthStats.Integrations
             string contact,
             bool canUpdateHistory,
             string secret,
-            IEthStatsClient? ethStatsClient,
-            IMessageSender? sender,
-            ITxPool? txPool,
-            IBlockTree? blockTree,
-            IPeerManager? peerManager,
-            IGasPriceOracle? gasPriceOracle,
+            IEthStatsClient ethStatsClient,
+            IMessageSender sender,
+            ITxPool txPool,
+            IBlockTree blockTree,
+            IPeerManager peerManager,
+            IGasPriceOracle gasPriceOracle,
             IEthSyncingInfo ethSyncingInfo,
             bool isMining,
-            ILogManager? logManager)
+            TimeSpan sendStatsInterval,
+            ILogManager logManager)
         {
             _name = name;
             _node = node;
@@ -84,20 +85,23 @@ namespace Nethermind.EthStats.Integrations
             _contact = contact;
             _canUpdateHistory = canUpdateHistory;
             _secret = secret;
-            _ethStatsClient = ethStatsClient ?? throw new ArgumentNullException(nameof(ethStatsClient));
-            _sender = sender ?? throw new ArgumentNullException(nameof(sender));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
-            _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
-            _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
+            _ethStatsClient = ethStatsClient;
+            _sender = sender;
+            _txPool = txPool;
+            _blockTree = blockTree;
+            _peerManager = peerManager;
+            _gasPriceOracle = gasPriceOracle;
+            _ethSyncingInfo = ethSyncingInfo;
             _isMining = isMining;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _sendStatsInterval = sendStatsInterval > TimeSpan.Zero
+                ? sendStatsInterval
+                : throw new ArgumentOutOfRangeException(nameof(sendStatsInterval));
+            _logger = logManager.GetClassLogger();
         }
 
         public async Task InitAsync()
         {
-            _timer = new Timer { Interval = SendStatsInterval };
+            _timer = new Timer { Interval = _sendStatsInterval.TotalMilliseconds };
             _timer.Elapsed += TimerOnElapsed;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             _websocketClient = await _ethStatsClient.InitAsync();
@@ -134,12 +138,11 @@ namespace Nethermind.EthStats.Integrations
 
         private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
         {
-            if (_connected)
-            {
-                if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
-                SendStatsAsync();
-                SendPendingAsync(_txPool.GetPendingTransactionsCount());
-            }
+            if (!_connected)
+                return;
+            if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
+            _ = SendStatsAsync();
+            SendPendingAsync(_txPool.GetPendingTransactionsCount() + _txPool.GetPendingBlobTransactionsCount());
         }
 
         private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -202,19 +205,19 @@ namespace Nethermind.EthStats.Integrations
                     block.GasLimit,
                     block.Difficulty.ToString(),
                     (block.TotalDifficulty ?? 0).ToString(),
-                    block.Transactions.Select(t => new Transaction((t.Hash ?? Keccak.Zero).ToString())),
+                    block.Transactions.Select(static t => new Transaction((t.Hash ?? Keccak.Zero).ToString())),
                     (block.TxRoot ?? Keccak.Zero).ToString(),
                     (block.StateRoot ?? Keccak.Zero).ToString(),
-                    block.Uncles.Select(_ => new Uncle()))));
+                    block.Uncles.Select(static _ => new Uncle()))));
 
         // ReSharper disable once UnusedMethodReturnValue.Local
         private Task SendPendingAsync(int pending)
             => _sender.SendAsync(_websocketClient!, new PendingMessage(new PendingStats(pending)));
 
         // ReSharper disable once UnusedMethodReturnValue.Local
-        private Task SendStatsAsync()
+        private async Task SendStatsAsync()
         {
-            UInt256 gasPrice = _gasPriceOracle.GetGasPriceEstimate();
+            UInt256 gasPrice = await _gasPriceOracle.GetGasPriceEstimate();
             if (gasPrice > long.MaxValue)
             {
                 // EthStats doesn't work with UInt256, long should be enough
@@ -222,7 +225,7 @@ namespace Nethermind.EthStats.Integrations
                 gasPrice = long.MaxValue;
             }
 
-            return _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, _ethSyncingInfo.IsSyncing(), _isMining, 0,
+            await _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, _ethSyncingInfo.IsSyncing(), _isMining, 0,
                 _peerManager.ActivePeers.Count, (long)gasPrice, 100)));
         }
     }

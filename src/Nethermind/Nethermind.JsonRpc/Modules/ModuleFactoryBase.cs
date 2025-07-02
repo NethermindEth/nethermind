@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Reflection;
-using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -17,26 +15,13 @@ namespace Nethermind.JsonRpc.Modules
                 throw new InvalidOperationException($"Module factory type should be an interface and not {typeof(T).Name}");
             }
 
-            RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
-            if (attribute is null)
-            {
-                throw new InvalidOperationException($"RPC module {typeof(T).Name} is missing {nameof(RpcModuleAttribute)}");
-            }
-
+            RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>() ?? throw new InvalidOperationException($"RPC module {typeof(T).Name} is missing {nameof(RpcModuleAttribute)}");
             ModuleType = attribute.ModuleType;
         }
-
-        // ReSharper disable once StaticMemberInGenericType
-        private static IReadOnlyCollection<JsonConverter> _noConverters = new List<JsonConverter>();
 
         public abstract T Create();
 
         public string ModuleType { get; }
-
-        public virtual IReadOnlyCollection<JsonConverter> GetConverters()
-        {
-            return _noConverters;
-        }
     }
 
     public class SingletonFactory<T> : ModuleFactoryBase<T> where T : IRpcModule

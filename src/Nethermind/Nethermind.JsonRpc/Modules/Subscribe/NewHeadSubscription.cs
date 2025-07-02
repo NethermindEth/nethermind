@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 
@@ -37,16 +37,15 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
-            ScheduleAction(() =>
+            ScheduleAction(async () =>
             {
-                JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider));
-
-                JsonRpcDuplexClient.SendJsonRpcResult(result);
+                using JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider));
+                await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
             });
         }
 
-        public override string Type => SubscriptionType.NewHeads;
+        public override string Type => SubscriptionType.EthSubscription.NewHeads;
 
         public override void Dispose()
         {

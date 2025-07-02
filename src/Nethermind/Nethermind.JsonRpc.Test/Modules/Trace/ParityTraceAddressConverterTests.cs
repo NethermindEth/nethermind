@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
 
@@ -14,7 +13,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Can_do_roundtrip()
         {
-            bool Comparer(int[] a, int[] b)
+            static bool Comparer(int[] a, int[] b)
             {
                 if (a.Length != b.Length)
                 {
@@ -32,7 +31,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 return true;
             }
 
-            TestRoundtrip(new[] { 1, 2, 3, 1000, 10000 }, Comparer, new ParityTraceAddressConverter());
+            TestRoundtrip(new[] { 1, 2, 3, 1000, 10000 }, Comparer, null);
         }
     }
 }

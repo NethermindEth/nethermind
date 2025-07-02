@@ -47,7 +47,7 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark(Baseline = true)]
         public byte[] Current()
         {
-            return Keccak.Compute(_a).Bytes;
+            return Keccak.Compute(_a).BytesToArray();
         }
 
         [Benchmark]

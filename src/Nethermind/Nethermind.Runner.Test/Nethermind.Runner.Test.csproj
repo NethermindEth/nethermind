@@ -1,21 +1,10 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
-    <IsPackable>false</IsPackable>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-  </PropertyGroup>
+  <Import Project="../tests.props" />
 
   <ItemGroup>
-    <PackageReference Include="coverlet.msbuild">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="NSubstitute" />
-    <PackageReference Include="NUnit" />
-    <PackageReference Include="NUnit3TestAdapter" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Analytics\Nethermind.Analytics.csproj" />
@@ -25,6 +14,8 @@
     <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Monitoring.Test\Nethermind.Monitoring.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
+    <ProjectReference Include="..\Nethermind.Optimism\Nethermind.Optimism.csproj" />
+    <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
     <Content Include="..\Chains\AuRaTest.json" CopyToOutputDirectory="PreserveNewest">
       <Link>Chains\AuRaTest.json</Link>
     </Content>
@@ -34,20 +25,8 @@
     <Content Include="..\Chains\genesis.json" CopyToOutputDirectory="PreserveNewest">
       <Link>Chains\genesis.json</Link>
     </Content>
-    <Content Include="..\Chains\goerli.json" CopyToOutputDirectory="PreserveNewest">
-      <Link>Chains\goerli.json</Link>
-    </Content>
-    <Content Include="..\Chains\hive.json" CopyToOutputDirectory="PreserveNewest">
-      <Link>Chains\hive.json</Link>
-    </Content>
     <Content Include="..\Chains\poacore.json" CopyToOutputDirectory="PreserveNewest">
       <Link>Chains\poacore.json</Link>
-    </Content>
-    <Content Include="..\Chains\rinkeby.json" CopyToOutputDirectory="PreserveNewest">
-      <Link>Chains\rinkeby.json</Link>
-    </Content>
-    <Content Include="..\Chains\ropsten.json" CopyToOutputDirectory="PreserveNewest">
-      <Link>Chains\ropsten.json</Link>
     </Content>
     <Content Include="..\Chains\spaceneth.json" CopyToOutputDirectory="PreserveNewest">
       <Link>Chains\spaceneth.json</Link>
@@ -59,7 +38,7 @@
       <Link>Chains\gnosis.json</Link>
     </Content>
 
-    <Content Include="..\Nethermind.Runner\configs\*.cfg" Link="configs\%(RecursiveDir)%(Filename)%(Extension)">
+    <Content Include="..\Nethermind.Runner\configs\*.json" Link="configs\%(RecursiveDir)%(Filename)%(Extension)">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
 
@@ -69,6 +48,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="configs\" />
   </ItemGroup>
 
 </Project>

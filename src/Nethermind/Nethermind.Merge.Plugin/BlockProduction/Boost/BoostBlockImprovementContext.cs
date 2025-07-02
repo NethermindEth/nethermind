@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -19,41 +20,47 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private readonly IBoostRelay _boostRelay;
     private readonly IStateReader _stateReader;
     private readonly FeesTracer _feesTracer = new();
-    private CancellationTokenSource? _cancellationTokenSource;
+    private readonly CancellationTokenSource _improvementCancellation;
+    private CancellationTokenSource? _timeOutCancellation;
+    private CancellationTokenSource? _linkedCancellation;
 
     public BoostBlockImprovementContext(Block currentBestBlock,
-        IManualBlockProductionTrigger blockProductionTrigger,
+        IBlockProducer blockProducer,
         TimeSpan timeout,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         IBoostRelay boostRelay,
         IStateReader stateReader,
-        DateTimeOffset startDateTime)
+        DateTimeOffset startDateTime,
+        CancellationTokenSource cts)
     {
         _boostRelay = boostRelay;
         _stateReader = stateReader;
-        _cancellationTokenSource = new CancellationTokenSource(timeout);
+        _improvementCancellation = cts;
+        _timeOutCancellation = new CancellationTokenSource(timeout);
+        _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
-        ImprovementTask = StartImprovingBlock(blockProductionTrigger, parentHeader, payloadAttributes, _cancellationTokenSource.Token);
+        ImprovementTask = StartImprovingBlock(blockProducer, parentHeader, payloadAttributes, _linkedCancellation.Token);
     }
 
     private async Task<Block?> StartImprovingBlock(
-        IManualBlockProductionTrigger blockProductionTrigger,
+        IBlockProducer blockProducer,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         CancellationToken cancellationToken)
     {
 
         payloadAttributes = await _boostRelay.GetPayloadAttributes(payloadAttributes, cancellationToken);
-        UInt256 balanceBefore = _stateReader.GetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ?? UInt256.Zero;
-        Block? block = await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, _feesTracer, payloadAttributes);
+        _stateReader.TryGetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out AccountStruct account);
+        UInt256 balanceBefore = account.Balance;
+        Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, IBlockProducer.Flags.None, cancellationToken);
         if (block is not null)
         {
             CurrentBestBlock = block;
             BlockFees = _feesTracer.Fees;
-            UInt256 balanceAfter = _stateReader.GetAccount(block.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ?? UInt256.Zero;
-            await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = new ExecutionPayload(block), Profit = balanceAfter - balanceBefore }, cancellationToken);
+            _stateReader.TryGetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out account);
+            await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = ExecutionPayload.Create(block), Profit = account.Balance - balanceBefore }, cancellationToken);
         }
 
         return CurrentBestBlock;
@@ -68,6 +75,9 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     public void Dispose()
     {
         Disposed = true;
-        CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
     }
+
+    public void CancelOngoingImprovements() => _improvementCancellation.Cancel();
 }

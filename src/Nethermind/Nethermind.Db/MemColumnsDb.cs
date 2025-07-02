@@ -1,16 +1,20 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Db
 {
-    public class MemColumnsDb<TKey> : MemDb, IColumnsDb<TKey>
+    public class MemColumnsDb<TKey> : IColumnsDb<TKey> where TKey : struct, Enum
     {
-        private readonly IDictionary<TKey, IDbWithSpan> _columnDbs = new Dictionary<TKey, IDbWithSpan>();
+        private readonly IDictionary<TKey, IDb> _columnDbs = new Dictionary<TKey, IDb>();
 
-        public MemColumnsDb(string name)
-            : base(name)
+        public MemColumnsDb() : this(Enum.GetValues<TKey>())
+        {
+        }
+
+        public MemColumnsDb(string _) : this(Enum.GetValues<TKey>())
         {
         }
 
@@ -22,12 +26,19 @@ namespace Nethermind.Db
             }
         }
 
-        public IDbWithSpan GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new MemDb() : db;
+        public IDb GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new MemDb() : db;
         public IEnumerable<TKey> ColumnKeys => _columnDbs.Keys;
 
-        public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore)
+        public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore)
         {
             return new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
         }
+
+        public IColumnsWriteBatch<TKey> StartWriteBatch()
+        {
+            return new InMemoryColumnWriteBatch<TKey>(this);
+        }
+        public void Dispose() { }
+        public void Flush(bool onlyWal = false) { }
     }
 }

@@ -1,14 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public abstract class FastBlocksBatch
+    public abstract class FastBlocksBatch : IDisposable
     {
-        private Stopwatch _stopwatch = new();
+        private readonly Stopwatch _stopwatch = new();
         private long? _scheduledLastTime;
         private long? _requestSentTime;
         private long? _validationStartTime;
@@ -80,6 +81,9 @@ namespace Nethermind.Synchronization.FastBlocks
             => (_handlingStartTime ?? _stopwatch.ElapsedMilliseconds) - (_waitingStartTime ?? _handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
         public double? HandlingTime
             => (_handlingEndTime ?? _stopwatch.ElapsedMilliseconds) - (_handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
-        public long? MinNumber { get; set; }
+
+        /// Minimum head number for peer to be allocated
+        public abstract long? MinNumber { get; }
+        public virtual void Dispose() { }
     }
 }

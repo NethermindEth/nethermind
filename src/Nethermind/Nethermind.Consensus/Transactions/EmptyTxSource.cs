@@ -3,8 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
-using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Transactions
 {
@@ -12,9 +12,11 @@ namespace Nethermind.Consensus.Transactions
     {
         private EmptyTxSource() { }
 
+        public bool SupportsBlobs => false;
+
         public static ITxSource Instance { get; } = new EmptyTxSource();
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
         {
             return Array.Empty<Transaction>();
         }

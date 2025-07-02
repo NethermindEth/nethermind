@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
@@ -111,14 +109,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
             {
             }
 
-            protected override object[] CallRaw(CallInfo callInfo, IReadOnlyTransactionProcessor readOnlyTransactionProcessor)
+            protected override object[] CallRaw(CallInfo callInfo, IReadOnlyTxProcessingScope scope)
             {
                 if (callInfo is PermissionCallInfo transactionPermissionCallInfo)
                 {
-                    transactionPermissionCallInfo.ToIsContract = readOnlyTransactionProcessor.IsContractDeployed(transactionPermissionCallInfo.To);
+                    transactionPermissionCallInfo.ToIsContract = scope.WorldState.IsContract(transactionPermissionCallInfo.To);
                 }
 
-                return base.CallRaw(callInfo, readOnlyTransactionProcessor);
+                return base.CallRaw(callInfo, scope);
             }
 
             public class PermissionCallInfo : CallInfo

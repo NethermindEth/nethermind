@@ -18,7 +18,7 @@ namespace Ethereum.Transition.Test
         {
             string[] directories = Directory.GetDirectories(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Tests"))
                 .Select(Path.GetFileName)
-                .Except(new[] { "bcArrowGlacierToMerge" }) // this one is missing
+                .Except(new[] { "bcArrowGlacierToMerge", "bcArrowGlacierToParis" }) // these ones are missing
                 .ToArray();
             Type[] types = GetType().Assembly.GetTypes();
             List<string> missingCategories = new List<string>();
@@ -36,7 +36,7 @@ namespace Ethereum.Transition.Test
                 Console.WriteLine($"{missing} category is missing");
             }
 
-            Assert.AreEqual(0, missingCategories.Count);
+            Assert.That(missingCategories.Count, Is.EqualTo(0));
         }
 
         private static string ExpectedTypeName(string directory)

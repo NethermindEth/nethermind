@@ -4,17 +4,21 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Transactions
 {
     public class CompositeTxSource : ITxSource
     {
-        private readonly IList<ITxSource> _transactionSources;
+        private readonly List<ITxSource> _transactionSources;
+
+        public bool SupportsBlobs { get; }
 
         public CompositeTxSource(params ITxSource[] transactionSources)
         {
             _transactionSources = transactionSources?.ToList() ?? throw new ArgumentNullException(nameof(transactionSources));
+            SupportsBlobs = _transactionSources.Any(s => s.SupportsBlobs);
         }
 
         public void Then(ITxSource txSource)
@@ -27,11 +31,11 @@ namespace Nethermind.Consensus.Transactions
             _transactionSources.Insert(0, txSource);
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             for (int i = 0; i < _transactionSources.Count; i++)
             {
-                IEnumerable<Transaction> transactions = _transactionSources[i].GetTransactions(parent, gasLimit);
+                IEnumerable<Transaction> transactions = _transactionSources[i].GetTransactions(parent, gasLimit, payloadAttributes, filterSource);
                 foreach (Transaction tx in transactions)
                 {
                     yield return tx;

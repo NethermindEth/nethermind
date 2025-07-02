@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
@@ -13,7 +12,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         private readonly IRegisterContract _registerContract;
         private readonly string _registryKey;
-        private Keccak _currentHashAddress = Keccak.Zero;
+        private Hash256 _currentHashAddress = Keccak.Zero;
 
         public RegisterBasedContract(
             IAbiEncoder abiEncoder,

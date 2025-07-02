@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
@@ -15,6 +16,7 @@ using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 using System.Runtime.Intrinsics;
 using System.Text;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -23,20 +25,44 @@ namespace Nethermind.Core.Extensions
     public static unsafe partial class Bytes
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
-
+        public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
+        // The ReadOnlyMemory<byte> needs to be initialized = or it will be created each time.
+        public static ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
+        public static ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
+        public static ReadOnlyMemory<byte> TwoByte = new byte[] { 2 };
+        // The Jit converts a ReadOnlySpan<byte> => new byte[] to a data section load, no allocation.
+        public static ReadOnlySpan<byte> ZeroByteSpan => new byte[] { 0 };
+        public static ReadOnlySpan<byte> OneByteSpan => new byte[] { 1 };
 
-        private class BytesEqualityComparer : EqualityComparer<byte[]>
+        public const string ZeroHexValue = "0x0";
+        public const string ZeroValue = "0";
+        public const string EmptyHexValue = "0x";
+
+        private class BytesEqualityComparer : EqualityComparer<byte[]>, IAlternateEqualityComparer<ReadOnlySpan<byte>, byte[]>
+        {
+            public byte[] Create(ReadOnlySpan<byte> alternate)
+                => alternate.ToArray();
+
+            public override bool Equals(byte[]? x, byte[]? y)
+                => AreEqual(x, y);
+
+            public bool Equals(ReadOnlySpan<byte> alternate, byte[] other)
+                => AreEqual(alternate, other.AsSpan());
+
+            public override int GetHashCode(byte[] obj) => new ReadOnlySpan<byte>(obj).FastHash();
+
+            public int GetHashCode(ReadOnlySpan<byte> alternate) => alternate.FastHash();
+        }
+
+        private class NullableBytesEqualityComparer : EqualityComparer<byte[]?>
         {
             public override bool Equals(byte[]? x, byte[]? y)
             {
                 return AreEqual(x, y);
             }
 
-            public override int GetHashCode(byte[] obj)
-            {
-                return obj.GetSimplifiedHashCode();
-            }
+            public override int GetHashCode(byte[]? obj) => new ReadOnlySpan<byte>(obj).FastHash();
         }
 
         public class BytesComparer : Comparer<byte[]>
@@ -77,7 +103,7 @@ namespace Nethermind.Core.Extensions
                 return y.Length > x.Length ? 1 : 0;
             }
 
-            public int Compare(Span<byte> x, Span<byte> y)
+            public static int Compare(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
             {
                 if (Unsafe.AreSame(ref MemoryMarshal.GetReference(x), ref MemoryMarshal.GetReference(y)) &&
                     x.Length == y.Length)
@@ -110,7 +136,7 @@ namespace Nethermind.Core.Extensions
 
         public static readonly byte[] Zero32 = new byte[32];
 
-        public static readonly byte[] Empty = new byte[0];
+        public static readonly byte[] Empty = [];
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool GetBit(this byte b, int bitNumber)
@@ -121,23 +147,15 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void SetBit(this ref byte b, int bitNumber)
         {
-            byte mask = (byte)(1 << (7 - bitNumber));
-            b = b |= mask;
+            int mask = (1 << (7 - bitNumber));
+            b |= (byte)mask;
         }
 
         public static int GetHighestSetBitIndex(this byte b)
-        {
-            if ((b & 128) == 128) return 8;
-            if ((b & 64) == 64) return 7;
-            if ((b & 32) == 32) return 6;
-            if ((b & 16) == 16) return 5;
-            if ((b & 8) == 8) return 4;
-            if ((b & 4) == 4) return 3;
-            return (b & 2) == 2 ? 2 : b;
-        }
+            => 32 - BitOperations.LeadingZeroCount((uint)b);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool AreEqual(Span<byte> a1, Span<byte> a2)
+        public static bool AreEqual(ReadOnlySpan<byte> a1, ReadOnlySpan<byte> a2)
         {
             if (Unsafe.AreSame(ref MemoryMarshal.GetReference(a1), ref MemoryMarshal.GetReference(a2)) &&
                 a1.Length == a2.Length)
@@ -176,16 +194,31 @@ namespace Nethermind.Core.Extensions
             return lastIndex < 0 ? bytes.Length : bytes.Length - lastIndex - 1;
         }
 
-        public static Span<byte> WithoutLeadingZeros(this byte[] bytes)
+        public static ReadOnlySpan<byte> WithoutLeadingZeros(this byte[] bytes)
         {
             return bytes.AsSpan().WithoutLeadingZeros();
         }
 
-        public static Span<byte> WithoutLeadingZeros(this Span<byte> bytes)
+        public static ReadOnlySpan<byte> WithoutLeadingZerosOrEmpty(this byte[] bytes)
         {
-            if (bytes.Length == 0) return new byte[] { 0 };
+            if (bytes is null || bytes.Length == 0) return [];
+            return bytes.AsSpan().WithoutLeadingZeros();
+        }
+
+        public static ReadOnlySpan<byte> WithoutLeadingZerosOrEmpty(this Span<byte> bytes) =>
+            ((ReadOnlySpan<byte>)bytes).WithoutLeadingZeros();
+
+        public static ReadOnlySpan<byte> WithoutLeadingZeros(this Span<byte> bytes)
+        {
+            return ((ReadOnlySpan<byte>)bytes).WithoutLeadingZeros();
+        }
+
+        public static ReadOnlySpan<byte> WithoutLeadingZeros(this ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length == 0) return ZeroByteSpan;
 
             int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
+            // Keep one or it will be interpreted as null
             return nonZeroIndex < 0 ? bytes[^1..] : bytes[nonZeroIndex..];
         }
 
@@ -200,7 +233,10 @@ namespace Nethermind.Core.Extensions
         public static byte[] PadLeft(this byte[] bytes, int length, byte padding = 0)
             => bytes.Length == length ? bytes : bytes.AsSpan().PadLeft(length, padding);
 
-        public static byte[] PadLeft(this Span<byte> bytes, int length, byte padding = 0)
+        public static byte[] PadLeft(this Span<byte> bytes, int length, byte padding = 0) =>
+            ((ReadOnlySpan<byte>)bytes).PadLeft(length, padding);
+
+        public static byte[] PadLeft(this ReadOnlySpan<byte> bytes, int length, byte padding = 0)
         {
             if (bytes.Length == length)
             {
@@ -209,7 +245,7 @@ namespace Nethermind.Core.Extensions
 
             if (bytes.Length > length)
             {
-                return bytes.Slice(0, length).ToArray();
+                return bytes[..length].ToArray();
             }
 
             byte[] result = new byte[length];
@@ -243,22 +279,63 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
+        public static byte[] Concat(byte[] part1, byte[] part2)
+        {
+            byte[] result = new byte[part1.Length + part2.Length];
+            part1.CopyTo(result, 0);
+            part2.CopyTo(result.AsSpan(part1.Length));
+            return result;
+        }
+
         public static byte[] Concat(params byte[][] parts)
         {
+            return Concat(parts.AsSpan());
+        }
+
+        public static byte[] Concat(ReadOnlySpan<byte[]> bytes)
+        {
             int totalLength = 0;
-            for (int i = 0; i < parts.Length; i++)
+            foreach (byte[] byteArray in bytes)
             {
-                totalLength += parts[i].Length;
+                totalLength += byteArray.Length;
             }
 
             byte[] result = new byte[totalLength];
-            int position = 0;
-            for (int i = 0; i < parts.Length; i++)
+            int offset = 0;
+
+            foreach (byte[] byteArray in bytes)
             {
-                Buffer.BlockCopy(parts[i], 0, result, position, parts[i].Length);
-                position += parts[i].Length;
+                Array.Copy(byteArray, 0, result, offset, byteArray.Length);
+                offset += byteArray.Length;
             }
 
+            return result;
+        }
+
+        public static byte[] Concat(ReadOnlySpan<byte> part1, ReadOnlySpan<byte> part2)
+        {
+            byte[] result = new byte[part1.Length + part2.Length];
+            part1.CopyTo(result);
+            part2.CopyTo(result.AsSpan(part1.Length));
+            return result;
+        }
+
+        public static byte[] Concat(ReadOnlySpan<byte> part1, ReadOnlySpan<byte> part2, ReadOnlySpan<byte> part3)
+        {
+            byte[] result = new byte[part1.Length + part2.Length + part3.Length];
+            part1.CopyTo(result);
+            part2.CopyTo(result.AsSpan(part1.Length));
+            part3.CopyTo(result.AsSpan(part1.Length + part2.Length));
+            return result;
+        }
+
+        public static byte[] Concat(ReadOnlySpan<byte> part1, ReadOnlySpan<byte> part2, ReadOnlySpan<byte> part3, ReadOnlySpan<byte> part4)
+        {
+            byte[] result = new byte[part1.Length + part2.Length + part3.Length + part4.Length];
+            part1.CopyTo(result);
+            part2.CopyTo(result.AsSpan(part1.Length));
+            part3.CopyTo(result.AsSpan(part1.Length + part2.Length));
+            part4.CopyTo(result.AsSpan(part1.Length + part2.Length + part3.Length));
             return result;
         }
 
@@ -267,6 +344,14 @@ namespace Nethermind.Core.Extensions
             byte[] result = new byte[bytes.Length + 1];
             result[^1] = suffix;
             Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
+            return result;
+        }
+
+        public static byte[] Concat(ReadOnlySpan<byte> bytes, byte suffix)
+        {
+            byte[] result = new byte[bytes.Length + 1];
+            result[^1] = suffix;
+            bytes.CopyTo(result);
             return result;
         }
 
@@ -304,6 +389,51 @@ namespace Nethermind.Core.Extensions
             return new(bytes, true, true);
         }
 
+        public static ReadOnlySpan<byte> Trim(this ReadOnlySpan<byte> bytes, int length)
+            => bytes.Length > length ? bytes.Slice(bytes.Length - length, length) : bytes;
+
+        public static short ReadEthInt16(this ReadOnlySpan<byte> bytes)
+        {
+            bytes = bytes.Trim(2);
+
+            return bytes.Length switch
+            {
+                2 => BinaryPrimitives.ReadInt16BigEndian(bytes),
+                1 => bytes[0],
+                _ => 0
+            };
+        }
+
+        public static ushort ReadEthUInt16(this ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length > 2)
+            {
+                bytes = bytes.Slice(bytes.Length - 2, 2);
+            }
+
+            return bytes.Length switch
+            {
+                2 => BinaryPrimitives.ReadUInt16BigEndian(bytes),
+                1 => bytes[0],
+                _ => 0
+            };
+        }
+
+        public static ushort ReadEthUInt16LittleEndian(this Span<byte> bytes)
+        {
+            if (bytes.Length > 2)
+            {
+                bytes = bytes.Slice(bytes.Length - 2, 2);
+            }
+
+            return bytes.Length switch
+            {
+                2 => BinaryPrimitives.ReadUInt16LittleEndian(bytes),
+                1 => bytes[0],
+                _ => 0
+            };
+        }
+
         public static uint ReadEthUInt32(this Span<byte> bytes)
         {
             return ReadEthUInt32((ReadOnlySpan<byte>)bytes);
@@ -322,25 +452,8 @@ namespace Nethermind.Core.Extensions
             }
 
             Span<byte> fourBytes = stackalloc byte[4];
-            bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
+            bytes.CopyTo(fourBytes[(4 - bytes.Length)..]);
             return BinaryPrimitives.ReadUInt32BigEndian(fourBytes);
-        }
-
-        public static uint ReadEthUInt32LittleEndian(this Span<byte> bytes)
-        {
-            if (bytes.Length > 4)
-            {
-                bytes = bytes.Slice(bytes.Length - 4, 4);
-            }
-
-            if (bytes.Length == 4)
-            {
-                return BinaryPrimitives.ReadUInt32LittleEndian(bytes);
-            }
-
-            Span<byte> fourBytes = stackalloc byte[4];
-            bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
-            return BinaryPrimitives.ReadUInt32LittleEndian(fourBytes);
         }
 
         public static int ReadEthInt32(this Span<byte> bytes)
@@ -361,7 +474,7 @@ namespace Nethermind.Core.Extensions
             }
 
             Span<byte> fourBytes = stackalloc byte[4];
-            bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
+            bytes.CopyTo(fourBytes[(4 - bytes.Length)..]);
             return BinaryPrimitives.ReadInt32BigEndian(fourBytes);
         }
 
@@ -383,7 +496,7 @@ namespace Nethermind.Core.Extensions
             }
 
             Span<byte> eightBytes = stackalloc byte[8];
-            bytes.CopyTo(eightBytes.Slice(8 - bytes.Length));
+            bytes.CopyTo(eightBytes[(8 - bytes.Length)..]);
             return BinaryPrimitives.ReadUInt64BigEndian(eightBytes);
         }
 
@@ -469,10 +582,15 @@ namespace Nethermind.Core.Extensions
 
         public static string ToHexString(this byte[] bytes)
         {
-            return ToHexString(bytes, false, false, false);
+            return ByteArrayToHexViaLookup32(bytes, false, false, false);
         }
 
-        public static void StreamHex(this byte[] bytes, StreamWriter streamWriter)
+        public static void StreamHex(this byte[] bytes, TextWriter streamWriter)
+        {
+            bytes.AsSpan().StreamHex(streamWriter);
+        }
+
+        public static void StreamHex(this Span<byte> bytes, TextWriter streamWriter)
         {
             for (int i = 0; i < bytes.Length; i++)
             {
@@ -496,22 +614,6 @@ namespace Nethermind.Core.Extensions
 
             public readonly byte[] Bytes;
             public readonly bool WithZeroX;
-        }
-
-        private struct StateOld
-        {
-            public StateOld(byte[] bytes, int leadingZeros, bool withZeroX, bool withEip55Checksum)
-            {
-                Bytes = bytes;
-                LeadingZeros = leadingZeros;
-                WithZeroX = withZeroX;
-                WithEip55Checksum = withEip55Checksum;
-            }
-
-            public int LeadingZeros;
-            public byte[] Bytes;
-            public bool WithZeroX;
-            public bool WithEip55Checksum;
         }
 
         private readonly struct State
@@ -563,11 +665,11 @@ namespace Nethermind.Core.Extensions
         private static string ByteArrayToHexViaLookup32(byte[] bytes, bool withZeroX, bool skipLeadingZeros,
             bool withEip55Checksum)
         {
-            int leadingZerosFirstCheck = skipLeadingZeros ? CountLeadingZeros(bytes) : 0;
+            int leadingZerosFirstCheck = skipLeadingZeros ? CountLeadingNibbleZeros(bytes) : 0;
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZerosFirstCheck;
             if (skipLeadingZeros && length == (withZeroX ? 2 : 0))
             {
-                return withZeroX ? "0x0" : "0";
+                return withZeroX ? ZeroHexValue : ZeroValue;
             }
 
             State stateToPass = new(bytes, leadingZerosFirstCheck, withZeroX);
@@ -575,27 +677,89 @@ namespace Nethermind.Core.Extensions
             return withEip55Checksum
                 ? ByteArrayToHexViaLookup32Checksum(length, stateToPass)
                 : string.Create(length, stateToPass, static (chars, state) =>
-            {
-                int skip = state.LeadingZeros / 2;
-                byte[] bytes = state.Bytes;
-                if (bytes.Length == 0)
                 {
-                    if (state.WithZeroX)
+                    int skip = state.LeadingZeros / 2;
+                    byte[] bytes = state.Bytes;
+                    if (bytes.Length == 0)
                     {
-                        chars[1] = 'x';
-                        chars[0] = '0';
+                        if (state.WithZeroX)
+                        {
+                            chars[1] = 'x';
+                            chars[0] = '0';
+                        }
+
+                        return;
                     }
 
-                    return;
-                }
-
-                ref byte input = ref Unsafe.Add(ref bytes[0], skip);
-                ref char charsRef = ref MemoryMarshal.GetReference(chars);
-                OutputBytesToCharHex(ref input, state.Bytes.Length, ref charsRef, state.WithZeroX, state.LeadingZeros);
-            });
+                    ref byte input = ref Unsafe.Add(ref bytes[0], skip);
+                    ref char charsRef = ref MemoryMarshal.GetReference(chars);
+                    OutputBytesToCharHex(ref input, state.Bytes.Length, ref charsRef, state.WithZeroX, state.LeadingZeros);
+                });
         }
 
-        internal static void OutputBytesToCharHex(ref byte input, int length, ref char charsRef, bool withZeroX, int leadingZeros)
+        public static void OutputBytesToByteHex(this Span<byte> bytes, Span<byte> hex, bool extraNibble)
+        {
+            ((ReadOnlySpan<byte>)bytes).OutputBytesToByteHex(hex, extraNibble);
+        }
+
+        public static void OutputBytesToByteHex(this ReadOnlySpan<byte> bytes, Span<byte> hex, bool extraNibble)
+        {
+            int toProcess = bytes.Length;
+            if (hex.Length != (toProcess * 2) - (extraNibble ? 1 : 0))
+            {
+                ThrowArgumentOutOfRangeException();
+            }
+
+            ref byte input = ref MemoryMarshal.GetReference(bytes);
+            ref ushort lookup32 = ref Lookup16[0];
+            ref ushort output = ref Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex));
+            if (extraNibble)
+            {
+                // Odd number of hex bytes, handle the first
+                // seperately so loop can work in pairs
+                ushort val = Unsafe.Add(ref lookup32, input);
+                Unsafe.As<ushort, byte>(ref output) = (byte)(val >> 8);
+
+                output = ref Unsafe.AddByteOffset(ref output, 1);
+                input = ref Unsafe.Add(ref input, 1);
+                toProcess--;
+            }
+
+            while (toProcess >= 8)
+            {
+                output = Unsafe.Add(ref lookup32, input);
+                Unsafe.Add(ref output, 1) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 1));
+                Unsafe.Add(ref output, 2) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 2));
+                Unsafe.Add(ref output, 3) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 3));
+                Unsafe.Add(ref output, 4) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 4));
+                Unsafe.Add(ref output, 5) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 5));
+                Unsafe.Add(ref output, 6) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 6));
+                Unsafe.Add(ref output, 7) = Unsafe.Add(ref lookup32, Unsafe.Add(ref input, 7));
+
+                output = ref Unsafe.Add(ref output, 8);
+                input = ref Unsafe.Add(ref input, 8);
+
+                toProcess -= 8;
+            }
+
+            while (toProcess > 0)
+            {
+                output = Unsafe.Add(ref lookup32, input);
+
+                output = ref Unsafe.Add(ref output, 1);
+                input = ref Unsafe.Add(ref input, 1);
+
+                toProcess -= 1;
+            }
+
+            [DoesNotReturn]
+            static void ThrowArgumentOutOfRangeException()
+            {
+                throw new ArgumentOutOfRangeException();
+            }
+        }
+
+        public static void OutputBytesToCharHex(ref byte input, int length, ref char charsRef, bool withZeroX, int leadingZeros)
         {
             if (withZeroX)
             {
@@ -627,9 +791,9 @@ namespace Nethermind.Core.Extensions
                     0xFF, 0xFF, 2, 0xFF, 0xFF, 0xFF, 3, 0xFF);
 
                 Vector128<byte> asciiTable = Vector128.Create((byte)'0', (byte)'1', (byte)'2', (byte)'3',
-                                     (byte)'4', (byte)'5', (byte)'6', (byte)'7',
-                                     (byte)'8', (byte)'9', (byte)'a', (byte)'b',
-                                     (byte)'c', (byte)'d', (byte)'e', (byte)'f');
+                    (byte)'4', (byte)'5', (byte)'6', (byte)'7',
+                    (byte)'8', (byte)'9', (byte)'a', (byte)'b',
+                    (byte)'c', (byte)'d', (byte)'e', (byte)'f');
 
                 nuint pos = 0;
                 Debug.Assert(toProcess >= 4);
@@ -656,8 +820,9 @@ namespace Nethermind.Core.Extensions
                         }
                         else if (!AdvSimd.Arm64.IsSupported)
                         {
-                            ThrowNotSupportedException();
+                            ThrowHelper.ThrowNotSupportedException();
                         }
+
                         return AdvSimd.Arm64.VectorTableLookup(value, mask);
                     }
 
@@ -667,9 +832,7 @@ namespace Nethermind.Core.Extensions
 
                     // ExtractVector128 is not entirely the same as ShiftRightLogical128BitLane, but it works here since
                     // first two bytes in lowNibbles are guaranteed to be zeros
-                    Vector128<byte> shifted = Sse2.IsSupported ?
-                        Sse2.ShiftRightLogical128BitLane(lowNibbles, 2) :
-                        AdvSimd.ExtractVector128(lowNibbles, lowNibbles, 2);
+                    Vector128<byte> shifted = Sse2.IsSupported ? Sse2.ShiftRightLogical128BitLane(lowNibbles, 2) : AdvSimd.ExtractVector128(lowNibbles, lowNibbles, 2);
 
                     Vector128<byte> highNibbles = Vector128.ShiftRightLogical(shifted.AsInt32(), 4).AsByte();
 
@@ -693,7 +856,6 @@ namespace Nethermind.Core.Extensions
                     {
                         pos = lengthSubVector128;
                     }
-
                 } while (true);
             }
             else
@@ -726,12 +888,6 @@ namespace Nethermind.Core.Extensions
 
                     toProcess -= 1;
                 }
-            }
-
-            [DoesNotReturn]
-            static void ThrowNotSupportedException()
-            {
-                throw new NotSupportedException();
             }
         }
 
@@ -777,6 +933,19 @@ namespace Nethermind.Core.Extensions
         }
 
         internal static uint[] Lookup32 = CreateLookup32("x2");
+        internal static ushort[] Lookup16 = CreateLookup16("x2");
+
+        private static ushort[] CreateLookup16(string format)
+        {
+            ushort[] result = new ushort[256];
+            for (int i = 0; i < 256; i++)
+            {
+                string s = i.ToString(format);
+                result[i] = (ushort)(s[0] + (s[1] << 8));
+            }
+
+            return result;
+        }
 
         private static uint[] CreateLookup32(string format)
         {
@@ -790,153 +959,189 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        internal static int CountLeadingZeros(ReadOnlySpan<byte> bytes)
+        public static int CountLeadingNibbleZeros(this ReadOnlySpan<byte> bytes)
         {
-            int leadingZeros = 0;
-            for (int i = 0; i < bytes.Length; i++)
+            int firstNonZero = bytes.IndexOfAnyExcept((byte)0);
+            if (firstNonZero < 0)
             {
-                if ((bytes[i] & 0b1111_0000) == 0)
-                {
-                    leadingZeros++;
-                    if ((bytes[i] & 0b1111) == 0)
-                    {
-                        leadingZeros++;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-                else
-                {
-                    break;
-                }
+                return bytes.Length * 2;
+            }
+
+            int leadingZeros = firstNonZero * 2;
+            if ((bytes[firstNonZero] & 0b1111_0000) == 0)
+            {
+                leadingZeros++;
             }
 
             return leadingZeros;
         }
 
+        public static int CountZeros(this Span<byte> data)
+            => CountZeros((ReadOnlySpan<byte>)data);
+
+        public static int CountZeros(this ReadOnlySpan<byte> data)
+        {
+            int totalZeros = 0;
+            if (Vector512.IsHardwareAccelerated && data.Length >= Vector512<byte>.Count)
+            {
+                ref byte bytes = ref MemoryMarshal.GetReference(data);
+                int i = 0;
+                for (; i < data.Length - Vector512<byte>.Count; i += Vector512<byte>.Count)
+                {
+                    Vector512<byte> dataVector = Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref bytes, i));
+                    ulong flags = Vector512.Equals(dataVector, default).ExtractMostSignificantBits();
+                    totalZeros += BitOperations.PopCount(flags);
+                }
+
+                data = data[i..];
+            }
+            if (Vector256.IsHardwareAccelerated && data.Length >= Vector256<byte>.Count)
+            {
+                ref byte bytes = ref MemoryMarshal.GetReference(data);
+                int i = 0;
+                for (; i < data.Length - Vector256<byte>.Count; i += Vector256<byte>.Count)
+                {
+                    Vector256<byte> dataVector = Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref bytes, i));
+                    uint flags = Vector256.Equals(dataVector, default).ExtractMostSignificantBits();
+                    totalZeros += BitOperations.PopCount(flags);
+                }
+
+                data = data[i..];
+            }
+            if (Vector128.IsHardwareAccelerated && data.Length >= Vector128<byte>.Count)
+            {
+                ref byte bytes = ref MemoryMarshal.GetReference(data);
+                int i = 0;
+                for (; i < data.Length - Vector128<byte>.Count; i += Vector128<byte>.Count)
+                {
+                    Vector128<byte> dataVector = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(data), i));
+                    uint flags = Vector128.Equals(dataVector, default).ExtractMostSignificantBits();
+                    totalZeros += BitOperations.PopCount(flags);
+                }
+
+                data = data[i..];
+            }
+
+            for (int i = 0; i < data.Length; i++)
+            {
+                if (data[i] == 0)
+                {
+                    totalZeros++;
+                }
+            }
+
+            return totalZeros;
+        }
+
         [DebuggerStepThrough]
-        public static byte[] FromUtf8HexString(ReadOnlySpan<byte> hexString)
+        public static byte[] FromUtf8HexString(scoped ReadOnlySpan<byte> hexString)
         {
             if (hexString.Length == 0)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             int oddMod = hexString.Length % 2;
             byte[] result = GC.AllocateUninitializedArray<byte>((hexString.Length >> 1) + oddMod);
-            return HexConverter.TryDecodeFromUtf8(hexString, result, oddMod == 1) ? result : throw new FormatException("Incorrect hex string");
+            FromUtf8HexString(hexString, result);
+            return result;
         }
 
         [DebuggerStepThrough]
-        public static byte[] FromHexString(string hexString)
+        public static void FromUtf8HexString(ReadOnlySpan<byte> hexString, Span<byte> result)
         {
-            if (hexString is null)
+            int oddMod = hexString.Length % 2;
+            int length = (hexString.Length >> 1) + oddMod;
+            if (length != result.Length)
             {
-                throw new ArgumentNullException($"{nameof(hexString)}");
+                ThrowInvalidOperationException();
             }
 
+            if (!HexConverter.TryDecodeFromUtf8(hexString, result))
+            {
+                ThrowFormatException_IncorrectHexString();
+            }
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowInvalidOperationException()
+        {
+            throw new InvalidOperationException();
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowFormatException_IncorrectHexString()
+        {
+            throw new FormatException("Incorrect hex string");
+        }
+
+        [DebuggerStepThrough]
+        public static byte[] FromHexString(string hexString, int length) =>
+            hexString is null ? throw new ArgumentNullException(nameof(hexString)) : FromHexString(hexString.AsSpan(), length);
+
+        [DebuggerStepThrough]
+        public static byte[] FromHexString(ReadOnlySpan<char> hexString, int length)
+        {
             int start = hexString is ['0', 'x', ..] ? 2 : 0;
-            ReadOnlySpan<char> chars = hexString.AsSpan(start);
+            ReadOnlySpan<char> chars = hexString[start..];
 
             if (chars.Length == 0)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             int oddMod = hexString.Length % 2;
-            byte[] result = GC.AllocateUninitializedArray<byte>((chars.Length >> 1) + oddMod);
-            return HexConverter.TryDecodeFromUtf16(chars, result, oddMod == 1) ? result : throw new FormatException("Incorrect hex string");
+            int actualLength = (chars.Length >> 1) + oddMod;
+            byte[] result = GC.AllocateArray<byte>(length);
+            Span<byte> writeToSpan = result.AsSpan(length - actualLength);
+
+            bool isSuccess;
+            if (oddMod == 0 &&
+                BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
+                chars.Length >= Vector128<ushort>.Count * 2)
+            {
+                isSuccess = HexConverter.TryDecodeFromUtf16_Vector128(chars, writeToSpan);
+            }
+            else
+            {
+                isSuccess = HexConverter.TryDecodeFromUtf16(chars, writeToSpan, oddMod == 1);
+            }
+
+            return isSuccess ? result : throw new FormatException("Incorrect hex string");
         }
 
         [DebuggerStepThrough]
-        public static byte[] FromHexStringOld(string hexString)
+        public static byte[] FromHexString(string hexString) =>
+            hexString is null ? throw new ArgumentNullException(nameof(hexString)) : FromHexString(hexString.AsSpan());
+
+        [DebuggerStepThrough]
+        private static byte[] FromHexString(ReadOnlySpan<char> hexString)
         {
-            if (hexString is null)
+            int start = hexString is ['0', 'x', ..] ? 2 : 0;
+            ReadOnlySpan<char> chars = hexString[start..];
+
+            if (chars.Length == 0)
             {
-                throw new ArgumentNullException($"{nameof(hexString)}");
+                return [];
             }
 
-            int startIndex = hexString.StartsWith("0x") ? 2 : 0;
-            bool odd = hexString.Length % 2 == 1;
-            int numberChars = hexString.Length - startIndex + (odd ? 1 : 0);
-            byte[] bytes = new byte[numberChars / 2];
-            for (int i = 0; i < numberChars; i += 2)
+            int oddMod = hexString.Length % 2;
+            int actualLength = (chars.Length >> 1) + oddMod;
+            byte[] result = GC.AllocateUninitializedArray<byte>(actualLength);
+
+            bool isSuccess;
+            if (oddMod == 0 &&
+                BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
+                chars.Length >= Vector128<ushort>.Count * 2)
             {
-                if (odd && i == 0)
-                {
-                    bytes[0] += FromHexNibble2Table[(byte)hexString[startIndex]];
-                }
-                else if (odd)
-                {
-                    bytes[i / 2] += FromHexNibble1Table[(byte)hexString[i + startIndex - 1]];
-                    bytes[i / 2] += FromHexNibble2Table[(byte)hexString[i + startIndex]];
-                }
-                else
-                {
-                    bytes[i / 2] += FromHexNibble1Table[(byte)hexString[i + startIndex]];
-                    bytes[i / 2] += FromHexNibble2Table[(byte)hexString[i + startIndex + 1]];
-                }
+                isSuccess = HexConverter.TryDecodeFromUtf16_Vector128(chars, result);
+            }
+            else
+            {
+                isSuccess = HexConverter.TryDecodeFromUtf16(chars, result, oddMod == 1);
             }
 
-            return bytes;
-        }
-
-        private static byte[] FromHexNibble1Table =
-        {
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 0, 16,
-            32, 48, 64, 80, 96, 112, 128, 144, 255, 255,
-            255, 255, 255, 255, 255, 160, 176, 192, 208, 224,
-            240, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 160, 176, 192,
-            208, 224, 240
-        };
-
-        private static byte[] FromHexNibble2Table =
-        {
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 0, 1,
-            2, 3, 4, 5, 6, 7, 8, 9, 255, 255,
-            255, 255, 255, 255, 255, 10, 11, 12, 13, 14,
-            15, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 10, 11, 12,
-            13, 14, 15
-        };
-
-        [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
-        public static int GetSimplifiedHashCode(this byte[] bytes)
-        {
-            const int fnvPrime = 0x01000193;
-
-            if (bytes.Length == 0)
-            {
-                return 0;
-            }
-
-            return (fnvPrime * bytes.Length * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[^1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
-        }
-
-        [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
-        public static int GetSimplifiedHashCode(this Span<byte> bytes)
-        {
-            const int fnvPrime = 0x01000193;
-
-            if (bytes.Length == 0)
-            {
-                return 0;
-            }
-
-            return (fnvPrime * bytes.Length * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[^1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
+            return isSuccess ? result : throw new FormatException("Incorrect hex string");
         }
 
         public static void ChangeEndianness8(Span<byte> bytes)
@@ -955,5 +1160,94 @@ namespace Nethermind.Core.Extensions
                     (BinaryPrimitives.ReverseEndianness(endIth), BinaryPrimitives.ReverseEndianness(ith));
             }
         }
+
+        public static string ToCleanUtf8String(this ReadOnlySpan<byte> bytes)
+        {
+            // The maximum number of UTF-16 chars is bytes.Length, but each Rune can be up to 2 chars.
+            // So we allocate bytes.Length to bytes.Length * 2 chars.
+            const int maxOutputChars = 32 * 2;
+
+            if (bytes.IsEmpty || bytes.Length > 32)
+                return string.Empty;
+
+            // Allocate a char buffer on the stack.
+            char[]? charsArray = null;
+            Span<char> outputBuffer = stackalloc char[maxOutputChars];
+
+            int outputPos = 0;
+            int index = 0;
+            bool hasValidContent = false;
+            bool shouldAddSpace = false;
+
+            while (index < bytes.Length)
+            {
+                ReadOnlySpan<byte> span = bytes[index..];
+
+                OperationStatus status = Rune.DecodeFromUtf8(span, out Rune rune, out var bytesConsumed);
+                if (status == OperationStatus.Done)
+                {
+                    if (!IsControlCharacter(rune))
+                    {
+                        if (shouldAddSpace)
+                        {
+                            outputBuffer[outputPos++] = ' ';
+                            shouldAddSpace = false;
+                        }
+
+                        int charsNeeded = rune.Utf16SequenceLength;
+                        if (outputPos + charsNeeded > outputBuffer.Length)
+                        {
+                            // Expand output buffer
+                            int newSize = outputBuffer.Length * 2;
+                            char[] newBuffer = ArrayPool<char>.Shared.Rent(newSize);
+                            outputBuffer[..outputPos].CopyTo(newBuffer);
+                            outputBuffer = newBuffer;
+                            if (charsArray is not null)
+                            {
+                                ArrayPool<char>.Shared.Return(charsArray);
+                            }
+                            charsArray = newBuffer;
+                        }
+
+                        rune.EncodeToUtf16(outputBuffer[outputPos..]);
+                        outputPos += charsNeeded;
+                        hasValidContent = true;
+                    }
+                    else
+                    {
+                        // Control character encountered; set flag to add space if needed
+                        shouldAddSpace |= hasValidContent;
+                    }
+                    index += bytesConsumed;
+                }
+                else if (status == OperationStatus.NeedMoreData)
+                {
+                    // Incomplete sequence at the end; break out of the loop
+                    break;
+                }
+                else
+                {
+                    // Unexpected status; treat as invalid data
+                    shouldAddSpace |= hasValidContent;
+                    index++;
+                }
+            }
+
+            // Create the final string from the output buffer.
+            string outputString = outputPos > 0 ? new string(outputBuffer[..outputPos]) : string.Empty;
+            if (charsArray is not null)
+            {
+                ArrayPool<char>.Shared.Return(charsArray);
+            }
+
+            return outputString;
+        }
+
+        private static bool IsControlCharacter(Rune rune)
+        {
+            // Control characters are U+0000 to U+001F and U+007F to U+009F
+            return rune.Value <= 0x001F || (rune.Value >= 0x007F && rune.Value <= 0x009F);
+        }
+
     }
 }

@@ -18,8 +18,6 @@ namespace Nethermind.Core.Resettables
         private const int ResetRatio = Resettable.ResetRatio;
         private const int StartCapacity = Resettable.StartCapacity;
 
-        private static ArrayPool<T> _arrayPool = ArrayPool<T>.Shared;
-
         public static void IncrementPosition(ref T[] array, ref int currentCapacity, ref int currentPosition)
         {
             currentPosition++;
@@ -31,10 +29,10 @@ namespace Nethermind.Core.Resettables
             if (currentCapacity > array.Length)
             {
                 T[] oldArray = array;
-                array = _arrayPool.Rent(currentCapacity);
+                array = ArrayPool<T>.Shared.Rent(currentCapacity);
                 Array.Copy(oldArray, array, oldArray.Length);
                 oldArray.AsSpan().Clear();
-                _arrayPool.Return(oldArray);
+                ArrayPool<T>.Shared.Return(oldArray);
             }
         }
 
@@ -43,9 +41,9 @@ namespace Nethermind.Core.Resettables
             array.AsSpan().Clear();
             if (currentPosition < currentCapacity / ResetRatio && currentCapacity > startCapacity)
             {
-                _arrayPool.Return(array);
+                ArrayPool<T>.Shared.Return(array);
                 currentCapacity = Math.Max(startCapacity, currentCapacity / ResetRatio);
-                array = _arrayPool.Rent(currentCapacity);
+                array = ArrayPool<T>.Shared.Rent(currentCapacity);
             }
 
             currentPosition = Resettable.EmptyPosition;

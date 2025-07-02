@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -9,11 +8,10 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Evm;
 
 namespace Nethermind.Merge.Plugin.BlockProduction
 {
@@ -23,8 +21,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             ITxSource txSource,
             IBlockchainProcessor processor,
             IBlockTree blockTree,
-            IBlockProductionTrigger blockProductionTrigger,
-            IStateProvider stateProvider,
+            IWorldState stateProvider,
             IGasLimitCalculator gasLimitCalculator,
             ISealEngine sealEngine,
             ITimestamper timestamper,
@@ -36,7 +33,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 processor,
                 sealEngine,
                 blockTree,
-                blockProductionTrigger,
                 stateProvider,
                 gasLimitCalculator,
                 timestamper,
@@ -44,39 +40,25 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 logManager,
                 ConstantDifficulty.Zero,
                 miningConfig
-                )
+            )
         {
-        }
-
-        public virtual Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
-        {
-            BlockHeader blockHeader = PrepareBlockHeader(parent, payloadAttributes);
-            blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-            blockHeader.TxRoot = Keccak.EmptyTreeHash;
-            blockHeader.Bloom = Bloom.Empty;
-
-            return new(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
-        }
-
-        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
-        {
-            Block block = base.PrepareBlock(parent, payloadAttributes);
-            AmendHeader(block.Header);
-            return block;
         }
 
         protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             BlockHeader blockHeader = base.PrepareBlockHeader(parent, payloadAttributes);
-            AmendHeader(blockHeader);
-            return blockHeader;
-        }
 
-        // TODO: this seems to me that it should be done in the Eth2 seal engine?
-        private void AmendHeader(BlockHeader blockHeader)
-        {
             blockHeader.ExtraData = _blocksConfig.GetExtraDataBytes();
             blockHeader.IsPostMerge = true;
+            IReleaseSpec spec = _specProvider.GetSpec(blockHeader);
+
+            if (spec.IsEip4844Enabled)
+            {
+                blockHeader.BlobGasUsed = 0;
+                blockHeader.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+            }
+
+            return blockHeader;
         }
     }
 }

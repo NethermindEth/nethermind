@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using DotNetty.Buffers;
 using DotNetty.Common;
 using DotNetty.Common.Internal.Logging;
@@ -38,16 +37,16 @@ namespace Nethermind.Network.Test.Rlpx
         [SetUp]
         public void Setup()
         {
-            var secrets = NetTestVectors.GetSecretsPair();
+            var (A, B) = NetTestVectors.GetSecretsPair();
 
-            _frameCipherA = new FrameCipher(secrets.A.AesSecret);
-            _macProcessorA = new FrameMacProcessor(TestItem.IgnoredPublicKey, secrets.A);
+            _frameCipherA = new FrameCipher(A.AesSecret);
+            _macProcessorA = new FrameMacProcessor(TestItem.IgnoredPublicKey, A);
 
-            _frameCipherB = new FrameCipher(secrets.B.AesSecret);
-            _macProcessorB = new FrameMacProcessor(TestItem.IgnoredPublicKey, secrets.B);
+            _frameCipherB = new FrameCipher(B.AesSecret);
+            _macProcessorB = new FrameMacProcessor(TestItem.IgnoredPublicKey, B);
 
             _frame = new byte[16 + 16 + 16 + 16];
-            _frame[2] = 16; // size   
+            _frame[2] = 16; // size
 
             InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider(new ConsoleLoggerOptionsMonitor(
                 new ConsoleLoggerOptions
@@ -58,17 +57,24 @@ namespace Nethermind.Network.Test.Rlpx
             ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
         }
 
+        [TearDown]
+        public void TearDown()
+        {
+            _macProcessorA?.Dispose();
+            _macProcessorB?.Dispose();
+        }
+
         [TestCase(StackType.Zero, StackType.Zero, true)]
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Get_block_bodies_there_and_back(StackType inbound, StackType outbound, bool framingEnabled)
         {
-            var hashes = new Keccak[256];
+            var hashes = new Hash256[256];
             for (int i = 0; i < hashes.Length; i++)
             {
                 hashes[i] = Keccak.Compute(i.ToString());
             }
 
-            GetBlockBodiesMessage message = new(hashes);
+            using GetBlockBodiesMessage message = new(hashes);
 
             GetBlockBodiesMessageSerializer serializer = new();
             byte[] data = serializer.Serialize(message);
@@ -84,7 +90,7 @@ namespace Nethermind.Network.Test.Rlpx
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
             Block block = Build.A.Block.WithTransactions(a, b).TestObject;
-            NewBlockMessage newBlockMessage = new();
+            using NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = block;
 
             NewBlockMessageSerializer newBlockMessageSerializer = new();
@@ -99,7 +105,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             Transaction[] txs = Build.A.Transaction.SignedAndResolved().TestObjectNTimes(10);
             Block block = Build.A.Block.WithTransactions(txs).TestObject;
-            NewBlockMessage newBlockMessage = new();
+            using NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = block;
 
             NewBlockMessageSerializer newBlockMessageSerializer = new();
@@ -108,21 +114,21 @@ namespace Nethermind.Network.Test.Rlpx
 
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
-            NewBlockMessage decodedMessage = newBlockMessageSerializer.Deserialize(decoded.Data);
-            Assert.AreEqual(newBlockMessage.Block.Transactions.Length, decodedMessage.Block.Transactions.Length);
+            using NewBlockMessage decodedMessage = newBlockMessageSerializer.Deserialize(decoded.Data);
+            Assert.That(decodedMessage.Block.Transactions.Length, Is.EqualTo(newBlockMessage.Block.Transactions.Length));
         }
 
         [TestCase(StackType.Zero, StackType.Zero, true)]
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Receipts_message(StackType inbound, StackType outbound, bool framingEnabled)
         {
-            Keccak[] hashes = new Keccak[256];
+            Hash256[] hashes = new Hash256[256];
             for (int i = 0; i < hashes.Length; i++)
             {
                 hashes[i] = Keccak.Compute(i.ToString());
             }
 
-            GetReceiptsMessage message = new(hashes);
+            GetReceiptsMessage message = new(hashes.ToPooledList());
 
             GetReceiptsMessageSerializer serializer = new();
             byte[] data = serializer.Serialize(message);
@@ -130,14 +136,14 @@ namespace Nethermind.Network.Test.Rlpx
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
             GetReceiptsMessage decodedMessage = serializer.Deserialize(decoded.Data);
-            Assert.AreEqual(message.Hashes.Count, decodedMessage.Hashes.Count);
+            Assert.That(decodedMessage.Hashes.Count, Is.EqualTo(message.Hashes.Count));
         }
 
         [TestCase(StackType.Zero, StackType.Zero, true)]
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Status_message(StackType inbound, StackType outbound, bool framingEnabled)
         {
-            StatusMessage message = new();
+            using StatusMessage message = new();
             message.BestHash = Keccak.Zero;
             message.GenesisHash = Keccak.Zero;
             message.ProtocolVersion = 63;
@@ -149,8 +155,8 @@ namespace Nethermind.Network.Test.Rlpx
             Packet packet = new("eth", 7, data);
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
-            StatusMessage decodedMessage = serializer.Deserialize(decoded.Data);
-            Assert.AreEqual(message.TotalDifficulty, decodedMessage.TotalDifficulty);
+            using StatusMessage decodedMessage = serializer.Deserialize(decoded.Data);
+            Assert.That(decodedMessage.TotalDifficulty, Is.EqualTo(message.TotalDifficulty));
         }
 
         private Packet Run(Packet packet, StackType inbound, StackType outbound, bool framingEnabled)
@@ -172,7 +178,7 @@ namespace Nethermind.Network.Test.Rlpx
                     embeddedChannel.WriteOutbound(packet);
                 }
 
-                while (embeddedChannel.OutboundMessages.Any())
+                while (embeddedChannel.OutboundMessages.Count != 0)
                 {
                     IByteBuffer encodedPacket = embeddedChannel.ReadOutbound<IByteBuffer>();
                     embeddedChannel.WriteInbound(encodedPacket);
@@ -181,15 +187,15 @@ namespace Nethermind.Network.Test.Rlpx
                 if (inbound == StackType.Zero)
                 {
                     ZeroPacket decodedPacket = embeddedChannel.ReadInbound<ZeroPacket>();
-                    Assert.AreEqual(packet.Data.ToHexString(), decodedPacket.Content.ReadAllHex());
-                    Assert.AreEqual(packet.PacketType, decodedPacket.PacketType);
+                    Assert.That(decodedPacket.Content.ReadAllHex(), Is.EqualTo(packet.Data.ToHexString()));
+                    Assert.That(decodedPacket.PacketType, Is.EqualTo(packet.PacketType));
                     decodedPacket.Release();
                 }
                 else // allocating
                 {
                     Packet decodedPacket = embeddedChannel.ReadInbound<Packet>();
-                    Assert.AreEqual(packet.Data.ToHexString(), decodedPacket.Data.ToHexString());
-                    Assert.AreEqual(packet.PacketType, decodedPacket.PacketType);
+                    Assert.That(decodedPacket.Data.ToHexString(), Is.EqualTo(packet.Data.ToHexString()));
+                    Assert.That(decodedPacket.PacketType, Is.EqualTo(packet.PacketType));
                 }
             }
             finally
@@ -213,12 +219,12 @@ namespace Nethermind.Network.Test.Rlpx
             IChannelHandler encoder = new ZeroFrameEncoder(_frameCipherA, _macProcessorA, LimboLogs.Instance);
             IFramingAware splitter = new ZeroPacketSplitter(LimboLogs.Instance);
 
-            Assert.AreEqual(Frame.DefaultMaxFrameSize, splitter.MaxFrameSize, "default max frame size");
+            Assert.That(splitter.MaxFrameSize, Is.EqualTo(Frame.DefaultMaxFrameSize), "default max frame size");
 
             if (!framingEnabled)
             {
                 splitter.DisableFraming();
-                Assert.AreEqual(int.MaxValue, splitter.MaxFrameSize, "max frame size when framing disabled");
+                Assert.That(splitter.MaxFrameSize, Is.EqualTo(int.MaxValue), "max frame size when framing disabled");
             }
 
             EmbeddedChannel embeddedChannel = new();
@@ -244,7 +250,7 @@ namespace Nethermind.Network.Test.Rlpx
 
             public ConsoleLoggerOptions CurrentValue { get; }
 
-            public ConsoleLoggerOptions Get(string name) => CurrentValue;
+            public ConsoleLoggerOptions Get(string? name) => CurrentValue;
 
             public IDisposable OnChange(Action<ConsoleLoggerOptions, string> listener)
             {

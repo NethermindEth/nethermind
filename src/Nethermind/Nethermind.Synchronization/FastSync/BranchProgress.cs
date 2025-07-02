@@ -19,15 +19,16 @@ namespace Nethermind.Synchronization.FastSync
     /// </summary>
     internal class BranchProgress
     {
-        private ILogger _logger;
-        private NodeProgressState[] _syncProgress;
+        private readonly ILogger _logger;
+        private readonly NodeProgressState[] _syncProgress;
+        private long _lastReportMs = 0;
 
         public decimal LastProgress { get; private set; }
         public long CurrentSyncBlock { get; }
 
         public BranchProgress(long syncBlockNumber, ILogger logger)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
             CurrentSyncBlock = syncBlockNumber;
             _logger.Info($"Now syncing nodes starting from root of block {syncBlockNumber}");
             _syncProgress = new NodeProgressState[256];
@@ -138,9 +139,15 @@ namespace Nethermind.Synchronization.FastSync
                 return;
             }
 
-            string detailsString = string.Empty;
-            if (_logger.IsInfo)
+            Progress = (decimal)savedBranches / _syncProgress.Length;
+
+            const long minMillisecondsBetweenReports = 10_000;
+
+            long reportTicksMs = Environment.TickCount64;
+            if (reportTicksMs - _lastReportMs >= minMillisecondsBetweenReports && _logger.IsInfo)
             {
+                _lastReportMs = reportTicksMs;
+
                 StringBuilder builder = new();
                 for (int i = 0; i < _syncProgress.Length; i++)
                 {
@@ -152,30 +159,27 @@ namespace Nethermind.Synchronization.FastSync
                     switch (_syncProgress[i])
                     {
                         case NodeProgressState.Unknown:
-                            builder.Append('?');
+                            builder.Append('▫');
                             break;
                         case NodeProgressState.Empty:
-                            builder.Append('0');
+                            builder.Append('◇');
                             break;
                         case NodeProgressState.AlreadySaved:
-                            builder.Append('1');
+                            builder.Append('◆');
                             break;
                         case NodeProgressState.Saved:
-                            builder.Append('+');
+                            builder.Append('■');
                             break;
                         case NodeProgressState.Requested:
-                            builder.Append('*');
+                            builder.Append('□');
                             break;
                         default:
                             throw new ArgumentOutOfRangeException();
                     }
                 }
 
-                detailsString = builder.ToString();
+                _logger.Info($"Branch sync progress (do not extrapolate): {Progress:p2} of block {CurrentSyncBlock}{builder}");
             }
-
-            Progress = (decimal)savedBranches / _syncProgress.Length;
-            if (_logger.IsInfo) _logger.Info($"Branch sync progress (do not extrapolate): {Progress:p2} of block {CurrentSyncBlock}{detailsString}");
         }
 
         public decimal Progress { get; set; }

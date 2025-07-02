@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P
         DateTime LastPongUtc { get; set; }
         void ReceiveMessage(Packet packet);
         void ReceiveMessage(ZeroPacket zeroPacket);
-        void DeliverMessage<T>(T message) where T : P2PMessage;
+        int DeliverMessage<T>(T message) where T : P2PMessage;
         void EnableSnappy();
         void AddSupportedCapability(Capability capability);
         bool HasAvailableCapability(Capability capability);
@@ -48,7 +48,7 @@ namespace Nethermind.Network.P2P
         /// <summary>
         /// Starts local disconnect (triggers disconnect on each protocolHandler, down to tcp disconnect)
         /// </summary>
-        void InitiateDisconnect(InitiateDisconnectReason disconnectReason, string details);
+        void InitiateDisconnect(DisconnectReason disconnectReason, string details);
 
         /// <summary>
         ///  Drop tcp connection after a delay
@@ -63,5 +63,7 @@ namespace Nethermind.Network.P2P
         event EventHandler<DisconnectEventArgs> Disconnected;
         event EventHandler<EventArgs> Initialized;
         event EventHandler<EventArgs> HandshakeComplete;
+        event EventHandler<PeerEventArgs> MsgReceived;
+        event EventHandler<PeerEventArgs> MsgDelivered;
     }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 
@@ -17,7 +18,7 @@ namespace Nethermind.Consensus.Processing
         /// <param name="processingOptions">
         /// Processing options that block processor and transaction processor will adhere to.
         /// </param>
-        void Enqueue(Block block, ProcessingOptions processingOptions);
+        ValueTask Enqueue(Block block, ProcessingOptions processingOptions);
 
         /// <summary>
         /// Fired when all blocks from the processing queue has been taken.
@@ -25,7 +26,7 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         event EventHandler ProcessingQueueEmpty;
 
-        event EventHandler<BlockHashEventArgs> BlockRemoved;
+        event EventHandler<BlockRemovedEventArgs> BlockRemoved;
 
         /// <summary>
         /// Number of blocks in the processing queue.

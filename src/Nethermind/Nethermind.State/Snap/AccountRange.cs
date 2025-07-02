@@ -1,41 +1,32 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Snap
 {
-    public class AccountRange
+    public class AccountRange(
+        Hash256 rootHash,
+        ValueHash256 startingHash,
+        ValueHash256? limitHash = null,
+        long? blockNumber = null)
     {
-        public AccountRange(Keccak rootHash, Keccak startingHash, Keccak limitHash = null, long? blockNumber = null)
-        {
-            RootHash = rootHash;
-            StartingHash = startingHash;
-            BlockNumber = blockNumber;
-            LimitHash = limitHash;
-        }
-
-        public long? BlockNumber { get; }
+        public long? BlockNumber { get; } = blockNumber;
 
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public Keccak RootHash { get; }
+        public Hash256 RootHash { get; } = rootHash;
 
         /// <summary>
         /// Account hash of the first to retrieve
         /// </summary>
-        public Keccak StartingHash { get; }
+        public ValueHash256 StartingHash { get; } = startingHash;
 
         /// <summary>
         /// Account hash after which to stop serving data
         /// </summary>
-        public Keccak? LimitHash { get; }
+        public ValueHash256? LimitHash { get; } = limitHash;
 
         public override string ToString()
         {

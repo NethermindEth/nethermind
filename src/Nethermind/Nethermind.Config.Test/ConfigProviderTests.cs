@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Network.Config;
@@ -20,7 +21,7 @@ namespace Nethermind.Config.Test
         {
             ConfigProvider configProvider = new();
             INetworkConfig config = configProvider.GetConfig<INetworkConfig>();
-            Assert.AreEqual(30303, config.DiscoveryPort);
+            Assert.That(config.DiscoveryPort, Is.EqualTo(30303));
         }
 
         public int DefaultTestProperty { get; set; } = 5;
@@ -75,12 +76,22 @@ namespace Nethermind.Config.Test
                     ? bitArray.Get(5)
                     : bitArray.Get(2)
                         ? bitArray.Get(3)
-                        : bitArray.Get(0)
-                            ? bitArray.Get(1)
-                            : false;
+                        : bitArray.Get(0) && bitArray.Get(1);
 
-                Assert.AreEqual(expectedResult, config.Enabled, bitArray.ToBitString());
+                Assert.That(config.Enabled, Is.EqualTo(expectedResult), bitArray.ToBitString());
             }
+        }
+
+        [Test]
+        public void Can_useExistingConfig()
+        {
+            BlocksConfig blocksConfig = new()
+            {
+                MinGasPrice = 12345,
+            };
+            IConfigProvider configProvider = new ConfigProvider(blocksConfig);
+
+            configProvider.GetConfig<IBlocksConfig>().MinGasPrice.Should().Be(12345);
         }
     }
 }

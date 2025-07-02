@@ -11,48 +11,34 @@ using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Tracing
 {
-    public class Tracer : ITracer
+    public class Tracer(
+        IWorldState worldState,
+        IBlockchainProcessor traceProcessor,
+        IBlockchainProcessor executeProcessor,
+        ProcessingOptions executeOptions = ProcessingOptions.Trace,
+        ProcessingOptions traceOptions = ProcessingOptions.Trace)
+        : ITracer
     {
-        private readonly IStateProvider _stateProvider;
-        private readonly IBlockchainProcessor _blockProcessor;
-        private readonly ProcessingOptions _processingOptions;
-
-        public Tracer(IStateProvider stateProvider, IBlockchainProcessor blockProcessor, ProcessingOptions processingOptions = ProcessingOptions.Trace)
-        {
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
-            _processingOptions = processingOptions;
-        }
-
-        public Block? Trace(Block block, IBlockTracer blockTracer)
+        private void Process(Block block, IBlockTracer blockTracer, IBlockchainProcessor processor, ProcessingOptions options)
         {
             /* We force process since we want to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
 
             blockTracer.StartNewBlockTrace(block);
-
-            Block? processedBlock = null;
-            try
-            {
-                processedBlock = _blockProcessor.Process(block, _processingOptions, blockTracer);
-            }
-            catch (Exception)
-            {
-                _stateProvider.Reset();
-                throw;
-            }
-
+            processor.Process(block, options, blockTracer);
             blockTracer.EndBlockTrace();
-
-            return processedBlock;
         }
 
-        public void Accept(ITreeVisitor visitor, Keccak stateRoot)
-        {
-            if (visitor is null) throw new ArgumentNullException(nameof(visitor));
-            if (stateRoot is null) throw new ArgumentNullException(nameof(stateRoot));
+        public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, traceProcessor, traceOptions);
 
-            _stateProvider.Accept(visitor, stateRoot);
+        public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, executeProcessor, executeOptions);
+
+        public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 stateRoot) where TCtx : struct, INodeContext<TCtx>
+        {
+            ArgumentNullException.ThrowIfNull(visitor);
+            ArgumentNullException.ThrowIfNull(stateRoot);
+
+            worldState.Accept(visitor, stateRoot);
         }
     }
 }

@@ -2,15 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.IO;
-using System.Threading.Tasks;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.Serialization.Json;
+using System.IO.Pipelines;
+using System.Threading;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.JsonRpc;
+
+public interface IJsonRpcProcessor
 {
-    public interface IJsonRpcProcessor
-    {
-        IAsyncEnumerable<JsonRpcResult> ProcessAsync(TextReader request, JsonRpcContext context);
-    }
+    IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader stream, JsonRpcContext context);
+    CancellationToken ProcessExit { get; }
 }

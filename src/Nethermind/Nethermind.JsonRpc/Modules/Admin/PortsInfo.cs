@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {
     public class PortsInfo
     {
-        [JsonProperty("discovery", Order = 0)]
+        [JsonPropertyName("discovery")]
         public int Discovery { get; set; }
-        [JsonProperty("listener", Order = 1)]
+        [JsonPropertyName("listener")]
         public int Listener { get; set; }
     }
 }

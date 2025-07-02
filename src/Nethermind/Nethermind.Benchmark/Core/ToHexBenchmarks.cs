@@ -3,7 +3,6 @@
 
 using System.Linq;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 
@@ -11,7 +10,7 @@ namespace Nethermind.Benchmarks.Core
 {
     public class ToHexBenchmarks
     {
-        private byte[] bytes = TestItem.KeccakA.Bytes;
+        private byte[] bytes = TestItem.KeccakA.BytesToArray();
 
         [Params(true, false)]
         public bool OddNumber;

@@ -3,16 +3,14 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Logging;
 
-namespace Nethermind.Api.Extensions
+namespace Nethermind.Api.Extensions;
+
+public interface IPluginLoader
 {
-    public interface IPluginLoader
-    {
-        IEnumerable<Type> PluginTypes { get; }
+    IEnumerable<Type> PluginTypes { get; }
 
-        void Load(ILogManager logManager);
+    void Load();
 
-        public void OrderPlugins(IPluginConfig pluginConfig);
-    }
+    public void OrderPlugins(IPluginConfig pluginConfig);
 }

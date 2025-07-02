@@ -5,12 +5,14 @@ using System;
 using System.Globalization;
 using System.Net;
 using Nethermind.Network;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {
     public class PeerInfo
     {
-        public string ClientId { get; set; }
+        public string Name { get; set; }
+        public string Id { get; }
         public string Host { get; set; }
         public int Port { get; set; }
         public string Address { get; set; }
@@ -22,6 +24,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
         public string ClientType { get; set; }
         public string EthDetails { get; set; }
         public string LastSignal { get; set; }
+
+        public bool Inbound { get; set; }
 
         public PeerInfo()
         {
@@ -35,19 +39,22 @@ namespace Nethermind.JsonRpc.Modules.Admin
                     $"{nameof(PeerInfo)} cannot be created for a {nameof(Peer)} with an unknown {peer.Node}");
             }
 
-            ClientId = peer.Node.ClientId;
+            Name = peer.Node.ClientId;
+            Id = peer.Node.Id.Hash.ToString(false);
             Host = peer.Node.Host is null ? null : IPAddress.Parse(peer.Node.Host).MapToIPv4().ToString();
             Port = peer.Node.Port;
             Address = peer.Node.Address.ToString();
             IsBootnode = peer.Node.IsBootnode;
             IsStatic = peer.Node.IsStatic;
-            Enode = peer.Node.ToString("e");
+            Enode = peer.Node.ToString(Node.Format.ENode);
+            Inbound = peer.InSession is not null;
 
             if (includeDetails)
             {
                 ClientType = peer.Node.ClientType.ToString();
                 EthDetails = peer.Node.EthDetails;
-                LastSignal = (peer.InSession ?? peer.OutSession)?.LastPingUtc.ToString(CultureInfo.InvariantCulture);
+                LastSignal = (peer.InSession ?? peer.OutSession!).LastPingUtc.ToString(CultureInfo.InvariantCulture);
+
             }
         }
     }

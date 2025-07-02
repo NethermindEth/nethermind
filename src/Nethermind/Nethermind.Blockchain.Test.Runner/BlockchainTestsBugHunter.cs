@@ -7,7 +7,6 @@ using System.IO;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Ethereum.Test.Base.Interfaces;
-using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 
 namespace Nethermind.Blockchain.Test.Runner
@@ -27,13 +26,13 @@ namespace Nethermind.Blockchain.Test.Runner
         {
             List<EthereumTestResult> testResults = new List<EthereumTestResult>();
             string directoryName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "FailingTests");
-            IEnumerable<BlockchainTest> tests = (IEnumerable<BlockchainTest>)_testsSource.LoadTests();
+            IEnumerable<BlockchainTest> tests = _testsSource.LoadTests<BlockchainTest>();
             foreach (BlockchainTest test in tests)
             {
                 Setup();
 
                 Console.Write($"{test,-120} ");
-                if (test.LoadFailure != null)
+                if (test.LoadFailure is not null)
                 {
                     WriteRed(test.LoadFailure);
                     testResults.Add(new EthereumTestResult(test.Name, test.LoadFailure));

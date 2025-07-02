@@ -2,90 +2,75 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Modules.Trace;
+using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test.Data
+namespace Nethermind.JsonRpc.Test.Data;
+
+public class SerializationTestBase
 {
-    public class SerializationTestBase
+    protected void TestRoundtrip<T>(T item, Func<T, T, bool>? equalityComparer, JsonConverter<T>? converter = null, string? description = null)
     {
-        protected void TestRoundtrip<T>(T item, Func<T, T, bool>? equalityComparer, JsonConverter<T>? converter = null, string? description = null)
+        IJsonSerializer serializer = BuildSerializer();
+
+        string result = serializer.Serialize(item);
+        T deserialized = serializer.Deserialize<T>(result);
+
+        if (equalityComparer is null)
         {
-            IJsonSerializer serializer = BuildSerializer();
-            if (converter is not null)
-            {
-                serializer.RegisterConverter(converter);
-            }
-
-            string result = serializer.Serialize(item);
-            T deserialized = serializer.Deserialize<T>(result);
-
-            if (equalityComparer is null)
-            {
-                Assert.AreEqual(item, deserialized, description);
-            }
-            else
-            {
-                Assert.True(equalityComparer(item, deserialized), description);
-            }
+            Assert.That(deserialized, Is.EqualTo(item), description);
         }
-
-        protected void TestRoundtrip<T>(T item, JsonConverter<T>? converter = null, string? description = null)
+        else
         {
-            TestRoundtrip(item, (a, b) => a!.Equals(b), converter, description);
-        }
-
-        protected void TestRoundtrip<T>(T item, string description)
-        {
-            TestRoundtrip(item, null, null, description);
-        }
-
-        protected void TestRoundtrip<T>(T item, Func<T, T, bool>? equalityComparer, string? description = null)
-        {
-            TestRoundtrip(item, equalityComparer, null, description);
-        }
-
-        protected void TestRoundtrip<T>(string json, JsonConverter? converter = null)
-        {
-            IJsonSerializer serializer = BuildSerializer();
-            if (converter is not null)
-            {
-                serializer.RegisterConverter(converter);
-            }
-
-            T deserialized = serializer.Deserialize<T>(json);
-            string result = serializer.Serialize(deserialized);
-            Assert.AreEqual(json, result);
-        }
-
-        private void TestToJson<T>(T item, JsonConverter<T>? converter, string expectedResult)
-        {
-            IJsonSerializer serializer = BuildSerializer();
-            if (converter is not null)
-            {
-                serializer.RegisterConverter(converter);
-            }
-
-            string result = serializer.Serialize(item);
-            Assert.AreEqual(expectedResult, result, result.Replace("\"", "\\\""));
-        }
-
-        protected void TestToJson<T>(T item, string expectedResult)
-        {
-            TestToJson(item, null, expectedResult);
-        }
-
-        private static IJsonSerializer BuildSerializer()
-        {
-            IJsonSerializer serializer = new EthereumJsonSerializer();
-            serializer.RegisterConverters(EthModuleFactory.Converters);
-            serializer.RegisterConverters(TraceModuleFactory.Converters);
-            serializer.RegisterConverter(new BlockParameterConverter());
-            return serializer;
+            Assert.That(equalityComparer(item, deserialized), Is.True, description);
         }
     }
+
+    protected void TestRoundtrip<TKey, TValue>(Dictionary<TKey, TValue> dictionary)
+        where TKey : notnull
+    {
+        IJsonSerializer serializer = BuildSerializer();
+
+        string result = serializer.Serialize(dictionary);
+        Dictionary<TKey, TValue> deserialized = serializer.Deserialize<Dictionary<TKey, TValue>>(result);
+
+        Assert.That(deserialized, Is.EquivalentTo(dictionary));
+    }
+
+    protected void TestRoundtrip<T>(T item, JsonConverter<T>? converter = null, string? description = null)
+    {
+        TestRoundtrip(item, static (a, b) => a!.Equals(b), converter, description);
+    }
+
+    protected void TestRoundtrip<T>(T item, string description)
+    {
+        TestRoundtrip(item, null, null, description);
+    }
+
+    protected void TestRoundtrip<T>(T item, Func<T, T, bool>? equalityComparer, string? description = null)
+    {
+        TestRoundtrip(item, equalityComparer, null, description);
+    }
+
+    protected void TestRoundtrip<T>(string json, params JsonConverter[] converters)
+    {
+        IJsonSerializer serializer = BuildSerializer(converters);
+
+        T deserialized = serializer.Deserialize<T>(json);
+        string result = serializer.Serialize(deserialized);
+        Assert.That(result, Is.EqualTo(json));
+    }
+
+    protected void TestToJson<T>(T item, string expectedResult, params JsonConverter[] converters)
+    {
+        IJsonSerializer serializer = BuildSerializer(converters);
+
+        string result = serializer.Serialize(item);
+        Assert.That(result, Is.EqualTo(expectedResult), result.Replace("\"", "\\\""));
+    }
+
+    private static IJsonSerializer BuildSerializer(params JsonConverter[] converters) => new EthereumJsonSerializer(converters);
 }

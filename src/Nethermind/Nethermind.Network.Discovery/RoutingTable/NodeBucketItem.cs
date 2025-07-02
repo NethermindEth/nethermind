@@ -17,7 +17,7 @@ public class NodeBucketItem
 
     public DateTime LastContactTime { get; private set; }
 
-    public bool IsBonded => LastContactTime > DateTime.UtcNow - TimeSpan.FromDays(2);
+    public bool IsBonded(DateTime utcNow) => LastContactTime > utcNow - TimeSpan.FromDays(2);
 
     public void OnContactReceived()
     {

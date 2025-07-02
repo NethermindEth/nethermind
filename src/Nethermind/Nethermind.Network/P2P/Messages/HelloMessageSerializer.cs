@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -14,13 +13,13 @@ namespace Nethermind.Network.P2P.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, HelloMessage msg)
         {
-            (int totalLength, int innerLength) length = GetLength(msg);
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(length.totalLength), true);
+            (int totalLength, int innerLength) = GetLength(msg);
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength), force: true);
             NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(length.totalLength);
+            stream.StartSequence(totalLength);
             stream.Encode(msg.P2PVersion);
             stream.Encode(msg.ClientId);
-            stream.StartSequence(length.innerLength);
+            stream.StartSequence(innerLength);
             foreach (Capability? capability in msg.Capabilities)
             {
                 string protocolCode = capability.ProtocolCode.ToLowerInvariant();
@@ -35,7 +34,7 @@ namespace Nethermind.Network.P2P.Messages
             stream.Encode(msg.NodeId.Bytes);
         }
 
-        private (int, int) GetLength(HelloMessage msg)
+        private static (int, int) GetLength(HelloMessage msg)
         {
             int contentLength = 0;
             contentLength += Rlp.LengthOf(msg.P2PVersion);
@@ -61,13 +60,13 @@ namespace Nethermind.Network.P2P.Messages
             HelloMessage helloMessage = new();
             helloMessage.P2PVersion = rlpStream.DecodeByte();
             helloMessage.ClientId = string.Intern(rlpStream.DecodeString());
-            helloMessage.Capabilities = rlpStream.DecodeArray(ctx =>
+            helloMessage.Capabilities = rlpStream.DecodeArrayPoolList(static ctx =>
             {
                 ctx.ReadSequenceLength();
                 string protocolCode = string.Intern(ctx.DecodeString());
                 int version = ctx.DecodeByte();
                 return new Capability(protocolCode, version);
-            }).ToList();
+            });
 
             helloMessage.ListenPort = rlpStream.DecodeInt();
 

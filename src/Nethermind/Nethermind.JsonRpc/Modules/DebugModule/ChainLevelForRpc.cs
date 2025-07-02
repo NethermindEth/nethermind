@@ -11,7 +11,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public ChainLevelForRpc(ChainLevelInfo chainLevelInfo)
         {
             HasBlockOnMainChain = chainLevelInfo.HasBlockOnMainChain;
-            BlockInfos = chainLevelInfo.BlockInfos.Select(bi => new BlockInfoForRpc(bi)).ToArray();
+            BlockInfos = chainLevelInfo.BlockInfos.Select(static bi => new BlockInfoForRpc(bi)).ToArray();
         }
 
         public BlockInfoForRpc[] BlockInfos { get; set; }

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/gnosis.json",
+    "GenesisHash": "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756",
+    "BaseDbPath": "nethermind_db/gnosis",
+    "LogFileName": "gnosis.log",
+    "MemoryHint": 768000000
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "EnginePort": 8551
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "PivotNumber": 40810000,
+    "PivotHash": "0xec89095af25d9f541d99607076b8e0c73b0082dd300a536047e7d573a4e29f13",
+    "PivotTotalDifficulty": "8626000110427538733349499292577475819600160930",
+    "UseGethLimitsInFastBlocks": false,
+    "FastSyncCatchUpHeightDelta": 10000000000
+  },
+  "Blocks": {
+    "SecondsPerSlot": 5,
+    "BlockProductionTimeoutMs": 3000,
+    "TargetBlockGasLimit": 17000000,
+    "GasToken": "XDAI"
+  },
+  "Shutter": {
+    "SequencerContractAddress": "0xc5C4b277277A1A8401E0F039dfC49151bA64DC2E",
+    "ValidatorRegistryContractAddress": "0xefCC23E71f6bA9B22C4D28F7588141d44496A6D6",
+    "KeyBroadcastContractAddress": "0x626dB87f9a9aC47070016A50e802dd5974341301",
+    "KeyperSetManagerContractAddress": "0x7C2337f9bFce19d8970661DA50dE8DD7d3D34abb",
+    "BootnodeP2PAddresses": [
+      "/ip4/167.99.177.227/tcp/23003/p2p/12D3KooWD35AESYCttDEi3J5WnQdTFuM5JNtmuXEb1x4eQ28gb1s",
+      "/ip4/159.89.15.119/tcp/23003/p2p/12D3KooWRzAhgPA16DiBQhiuYoasYzJaQSAbtc5i5FvgTi9ZDQtS"
+    ],
+    "InstanceID": "1000"
+  },
+  "EthStats": {
+    "Name": "Nethermind Gnosis"
+  },
+  "Metrics": {
+    "NodeName": "Gnosis"
+  },
+  "Bloom": {
+    "IndexLevelBucketSizes": [
+      16,
+      16,
+      16
+    ]
+  }
+}

@@ -14,7 +14,7 @@ namespace Nethermind.Merge.Plugin;
 public partial interface IEngineRpcModule : IRpcModule
 {
     [JsonRpcMethod(
-        Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
+        Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
@@ -29,7 +29,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> engine_getPayloadBodiesByHashV1(IList<Keccak> blockHashes);
+    ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>> engine_getPayloadBodiesByHashV1(IReadOnlyList<Hash256> blockHashes);
 
     [JsonRpcMethod(
         Description = "Returns an array of execution payload bodies for the provided number range",

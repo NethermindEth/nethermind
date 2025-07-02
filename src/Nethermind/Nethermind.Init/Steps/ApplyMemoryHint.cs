@@ -5,45 +5,37 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(MigrateConfigs))]
-    public sealed class ApplyMemoryHint : IStep
+    public sealed class ApplyMemoryHint(
+        IInitConfig initConfig,
+        IDbConfig dbConfig,
+        INetworkConfig networkConfig,
+        ISyncConfig syncConfig,
+        ITxPoolConfig txPoolConfig,
+        ILogManager logManager)
+        : IStep
     {
-        private readonly INethermindApi _api;
-        private IInitConfig _initConfig;
-        private IDbConfig _dbConfig;
-        private INetworkConfig _networkConfig;
-        private ISyncConfig _syncConfig;
-        private ITxPoolConfig _txPoolConfig;
-
-        public ApplyMemoryHint(INethermindApi api)
-        {
-            _api = api ?? throw new ArgumentNullException(nameof(api));
-            _initConfig = api.Config<IInitConfig>();
-            _dbConfig = api.Config<IDbConfig>();
-            _networkConfig = api.Config<INetworkConfig>();
-            _syncConfig = api.Config<ISyncConfig>();
-            _txPoolConfig = api.Config<ITxPoolConfig>();
-        }
-
         public Task Execute(CancellationToken _)
         {
-            MemoryHintMan memoryHintMan = new(_api.LogManager);
+            MemoryHintMan memoryHintMan = new(logManager);
             uint cpuCount = (uint)Environment.ProcessorCount;
-            if (_initConfig.MemoryHint.HasValue)
+            if (initConfig.MemoryHint.HasValue)
             {
                 memoryHintMan.SetMemoryAllowances(
-                    _dbConfig,
-                    _initConfig,
-                    _networkConfig,
-                    _syncConfig,
-                    _txPoolConfig,
+                    dbConfig,
+                    initConfig,
+                    networkConfig,
+                    syncConfig,
+                    txPoolConfig,
                     cpuCount);
             }
 

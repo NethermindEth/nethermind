@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
-using Nethermind.State;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -17,5 +15,10 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public SyncMode Previous { get; }
         public SyncMode Current { get; }
+
+        public bool WasModeFinished(SyncMode mode)
+        {
+            return (Previous & mode) != 0 && (Current & mode) == 0;
+        }
     }
 }

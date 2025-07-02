@@ -2,37 +2,75 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Trie;
+using Nethermind.Trie;
 
 namespace Nethermind.State.Proofs;
 
 /// <summary>
 /// Represents a Patricia trie built of a collection of <see cref="Transaction"/>.
 /// </summary>
-public class TxTrie : PatriciaTrie<Transaction>
+public sealed class TxTrie : PatriciaTrie<Transaction>
 {
-    private static readonly TxDecoder _txDecoder = new();
+    private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
     /// <inheritdoc/>
     /// <param name="transactions">The transactions to build the trie of.</param>
-    public TxTrie(IEnumerable<Transaction> transactions, bool canBuildProof = false)
-        : base(transactions, canBuildProof) => ArgumentNullException.ThrowIfNull(transactions);
+    public TxTrie(ReadOnlySpan<Transaction> transactions, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
+        : base(transactions, canBuildProof, bufferPool: bufferPool) { }
 
-    protected override void Initialize(IEnumerable<Transaction> list)
+    protected override void Initialize(ReadOnlySpan<Transaction> list)
     {
-        var key = 0;
+        int key = 0;
 
-        // 3% allocations (2GB) on a Goerli 3M blocks fast sync due to calling transaction encoder here
-        // Avoiding it would require pooling byte arrays and passing them as Spans to temporary trees
-        // a temporary trie would be a trie that exists to create a state root only and then be disposed of
-        foreach (var transaction in list)
+        foreach (Transaction? transaction in list)
         {
-            Rlp transactionRlp = _txDecoder.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
+            ref readonly Memory<byte> rlp = ref transaction.PreHash;
+            SpanSource buffer = (rlp.Length > 0) ?
+                CopyExistingRlp(rlp.Span, _bufferPool) :
+                _txDecoder.EncodeToSpanSource(transaction, rlpBehaviors: RlpBehaviors.SkipTypedWrapping, bufferPool: _bufferPool);
+            SpanSource keyBuffer = key.EncodeToSpanSource(_bufferPool);
+            key++;
 
-            Set(Rlp.Encode(key++).Bytes, transactionRlp.Bytes);
+            Set(keyBuffer.Span, buffer);
         }
+
+        static SpanSource CopyExistingRlp(ReadOnlySpan<byte> rlp, ICappedArrayPool? bufferPool)
+        {
+            // If we still have the tx rlp (usually case on new payload), just copy that rather than re-encoding
+            SpanSource buffer = bufferPool.SafeRentBuffer(rlp.Length);
+            if (buffer.TryGetCappedArray(out CappedArray<byte> capped))
+            {
+                rlp.CopyTo(capped.AsSpan());
+            }
+            else
+            {
+                ThrowSpanSourceNotCappedArray();
+            }
+            return buffer;
+        }
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowSpanSourceNotCappedArray() => throw new InvalidOperationException("Encode to SpanSource failed to get a CappedArray.");
+
+    public static byte[][] CalculateProof(ReadOnlySpan<Transaction> transactions, int index)
+    {
+        using TrackingCappedArrayPool cappedArray = new(transactions.Length * 4);
+        byte[][] rootHash = new TxTrie(transactions, canBuildProof: true, bufferPool: cappedArray).BuildProof(index);
+        return rootHash;
+    }
+
+    public static Hash256 CalculateRoot(ReadOnlySpan<Transaction> transactions)
+    {
+        using TrackingCappedArrayPool cappedArray = new(transactions.Length * 4);
+        Hash256 rootHash = new TxTrie(transactions, canBuildProof: false, bufferPool: cappedArray).RootHash;
+        return rootHash;
     }
 }

@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Enr;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
@@ -15,7 +15,7 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMe
 {
     private readonly NodeRecordSigner _nodeRecordSigner;
 
-    public EnrResponseMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
+    public EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
         : base(ecdsa, nodeKey, nodeIdResolver)
     {
         _nodeRecordSigner = new NodeRecordSigner(ecdsa, nodeKey.Generate());
@@ -43,7 +43,7 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMe
         (PublicKey? farPublicKey, _, IByteBuffer? data) = PrepareForDeserialization(msgBytes);
         NettyRlpStream rlpStream = new(data);
         rlpStream.ReadSequenceLength();
-        Keccak? requestKeccak = rlpStream.DecodeKeccak(); // skip (not sure if needed to verify)
+        Hash256? requestKeccak = rlpStream.DecodeKeccak(); // skip (not sure if needed to verify)
 
         int positionForHex = rlpStream.Position;
         NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(rlpStream);

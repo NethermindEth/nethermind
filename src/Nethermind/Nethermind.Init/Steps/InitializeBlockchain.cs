@@ -3,58 +3,49 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Db.FullPruning;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc.Converters;
-using Nethermind.JsonRpc.Modules.DebugModule;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
-using Nethermind.JsonRpc.Modules.Trace;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
+using Nethermind.JsonRpc;
 using Nethermind.State;
-using Nethermind.State.Witnesses;
-using Nethermind.Synchronization.Witness;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitializePlugins), typeof(InitializeBlockTree), typeof(SetupKeyStore))]
-    public class InitializeBlockchain : IStep
+    [RunnerStepDependencies(
+        typeof(InitializePlugins),
+        typeof(InitializeBlockTree),
+        typeof(SetupKeyStore),
+        typeof(InitializePrecompiles)
+    )]
+    public class InitializeBlockchain(INethermindApi api) : IStep
     {
-        private readonly INethermindApi _api;
-        private ILogger? _logger;
-
-        // ReSharper disable once MemberCanBeProtected.Global
-        public InitializeBlockchain(INethermindApi api)
-        {
-            _api = api;
-        }
+        private readonly INethermindApi _api = api;
+        private readonly IServiceStopper _serviceStopper = api.Context.Resolve<IServiceStopper>();
 
         public async Task Execute(CancellationToken _)
         {
@@ -62,201 +53,58 @@ namespace Nethermind.Init.Steps
         }
 
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
-        private Task InitBlockchain()
+        protected virtual Task InitBlockchain()
         {
-            InitBlockTraceDumper();
-
             (IApiWithStores getApi, IApiWithBlockchain setApi) = _api.ForBlockchain;
+            setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree!.AsReadOnly());
 
-            if (getApi.ChainSpec is null) throw new StepDependencyException(nameof(getApi.ChainSpec));
-            if (getApi.DbProvider is null) throw new StepDependencyException(nameof(getApi.DbProvider));
-            if (getApi.SpecProvider is null) throw new StepDependencyException(nameof(getApi.SpecProvider));
-            if (getApi.BlockTree is null) throw new StepDependencyException(nameof(getApi.BlockTree));
-
-            _logger = getApi.LogManager.GetClassLogger();
             IInitConfig initConfig = getApi.Config<IInitConfig>();
-            ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
-            IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
-            IMiningConfig miningConfig = getApi.Config<IMiningConfig>();
+            IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
 
-            if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
-            {
-                _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
-                syncConfig.DownloadBodiesInFastSync = true;
-            }
+            ThisNodeInfo.AddInfo("Gaslimit     :", $"{blocksConfig.TargetBlockGasLimit:N0}");
+            ThisNodeInfo.AddInfo("ExtraData    :", Utf8.IsValid(blocksConfig.GetExtraDataBytes()) ?
+                blocksConfig.ExtraData :
+                "- binary data -");
 
-            Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
+            IStateReader stateReader = setApi.StateReader!;
+            IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
+            PreBlockCaches? preBlockCaches = (mainWorldState as IPreBlockCaches)?.Caches;
+            CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
+            IChainHeadInfoProvider chainHeadInfoProvider =
+                new ChainHeadInfoProvider(getApi.SpecProvider!, getApi.BlockTree!, stateReader, codeInfoRepository);
 
-            IWitnessCollector witnessCollector;
-            if (syncConfig.WitnessProtocolEnabled)
-            {
-                WitnessCollector witnessCollectorImpl = new(getApi.DbProvider.WitnessDb, _api.LogManager);
-                witnessCollector = setApi.WitnessCollector = witnessCollectorImpl;
-                setApi.WitnessRepository = witnessCollectorImpl.WithPruning(getApi.BlockTree!, getApi.LogManager);
-            }
-            else
-            {
-                witnessCollector = setApi.WitnessCollector = NullWitnessCollector.Instance;
-                setApi.WitnessRepository = NullWitnessCollector.Instance;
-            }
+            _api.TxGossipPolicy.Policies.Add(new SpecDrivenTxGossipPolicy(chainHeadInfoProvider));
 
-            CachingStore cachedStateDb = getApi.DbProvider.StateDb
-                .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
-            setApi.MainStateDbWithCache = cachedStateDb;
-            IKeyValueStore codeDb = getApi.DbProvider.CodeDb
-                .WitnessedBy(witnessCollector);
-
-            TrieStore trieStore;
-            IKeyValueStoreWithBatching stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
-            if (pruningConfig.Mode.IsMemory())
-            {
-                IPersistenceStrategy persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
-                if (pruningConfig.Mode.IsFull())
-                {
-                    PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new((IFullPruningDb)getApi.DbProvider!.StateDb, getApi.BlockTree!, getApi.LogManager);
-                    getApi.DisposeStack.Push(triggerPersistenceStrategy);
-                    persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
-                }
-
-                setApi.TrieStore = trieStore = new TrieStore(
-                    stateWitnessedBy,
-                    Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
-                    persistenceStrategy,
-                    getApi.LogManager);
-
-                if (pruningConfig.Mode.IsFull())
-                {
-                    IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
-                    fullPruningDb.PruningStarted += (_, args) =>
-                    {
-                        cachedStateDb.PersistCache(args.Context);
-                        trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
-                    };
-                }
-            }
-            else
-            {
-                setApi.TrieStore = trieStore = new TrieStore(
-                    stateWitnessedBy,
-                    No.Pruning,
-                    Persist.EveryBlock,
-                    getApi.LogManager);
-            }
-
-            TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);
-            getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
-            getApi.DisposeStack.Push(trieStore);
-
-            ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
-
-            IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
-                trieStore,
-                codeDb,
-                getApi.LogManager);
-
-            ReadOnlyDbProvider readOnly = new(getApi.DbProvider, false);
-
-            IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
-
-            setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
-            setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
-            Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
-
-            stateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-
-            if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
-            {
-                Task.Run(() =>
-                {
-                    try
-                    {
-                        _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                        TrieStore noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
-                        IStateProvider diagStateProvider = new StateProvider(noPruningStore, codeDb, getApi.LogManager)
-                        {
-                            StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
-                        };
-                        TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
-                        _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger!.Error(ex.ToString());
-                    }
-                });
-            }
-
-            // Init state if we need system calls before actual processing starts
-            if (getApi.BlockTree!.Head?.StateRoot is not null)
-            {
-                stateProvider.StateRoot = getApi.BlockTree.Head.StateRoot;
-            }
-
-            TxValidator txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
-
-            ITxPool txPool = _api.TxPool = CreateTxPool();
-
-            ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.BlockTree, getApi.ReceiptStorage, _api.LogManager);
-            getApi.DisposeStack.Push(receiptCanonicalityMonitor);
-            _api.ReceiptMonitor = receiptCanonicalityMonitor;
+            ITxPool txPool = _api.TxPool = CreateTxPool(chainHeadInfoProvider);
 
             _api.BlockPreprocessor.AddFirst(
-                new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
+                new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
-            IStorageProvider storageProvider = setApi.StorageProvider = new StorageProvider(
-                trieStore,
-                stateProvider,
-                getApi.LogManager);
+            VirtualMachine.WarmUpEvmInstructions();
+            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
+            ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
-            // blockchain processing
-            BlockhashProvider blockhashProvider = new(
-                getApi.BlockTree, getApi.LogManager);
-
-            VirtualMachine virtualMachine = new(
-                blockhashProvider,
-                getApi.SpecProvider,
-                getApi.LogManager);
-
-            WorldState worldState = new(stateProvider, storageProvider);
-            _api.TransactionProcessor = new TransactionProcessor(
-                getApi.SpecProvider,
-                worldState,
-                virtualMachine,
-                getApi.LogManager);
-
-            InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
 
-            setApi.HeaderValidator = CreateHeaderValidator();
-
-            IHeaderValidator? headerValidator = setApi.HeaderValidator;
-            IUnclesValidator unclesValidator = setApi.UnclesValidator = new UnclesValidator(
-                getApi.BlockTree,
-                headerValidator,
-                getApi.LogManager);
-
-            setApi.BlockValidator = new BlockValidator(
-                txValidator,
-                headerValidator,
-                unclesValidator,
-                getApi.SpecProvider,
-                getApi.LogManager);
-
-            IChainHeadInfoProvider chainHeadInfoProvider =
-                new ChainHeadInfoProvider(getApi.SpecProvider, getApi.BlockTree, stateReader);
-
             // TODO: can take the tx sender from plugin here maybe
-            ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider.ChainId);
+            ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider!.ChainId);
             TxSealer nonceReservingTxSealer =
                 new(txSigner, getApi.Timestamper);
-            INonceManager nonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
+            INonceManager nonceManager = new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider);
             setApi.NonceManager = nonceManager;
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
 
-            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
-            setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
-            IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
+            BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
+                ? new(
+                    _api.ReadOnlyTxProcessingEnvFactory,
+                    mainWorldState,
+                    blocksConfig,
+                    _api.LogManager,
+                    preBlockCaches)
+                : null;
+
+            IBlockProcessor mainBlockProcessor = CreateBlockProcessor(preWarmer, transactionProcessor, mainWorldState);
 
             BlockchainProcessor blockchainProcessor = new(
                 getApi.BlockTree,
@@ -266,112 +114,124 @@ namespace Nethermind.Init.Steps
                 getApi.LogManager,
                 new BlockchainProcessor.Options
                 {
-                    StoreReceiptsByDefault = initConfig.StoreReceipts,
+                    StoreReceiptsByDefault = receiptConfig.StoreReceipts,
                     DumpOptions = initConfig.AutoDump
-                });
+                })
+            {
+                IsMainProcessor = true
+            };
 
+            getApi.DisposeStack.Push(blockchainProcessor);
+
+            var mainProcessingContext = setApi.MainProcessingContext = new MainProcessingContext(
+                transactionProcessor,
+                mainBlockProcessor,
+                blockchainProcessor,
+                mainWorldState);
+            _serviceStopper.AddStoppable(mainProcessingContext);
             setApi.BlockProcessingQueue = blockchainProcessor;
-            setApi.BlockchainProcessor = blockchainProcessor;
-            setApi.EthSyncingInfo = new EthSyncingInfo(getApi.BlockTree, getApi.ReceiptStorage!, syncConfig, getApi.LogManager);
+            setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
 
-            IFilterStore filterStore = setApi.FilterStore = new FilterStore();
-            setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
-            setApi.HealthHintService = CreateHealthHintService();
-            setApi.BlockProductionPolicy = new BlockProductionPolicy(miningConfig);
+            BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
+                mainBlockProcessor,
+                initConfig.BackgroundTaskConcurrency,
+                initConfig.BackgroundTaskMaxNumber,
+                _api.LogManager);
+            setApi.BackgroundTaskScheduler = backgroundTaskScheduler;
+            _api.DisposeStack.Push(backgroundTaskScheduler);
 
-            InitializeFullPruning(pruningConfig, initConfig, _api, stateReader);
+            ICensorshipDetectorConfig censorshipDetectorConfig = _api.Config<ICensorshipDetectorConfig>();
+            if (censorshipDetectorConfig.Enabled)
+            {
+                CensorshipDetector censorshipDetector = new(
+                    _api.BlockTree!,
+                    txPool,
+                    CreateTxPoolTxComparer(),
+                    mainBlockProcessor,
+                    _api.LogManager,
+                    censorshipDetectorConfig
+                );
+                setApi.CensorshipDetector = censorshipDetector;
+                _api.DisposeStack.Push(censorshipDetector);
+            }
 
             return Task.CompletedTask;
         }
 
-        private static void InitializeFullPruning(
-            IPruningConfig pruningConfig,
-            IInitConfig initConfig,
-            INethermindApi api,
-            IStateReader stateReader)
+        protected virtual ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
         {
-            IPruningTrigger? CreateAutomaticTrigger(string dbPath)
-            {
-                long threshold = pruningConfig.FullPruningThresholdMb.MB();
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-                switch (pruningConfig.FullPruningTrigger)
-                {
-                    case FullPruningTrigger.StateDbSize:
-                        return new PathSizePruningTrigger(dbPath, threshold, api.TimerFactory, api.FileSystem);
-                    case FullPruningTrigger.VolumeFreeSpace:
-                        return new DiskFreeSpacePruningTrigger(dbPath, threshold, api.TimerFactory, api.FileSystem);
-                    default:
-                        return null;
-                }
-            }
-
-            if (pruningConfig.Mode.IsFull())
-            {
-                IDb stateDb = api.DbProvider!.StateDb;
-                if (stateDb is IFullPruningDb fullPruningDb)
-                {
-                    IPruningTrigger? pruningTrigger = CreateAutomaticTrigger(fullPruningDb.GetPath(initConfig.BaseDbPath));
-                    if (pruningTrigger is not null)
-                    {
-                        api.PruningTrigger.Add(pruningTrigger);
-                    }
-
-                    FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!, stateReader, api.LogManager);
-                    api.DisposeStack.Push(pruner);
-                }
-            }
-        }
-
-        private static void InitBlockTraceDumper()
-        {
-            BlockTraceDumper.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
-            BlockTraceDumper.Converters.AddRange(DebugModuleFactory.Converters);
-            BlockTraceDumper.Converters.AddRange(TraceModuleFactory.Converters);
-            BlockTraceDumper.Converters.Add(new TxReceiptConverter());
-        }
-
-        protected virtual IHealthHintService CreateHealthHintService() =>
-            new HealthHintService(_api.ChainSpec!);
-
-        protected virtual TxPool.TxPool CreateTxPool() =>
-            new(_api.EthereumEcdsa!,
-                new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!),
-                _api.Config<ITxPoolConfig>(),
-                _api.TxValidator!,
-                _api.LogManager,
-                CreateTxPoolTxComparer());
-
-        protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
-
-        // TODO: we should not have the create header -> we should have a header that also can use the information about the transitions
-        protected virtual IHeaderValidator CreateHeaderValidator() => new HeaderValidator(
-            _api.BlockTree,
-            _api.SealValidator,
-            _api.SpecProvider,
-            _api.LogManager);
-
-        // TODO: remove from here - move to consensus?
-        protected virtual BlockProcessor CreateBlockProcessor()
-        {
-            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-            if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
-
-            return new BlockProcessor(
+            return new TransactionProcessor(
                 _api.SpecProvider,
-                _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.StateProvider!),
-                _api.StateProvider,
-                _api.StorageProvider,
-                _api.ReceiptStorage,
-                _api.WitnessCollector,
+                worldState,
+                virtualMachine,
+                codeInfoRepository,
                 _api.LogManager);
         }
 
-        // TODO: remove from here - move to consensus?
-        protected virtual void InitSealEngine()
+        protected VirtualMachine CreateVirtualMachine(CodeInfoRepository codeInfoRepository, IWorldState worldState)
         {
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
+
+            // blockchain processing
+            BlockhashProvider blockhashProvider = new(
+                _api.BlockTree, _api.SpecProvider, worldState, _api.LogManager);
+
+            VirtualMachine virtualMachine = new(
+                blockhashProvider,
+                _api.SpecProvider,
+                _api.LogManager);
+
+            return virtualMachine;
+        }
+
+        protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
+            new BlockProductionPolicy(_api.Config<IMiningConfig>());
+
+        protected virtual ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
+        {
+            TxPool.TxPool txPool = new(_api.EthereumEcdsa!,
+                _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
+                chainHeadInfoProvider,
+                _api.Config<ITxPoolConfig>(),
+                _api.TxValidator!,
+                _api.LogManager,
+                CreateTxPoolTxComparer(),
+                _api.TxGossipPolicy);
+
+            _api.DisposeStack.Push(txPool);
+            return txPool;
+        }
+
+        protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
+
+        // TODO: remove from here - move to consensus?
+        protected virtual BlockProcessor CreateBlockProcessor(
+            BlockCachePreWarmer? preWarmer,
+            ITransactionProcessor transactionProcessor,
+            IWorldState worldState)
+        {
+            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
+            if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+
+            return new BlockProcessor(_api.SpecProvider,
+                _api.BlockValidator,
+                _api.RewardCalculatorSource.Get(transactionProcessor),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
+                worldState,
+                _api.ReceiptStorage!,
+                new BeaconBlockRootHandler(transactionProcessor, worldState),
+                new BlockhashStore(_api.SpecProvider!, worldState),
+                _api.LogManager,
+                new WithdrawalProcessor(worldState, _api.LogManager),
+                new ExecutionRequestsProcessor(transactionProcessor),
+                preWarmer: preWarmer);
         }
     }
 }

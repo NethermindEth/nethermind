@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Filters;
 
@@ -17,27 +16,27 @@ namespace Nethermind.Blockchain.Filters
 
         public FilterLog[] GetLogs(int filterId)
         {
-            return Array.Empty<FilterLog>();
+            return [];
         }
 
         public FilterLog[] PollLogs(int filterId)
         {
-            return Array.Empty<FilterLog>();
+            return [];
         }
 
-        public Keccak[] GetBlocksHashes(int filterId)
+        public Hash256[] GetBlocksHashes(int filterId)
         {
-            return Array.Empty<Keccak>();
+            return [];
         }
 
-        public Keccak[] PollBlockHashes(int filterId)
+        public Hash256[] PollBlockHashes(int filterId)
         {
-            return Array.Empty<Keccak>();
+            return [];
         }
 
-        public Keccak[] PollPendingTransactionHashes(int filterId)
+        public Hash256[] PollPendingTransactionHashes(int filterId)
         {
-            return Array.Empty<Keccak>();
+            return [];
         }
     }
 }

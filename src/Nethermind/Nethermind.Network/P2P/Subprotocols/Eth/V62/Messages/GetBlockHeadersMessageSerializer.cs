@@ -17,7 +17,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             byte[] startingBytes = rlpStream.DecodeByteArray();
             if (startingBytes.Length == 32)
             {
-                message.StartBlockHash = new Keccak(startingBytes);
+                message.StartBlockHash = new Hash256(startingBytes);
             }
             else
             {
@@ -33,7 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public void Serialize(IByteBuffer byteBuffer, GetBlockHeadersMessage message)
         {
             int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length, true);
+            byteBuffer.EnsureWritable(length);
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
             rlpStream.StartSequence(contentLength);

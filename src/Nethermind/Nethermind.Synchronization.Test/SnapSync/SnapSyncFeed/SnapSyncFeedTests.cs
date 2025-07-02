@@ -20,17 +20,16 @@ public class SnapSyncFeedTests
     public void WhenAccountRequestEmpty_ReturnNoProgress()
     {
         ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
-        Synchronization.SnapSync.SnapSyncFeed feed = new(
-            Substitute.For<ISyncModeSelector>(), snapProvider, LimboLogs.Instance);
+        Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
         snapProvider.AddAccountRange(Arg.Any<AccountRange>(), Arg.Any<AccountsAndProofs>())
             .Returns(AddRangeResult.ExpiredRootHash);
 
-        SnapSyncBatch response = new SnapSyncBatch();
+        using SnapSyncBatch response = new();
         response.AccountRangeRequest = new AccountRange(Keccak.Zero, Keccak.Zero);
         response.AccountRangeResponse = new AccountsAndProofs();
 
-        PeerInfo peer = new PeerInfo(Substitute.For<ISyncPeer>());
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
 
         feed.HandleResponse(response, peer).Should().Be(SyncResponseHandlingResult.NoProgress);
     }

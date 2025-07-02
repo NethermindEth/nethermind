@@ -8,88 +8,12 @@ namespace Nethermind.Db.Rocks.Config;
 [ConfigCategory(HiddenFromDocs = true)]
 public interface IDbConfig : IConfig
 {
-    ulong WriteBufferSize { get; set; }
-    uint WriteBufferNumber { get; set; }
-    ulong BlockCacheSize { get; set; }
-    bool CacheIndexAndFilterBlocks { get; set; }
-    int? MaxOpenFiles { get; set; }
-    uint RecycleLogFileNum { get; set; }
-    bool WriteAheadLogSync { get; set; }
-    long? MaxWriteBytesPerSec { get; set; }
-
-    ulong ReceiptsDbWriteBufferSize { get; set; }
-    uint ReceiptsDbWriteBufferNumber { get; set; }
-    ulong ReceiptsDbBlockCacheSize { get; set; }
-    bool ReceiptsDbCacheIndexAndFilterBlocks { get; set; }
-    int? ReceiptsDbMaxOpenFiles { get; set; }
-    long? ReceiptsDbMaxWriteBytesPerSec { get; set; }
-
-    ulong BlocksDbWriteBufferSize { get; set; }
-    uint BlocksDbWriteBufferNumber { get; set; }
-    ulong BlocksDbBlockCacheSize { get; set; }
-    bool BlocksDbCacheIndexAndFilterBlocks { get; set; }
-    int? BlocksDbMaxOpenFiles { get; set; }
-    long? BlocksDbMaxWriteBytesPerSec { get; set; }
-
-    ulong HeadersDbWriteBufferSize { get; set; }
-    uint HeadersDbWriteBufferNumber { get; set; }
-    ulong HeadersDbBlockCacheSize { get; set; }
-    bool HeadersDbCacheIndexAndFilterBlocks { get; set; }
-    int? HeadersDbMaxOpenFiles { get; set; }
-    long? HeadersDbMaxWriteBytesPerSec { get; set; }
-
-    ulong BlockInfosDbWriteBufferSize { get; set; }
-    uint BlockInfosDbWriteBufferNumber { get; set; }
-    ulong BlockInfosDbBlockCacheSize { get; set; }
-    bool BlockInfosDbCacheIndexAndFilterBlocks { get; set; }
-    int? BlockInfosDbMaxOpenFiles { get; set; }
-    long? BlockInfosDbMaxWriteBytesPerSec { get; set; }
-
-    ulong PendingTxsDbWriteBufferSize { get; set; }
-    uint PendingTxsDbWriteBufferNumber { get; set; }
-    ulong PendingTxsDbBlockCacheSize { get; set; }
-    bool PendingTxsDbCacheIndexAndFilterBlocks { get; set; }
-    int? PendingTxsDbMaxOpenFiles { get; set; }
-    long? PendingTxsDbMaxWriteBytesPerSec { get; set; }
-
-    ulong CodeDbWriteBufferSize { get; set; }
-    uint CodeDbWriteBufferNumber { get; set; }
-    ulong CodeDbBlockCacheSize { get; set; }
-    bool CodeDbCacheIndexAndFilterBlocks { get; set; }
-    int? CodeDbMaxOpenFiles { get; set; }
-    long? CodeDbMaxWriteBytesPerSec { get; set; }
-
-    ulong BloomDbWriteBufferSize { get; set; }
-    uint BloomDbWriteBufferNumber { get; set; }
-    ulong BloomDbBlockCacheSize { get; set; }
-    bool BloomDbCacheIndexAndFilterBlocks { get; set; }
-    int? BloomDbMaxOpenFiles { get; set; }
-    long? BloomDbMaxWriteBytesPerSec { get; set; }
-
-    ulong WitnessDbWriteBufferSize { get; set; }
-    uint WitnessDbWriteBufferNumber { get; set; }
-    ulong WitnessDbBlockCacheSize { get; set; }
-    bool WitnessDbCacheIndexAndFilterBlocks { get; set; }
-    int? WitnessDbMaxOpenFiles { get; set; }
-    long? WitnessDbMaxWriteBytesPerSec { get; set; }
-
-    ulong CanonicalHashTrieDbWriteBufferSize { get; set; }
-    uint CanonicalHashTrieDbWriteBufferNumber { get; set; }
-    ulong CanonicalHashTrieDbBlockCacheSize { get; set; }
-    bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; }
-    int? CanonicalHashTrieDbMaxOpenFiles { get; set; }
-    long? CanonicalHashTrieDbMaxWriteBytesPerSec { get; set; }
-
-    ulong MetadataDbWriteBufferSize { get; set; }
-    uint MetadataDbWriteBufferNumber { get; set; }
-    ulong MetadataDbBlockCacheSize { get; set; }
-    bool MetadataDbCacheIndexAndFilterBlocks { get; set; }
-    int? MetadataDbMaxOpenFiles { get; set; }
-    long? MetadataDbMaxWriteBytesPerSec { get; set; }
+    ulong SharedBlockCacheSize { get; set; }
+    public bool SkipMemoryHintSetting { get; set; }
 
     /// <summary>
     /// Enables DB Statistics - https://github.com/facebook/rocksdb/wiki/Statistics
-    /// It can has a RocksDB perfomance hit between 5 and 10%.
+    /// It can has a RocksDB performance hit between 5 and 10%.
     /// </summary>
     bool EnableDbStatistics { get; set; }
     bool EnableMetricsUpdater { get; set; }
@@ -98,4 +22,79 @@ public interface IDbConfig : IConfig
     /// Default: 600 (10 min)
     /// </summary>
     uint StatsDumpPeriodSec { get; set; }
+
+
+    int? MaxOpenFiles { get; set; }
+    bool WriteAheadLogSync { get; set; }
+    ulong? ReadAheadSize { get; set; }
+    string RocksDbOptions { get; set; }
+    string? AdditionalRocksDbOptions { get; set; }
+    bool? VerifyChecksum { get; set; }
+    bool EnableFileWarmer { get; set; }
+    double CompressibilityHint { get; set; }
+    bool FlushOnExit { get; set; }
+
+    string BadBlocksDbRocksDbOptions { get; set; }
+    string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
+
+    string BlobTransactionsDbRocksDbOptions { get; set; }
+    string? BlobTransactionsDbAdditionalRocksDbOptions { get; set; }
+
+    string BlobTransactionsFullBlobTxsDbRocksDbOptions { get; set; }
+    string? BlobTransactionsFullBlobTxsDbAdditionalRocksDbOptions { get; set; }
+    string BlobTransactionsLightBlobTxsDbRocksDbOptions { get; set; }
+    string? BlobTransactionsLightBlobTxsDbAdditionalRocksDbOptions { get; set; }
+    string BlobTransactionsProcessedTxsDbRocksDbOptions { get; set; }
+    string? BlobTransactionsProcessedTxsDbAdditionalRocksDbOptions { get; set; }
+
+    double ReceiptsDbCompressibilityHint { get; set; }
+    string ReceiptsDbRocksDbOptions { get; set; }
+    string? ReceiptsDbAdditionalRocksDbOptions { get; set; }
+    string ReceiptsDefaultDbRocksDbOptions { get; set; }
+    string? ReceiptsDefaultDbAdditionalRocksDbOptions { get; set; }
+    string ReceiptsTransactionsDbRocksDbOptions { get; set; }
+    string? ReceiptsTransactionsDbAdditionalRocksDbOptions { get; set; }
+    string ReceiptsBlocksDbRocksDbOptions { get; set; }
+    string? ReceiptsBlocksDbAdditionalRocksDbOptions { get; set; }
+
+    string BlocksDbRocksDbOptions { get; set; }
+    string? BlocksDbAdditionalRocksDbOptions { get; set; }
+
+    string HeadersDbRocksDbOptions { get; set; }
+    string? HeadersDbAdditionalRocksDbOptions { get; set; }
+
+    ulong? BlockNumbersDbRowCacheSize { get; set; }
+    string BlockNumbersDbRocksDbOptions { get; set; }
+    string? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
+
+    string BlockInfosDbRocksDbOptions { get; set; }
+    string? BlockInfosDbAdditionalRocksDbOptions { get; set; }
+
+    string PendingTxsDbRocksDbOptions { get; set; }
+    string? PendingTxsDbAdditionalRocksDbOptions { get; set; }
+
+    string MetadataDbRocksDbOptions { get; set; }
+    string? MetadataDbAdditionalRocksDbOptions { get; set; }
+
+    string BloomDbRocksDbOptions { get; set; }
+    string? BloomDbAdditionalRocksDbOptions { get; set; }
+
+    ulong? CodeDbRowCacheSize { get; set; }
+    string CodeDbRocksDbOptions { get; set; }
+    string? CodeDbAdditionalRocksDbOptions { get; set; }
+
+
+    [ConfigItem(Description = "Write buffer size for state db. This should be at least 20% of pruning cache or during persist, persist is not able to be done asynchronously.")]
+    ulong StateDbWriteBufferSize { get; set; }
+    ulong StateDbWriteBufferNumber { get; set; }
+    bool? StateDbVerifyChecksum { get; set; }
+    ulong? StateDbRowCacheSize { get; set; }
+    bool StateDbEnableFileWarmer { get; set; }
+    double StateDbCompressibilityHint { get; set; }
+    string StateDbRocksDbOptions { get; set; }
+    string? StateDbAdditionalRocksDbOptions { get; set; }
+
+
+    string L1OriginDbRocksDbOptions { get; set; }
+    string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 }

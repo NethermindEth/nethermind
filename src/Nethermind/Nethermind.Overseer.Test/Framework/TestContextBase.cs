@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Overseer.Test.Framework.Steps;
 using Nethermind.Overseer.Test.JsonRpc;
-using Newtonsoft.Json;
+
 using NUnit.Framework;
 
 namespace Nethermind.Overseer.Test.Framework
@@ -59,21 +60,21 @@ namespace Nethermind.Overseer.Test.Framework
         private async Task<JsonRpcResponse<TResult>> ExecuteJsonRpcAsync<TResult>(
             string methodName, Func<Task<JsonRpcResponse<TResult>>> func)
         {
-            TestContext.WriteLine($"Sending JSON RPC call: '{methodName}'.");
+            TestContext.Out.WriteLine($"Sending JSON RPC call: '{methodName}'.");
             var delay = Task.Delay(20000);
             var funcTask = func();
             var first = await Task.WhenAny(delay, funcTask);
             if (first == delay)
             {
                 string message = $"JSON RPC call '{methodName}' timed out";
-                TestContext.WriteLine(message);
+                TestContext.Out.WriteLine(message);
                 throw new TimeoutException(message);
             }
 
             var result = await funcTask;
 
-            TestContext.WriteLine($"Received a response for JSON RPC call '{methodName}'." +
-                                   $"{Environment.NewLine}{JsonConvert.SerializeObject(result)}");
+            TestContext.Out.WriteLine($"Received a response for JSON RPC call '{methodName}'." +
+                                   $"{Environment.NewLine}{JsonSerializer.Serialize(result)}");
 
             return await funcTask;
         }

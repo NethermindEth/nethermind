@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Logging;
@@ -26,14 +27,14 @@ public class JwtTest
     [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NDQ5OTQ5NzEsImlhdCI6MTY0NDk5NDk3MX0.wU4z8ROPW-HaOgrUBG0FqTEutt7rWVsWMqXLvdEl_wI", "false")]
     [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTUwMzF9.fI6IzcITJKC5HJfsrnMc2kxKmi6kZEVcEjFcRzL6UGs", "true")]
     [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NjF9.huhtaE1cUU2JuhqKmeTrHC3wgl2Tp_1pVh7DuYkKrQo", "true")]
-    public void long_key_tests(string token, bool expected)
+    public async Task long_key_tests(string token, bool expected)
     {
         ManualTimestamper manualTimestamper = new() { UtcNow = DateTimeOffset.FromUnixTimeSeconds(1644994971).UtcDateTime };
         IRpcAuthentication authentication = JwtAuthentication.FromSecret("5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", manualTimestamper, LimboTraceLogger.Instance);
         IRpcAuthentication authenticationWithPrefix = JwtAuthentication.FromSecret("0x5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", manualTimestamper, LimboTraceLogger.Instance);
-        bool actual = authentication.Authenticate(token);
-        Assert.AreEqual(expected, actual);
-        actual = authenticationWithPrefix.Authenticate(token);
-        Assert.AreEqual(actual, expected);
+        bool actual = await authentication.Authenticate(token);
+        Assert.That(actual, Is.EqualTo(expected));
+        actual = await authenticationWithPrefix.Authenticate(token);
+        Assert.That(expected, Is.EqualTo(actual));
     }
 }

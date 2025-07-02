@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using NonBlocking;
 using System.Collections.Generic;
-using System.IO;
 using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
@@ -40,12 +39,13 @@ namespace Nethermind.JsonRpc.Modules
 
         public bool AcceptMethod(string methodName)
         {
-            if (!_methodsCache.ContainsKey(methodName))
+            if (!_methodsCache.TryGetValue(methodName, out var value))
             {
-                _methodsCache[methodName] = CheckMethod(methodName);
+                value = CheckMethod(methodName);
+                _methodsCache[methodName] = value;
             }
 
-            return _methodsCache[methodName];
+            return value;
         }
 
         private bool CheckMethod(string methodName)

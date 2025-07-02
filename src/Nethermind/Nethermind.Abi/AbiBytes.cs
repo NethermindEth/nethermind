@@ -3,6 +3,8 @@
 
 using System;
 using System.Text;
+using System.Text.Json;
+
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -17,17 +19,8 @@ namespace Nethermind.Abi
 
         public AbiBytes(int length)
         {
-            if (length > MaxLength)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiBytes)} has to be less or equal to {MaxLength}");
-            }
-
-            if (length <= MinLength)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiBytes)} has to be greater than {MinLength}");
-            }
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxLength);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(length, MinLength);
 
             Length = length;
             Name = $"bytes{Length}";
@@ -59,9 +52,14 @@ namespace Nethermind.Abi
                 return Encode(Encoding.ASCII.GetBytes(stringInput), packed);
             }
 
-            if (arg is Keccak hash && Length == 32)
+            if (arg is JsonElement element && element.ValueKind == JsonValueKind.String)
             {
-                return Encode(hash.Bytes, packed);
+                return Encode(Encoding.ASCII.GetBytes(element.GetString()!), packed);
+            }
+
+            if (arg is Hash256 hash && Length == 32)
+            {
+                return Encode(hash.Bytes.ToArray(), packed);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);

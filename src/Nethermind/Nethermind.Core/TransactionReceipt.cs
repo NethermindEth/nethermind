@@ -9,6 +9,33 @@ namespace Nethermind.Core
 {
     public class TxReceipt
     {
+        private Bloom? _boom;
+
+        public TxReceipt()
+        {
+        }
+
+        public TxReceipt(TxReceipt other)
+        {
+            TxType = other.TxType;
+            StatusCode = other.StatusCode;
+            BlockNumber = other.BlockNumber;
+            BlockHash = other.BlockHash;
+            TxHash = other.TxHash;
+            Index = other.Index;
+            GasUsed = other.GasUsed;
+            GasUsedTotal = other.GasUsedTotal;
+            Sender = other.Sender;
+            ContractAddress = other.ContractAddress;
+            Recipient = other.Recipient;
+            ReturnValue = other.ReturnValue;
+            PostTransactionState = other.PostTransactionState;
+            Bloom = other.Bloom;
+            Logs = other.Logs;
+            Error = other.Error;
+            SkipStateAndStatusInRlp = other.SkipStateAndStatusInRlp;
+        }
+
         /// <summary>
         /// EIP-2718 transaction type
         /// </summary>
@@ -19,8 +46,8 @@ namespace Nethermind.Core
         /// </summary>
         public byte StatusCode { get; set; }
         public long BlockNumber { get; set; }
-        public Keccak? BlockHash { get; set; }
-        public Keccak? TxHash { get; set; }
+        public Hash256? BlockHash { get; set; }
+        public Hash256? TxHash { get; set; }
         public int Index { get; set; }
         public long GasUsed { get; set; }
         public long GasUsedTotal { get; set; }
@@ -34,8 +61,8 @@ namespace Nethermind.Core
         /// <summary>
         ///     Removed in EIP-658
         /// </summary>
-        public Keccak? PostTransactionState { get; set; }
-        public Bloom? Bloom { get; set; }
+        public Hash256? PostTransactionState { get; set; }
+        public Bloom? Bloom { get => _boom ?? CalculateBloom(); set => _boom = value; }
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
 
@@ -44,6 +71,9 @@ namespace Nethermind.Core
         /// Output is either StateRoot or StatusCode depending on eip configuration.
         /// </summary>
         public bool SkipStateAndStatusInRlp { get; set; }
+
+        public Bloom CalculateBloom()
+            => _boom = Logs?.Length == 0 ? Bloom.Empty : new Bloom(Logs);
     }
 
     public ref struct TxReceiptStructRef
@@ -58,8 +88,8 @@ namespace Nethermind.Core
         /// </summary>
         public byte StatusCode { get; set; }
         public long BlockNumber { get; set; }
-        public KeccakStructRef BlockHash;
-        public KeccakStructRef TxHash;
+        public Hash256StructRef BlockHash;
+        public Hash256StructRef TxHash;
         public int Index { get; set; }
         public long GasUsed { get; set; }
         public long GasUsedTotal { get; set; }
@@ -73,16 +103,16 @@ namespace Nethermind.Core
         /// <summary>
         ///     Removed in EIP-658
         /// </summary>
-        public KeccakStructRef PostTransactionState;
+        public Hash256StructRef PostTransactionState;
 
         public BloomStructRef Bloom;
 
         /// <summary>
         /// Rlp encoded logs
         /// </summary>
-        public Span<byte> LogsRlp { get; set; }
+        public ReadOnlySpan<byte> LogsRlp { get; set; }
 
-        public LogEntry[]? Logs { get; }
+        public LogEntry[]? Logs { get; set; }
 
         public string? Error { get; set; }
 
@@ -103,7 +133,7 @@ namespace Nethermind.Core
             PostTransactionState = (receipt.PostTransactionState ?? Keccak.Zero).ToStructRef();
             Bloom = (receipt.Bloom ?? Core.Bloom.Empty).ToStructRef();
             Logs = receipt.Logs;
-            LogsRlp = Span<byte>.Empty;
+            LogsRlp = default;
             Error = receipt.Error;
         }
     }

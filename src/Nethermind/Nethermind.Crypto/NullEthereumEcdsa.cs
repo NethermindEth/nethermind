@@ -11,26 +11,23 @@ namespace Nethermind.Crypto
     {
         public static NullEthereumEcdsa Instance { get; } = new();
 
+        public ulong ChainId => 0;
+
         private NullEthereumEcdsa()
         {
         }
 
-        public Signature Sign(PrivateKey privateKey, Keccak message)
+        public Signature Sign(PrivateKey privateKey, in ValueHash256 message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public PublicKey RecoverPublicKey(Signature signature, Keccak message)
+        public PublicKey RecoverPublicKey(Signature signature, in ValueHash256 message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public CompressedPublicKey RecoverCompressedPublicKey(Signature signature, Keccak message)
-        {
-            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
-        }
-
-        public void Sign(PrivateKey privateKey, Transaction tx, bool _)
+        public CompressedPublicKey RecoverCompressedPublicKey(Signature signature, in ValueHash256 message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
@@ -40,17 +37,17 @@ namespace Nethermind.Crypto
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public Address RecoverAddress(Signature signature, Keccak message)
-        {
-            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
-        }
-
-        public Address RecoverAddress(Span<byte> signatureBytes, Keccak message)
+        public Address RecoverAddress(Span<byte> signatureBytes, in ValueHash256 message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
         public bool Verify(Address sender, Transaction tx)
+        {
+            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
+        }
+
+        public Address? RecoverAddress(Signature signature, in ValueHash256 message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }

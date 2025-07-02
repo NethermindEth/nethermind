@@ -8,29 +8,32 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using FastEnumUtility;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Network.Discovery;
 
-public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>, IMsgSender
+public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
 {
     private readonly ILogger _logger;
-    private readonly IDiscoveryManager _discoveryManager;
-    private readonly IDatagramChannel _channel;
+    private readonly IDiscoveryMsgListener _discoveryMsgListener;
+    private readonly IChannel _channel;
     private readonly IMessageSerializationService _msgSerializationService;
     private readonly ITimestamper _timestamper;
 
     public NettyDiscoveryHandler(
-        IDiscoveryManager? discoveryManager,
-        IDatagramChannel? channel,
+        IDiscoveryMsgListener? discoveryManager,
+        IChannel? channel,
         IMessageSerializationService? msgSerializationService,
         ITimestamper? timestamper,
-        ILogManager? logManager)
+        ILogManager? logManager) : base(logManager)
     {
         _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
-        _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
+        _discoveryMsgListener = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
         _channel = channel ?? throw new ArgumentNullException(nameof(channel));
         _msgSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
@@ -65,7 +68,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         context.Flush();
     }
 
-    public async void SendMsg(DiscoveryMsg discoveryMsg)
+    public async Task SendMsg(DiscoveryMsg discoveryMsg)
     {
         IByteBuffer msgBuffer;
         try
@@ -79,70 +82,106 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
             return;
         }
 
-        if (msgBuffer.ReadableBytes > 1280)
+        int size = msgBuffer.ReadableBytes;
+        if (size > MaxPacketSize)
         {
-            if (_logger.IsWarn) _logger.Warn($"Attempting to send message larger than 1280 bytes. This is out of spec and may not work for all client. Msg: ${discoveryMsg}");
+            if (_logger.IsWarn) _logger.Warn($"Attempting to send message larger than 1280 bytes. This is out of spec and may not work for all clients. Msg: ${discoveryMsg}");
+        }
+
+        if (discoveryMsg is PingMsg pingMessage)
+        {
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(pingMessage.FarAddress, "disc v4", $"Ping {pingMessage.SourceAddress?.Address} -> {pingMessage.DestinationAddress?.Address}", size);
+        }
+        else
+        {
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(discoveryMsg.FarAddress, "disc v4", discoveryMsg.MsgType.ToString(), size);
         }
 
         IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(msgBuffer, discoveryMsg.FarAddress);
-
-        await _channel.WriteAndFlushAsync(packet).ContinueWith(t =>
+        try
         {
-            if (t.IsFaulted)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMsg.ToString()} ,Exp: {t.Exception}");
-            }
-        });
+            await _channel.WriteAndFlushAsync(packet);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMsg} ,Exp: {e}");
+        }
 
-        Interlocked.Add(ref Metrics.DiscoveryBytesSent, msgBuffer.ReadableBytes);
+        Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
+        Metrics.DiscoveryMessagesSent.Increment(discoveryMsg.MsgType);
     }
-    protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
+
+    private bool TryParseMessage(DatagramPacket packet, out DiscoveryMsg? msg)
     {
+        msg = null;
+
         IByteBuffer content = packet.Content;
         EndPoint address = packet.Sender;
 
-        byte[] msgBytes = new byte[content.ReadableBytes];
-        content.ReadBytes(msgBytes);
+        int size = content.ReadableBytes;
+        using var handle = ArrayPoolDisposableReturn.Rent(size, out byte[] msgBytes);
 
-        Interlocked.Add(ref Metrics.DiscoveryBytesReceived, msgBytes.Length);
+        content.ReadBytes(msgBytes, 0, size);
+
+        Interlocked.Add(ref Metrics.DiscoveryBytesReceived, size);
 
         if (msgBytes.Length < 98)
         {
-            if (_logger.IsDebug) _logger.Debug($"Incorrect discovery message, length: {msgBytes.Length}, sender: {address}");
-            return;
+            if (_logger.IsDebug) _logger.Debug($"Incorrect discovery message, length: {size}, sender: {address}");
+            return false;
         }
 
         byte typeRaw = msgBytes[97];
-        if (!FastEnum.IsDefined<MsgType>((int)typeRaw))
+        if (!FastEnum.IsDefined((MsgType)typeRaw))
         {
-            if (_logger.IsDebug) _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msgBytes.ToHexString()}");
-            return;
+            if (_logger.IsDebug) _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msgBytes.AsSpan(0, size).ToHexString()}");
+            return false;
         }
 
         MsgType type = (MsgType)typeRaw;
         if (_logger.IsTrace) _logger.Trace($"Received message: {type}");
 
-        DiscoveryMsg msg;
-
         try
         {
-            msg = Deserialize(type, msgBytes);
+            msg = Deserialize(type, new ArraySegment<byte>(msgBytes, 0, size));
             msg.FarAddress = (IPEndPoint)address;
         }
         catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Debug($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msgBytes.ToHexString()}, {e.Message}");
+            if (_logger.IsDebug) _logger.Debug($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msgBytes.AsSpan(0, size).ToHexString()}, {e.Message}");
+            return false;
+        }
+
+        return true;
+    }
+
+    protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
+    {
+        if (!TryParseMessage(packet, out DiscoveryMsg? msg) || msg == null)
+        {
+            packet.Content.ResetReaderIndex();
+            ctx.FireChannelRead(packet.Retain());
             return;
         }
 
+        MsgType type = msg.MsgType;
+        EndPoint address = packet.Sender;
+        int size = packet.Content.ReadableBytes;
+
         try
         {
-            ReportMsgByType(msg);
+            ReportMsgByType(msg, size);
 
-            if (!ValidateMsg(msg, type, address, ctx, packet))
+            if (!ValidateMsg(msg, type, address, ctx, packet, size))
                 return;
 
-            _discoveryManager.OnIncomingMsg(msg);
+            // Explicitly run it on the default scheduler to prevent something down the line hanging netty task scheduler.
+            Task.Factory.StartNew(
+                () => _discoveryMsgListener.OnIncomingMsg(msg),
+                CancellationToken.None,
+                TaskCreationOptions.RunContinuationsAsynchronously,
+                TaskScheduler.Default
+            );
         }
         catch (Exception e)
         {
@@ -150,7 +189,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         }
     }
 
-    private DiscoveryMsg Deserialize(MsgType type, byte[] msg)
+    private DiscoveryMsg Deserialize(MsgType type, ArraySegment<byte> msg)
     {
         return type switch
         {
@@ -178,33 +217,33 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         };
     }
 
-    private bool ValidateMsg(DiscoveryMsg msg, MsgType type, EndPoint address, IChannelHandlerContext ctx, DatagramPacket packet)
+    private bool ValidateMsg(DiscoveryMsg msg, MsgType type, EndPoint address, IChannelHandlerContext ctx, DatagramPacket packet, int size)
     {
         long timeToExpire = msg.ExpirationTime - _timestamper.UnixTime.SecondsLong;
         if (timeToExpire < 0)
         {
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "HANDLER disc v4", $"{msg.MsgType.ToString()} expired");
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} expired", size);
             if (_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired {-timeToExpire} seconds ago, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
 
         if (msg.FarAddress is null)
         {
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "HANDLER disc v4", $"{msg.MsgType.ToString()} has null far address");
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} has null far address", size);
             if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid far address {msg.FarAddress}, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
 
         if (!msg.FarAddress.Equals((IPEndPoint)packet.Sender))
         {
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "HANDLER disc v4", $"{msg.MsgType.ToString()} has incorrect far address");
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} has incorrect far address", size);
             if (_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {msg.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
 
         if (msg.FarPublicKey is null)
         {
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "HANDLER disc v4", $"{msg.MsgType.ToString()} has null far public key");
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} has null far public key", size);
             if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {msg.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
@@ -212,16 +251,17 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         return true;
     }
 
-    private static void ReportMsgByType(DiscoveryMsg msg)
+    private static void ReportMsgByType(DiscoveryMsg msg, int size)
     {
         if (msg is PingMsg pingMsg)
         {
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMsg.FarAddress, "HANDLER disc v4", $"PING {pingMsg.SourceAddress.Address} -> {pingMsg.DestinationAddress?.Address}");
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMsg.FarAddress, "disc v4", $"PING {pingMsg.SourceAddress.Address} -> {pingMsg.DestinationAddress?.Address}", size);
         }
         else
         {
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "HANDLER disc v4", msg.MsgType.ToString());
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", msg.MsgType.ToString(), size);
         }
+        Metrics.DiscoveryMessagesReceived.Increment(msg.MsgType);
     }
 
     public event EventHandler? OnChannelActivated;

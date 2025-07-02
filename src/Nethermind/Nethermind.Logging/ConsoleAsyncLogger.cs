@@ -1,9 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Logging
@@ -11,7 +10,7 @@ namespace Nethermind.Logging
     /// <summary>
     /// Use this class in tests only (for quick setup so there is no need to introduce NLog or other dependencies)
     /// </summary>
-    public class ConsoleAsyncLogger : ILogger
+    public class ConsoleAsyncLogger : InterfaceLogger
     {
         private readonly LogLevel _logLevel;
         private readonly string _prefix;
@@ -23,7 +22,7 @@ namespace Nethermind.Logging
             _task.Wait();
         }
 
-        private Task _task;
+        private readonly Task _task;
 
         public ConsoleAsyncLogger(LogLevel logLevel, string prefix = null)
         {
@@ -35,7 +34,7 @@ namespace Nethermind.Logging
                     {
                         foreach (string logEntry in _queuedEntries.GetConsumingEnumerable())
                         {
-                            Console.WriteLine(logEntry);
+                            Console.Error.WriteLine(logEntry);
 
                             if (_queuedEntries.IsAddingCompleted)
                             {
@@ -45,7 +44,7 @@ namespace Nethermind.Logging
                     }
                     catch (Exception e)
                     {
-                        Console.WriteLine(e);
+                        Console.Error.WriteLine(e);
                         throw;
                     }
                 },
@@ -54,7 +53,7 @@ namespace Nethermind.Logging
 
         private void Log(string text)
         {
-            _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} [{Thread.CurrentThread.ManagedThreadId}] {_prefix}{text}");
+            _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} [{Environment.CurrentManagedThreadId}] {_prefix}{text}");
         }
 
         public void Info(string text)

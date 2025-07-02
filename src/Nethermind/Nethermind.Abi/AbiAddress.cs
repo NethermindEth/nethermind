@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
+
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
@@ -10,11 +12,6 @@ namespace Nethermind.Abi
     public class AbiAddress : AbiUInt
     {
         public static readonly AbiAddress Instance = new();
-
-        static AbiAddress()
-        {
-            RegisterMapping<Address>(Instance);
-        }
 
         private AbiAddress() : base(160)
         {
@@ -36,6 +33,11 @@ namespace Nethermind.Abi
                     case string stringInput:
                         {
                             arg = new Address(stringInput);
+                            continue;
+                        }
+                    case JsonElement element when element.ValueKind == JsonValueKind.String:
+                        {
+                            arg = new Address(element.GetString()!);
                             continue;
                         }
                     default:

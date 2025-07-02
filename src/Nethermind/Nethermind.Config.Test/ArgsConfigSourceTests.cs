@@ -5,42 +5,40 @@ using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 
-namespace Nethermind.Config.Test
+namespace Nethermind.Config.Test;
+
+[Parallelizable(ParallelScope.All)]
+public class ArgsConfigSourceTests
 {
-    [TestFixture]
-    [Parallelizable(ParallelScope.All)]
-    public class ArgsConfigSourceTests
+    [Test]
+    public void Works_fine_with_unset_values()
     {
-        [Test]
-        public void Works_fine_with_unset_values()
-        {
-            Dictionary<string, string> args = new();
-            ArgsConfigSource configSource = new(args);
-            Assert.IsFalse(configSource.GetValue(typeof(int), "a", "a").IsSet);
-        }
+        Dictionary<string, string> args = new();
+        ArgsConfigSource configSource = new(args);
+        Assert.That(configSource.GetValue(typeof(int), "a", "a").IsSet, Is.False);
+    }
 
-        [Test]
-        public void Is_case_insensitive()
-        {
-            Dictionary<string, string> args = new();
-            args.Add("A.a", "12");
-            ArgsConfigSource configSource = new(args);
-            Assert.IsTrue(configSource.GetValue(typeof(int), "a", "A").IsSet);
-        }
+    [Test]
+    public void Is_case_insensitive()
+    {
+        Dictionary<string, string> args = new();
+        args.Add("A.a", "12");
+        ArgsConfigSource configSource = new(args);
+        Assert.That(configSource.GetValue(typeof(int), "a", "A").IsSet, Is.True);
+    }
 
-        [TestCase(typeof(byte), "12", (byte)12)]
-        [TestCase(typeof(int), "12", 12)]
-        [TestCase(typeof(uint), "12", 12U)]
-        [TestCase(typeof(long), "12", 12L)]
-        [TestCase(typeof(ulong), "12", 12UL)]
-        [TestCase(typeof(string), "12", "12")]
-        [TestCase(typeof(bool), "false", false)]
-        public void Can_parse_various_values(Type valueType, string valueString, object parsedValue)
-        {
-            Dictionary<string, string> args = new();
-            args.Add("A.a", valueString);
-            ArgsConfigSource configSource = new(args);
-            Assert.AreEqual(parsedValue, configSource.GetValue(valueType, "a", "A").Value);
-        }
+    [TestCase(typeof(byte), "12", (byte)12)]
+    [TestCase(typeof(int), "12", 12)]
+    [TestCase(typeof(uint), "12", 12U)]
+    [TestCase(typeof(long), "12", 12L)]
+    [TestCase(typeof(ulong), "12", 12UL)]
+    [TestCase(typeof(string), "12", "12")]
+    [TestCase(typeof(bool), "false", false)]
+    public void Can_parse_various_values(Type valueType, string valueString, object parsedValue)
+    {
+        Dictionary<string, string> args = new();
+        args.Add("A.a", valueString);
+        ArgsConfigSource configSource = new(args);
+        Assert.That(configSource.GetValue(valueType, "a", "A").Value, Is.EqualTo(parsedValue));
     }
 }

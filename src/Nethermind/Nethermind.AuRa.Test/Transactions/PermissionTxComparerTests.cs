@@ -4,7 +4,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.ComponentModel.Design;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using FluentAssertions;
@@ -20,7 +19,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Specs;
-using Nethermind.TxPool;
 using Nethermind.TxPool.Collections;
 using NSubstitute;
 using NUnit.Framework;
@@ -29,21 +27,21 @@ namespace Nethermind.AuRa.Test.Transactions
 {
     public class PermissionTxComparerTests
     {
-        private static Address[] WhitelistedSenders = new[] { TestItem.AddressC, TestItem.AddressD };
+        private static readonly Address[] WhitelistedSenders = new[] { TestItem.AddressC, TestItem.AddressD };
 
         public static IEnumerable OrderingTests
         {
             get
             {
-                Func<IEnumerable<Transaction>, IEnumerable<Transaction>> Select(Func<IEnumerable<Transaction>, IEnumerable<Transaction>> transactionSelect) =>
+                static Func<IEnumerable<Transaction>, IEnumerable<Transaction>> Select(Func<IEnumerable<Transaction>, IEnumerable<Transaction>> transactionSelect) =>
                     transactionSelect;
 
 
                 yield return new TestCaseData(null).SetName("All");
-                yield return new TestCaseData(Select(t => t.Where(tx => !WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Not whitelisted");
-                yield return new TestCaseData(Select(t => t.Where(tx => WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Only whitelisted");
-                yield return new TestCaseData(Select(t => t.Where(tx => tx.To != TestItem.AddressB))).SetName("No priority");
-                yield return new TestCaseData(Select(t => t.Where(tx => tx.To == TestItem.AddressB))).SetName("Only priority");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => !WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Not whitelisted");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Only whitelisted");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => tx.To != TestItem.AddressB))).SetName("No priority");
+                yield return new TestCaseData(Select(static t => t.Where(static tx => tx.To == TestItem.AddressB))).SetName("Only priority");
             }
         }
 
@@ -263,7 +261,6 @@ namespace Nethermind.AuRa.Test.Transactions
             blockTree.Head.Returns(block);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             var spec = new ReleaseSpec() { IsEip1559Enabled = false };
-            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(spec);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider = new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
@@ -271,15 +268,16 @@ namespace Nethermind.AuRa.Test.Transactions
                 .ThenBy(defaultComparer);
 
 
-            Dictionary<Address?, Transaction[]> txBySender = transactions.GroupBy(t => t.SenderAddress)
+            Dictionary<AddressAsKey, Transaction[]> txBySender = transactions.GroupBy(t => t.SenderAddress)
                 .ToDictionary(
-                    g => g.Key,
+                    g => (AddressAsKey)g.Key,
                     g => g.OrderBy(t => t,
                         // to simulate order coming from TxPool
                         comparer.GetPoolUniqueTxComparerByNonce()).ToArray());
 
+            const int DefaultGasLimit = 36_000_000;
 
-            Transaction[] orderedTransactions = TxPoolTxSource.Order(txBySender, comparer).ToArray();
+            Transaction[] orderedTransactions = TxPoolTxSource.Order(txBySender, comparer, _ => true, DefaultGasLimit).ToArray();
             orderedTransactions.Should().BeEquivalentTo(expectation, o => o.WithStrictOrdering());
         }
 

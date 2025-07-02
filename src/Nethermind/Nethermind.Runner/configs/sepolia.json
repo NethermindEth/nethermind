@@ -1,0 +1,43 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/sepolia.json",
+    "GenesisHash": "0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9",
+    "BaseDbPath": "nethermind_db/sepolia",
+    "LogFileName": "sepolia.log",
+    "StaticNodesPath": "Data/static-nodes-sepolia.json",
+    "MemoryHint": 1024000000
+  },
+  "TxPool": {
+    "Size": 1024
+  },
+  "Metrics": {
+    "NodeName": "Sepolia"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "UseGethLimitsInFastBlocks": true,
+    "PivotNumber": 8649000,
+    "PivotHash": "0xf5e926a76d33e26dda32328a0a0dee10d3cdaeee85700545f54e0329d7b03dd0",
+    "PivotTotalDifficulty": "17000018015853232",
+    "FastSyncCatchUpHeightDelta": 10000000000,
+    "AncientReceiptsBarrier": 1450409,
+    "AncientBodiesBarrier": 1450409
+  },
+  "Blocks": {
+    "TargetBlockGasLimit": 60000000
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Timeout": 20000,
+    "Host": "127.0.0.1",
+    "Port": 8545,
+    "AdditionalRpcUrls": [
+      "http://localhost:8551|http;ws|net;eth;subscribe;engine;web3;client"
+    ]
+  },
+  "Merge": {
+    "Enabled": true
+  }
+}

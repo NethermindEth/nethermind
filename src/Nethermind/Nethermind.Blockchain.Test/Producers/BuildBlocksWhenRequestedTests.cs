@@ -3,22 +3,19 @@
 
 using FluentAssertions;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Producers
+namespace Nethermind.Blockchain.Test.Producers;
+
+public class BuildBlocksWhenRequestedTests
 {
-    [TestFixture]
-    public class BuildBlocksWhenRequestedTests
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Manual_trigger_works()
     {
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Manual_trigger_works()
-        {
-            bool triggered = false;
-            BuildBlocksWhenRequested trigger = new();
-            trigger.TriggerBlockProduction += (s, e) => triggered = true;
-            trigger.BuildBlock();
-            triggered.Should().BeTrue();
-        }
+        bool triggered = false;
+        BuildBlocksWhenRequested trigger = new();
+        trigger.TriggerBlockProduction += (s, e) => triggered = true;
+        trigger.BuildBlock();
+        triggered.Should().BeTrue();
     }
 }

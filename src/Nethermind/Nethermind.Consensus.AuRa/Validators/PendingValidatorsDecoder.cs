@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
             RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data);
+            return new Rlp(rlpStream.Data.ToArray());
         }
 
         public void Encode(RlpStream rlpStream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -72,7 +72,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         public int GetLength(PendingValidators item, RlpBehaviors rlpBehaviors) =>
             item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
 
-        private (int Total, int Addresses) GetContentLength(PendingValidators item, RlpBehaviors rlpBehaviors)
+        private static (int Total, int Addresses) GetContentLength(PendingValidators item, RlpBehaviors rlpBehaviors)
         {
             int contentLength = Rlp.LengthOf(item.BlockNumber)
                                 + Rlp.LengthOf(item.BlockHash)
@@ -84,6 +84,6 @@ namespace Nethermind.Consensus.AuRa.Validators
             return (contentLength, addressesLength);
         }
 
-        private int GetAddressesLength(Address[] addresses) => addresses.Sum(Rlp.LengthOf);
+        private static int GetAddressesLength(Address[] addresses) => addresses.Sum(Rlp.LengthOf);
     }
 }

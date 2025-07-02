@@ -21,19 +21,12 @@ namespace Nethermind.Synchronization.Peers
                 && peerInfo.SyncPeer.ClientType == NodeClientType.OpenEthereum) // only for OE
             {
                 // try get OpenEthereum version
-                Version? openEthereumVersion = peerInfo.SyncPeer.GetOpenEthereumVersion(out int releaseCandidate);
+                Version? openEthereumVersion = peerInfo.SyncPeer.GetOpenEthereumVersion(out _);
                 if (openEthereumVersion is not null)
                 {
                     int versionComparision = openEthereumVersion.CompareTo(_openEthereumSecondRemoveGetNodeDataVersion);
                     return versionComparision >= 0 || openEthereumVersion < _openEthereumFirstRemoveGetNodeDataVersion;
                 }
-            }
-
-            // check if peer supports snap sync
-            if ((contexts & AllocationContexts.Snap) != 0)
-            {
-                // TODO: Remove when Nethermind implements snap server
-                return peerInfo.SyncPeer.ClientType != NodeClientType.Nethermind;
             }
 
             return true;

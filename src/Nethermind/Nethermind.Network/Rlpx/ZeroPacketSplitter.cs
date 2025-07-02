@@ -8,14 +8,13 @@ using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Attributes;
 using Nethermind.Logging;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx
 {
     public class ZeroPacketSplitter : MessageToByteEncoder<IByteBuffer>, IFramingAware
     {
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         public ZeroPacketSplitter(ILogManager logManager)
         {
@@ -47,7 +46,7 @@ namespace Nethermind.Network.Rlpx
                 int totalPayloadOffset = MaxFrameSize * i;
                 int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
                 int paddingSize = i == framesCount - 1 ? Frame.CalculatePadding(totalPayloadSize) : 0;
-                output.EnsureWritable(Frame.HeaderSize + framePayloadSize + paddingSize, true);
+                output.EnsureWritable(Frame.HeaderSize + framePayloadSize + paddingSize);
 
                 // 000 - 016 | header
                 // 016 - 01x | packet type
@@ -117,7 +116,7 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private int WritePacketType(int packetType, IByteBuffer output)
+        private static int WritePacketType(int packetType, IByteBuffer output)
         {
             if (packetType == 0)
             {

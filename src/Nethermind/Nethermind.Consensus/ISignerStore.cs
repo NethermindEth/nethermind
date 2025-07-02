@@ -9,6 +9,6 @@ namespace Nethermind.Consensus
     {
         void SetSigner(PrivateKey key);
 
-        void SetSigner(ProtectedPrivateKey key);
+        void SetSigner(IProtectedPrivateKey key);
     }
 }

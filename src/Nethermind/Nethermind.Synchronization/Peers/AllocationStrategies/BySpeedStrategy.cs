@@ -11,6 +11,8 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
     public class BySpeedStrategy : IPeerAllocationStrategy
     {
+        public static BySpeedStrategy FastestHeader = new BySpeedStrategy(TransferSpeedType.Headers, true);
+
         private readonly TransferSpeedType _speedType;
         private readonly bool _priority;
         private readonly decimal _minDiffPercentageForSpeedSwitch;
@@ -43,14 +45,12 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             _desiredPeersWithKnownSpeed = desiredPeersWithKnownSpeed;
         }
 
-        public bool CanBeReplaced => false;
-
         public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
             long nullSpeed = _priority ? -1 : long.MaxValue;
             List<PeerInfo> peersAsList = peers.ToList();
 
-            long peerCount = peersAsList.Count();
+            long peerCount = peersAsList.Count;
             long noSpeedPeerCount = peersAsList.Count(p => nodeStatsManager.GetOrAdd(p.SyncPeer.Node).GetAverageTransferSpeed(_speedType) is null);
             bool shouldRediscoverSpeed = _random.NextDouble() < _recalculateSpeedProbability;
             bool shouldDiscoverSpeed = (peerCount - noSpeedPeerCount) < _desiredPeersWithKnownSpeed;
@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             long peerLeft = peerCount;
             foreach (PeerInfo info in peersAsList)
             {
-                (this as IPeerAllocationStrategy).CheckAsyncState(info);
+                info.EnsureInitialized();
 
                 long? speed = nodeStatsManager.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed(_speedType);
                 long averageTransferSpeed = speed ?? 0;

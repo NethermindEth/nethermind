@@ -1,16 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Net;
 using System.Text;
 using DotNetty.Buffers;
 using DotNetty.Codecs.Base64;
 using DotNetty.Common.Utilities;
-using Nethermind.Core.Crypto;
 using Nethermind.Network.Enr;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Dns;
 
@@ -44,7 +40,7 @@ public class EnrRecordParser : IEnrRecordParser
 
     public NodeRecord ParseRecord(string nodeRecordText, IByteBuffer buffer)
     {
-        void AddPadding(IByteBuffer byteBuffer, ICharSequence base64)
+        static void AddPadding(IByteBuffer byteBuffer, ICharSequence base64)
         {
             if (base64[^1] != '=')
             {

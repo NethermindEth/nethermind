@@ -8,7 +8,7 @@ namespace Ethereum.Test.Base
     public class PostStateJson
     {
         public IndexesJson Indexes { get; set; }
-        public Keccak Hash { get; set; }
-        public Keccak Logs { get; set; }
+        public Hash256 Hash { get; set; }
+        public Hash256 Logs { get; set; }
     }
 }

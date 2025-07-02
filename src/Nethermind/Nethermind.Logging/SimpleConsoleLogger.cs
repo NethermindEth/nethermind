@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -8,7 +8,7 @@ namespace Nethermind.Logging
     /// <summary>
     /// Just use before the logger is configured
     /// </summary>
-    public class SimpleConsoleLogger : ILogger
+    public class SimpleConsoleLogger : InterfaceLogger
     {
         private SimpleConsoleLogger()
         {
@@ -41,9 +41,9 @@ namespace Nethermind.Logging
             WriteEntry(text + " " + ex);
         }
 
-        private void WriteEntry(string text)
+        private static void WriteEntry(string text)
         {
-            Console.WriteLine(DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss.ffff|") + text);
+            Console.Error.WriteLine(DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss.ffff|") + text);
         }
 
         public bool IsInfo => true;

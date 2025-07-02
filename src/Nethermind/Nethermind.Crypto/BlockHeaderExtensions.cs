@@ -12,19 +12,22 @@ namespace Nethermind.Crypto
     {
         private static readonly HeaderDecoder _headerDecoder = new();
 
-        public static Keccak CalculateHash(this BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
+        public static Hash256 CalculateHash(this BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
+            => new Hash256(CalculateValueHash(header, behaviors));
+
+        public static ValueHash256 CalculateValueHash(this BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             KeccakRlpStream stream = new();
             _headerDecoder.Encode(stream, header, behaviors);
 
-            return stream.GetHash();
+            return stream.GetValueHash();
         }
 
-        public static Keccak CalculateHash(this Block block, RlpBehaviors behaviors = RlpBehaviors.None) => CalculateHash(block.Header, behaviors);
+        public static Hash256 CalculateHash(this Block block, RlpBehaviors behaviors = RlpBehaviors.None) => CalculateHash(block.Header, behaviors);
 
-        public static Keccak GetOrCalculateHash(this BlockHeader header) => header.Hash ?? header.CalculateHash();
+        public static Hash256 GetOrCalculateHash(this BlockHeader header) => header.Hash ?? header.CalculateHash();
 
-        public static Keccak GetOrCalculateHash(this Block block) => block.Hash ?? block.CalculateHash();
+        public static Hash256 GetOrCalculateHash(this Block block) => block.Hash ?? block.CalculateHash();
 
         public static bool IsNonZeroTotalDifficulty(this Block block) => block.Header.IsNonZeroTotalDifficulty();
         public static bool IsNonZeroTotalDifficulty(this BlockHeader header) => header.TotalDifficulty is not null && header.TotalDifficulty != UInt256.Zero;

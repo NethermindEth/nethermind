@@ -13,19 +13,19 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Null_value()
         {
-            TestConverter(null!, (address, address1) => address == address1, new AddressConverter());
+            TestConverter(null!, static (address, address1) => address == address1, new AddressConverter());
         }
 
         [Test]
         public void Zero_value()
         {
-            TestConverter(Address.Zero, (address, address1) => address == address1, new AddressConverter());
+            TestConverter(Address.Zero, static (address, address1) => address == address1, new AddressConverter());
         }
 
         [Test]
         public void Some_value()
         {
-            TestConverter(TestItem.AddressA, (address, address1) => address == address1, new AddressConverter());
+            TestConverter(TestItem.AddressA, static (address, address1) => address == address1, new AddressConverter());
         }
     }
 }

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -16,60 +18,73 @@ namespace Nethermind.State
 {
     public class StorageTree : PatriciaTree
     {
-        private static readonly UInt256 CacheSize = 1024;
+        private const int LookupSize = 1024;
+        private static readonly FrozenDictionary<UInt256, byte[]> Lookup = CreateLookup();
+        public static readonly byte[] ZeroBytes = [0];
 
-        private static readonly int CacheSizeInt = (int)CacheSize;
-
-        private static readonly Dictionary<UInt256, byte[]> Cache = new(CacheSizeInt);
-
-        static StorageTree()
+        private static FrozenDictionary<UInt256, byte[]> CreateLookup()
         {
             Span<byte> buffer = stackalloc byte[32];
-            for (int i = 0; i < CacheSizeInt; i++)
+            Dictionary<UInt256, byte[]> lookup = new Dictionary<UInt256, byte[]>(LookupSize);
+            for (int i = 0; i < LookupSize; i++)
             {
                 UInt256 index = (UInt256)i;
                 index.ToBigEndian(buffer);
-                Cache[index] = Keccak.Compute(buffer).Bytes;
+                lookup[index] = Keccak.Compute(buffer).BytesToArray();
             }
+
+            return lookup.ToFrozenDictionary();
         }
 
-        public StorageTree(ITrieStore? trieStore, ILogManager? logManager)
-            : base(trieStore, Keccak.EmptyTreeHash, false, true, logManager)
+        public StorageTree(IScopedTrieStore? trieStore, ILogManager? logManager)
+            : this(trieStore, Keccak.EmptyTreeHash, logManager)
+        {
+        }
+
+        public StorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager)
+            : base(trieStore, rootHash, true, logManager)
         {
             TrieType = TrieType.Storage;
         }
-
-        public StorageTree(ITrieStore? trieStore, Keccak rootHash, ILogManager? logManager)
-            : base(trieStore, rootHash, false, true, logManager)
-        {
-            TrieType = TrieType.Storage;
-        }
-
-        private static void GetKey(in UInt256 index, in Span<byte> key)
-        {
-            if (index < CacheSize)
-            {
-                Cache[index].CopyTo(key);
-                return;
-            }
-
-            index.ToBigEndian(key);
-
-            // in situ calculation
-            KeccakHash.ComputeHashBytesToSpan(key, key);
-        }
-
 
         [SkipLocalsInit]
-        public byte[] Get(in UInt256 index, Keccak? storageRoot = null)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ComputeKey(in UInt256 index, Span<byte> key)
         {
-            Span<byte> key = stackalloc byte[32];
-            GetKey(index, key);
+            index.ToBigEndian(key);
 
-            byte[]? value = Get(key, storageRoot);
-            if (value is null)
+            // We can't direct ComputeTo the key as its also the input, so need a separate variable
+            KeccakCache.ComputeTo(key, out ValueHash256 keyHash);
+            // Which we can then directly assign to fast update the key
+            Unsafe.As<byte, ValueHash256>(ref MemoryMarshal.GetReference(key)) = keyHash;
+        }
+
+        [SkipLocalsInit]
+        public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
+        {
+            if (index < LookupSize)
             {
-                return new byte[] { 0 };
+                return GetArray(Lookup[index], storageRoot);
+            }
+
+            return GetWithKeyGenerate(in index, storageRoot);
+
+            [SkipLocalsInit]
+            byte[] GetWithKeyGenerate(in UInt256 index, Hash256 storageRoot)
+            {
+                Span<byte> key = stackalloc byte[32];
+                ComputeKey(index, key);
+                return GetArray(key, storageRoot);
+            }
+        }
+
+        public byte[] GetArray(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        {
+            ReadOnlySpan<byte> value = Get(rawKey, rootHash);
+
+            if (value.IsEmpty)
+            {
+                return ZeroBytes;
             }
 
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
@@ -79,21 +94,34 @@ namespace Nethermind.State
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)
         {
-            Span<byte> key = stackalloc byte[32];
-            GetKey(index, key);
-            SetInternal(key, value);
+            if (index < LookupSize)
+            {
+                SetInternal(Lookup[index], value);
+            }
+            else
+            {
+                SetWithKeyGenerate(in index, value);
+            }
+
+            [SkipLocalsInit]
+            void SetWithKeyGenerate(in UInt256 index, byte[] value)
+            {
+                Span<byte> key = stackalloc byte[32];
+                ComputeKey(index, key);
+                SetInternal(key, value);
+            }
         }
 
-        public void Set(Keccak key, byte[] value, bool rlpEncode = true)
+        public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true)
         {
             SetInternal(key.Bytes, value, rlpEncode);
         }
 
-        private void SetInternal(Span<byte> rawKey, byte[] value, bool rlpEncode = true)
+        private void SetInternal(ReadOnlySpan<byte> rawKey, byte[] value, bool rlpEncode = true)
         {
             if (value.IsZero())
             {
-                Set(rawKey, Array.Empty<byte>());
+                Set(rawKey, []);
             }
             else
             {

@@ -11,10 +11,12 @@ using DotNetty.Common.Concurrency;
 using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -32,7 +34,7 @@ namespace Nethermind.Network.Rlpx
         private PublicKey RemoteId => _session.RemoteNodeId;
         private readonly TaskCompletionSource<object> _initCompletionSource;
         private IChannel _channel;
-        private TimeSpan _sendLatency;
+        private readonly TimeSpan _sendLatency;
 
         public NettyHandshakeHandler(
             IMessageSerializationService serializationService,
@@ -70,17 +72,12 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                _session.RemoteHost = ((IPEndPoint)context.Channel.RemoteAddress).Address.ToString();
-                _session.RemotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
+                IPEndPoint ipEndPoint = context.Channel.RemoteAddress.ToIPEndpoint();
+                _session.RemoteHost = ipEndPoint.Address.ToString();
+                _session.RemotePort = ipEndPoint.Port;
             }
 
-            CheckHandshakeInitTimeout().ContinueWith(x =>
-            {
-                if (x.IsFaulted && _logger.IsError)
-                {
-                    _logger.Error("Error during handshake timeout logic", x.Exception);
-                }
-            });
+            _ = CheckHandshakeInitTimeout();
         }
 
         public override void ChannelInactive(IChannelHandlerContext context)
@@ -109,7 +106,9 @@ namespace Nethermind.Network.Rlpx
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            string clientId = _session?.Node?.ToString("c") ?? $"unknown {_session?.RemoteHost}";
+            string clientId = $"unknown {_session?.RemoteHost}";
+            if (_session.RemoteNodeId is not null) clientId = _session?.Node?.ToString(Node.Format.Console);
+
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
@@ -126,7 +125,7 @@ namespace Nethermind.Network.Rlpx
                 }
             }
 
-            base.ExceptionCaught(context, exception);
+            _ = context.DisconnectAsync();
         }
 
         protected override void ChannelRead0(IChannelHandlerContext context, IByteBuffer input)
@@ -160,11 +159,6 @@ namespace Nethermind.Network.Rlpx
             _initCompletionSource?.SetResult(input);
             _session.Handshake(_handshake.RemoteNodeId);
 
-            if (_role == HandshakeRole.Recipient)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(OneTimeLengthFieldBasedFrameDecoder)}  for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
-            }
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ReadTimeoutHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(new ReadTimeoutHandler(TimeSpan.FromSeconds(30))); // read timeout instead of session monitoring
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
@@ -205,20 +199,31 @@ namespace Nethermind.Network.Rlpx
 
         private async Task CheckHandshakeInitTimeout()
         {
-            Task<object> receivedInitMsgTask = _initCompletionSource.Task;
-            CancellationTokenSource delayCancellation = new();
-            Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(Timeouts.Handshake, delayCancellation.Token));
+            try
+            {
+                Task<object> receivedInitMsgTask = _initCompletionSource.Task;
+                CancellationTokenSource delayCancellation = new();
+                Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(Timeouts.Handshake, delayCancellation.Token));
 
-            if (firstTask != receivedInitMsgTask)
-            {
-                Metrics.HandshakeTimeouts++;
-                if (_logger.IsTrace) _logger.Trace($"Disconnecting due to timeout for handshake: {_session.RemoteNodeId}@{_session.RemoteHost}:{_session.RemotePort}");
-                //It will trigger channel.CloseCompletion which will trigger DisconnectAsync on the session
-                await _channel.DisconnectAsync();
+                if (firstTask != receivedInitMsgTask)
+                {
+                    Metrics.HandshakeTimeouts++;
+                    if (_logger.IsTrace) _logger.Trace($"Disconnecting due to timeout for handshake: {_session.RemoteNodeId}@{_session.RemoteHost}:{_session.RemotePort}");
+                    //It will trigger channel.CloseCompletion which will trigger DisconnectAsync on the session
+                    await _channel.DisconnectAsync();
+                }
+                else
+                {
+                    delayCancellation.Cancel();
+                }
             }
-            else
+            catch (Exception ex)
             {
-                delayCancellation.Cancel();
+
+                if (_logger.IsError)
+                {
+                    _logger.Error("Error during handshake timeout logic", ex);
+                }
             }
         }
     }

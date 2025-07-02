@@ -6,11 +6,14 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -21,13 +24,19 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers;
 
-public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocolHandler
+public class P2PProtocolHandler(
+    ISession session,
+    PublicKey localNodeId,
+    INodeStatsManager nodeStatsManager,
+    IMessageSerializationService serializer,
+    ILogManager logManager)
+    : ProtocolHandlerBase(session, nodeStatsManager, serializer, logManager), IPingSender, IP2PProtocolHandler
 {
     private TaskCompletionSource<Packet> _pongCompletionSource;
-    private readonly INodeStatsManager _nodeStatsManager;
+    private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
     private bool _sentHello;
-    private List<Capability> _agreedCapabilities { get; }
-    private List<Capability> _availableCapabilities { get; set; }
+    private readonly List<Capability> _agreedCapabilities = new();
+    private List<Capability> _availableCapabilities = new();
 
     private byte _protocolVersion = 5;
 
@@ -39,47 +48,28 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     protected override TimeSpan InitTimeout => Timeouts.P2PHello;
 
-    public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
-    {
-        new(Protocol.Eth, 66)
-    };
-
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
     public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
-    private readonly List<Capability> SupportedCapabilities = DefaultCapabilities.ToList();
+    private readonly List<Capability> _supportedCapabilities = new List<Capability>();
 
-    public int ListenPort { get; }
-    public PublicKey LocalNodeId { get; }
-    public string RemoteClientId { get; private set; }
+    public int ListenPort { get; } = session.LocalPort;
+    public PublicKey LocalNodeId { get; } = localNodeId;
+    private string RemoteClientId { get; set; }
 
-    public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+    public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 
-    public override event EventHandler<ProtocolEventArgs> SubprotocolRequested;
-
-    public P2PProtocolHandler(
-        ISession session,
-        PublicKey localNodeId,
-        INodeStatsManager nodeStatsManager,
-        IMessageSerializationService serializer,
-        ILogManager logManager) : base(session, nodeStatsManager, serializer, logManager)
-    {
-        _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-        LocalNodeId = localNodeId;
-        ListenPort = session.LocalPort;
-        _agreedCapabilities = new List<Capability>();
-        _availableCapabilities = new List<Capability>();
-    }
+    public override event EventHandler<ProtocolEventArgs>? SubprotocolRequested;
 
     public bool HasAvailableCapability(Capability capability) => _availableCapabilities.Contains(capability);
     public bool HasAgreedCapability(Capability capability) => _agreedCapabilities.Contains(capability);
     public void AddSupportedCapability(Capability capability)
     {
-        if (SupportedCapabilities.Contains(capability))
+        if (_supportedCapabilities.Contains(capability))
         {
             return;
         }
 
-        SupportedCapabilities.Add(capability);
+        _supportedCapabilities.Add(capability);
     }
 
     public override void Init()
@@ -88,30 +78,27 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
         // We are expecting to receive Hello message anytime from the handshake completion,
         // irrespective of sending Hello from our side
-        CheckProtocolInitTimeout().ContinueWith(x =>
-        {
-            if (x.IsFaulted && Logger.IsError)
-            {
-                Logger.Error("Error during p2pProtocol handler timeout logic", x.Exception);
-            }
-        });
+        _ = CheckProtocolInitTimeout();
     }
 
     public override void HandleMessage(Packet msg)
     {
+        int size = msg.Data.Length;
+
         switch (msg.PacketType)
         {
             case P2PMessageCode.Hello:
                 {
-                    Metrics.HellosReceived++;
-                    HandleHello(Deserialize<HelloMessage>(msg.Data));
+                    using HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
+                    HandleHello(helloMessage);
+                    ReportIn(helloMessage, size);
 
                     // We need to initialize subprotocols in alphabetical order. Protocols are using AdaptiveId,
                     // which should be constant for the whole session. Some protocols (like Eth) are sending messages
                     // on initialization and we need to avoid changing theirs AdaptiveId by initializing protocols,
                     // which are alphabetically before already initialized ones.
                     foreach (Capability capability in
-                        _agreedCapabilities.GroupBy(c => c.ProtocolCode).Select(c => c.OrderBy(v => v.Version).Last()).OrderBy(c => c.ProtocolCode))
+                        _agreedCapabilities.GroupBy(static c => c.ProtocolCode).Select(static c => c.OrderBy(static v => v.Version).Last()).OrderBy(static c => c.ProtocolCode))
                     {
                         if (Logger.IsTrace) Logger.Trace($"{Session} Starting protocolHandler for {capability.ProtocolCode} v{capability.Version} on {Session.RemotePort}");
                         SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));
@@ -121,39 +108,45 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                 }
             case P2PMessageCode.Disconnect:
                 {
-                    DisconnectMessage disconnectMessage = Deserialize<DisconnectMessage>(msg.Data);
-                    ReportIn(disconnectMessage);
+                    using DisconnectMessage disconnectMessage = Deserialize<DisconnectMessage>(msg.Data);
+                    ReportIn(disconnectMessage, size);
+
+                    EthDisconnectReason disconnectReason =
+                        FastEnum.IsDefined((EthDisconnectReason)disconnectMessage.Reason)
+                            ? (EthDisconnectReason)disconnectMessage.Reason
+                            : EthDisconnectReason.Other;
+
                     if (Logger.IsTrace)
                     {
-                        string reason = FastEnum.IsDefined<DisconnectReason>((byte)disconnectMessage.Reason)
-                            ? ((DisconnectReason)disconnectMessage.Reason).ToName()
-                            : disconnectMessage.Reason.ToString();
-                        Logger.Trace($"{Session} Received disconnect ({reason}) on {Session.RemotePort}");
+                        Logger.Trace(!FastEnum.IsDefined((EthDisconnectReason)disconnectMessage.Reason)
+                            ? $"{Session} unknown disconnect reason ({disconnectMessage.Reason}) on {Session.RemotePort}"
+                            : $"{Session} Received disconnect ({disconnectReason}) on {Session.RemotePort}");
                     }
 
-                    Close(disconnectMessage.Reason);
+                    Close(disconnectReason);
                     break;
                 }
             case P2PMessageCode.Ping:
                 {
                     if (Logger.IsTrace) Logger.Trace($"{Session} Received PING on {Session.RemotePort}");
                     HandlePing();
+                    ReportIn("Ping", size);
                     break;
                 }
             case P2PMessageCode.Pong:
                 {
                     if (Logger.IsTrace) Logger.Trace($"{Session} Received PONG on {Session.RemotePort}");
                     HandlePong(msg);
+                    ReportIn("Pong", size);
                     break;
                 }
             case P2PMessageCode.AddCapability:
                 {
-                    AddCapabilityMessage message = Deserialize<AddCapabilityMessage>(msg.Data);
+                    using AddCapabilityMessage message = Deserialize<AddCapabilityMessage>(msg.Data);
                     Capability capability = message.Capability;
                     _agreedCapabilities.Add(message.Capability);
-                    SupportedCapabilities.Add(message.Capability);
-                    if (Logger.IsTrace)
-                        Logger.Trace($"{Session.RemoteNodeId} Starting handler for {capability} on {Session.RemotePort}");
+                    _supportedCapabilities.Add(message.Capability);
+                    if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} Starting handler for {capability} on {Session.RemotePort}");
                     SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));
                     break;
                 }
@@ -165,7 +158,6 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     private void HandleHello(HelloMessage hello)
     {
-        ReportIn(hello);
         bool isInbound = !_sentHello;
 
         if (Logger.IsTrace) Logger.Trace($"{Session} P2P received hello.");
@@ -200,11 +192,11 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
         _protocolVersion = hello.P2PVersion;
 
-        List<Capability> capabilities = hello.Capabilities;
+        IOwnedReadOnlyList<Capability>? capabilities = hello.Capabilities;
         _availableCapabilities = new List<Capability>(capabilities);
         foreach (Capability theirCapability in capabilities)
         {
-            if (SupportedCapabilities.Contains(theirCapability))
+            if (_supportedCapabilities.Contains(theirCapability))
             {
                 if (Logger.IsTrace)
                     Logger.Trace($"{Session.RemoteNodeId} Agreed on {theirCapability.ProtocolCode} v{theirCapability.Version}");
@@ -222,7 +214,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         {
             _nodeStatsManager.ReportFailedValidation(Session.Node, CompatibilityValidationType.Capabilities);
             Session.InitiateDisconnect(
-                InitiateDisconnectReason.NoCapabilityMatched,
+                DisconnectReason.NoCapabilityMatched,
                 $"capabilities: {string.Join(", ", capabilities)}");
         }
 
@@ -232,7 +224,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         {
             P2PVersion = ProtocolVersion,
             ClientId = RemoteClientId,
-            Capabilities = capabilities,
+            Capabilities = _availableCapabilities,
             ListenPort = hello.ListenPort
         };
 
@@ -257,7 +249,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         if (Logger.IsTrace) Logger.Trace($"{Session} P2P sending ping on {Session.RemotePort} ({RemoteClientId})");
         Send(PingMessage.Instance);
         _nodeStatsManager.ReportEvent(Session.Node, NodeStatsEventType.P2PPingOut);
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        long startTime = Stopwatch.GetTimestamp();
 
         CancellationTokenSource delayCancellation = new();
         try
@@ -272,7 +264,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                 return false;
             }
 
-            long latency = stopwatch.ElapsedMilliseconds;
+            long latency = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
             _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Latency, latency);
             return true;
         }
@@ -287,24 +279,25 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
     {
         if (Logger.IsTrace)
             Logger.Trace($"Sending disconnect {disconnectReason} ({details}) to {Session.Node:s}");
-        DisconnectMessage message = new(disconnectReason);
-        Send(message);
+        DisconnectMessage message = new(disconnectReason.ToEthDisconnectReason());
         if (NetworkDiagTracer.IsEnabled)
             NetworkDiagTracer.ReportDisconnect(Session.Node.Address, $"Local {disconnectReason} {details}");
+        Send(message);
+        Dispose();
     }
 
     private void SendHello()
     {
         if (Logger.IsTrace)
         {
-            Logger.Trace($"{Session} {Name} sending hello with Client ID {ProductInfo.ClientId}, " +
+            Logger.Trace($"{Session} {Name} sending hello with Client ID {ProductInfo.PublicClientId}, " +
                          $"protocol {Name}, listen port {ListenPort}");
         }
 
         HelloMessage helloMessage = new()
         {
-            Capabilities = SupportedCapabilities,
-            ClientId = ProductInfo.ClientId,
+            Capabilities = _supportedCapabilities.ToPooledList(),
+            ClientId = ProductInfo.PublicClientId,
             NodeId = LocalNodeId,
             ListenPort = ListenPort,
             P2PVersion = ProtocolVersion
@@ -312,40 +305,36 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
         _sentHello = true;
         Send(helloMessage);
-        Metrics.HellosSent++;
     }
 
     private void HandlePing()
     {
-        ReportIn("Ping");
         if (Logger.IsTrace) Logger.Trace($"{Session} P2P responding to ping");
         Send(PongMessage.Instance);
     }
 
-    private void Close(int disconnectReasonId)
+    private void Close(EthDisconnectReason ethDisconnectReason)
     {
-        DisconnectReason disconnectReason = (DisconnectReason)disconnectReasonId;
-
-        if (disconnectReason != DisconnectReason.TooManyPeers &&
-            disconnectReason != DisconnectReason.Other &&
-            disconnectReason != DisconnectReason.DisconnectRequested)
+        Dispose();
+        if (ethDisconnectReason != EthDisconnectReason.TooManyPeers &&
+            ethDisconnectReason != EthDisconnectReason.Other &&
+            ethDisconnectReason != EthDisconnectReason.DisconnectRequested)
         {
-            if (Logger.IsDebug) Logger.Debug($"{Session} received disconnect [{disconnectReason}]");
+            if (Logger.IsDebug) Logger.Debug($"{Session} received disconnect [{ethDisconnectReason}]");
         }
         else
         {
-            if (Logger.IsTrace) Logger.Trace($"{Session} P2P received disconnect [{disconnectReason}]");
+            if (Logger.IsTrace) Logger.Trace($"{Session} P2P received disconnect [{ethDisconnectReason}]");
         }
 
         // Received disconnect message, triggering direct TCP disconnection
-        Session.MarkDisconnected(disconnectReason, DisconnectType.Remote, "message");
+        Session.MarkDisconnected(ethDisconnectReason.ToDisconnectReason(), DisconnectType.Remote, "message");
     }
 
     public override string Name => Protocol.P2P;
 
     private void HandlePong(Packet msg)
     {
-        ReportIn("Pong");
         if (Logger.IsTrace) Logger.Trace($"{Session} sending P2P pong");
         _nodeStatsManager.ReportEvent(Session.Node, NodeStatsEventType.P2PPingIn);
         _pongCompletionSource?.TrySetResult(msg);
@@ -353,5 +342,8 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     public override void Dispose()
     {
+        // Clear Events if set
+        ProtocolInitialized = null;
+        SubprotocolRequested = null;
     }
 }

@@ -6,9 +6,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
-    internal class ChainSpecEthereumSealJson
+    public class ChainSpecEthereumSealJson
     {
         public UInt256 Nonce { get; set; }
-        public Keccak MixHash { get; set; }
+        public Hash256 MixHash { get; set; }
     }
 }

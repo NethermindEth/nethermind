@@ -26,12 +26,12 @@ public class DnsClient : IDnsClient
     {
         if (_client.NameServers.Count == 0)
         {
-            return Enumerable.Empty<string>();
+            return [];
         }
 
         string queryString = $"{(string.IsNullOrWhiteSpace(query) ? string.Empty : (query + "."))}{_domain}";
         DnsQuestion rootQuestion = new(queryString, QueryType.TXT);
         IDnsQueryResponse response = await _client.QueryAsync(rootQuestion, CancellationToken.None);
-        return response.Answers.OfType<TxtRecord>().Select(txt => string.Join(string.Empty, txt.Text));
+        return response.Answers.OfType<TxtRecord>().Select(static txt => string.Join(string.Empty, txt.Text));
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Network.P2P.Messages;
 
@@ -11,26 +12,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public override int PacketType { get; } = Eth62MessageCode.BlockBodies;
         public override string Protocol { get; } = "eth";
 
+        public OwnedBlockBodies? Bodies { get; set; }
+
         public BlockBodiesMessage()
         {
         }
 
-        public BlockBodiesMessage(Block[] blocks)
+        public BlockBodiesMessage(IReadOnlyList<Block> blocks)
         {
-            Bodies = new BlockBody[blocks.Length];
-            for (int i = 0; i < blocks.Length; i++)
+            BlockBody[] bodies = new BlockBody[blocks.Count];
+            for (int i = 0; i < blocks.Count; i++)
             {
-                Bodies[i] = blocks[i] is null ? null : blocks[i].Body;
+                bodies[i] = blocks[i]?.Body;
             }
+
+            Bodies = new OwnedBlockBodies(bodies);
         }
 
-        public BlockBodiesMessage(BlockBody[] bodies)
+        public BlockBodiesMessage(BlockBody?[] bodies)
         {
-            Bodies = bodies;
+            Bodies = new OwnedBlockBodies(bodies);
         }
 
-        public BlockBody[] Bodies { get; set; }
-
-        public override string ToString() => $"{nameof(BlockBodiesMessage)}({Bodies?.Length ?? 0})";
+        public override string ToString() => $"{nameof(BlockBodiesMessage)}({Bodies?.Bodies?.Length ?? 0})";
     }
 }

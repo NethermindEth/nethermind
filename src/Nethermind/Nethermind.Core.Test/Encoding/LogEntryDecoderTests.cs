@@ -9,75 +9,74 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test.Encoding
+namespace Nethermind.Core.Test.Encoding;
+
+public class LogEntryDecoderTests
 {
-    [TestFixture]
-    public class LogEntryDecoderTests
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Can_do_roundtrip(bool valueDecode)
     {
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Can_do_roundtrip(bool valueDecode)
+        LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
+        Rlp rlp = Rlp.Encode(logEntry);
+        LogEntry decoded = valueDecode ? Rlp.Decode<LogEntry>(rlp.Bytes.AsSpan()) : Rlp.Decode<LogEntry>(rlp);
+
+        Assert.That(decoded.Data, Is.EqualTo(logEntry.Data), "data");
+        Assert.That(decoded.Address, Is.EqualTo(logEntry.Address), "address");
+        Assert.That(decoded.Topics, Is.EqualTo(logEntry.Topics), "topics");
+    }
+
+    [Test]
+    public void Can_do_roundtrip_ref_struct()
+    {
+        LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
+        Rlp rlp = Rlp.Encode(logEntry);
+        Rlp.ValueDecoderContext valueDecoderContext = new(rlp.Bytes);
+        LogEntryDecoder.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out LogEntryStructRef decoded);
+
+        Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
+        Assert.That(logEntry.Address == decoded.Address, "address");
+
+        Span<byte> buffer = stackalloc byte[32];
+        KeccaksIterator iterator = new(decoded.TopicsRlp, buffer);
+        for (int i = 0; i < logEntry.Topics.Length; i++)
         {
-            LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
-            Rlp rlp = Rlp.Encode(logEntry);
-            LogEntry decoded = valueDecode ? Rlp.Decode<LogEntry>(rlp.Bytes.AsSpan()) : Rlp.Decode<LogEntry>(rlp);
-
-            Assert.AreEqual(logEntry.Data, decoded.Data, "data");
-            Assert.AreEqual(logEntry.LoggersAddress, decoded.LoggersAddress, "address");
-            Assert.AreEqual(logEntry.Topics, decoded.Topics, "topics");
+            iterator.TryGetNext(out Hash256StructRef keccak);
+            Assert.That(logEntry.Topics[i] == keccak, $"topics[{i}]");
         }
+    }
 
-        [Test]
-        public void Can_do_roundtrip_ref_struct()
-        {
-            LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
-            Rlp rlp = Rlp.Encode(logEntry);
-            Rlp.ValueDecoderContext valueDecoderContext = new(rlp.Bytes);
-            LogEntryDecoder.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out LogEntryStructRef decoded);
+    [Test]
+    public void Can_handle_nulls()
+    {
+        Rlp rlp = Rlp.Encode((LogEntry)null!);
+        LogEntry decoded = Rlp.Decode<LogEntry>(rlp);
+        Assert.That(decoded, Is.Null);
+    }
 
-            Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
-            Assert.That(logEntry.LoggersAddress == decoded.LoggersAddress, "address");
+    [Test]
+    public void Can_do_roundtrip_rlp_stream()
+    {
+        LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
+        LogEntryDecoder decoder = LogEntryDecoder.Instance;
 
-            KeccaksIterator iterator = new(decoded.TopicsRlp);
-            for (int i = 0; i < logEntry.Topics.Length; i++)
-            {
-                iterator.TryGetNext(out KeccakStructRef keccak);
-                Assert.That(logEntry.Topics[i] == keccak, $"topics[{i}]");
-            }
-        }
+        Rlp encoded = decoder.Encode(logEntry);
+        LogEntry deserialized = decoder.Decode(new RlpStream(encoded.Bytes))!;
 
-        [Test]
-        public void Can_handle_nulls()
-        {
-            Rlp rlp = Rlp.Encode((LogEntry)null!);
-            LogEntry decoded = Rlp.Decode<LogEntry>(rlp);
-            Assert.Null(decoded);
-        }
+        Assert.That(deserialized.Data, Is.EqualTo(logEntry.Data), "data");
+        Assert.That(deserialized.Address, Is.EqualTo(logEntry.Address), "address");
+        Assert.That(deserialized.Topics, Is.EqualTo(logEntry.Topics), "topics");
+    }
 
-        [Test]
-        public void Can_do_roundtrip_rlp_stream()
-        {
-            LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
-            LogEntryDecoder decoder = LogEntryDecoder.Instance;
+    [Test]
+    public void Rlp_stream_and_standard_have_same_results()
+    {
+        LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
+        LogEntryDecoder decoder = LogEntryDecoder.Instance;
 
-            Rlp encoded = decoder.Encode(logEntry);
-            LogEntry deserialized = decoder.Decode(new RlpStream(encoded.Bytes))!;
+        Rlp rlpStreamResult = decoder.Encode(logEntry);
 
-            Assert.AreEqual(logEntry.Data, deserialized.Data, "data");
-            Assert.AreEqual(logEntry.LoggersAddress, deserialized.LoggersAddress, "address");
-            Assert.AreEqual(logEntry.Topics, deserialized.Topics, "topics");
-        }
-
-        [Test]
-        public void Rlp_stream_and_standard_have_same_results()
-        {
-            LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
-            LogEntryDecoder decoder = LogEntryDecoder.Instance;
-
-            Rlp rlpStreamResult = decoder.Encode(logEntry);
-
-            Rlp rlp = decoder.Encode(logEntry);
-            Assert.AreEqual(rlp.Bytes.ToHexString(), rlpStreamResult.Bytes.ToHexString());
-        }
+        Rlp rlp = decoder.Encode(logEntry);
+        Assert.That(rlpStreamResult.Bytes.ToHexString(), Is.EqualTo(rlp.Bytes.ToHexString()));
     }
 }

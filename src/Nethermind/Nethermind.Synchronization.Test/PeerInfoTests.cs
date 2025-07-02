@@ -15,7 +15,6 @@ namespace Nethermind.Synchronization.Test
     [TestFixture(AllocationContexts.Headers)]
     [TestFixture(AllocationContexts.Bodies)]
     [TestFixture(AllocationContexts.State)]
-    [TestFixture(AllocationContexts.Witness)]
     [TestFixture(AllocationContexts.All)]
     [Parallelizable(ParallelScope.All)]
     public class PeerInfoTests
@@ -122,10 +121,10 @@ namespace Nethermind.Synchronization.Test
             PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             peerInfo.TryAllocate(AllocationContexts.Blocks);
             peerInfo.IsAllocated(AllocationContexts.Bodies).Should().BeTrue();
-            peerInfo.IsAllocated(AllocationContexts.Headers).Should().BeTrue();
+            peerInfo.IsAllocated(AllocationContexts.Headers).Should().BeFalse();
             peerInfo.IsAllocated(AllocationContexts.Receipts).Should().BeTrue();
             peerInfo.CanBeAllocated(AllocationContexts.Bodies).Should().BeFalse();
-            peerInfo.CanBeAllocated(AllocationContexts.Headers).Should().BeFalse();
+            peerInfo.CanBeAllocated(AllocationContexts.Headers).Should().BeTrue();
             peerInfo.CanBeAllocated(AllocationContexts.Receipts).Should().BeFalse();
 
             peerInfo.Free(AllocationContexts.Receipts);

@@ -1,0 +1,43 @@
+name: Update OP Plugin diff branch
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or tag
+        required: true
+        default: master
+
+jobs:
+  op-plugin-diff:
+    name: Update OP plugin diff branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub app token
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+          token: ${{ steps.gh-app.outputs.token }}
+      - name: Check out no-op-plugin branch
+        run: git checkout -b no-op-plugin
+      - name: Remove Optimism stuff
+        run: |
+          rm -rf src/Nethermind/Nethermind.Optimism
+          rm -rf src/Nethermind/Nethermind.Optimism.Test
+          sed -i "/Nethermind.Optimism/d" src/Nethermind/Nethermind.slnx
+          sed -i "/Nethermind.Optimism.Test/d" src/Nethermind/Nethermind.slnx
+      - name: Push changes
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git add -A
+          git commit -am "Remove Optimism stuff" || echo "No changes to commit"
+          git push origin no-op-plugin -f || echo "Nothing to push"

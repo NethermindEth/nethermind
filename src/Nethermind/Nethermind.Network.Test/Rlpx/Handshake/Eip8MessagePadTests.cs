@@ -16,13 +16,13 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             byte[] message = { 1 };
             int lengthBeforePadding = message.Length;
 
-            TestRandom testRandom = new(i => 0, i => new byte[i]);
+            TestRandom testRandom = new(static i => 0, static i => new byte[i]);
 
             Eip8MessagePad pad = new(testRandom);
             message = pad.Pad(message);
 
-            Assert.AreEqual(lengthBeforePadding + 100, message.Length, "incorrect length");
-            Assert.AreEqual(message[0], 1, "first byte touched");
+            Assert.That(message.Length, Is.EqualTo(lengthBeforePadding + 100), "incorrect length");
+            Assert.That(message[0], Is.EqualTo(1), "first byte touched");
         }
 
         [Test]
@@ -31,13 +31,13 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             byte[] message = { 1 };
             int lengthBeforePadding = message.Length;
 
-            TestRandom testRandom = new(i => i - 1, i => new byte[i]);
+            TestRandom testRandom = new(static i => i - 1, static i => new byte[i]);
 
             Eip8MessagePad pad = new(testRandom);
             message = pad.Pad(message);
 
-            Assert.AreEqual(lengthBeforePadding + 300, message.Length, "incorrect length");
-            Assert.AreEqual(message[0], 1, "first byte touched");
+            Assert.That(message.Length, Is.EqualTo(lengthBeforePadding + 300), "incorrect length");
+            Assert.That(message[0], Is.EqualTo(1), "first byte touched");
         }
     }
 }

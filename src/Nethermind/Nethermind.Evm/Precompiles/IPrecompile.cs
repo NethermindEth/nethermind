@@ -9,12 +9,22 @@ namespace Nethermind.Evm.Precompiles
 {
     public interface IPrecompile
     {
-        Address Address { get; }
+        static virtual Address Address => Address.Zero;
 
         long BaseGasCost(IReleaseSpec releaseSpec);
 
-        long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
+        long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
-        (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
+        // N.B. returns byte array so that inputData cannot be returned
+        // this can lead to the wrong value being returned due to the cache modifying inputData
+        (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
+
+        protected static (byte[], bool) Failure { get; } = (Array.Empty<byte>(), false);
+    }
+
+
+    public interface IPrecompile<TPrecompileTypeInstance> : IPrecompile
+    {
+        static TPrecompileTypeInstance Instance { get; }
     }
 }

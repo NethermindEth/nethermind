@@ -51,7 +51,10 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         MarkAsProcessed = 128,
 
-        All = 255,
+        /// <summary>
+        /// Forces to run on top of the specified block state, instead of reverting to the previous one.
+        /// </summary>
+        ForceSameBlock = 1 << 8,
 
         /// <summary>
         /// Combination of switches for block producers when they preprocess block for state root calculation.
@@ -62,6 +65,12 @@ namespace Nethermind.Consensus.Processing
         /// EVM tracing needs to process blocks without storing the data on chain.
         /// </summary>
         Trace = ForceProcessing | ReadOnlyChain | DoNotVerifyNonce | NoValidation,
+
+        /// <summary>
+        /// EVM tracing needs to process one or more transactions on top of the specified block (instead of the previous one)
+        /// without storing the data on chain.
+        /// </summary>
+        TraceTransactions = Trace | ForceSameBlock,
 
         /// <summary>
         /// Processing options for engine_NewPayload

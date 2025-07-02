@@ -47,7 +47,7 @@ namespace Nethermind.Abi
 
         public override byte[] Encode(object? arg, bool packed)
         {
-            IEnumerable<object?> GetEnumerable(ITuple tuple)
+            static IEnumerable<object?> GetEnumerable(ITuple tuple)
             {
                 for (int i = 0; i < tuple.Length; i++)
                 {
@@ -69,13 +69,21 @@ namespace Nethermind.Abi
         private static Type GetCSharpType(AbiType[] elements)
         {
             Type genericType = Type.GetType("System.ValueTuple`" + elements.Length)!;
-            Type[] typeArguments = elements.Select(v => v.CSharpType).ToArray();
+            Type[] typeArguments = elements.Select(static v => v.CSharpType).ToArray();
             return genericType.MakeGenericType(typeArguments);
         }
     }
 
     public class AbiTuple<T> : AbiType where T : new()
     {
+        static AbiTuple()
+        {
+            if (!IsMappingRegistered<T>())
+            {
+                AbiType.RegisterMapping<T>(new AbiTuple<T>());
+            }
+        }
+
         private readonly PropertyInfo[] _properties;
         private readonly AbiType[] _elements;
         public override string Name { get; }
@@ -86,7 +94,7 @@ namespace Nethermind.Abi
             _properties = typeof(T).GetProperties();
             _elements = _properties.Select(GetAbiType).ToArray();
             Name = $"({string.Join(",", _elements.AsEnumerable())})";
-            IsDynamic = _elements.Any(p => p.IsDynamic);
+            IsDynamic = _elements.Any(static p => p.IsDynamic);
         }
 
         public override (object, int) Decode(byte[] data, int position, bool packed)

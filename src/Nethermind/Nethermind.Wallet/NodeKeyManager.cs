@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using System.IO.Abstractions;
 using System.Security;
 using Nethermind.Core;
@@ -115,7 +114,7 @@ namespace Nethermind.Wallet
                         return privateKey;
                     }
 
-                    if (_logger.IsError) _logger.Error($"Not able to unlock the key for {account}");
+                    if (_logger.IsError) _logger.Error($"Not able to unlock the key for {account} due to error: '{result.Error}'");
                     // continue to the other methods
                 }
                 catch (Exception e)

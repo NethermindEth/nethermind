@@ -4,54 +4,97 @@
 using System;
 using Nethermind.Config;
 
-namespace Nethermind.Db
+namespace Nethermind.Db;
+
+[ConfigCategory(Description = "Configuration of the pruning parameters (pruning is the process of removing some of the intermediary state nodes - it saves some disk space but makes most of the historical state queries fail).")]
+public interface IPruningConfig : IConfig
 {
-    [ConfigCategory(Description = "Configuration of the pruning parameters (pruning is the process of removing some of the intermediary state nodes - it saves some disk space but makes most of the historical state queries fail).")]
-    public interface IPruningConfig : IConfig
-    {
-        [ConfigItem(Description = "Enables in-memory pruning. Obsolete, use Mode instead.", DefaultValue = "true", HiddenFromDocs = true)]
-        [Obsolete]
-        public bool Enabled { get; set; }
+    [ConfigItem(Description = "Enables in-memory pruning. Obsolete, use Mode instead.", DefaultValue = "true", HiddenFromDocs = true)]
+    [Obsolete]
+    public bool Enabled { get; set; }
 
-        [ConfigItem(Description = "Sets pruning mode. Possible values: 'None', 'Memory', 'Full', 'Hybrid'.", DefaultValue = "Hybrid")]
-        PruningMode Mode { get; set; }
+    [ConfigItem(Description = "The pruning mode.", DefaultValue = "Hybrid")]
+    PruningMode Mode { get; set; }
 
-        [ConfigItem(Description = "'Memory' pruning: Pruning cache size in MB (amount if historical nodes data to store in cache - the bigger the cache the bigger the disk space savings).", DefaultValue = "1024")]
-        long CacheMb { get; set; }
+    [ConfigItem(Description = "The in-memory cache size, in MB. Bigger size tend to improve performance.", DefaultValue = "1280")]
+    long CacheMb { get; set; }
 
-        [ConfigItem(
-            Description = "'Memory' pruning: Defines how often blocks will be persisted even if not required by cache memory usage (the bigger the value the bigger the disk space savings)",
-            DefaultValue = "8192")]
-        long PersistenceInterval { get; set; }
+    [ConfigItem(Description = "The in-memory cache size for dirty nodes, in MB. Increasing this reduces pruning interval but cause increased pruning time.", DefaultValue = "1024")]
+    long DirtyCacheMb { get; set; }
 
-        [ConfigItem(
-            Description = "'Full' pruning: Defines threshold in MB to trigger full pruning, depends on 'Mode' and 'FullPruningTrigger'.",
-            DefaultValue = "256000")]
-        long FullPruningThresholdMb { get; set; }
+    [ConfigItem(
+        Description = "The block persistence frequency. Only applied with archive node.",
+        DefaultValue = "1")]
+    long PersistenceInterval { get; set; }
 
-        [ConfigItem(
-            Description = "'Full' pruning: Defines trigger for full pruning, manuel trigger is always supported via admin_prune RPC call. " +
-                          "Either size of StateDB or free space left on Volume where StateDB is located can be configured as auto triggers. " +
-                          "Possible values: 'Manual', 'StateDbSize', 'VolumeFreeSpace'.",
-            DefaultValue = "Manual")]
-        FullPruningTrigger FullPruningTrigger { get; set; }
+    [ConfigItem(
+        Description = $"The threshold, in MB, to trigger full pruning. Depends on `{nameof(Mode)}` and `{nameof(FullPruningTrigger)}`.",
+        DefaultValue = "256000")]
+    long FullPruningThresholdMb { get; set; }
 
-        [ConfigItem(
-            Description = "'Full' pruning: Defines how many parallel tasks and potentially used threads can be created by full pruning. 0 - number of logical processors, 1 - full pruning will run on single thread. " +
-                          "Recommended value depends on the type of the node. If the node needs to be responsive (its RPC or Validator node) then recommended value is below the number of logical processors. " +
-                          "If the node doesn't have much other responsibilities but needs to be reliably be able to follow the chain without any delays and produce live logs - the default value is recommended. " +
-                          "If the node doesn't have to be responsive, has very fast I/O (like NVME) and the shortest pruning time is to be achieved, this can be set to 2-3x of the number of logical processors.",
-            DefaultValue = "0")]
-        int FullPruningMaxDegreeOfParallelism { get; set; }
+    [ConfigItem(
+        Description = "The full pruning trigger.", DefaultValue = "Manual")]
+    FullPruningTrigger FullPruningTrigger { get; set; }
 
-        [ConfigItem(Description = "In order to not exhaust disk writes, there is a minimum delay between allowed full pruning operations.", DefaultValue = "240")]
-        int FullPruningMinimumDelayHours { get; set; }
+    [ConfigItem(
+        Description = """
+            The max number of parallel tasks that can be used by full pruning.
 
-        [ConfigItem(Description = "Determines what to do after Nethermind completes a full prune. " +
-                                  "'None': does not take any special action. " +
-                                  "'ShutdownOnSuccess': shuts Nethermind down if the full prune succeeded. " +
-                                  "'AlwaysShutdown': shuts Nethermind down once the prune completes, whether it succeeded or failed.",
-            DefaultValue = "None")]
-        FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; }
-    }
+            Allowed values:
+
+            - `-1`: Uses the number of logical processors.
+            - `0`: Uses 25% of logical processors.
+            - `1`: Runs on a single thread.
+
+            The recommended value depends on the type of the node:
+
+            - If the node needs to be responsive (serves for RPC or validator), then the recommended value is `0` or `-1`.
+            - If the node doesn't have many other responsibilities but needs to be able to follow the chain reliably without any delays and produce live logs, the `0` or `1` is recommended.
+            - If the node doesn't have to be responsive, has very fast I/O (like NVMe) and the shortest pruning time is to be achieved, then `-1` is recommended.
+            """,
+        DefaultValue = "0")]
+    int FullPruningMaxDegreeOfParallelism { get; set; }
+
+    [ConfigItem(
+        Description = "The memory budget, in MB, used for the trie visit. Increasing this value significantly reduces the IOPS requirement at the expense of memory usage. `0` to disable.",
+        DefaultValue = "4000")]
+    int FullPruningMemoryBudgetMb { get; set; }
+
+    [ConfigItem(
+        Description = "Whether to disable low-priority for pruning writes. Full pruning uses low-priority write operations to prevent blocking block processing. If block processing is not high-priority, set this option to `true` for faster pruning.",
+        DefaultValue = "false")]
+    bool FullPruningDisableLowPriorityWrites { get; set; }
+
+    [ConfigItem(Description = "The minimum delay, in hours, between full pruning operations not to exhaust disk writes.", DefaultValue = "240")]
+    int FullPruningMinimumDelayHours { get; set; }
+
+    [ConfigItem(Description = "The action to take on pruning completion.", DefaultValue = "None")]
+    FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; }
+
+    [ConfigItem(Description = "Whether to enables available disk space check.", DefaultValue = "true")]
+    bool AvailableSpaceCheckEnabled { get; set; }
+
+    [ConfigItem(Description = "_DEPRECATED_ Pruning trie store uses pruning cache as past keys.", DefaultValue = "0.1", HiddenFromDocs = true)]
+    double TrackedPastKeyCountMemoryRatio { get; set; }
+
+    [ConfigItem(Description = "Enable tracking of past key to reduce database and pruning cache growth", DefaultValue = "true")]
+    bool TrackPastKeys { get; set; }
+
+    [ConfigItem(Description = "The number of past states before the state gets pruned. Used to determine how old of a state to keep from the head.", DefaultValue = "128")]
+    int PruningBoundary { get; set; }
+
+    [ConfigItem(Description = "Dirty node shard count", DefaultValue = "8")]
+    int DirtyNodeShardBit { get; set; }
+
+    [ConfigItem(Description = "Portion of persisted node to be prune at a time", DefaultValue = "0.05")]
+    double PrunePersistedNodePortion { get; set; }
+
+    [ConfigItem(Description = "Minimum persisted cache prune target", DefaultValue = "50000000")]
+    long PrunePersistedNodeMinimumTarget { get; set; }
+
+    [ConfigItem(Description = "Maximimum number of block worth of unpersisted state in memory. Default is 297, which is number of mainnet block per hour.", DefaultValue = "297")]
+    long MaxUnpersistedBlockCount { get; set; }
+
+    [ConfigItem(Description = "Minimum number of block worth of unpersisted state in memory. Prevent memory pruning too often due to insufficient dirty cache memory.", DefaultValue = "8")]
+    long MinUnpersistedBlockCount { get; set; }
 }

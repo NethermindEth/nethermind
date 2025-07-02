@@ -3,17 +3,17 @@
 
 using System;
 using System.Net;
-using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
-using DotNetty.Codecs;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Common.Concurrency;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -21,7 +21,6 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats.Model;
-using ILogger = Nethermind.Logging.ILogger;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
@@ -29,30 +28,36 @@ namespace Nethermind.Network.Rlpx
     public class RlpxHost : IRlpxHost
     {
         private IChannel? _bootstrapChannel;
-        private IEventLoopGroup _bossGroup;
-        private IEventLoopGroup _workerGroup;
+        private IEventLoopGroup? _bossGroup;
+        private IEventLoopGroup? _workerGroup;
 
         private bool _isInitialized;
         public PublicKey LocalNodeId { get; }
         public int LocalPort { get; }
+        private string? LocalIp { get; }
         private readonly IHandshakeService _handshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly ISessionMonitor _sessionMonitor;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
-        private IEventExecutorGroup _group;
-        private TimeSpan _sendLatency;
+        private readonly IEventExecutorGroup _group;
+        private readonly TimeSpan _sendLatency;
+        private readonly TimeSpan _connectTimeout;
+        private readonly IChannelFactory? _channelFactory;
 
-        public RlpxHost(IMessageSerializationService serializationService,
-            PublicKey localNodeId,
-            int localPort,
+        private readonly TimeSpan _shutdownQuietPeriod;
+        private readonly TimeSpan _shutdownCloseTimeout;
+
+        public RlpxHost(
+            IMessageSerializationService serializationService,
+            [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
             IHandshakeService handshakeService,
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
+            INetworkConfig networkConfig,
             ILogManager logManager,
-            TimeSpan sendLatency
-        )
+            IChannelFactory? channelFactory = null)
         {
             // .NET Core definitely got the easy logging setup right :D
             // ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
@@ -69,16 +74,29 @@ namespace Nethermind.Network.Rlpx
             //     new LoggerFilterOptions { MinLevel = Microsoft.Extensions.Logging.LogLevel.Warning });
             // InternalLoggerFactory.DefaultFactory = loggerFactory;
 
-            _group = new SingleThreadEventLoop();
+            int networkProcessingThread = networkConfig.ProcessingThreadCount;
+            if (networkProcessingThread <= 1)
+            {
+                _group = new SingleThreadEventLoop();
+            }
+            else
+            {
+                _group = new MultithreadEventLoopGroup(networkProcessingThread);
+            }
             _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
             _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
             _disconnectsAnalyzer = disconnectsAnalyzer ?? throw new ArgumentNullException(nameof(disconnectsAnalyzer));
             _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
-            LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
-            LocalPort = localPort;
-            _sendLatency = sendLatency;
+            LocalNodeId = nodeKey.PublicKey;
+            LocalPort = networkConfig.P2PPort;
+            LocalIp = networkConfig.LocalIp;
+            _sendLatency = TimeSpan.FromMilliseconds(networkConfig.SimulateSendLatencyMs);
+            _connectTimeout = TimeSpan.FromMilliseconds(networkConfig.ConnectTimeoutMs);
+            _channelFactory = channelFactory;
+            _shutdownQuietPeriod = TimeSpan.FromMilliseconds(Math.Min(networkConfig.RlpxHostShutdownCloseTimeoutMs, 100));
+            _shutdownCloseTimeout = TimeSpan.FromMilliseconds(networkConfig.RlpxHostShutdownCloseTimeoutMs);
         }
 
         public async Task Init()
@@ -92,38 +110,44 @@ namespace Nethermind.Network.Rlpx
 
             try
             {
-                _bossGroup = new MultithreadEventLoopGroup();
-                _workerGroup = new MultithreadEventLoopGroup();
+                // Default is LogicalCoreCount * 2
+                // - so with two groups and 32 logical cores, we would have 128 threads
+                // Max at 8 threads per group for 16 threads total
+                // Min of 2 threads per group for 4 threads total
+                var threads = Math.Clamp(Environment.ProcessorCount / 2, min: 2, max: 8);
+                _bossGroup = new MultithreadEventLoopGroup(threads);
+                _workerGroup = new MultithreadEventLoopGroup(threads);
 
                 ServerBootstrap bootstrap = new();
                 bootstrap
                     .Group(_bossGroup, _workerGroup)
-                    .Channel<TcpServerSocketChannel>()
+                    .ChannelFactory(() => _channelFactory?.CreateServer() ?? new TcpServerSocketChannel())
                     .ChildOption(ChannelOption.SoBacklog, 100)
+                    .ChildOption(ChannelOption.TcpNodelay, true)
+                    .ChildOption(ChannelOption.SoTimeout, (int)_connectTimeout.TotalMilliseconds)
+                    .ChildOption(ChannelOption.SoKeepalive, true)
+                    .ChildOption(ChannelOption.WriteBufferHighWaterMark, (int)3.MB())
+                    .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB())
                     .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
-                    .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
+                    .ChildHandler(new ActionChannelInitializer<IChannel>(ch =>
                     {
                         Session session = new(LocalPort, ch, _disconnectsAnalyzer, _logManager);
-                        session.RemoteHost = ((IPEndPoint)ch.RemoteAddress).Address.ToString();
-                        session.RemotePort = ((IPEndPoint)ch.RemoteAddress).Port;
+                        IPEndPoint? ipEndPoint = ch.RemoteAddress.ToIPEndpoint();
+                        session.RemoteHost = ipEndPoint.Address.ToString();
+                        session.RemotePort = ipEndPoint.Port;
                         InitializeChannel(ch, session);
                     }));
 
-                _bootstrapChannel = await bootstrap.BindAsync(LocalPort).ContinueWith(t =>
+                Task<IChannel> openTask = NetworkHelper.HandlePortTakenError(() => LocalIp is null
+                        ? bootstrap.BindAsync(LocalPort)
+                        : bootstrap.BindAsync(IPAddress.Parse(LocalIp), LocalPort),
+                    LocalPort);
+
+                _bootstrapChannel = await openTask.ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
-                        AggregateException aggregateException = t.Exception;
-                        if (aggregateException?.InnerException is SocketException socketException
-                            && socketException.ErrorCode == 10048)
-                        {
-                            if (_logger.IsError) _logger.Error($"Port {LocalPort} is in use. You can change the port used by adding: --{nameof(NetworkConfig).Replace("Config", string.Empty)}.{nameof(NetworkConfig.P2PPort)} 30303");
-                        }
-                        else
-                        {
-                            if (_logger.IsError) _logger.Error($"{nameof(Init)} failed", t.Exception);
-                        }
-
+                        if (_logger.IsError) _logger.Error($"{nameof(Init)} failed", t.Exception);
                         return null;
                     }
 
@@ -138,7 +162,10 @@ namespace Nethermind.Network.Rlpx
             catch (Exception ex)
             {
                 _logger.Error($"{nameof(Init)} failed.", ex);
-                await Task.WhenAll(_bossGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask, _workerGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask);
+                // Replacing to prevent double dispose which hangs
+                var bossGroup = Interlocked.Exchange(ref _bossGroup, null);
+                var workerGroup = Interlocked.Exchange(ref _workerGroup, null);
+                await Task.WhenAll(bossGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask, workerGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask);
                 throw;
             }
         }
@@ -148,12 +175,17 @@ namespace Nethermind.Network.Rlpx
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} initiating OUT connection");
 
             Bootstrap clientBootstrap = new();
-            clientBootstrap.Group(_workerGroup);
-            clientBootstrap.Channel<TcpSocketChannel>();
-            clientBootstrap.Option(ChannelOption.TcpNodelay, true);
-            clientBootstrap.Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default);
-            clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
-            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
+            clientBootstrap
+                .Group(_workerGroup)
+                .ChannelFactory(() => _channelFactory?.CreateClient() ?? new TcpSocketChannel())
+                .Option(ChannelOption.TcpNodelay, true)
+                .Option(ChannelOption.SoTimeout, (int)_connectTimeout.TotalMilliseconds)
+                .Option(ChannelOption.SoKeepalive, true)
+                .Option(ChannelOption.WriteBufferHighWaterMark, (int)3.MB())
+                .Option(ChannelOption.WriteBufferLowWaterMark, (int)1.MB())
+                .Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default)
+                .Option(ChannelOption.ConnectTimeout, _connectTimeout);
+            clientBootstrap.Handler(new ActionChannelInitializer<IChannel>(ch =>
             {
                 Session session = new(LocalPort, node, ch, _disconnectsAnalyzer, _logManager);
                 InitializeChannel(ch, session);
@@ -161,10 +193,19 @@ namespace Nethermind.Network.Rlpx
 
             Task<IChannel> connectTask = clientBootstrap.ConnectAsync(node.Address);
             CancellationTokenSource delayCancellation = new();
-            Task firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(2)), delayCancellation.Token));
+            Task firstTask = await Task.WhenAny(connectTask, Task.Delay(_connectTimeout.Add(TimeSpan.FromSeconds(2)), delayCancellation.Token));
             if (firstTask != connectTask)
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connection timed out");
+
+                _ = connectTask.ContinueWith(async c =>
+                {
+                    if (connectTask.IsCompletedSuccessfully)
+                    {
+                        await c.Result.DisconnectAsync();
+                    }
+                });
+
                 throw new NetworkingException($"Failed to connect to {node:s} (timeout)", NetworkExceptionType.Timeout);
             }
 
@@ -206,11 +247,7 @@ namespace Nethermind.Network.Rlpx
 
             IChannelPipeline pipeline = channel.Pipeline;
             pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), LogLevel.TRACE));
-
-            if (session.Direction == ConnectionDirection.Out)
-            {
-                pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
-            }
+            pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
 
             channel.CloseCompletion.ContinueWith(async x =>
@@ -221,7 +258,7 @@ namespace Nethermind.Network.Rlpx
                 await Task.Delay(TimeSpan.FromSeconds(1));
 
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} channel disconnected");
-                session.MarkDisconnected(DisconnectReason.TcpSubSystemError, DisconnectType.Remote, "channel disconnected");
+                session.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "channel disconnected");
             });
         }
 
@@ -234,7 +271,6 @@ namespace Nethermind.Network.Rlpx
 
         public async Task Shutdown()
         {
-            //            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
             await (_bootstrapChannel?.CloseAsync().ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -245,12 +281,9 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsDebug) _logger.Debug("Closed _bootstrapChannel");
 
-            // every [quietPeriod] we check if there were any event in the loop - if none then we can shutdown
-            TimeSpan quietPeriod = TimeSpan.FromMilliseconds(100);
-            TimeSpan nettyCloseTimeout = TimeSpan.FromMilliseconds(1000);
             Task closingTask = Task.WhenAll(
-                _bossGroup.ShutdownGracefullyAsync(quietPeriod, nettyCloseTimeout),
-                _workerGroup.ShutdownGracefullyAsync(nettyCloseTimeout, nettyCloseTimeout));
+                _bossGroup is not null ? _bossGroup.ShutdownGracefullyAsync(_shutdownQuietPeriod, _shutdownCloseTimeout) : Task.CompletedTask,
+                _workerGroup is not null ? _workerGroup.ShutdownGracefullyAsync(_shutdownCloseTimeout, _shutdownCloseTimeout) : Task.CompletedTask);
 
             // below comment may arise from not understanding the quiet period but the resolution is correct
             // we need to add additional timeout on our side as netty is not executing internal timeout properly, often it just hangs forever on closing
@@ -266,5 +299,7 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsInfo) _logger.Info("Local peer shutdown complete.. please wait for all components to close");
         }
+
+        public ISessionMonitor SessionMonitor => _sessionMonitor;
     }
 }

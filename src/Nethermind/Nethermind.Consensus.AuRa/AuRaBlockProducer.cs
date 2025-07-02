@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -15,7 +14,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -29,8 +27,7 @@ namespace Nethermind.Consensus.AuRa
 
         public AuRaBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
-            IBlockProductionTrigger blockProductionTrigger,
-            IStateProvider stateProvider,
+            IWorldState stateProvider,
             ISealer sealer,
             IBlockTree blockTree,
             ITimestamper timestamper,
@@ -46,7 +43,6 @@ namespace Nethermind.Consensus.AuRa
                 processor,
                 sealer,
                 blockTree,
-                blockProductionTrigger,
                 stateProvider,
                 gasLimitCalculator,
                 timestamper,
@@ -60,16 +56,16 @@ namespace Nethermind.Consensus.AuRa
             _config = config ?? throw new ArgumentNullException(nameof(config));
         }
 
-        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
-            Block block = base.PrepareBlock(parent, payloadAttributes);
+            BlockToProduce block = base.PrepareBlock(parent, payloadAttributes, flags);
             block.Header.AuRaStep = _auRaStepCalculator.CurrentStep;
             return block;
         }
 
-        protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer)
+        protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token)
         {
-            Block? processedBlock = base.ProcessPreparedBlock(block, blockTracer);
+            Block? processedBlock = base.ProcessPreparedBlock(block, blockTracer, token);
 
             if (processedBlock is not null)
             {

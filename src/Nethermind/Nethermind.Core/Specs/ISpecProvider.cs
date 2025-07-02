@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -43,9 +42,16 @@ namespace Nethermind.Core.Specs
         IReleaseSpec GenesisSpec { get; }
 
         /// <summary>
+        /// When true genesis state root calculation is disabled and spec state root is set.
+        /// </summary>
+        bool GenesisStateUnavailable { get => false; }
+
+        /// <summary>
         /// Block number at which DAO happens (only relevant for mainnet)
         /// </summary>
         long? DaoBlockNumber { get; }
+
+        ulong? BeaconChainGenesisTimestamp { get; }
 
         /// <summary>
         /// Unique identifier of the chain that allows to sign messages for the specified chain only.
@@ -59,6 +65,11 @@ namespace Nethermind.Core.Specs
         ulong ChainId { get; }
 
         /// <summary>
+        /// Original engine of the chain
+        /// </summary>
+        string SealEngine => SealEngineType.Ethash;
+
+        /// <summary>
         /// All block numbers at which a change in spec (a fork) happens.
         /// </summary>
         ForkActivation[] TransitionActivations { get; }
@@ -68,14 +79,26 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <param name="forkActivation"></param>
         /// <returns>A spec that is valid at the given chain height</returns>
-        IReleaseSpec GetSpec(ForkActivation forkActivation);
-        IReleaseSpec GetSpec(long blockNumber, ulong? timestamp) => GetSpec((blockNumber, timestamp));
-        IReleaseSpec GetSpec(BlockHeader blockHeader) => GetSpec((blockHeader.Number, blockHeader.Timestamp));
+        protected internal IReleaseSpec GetSpecInternal(ForkActivation forkActivation);
+    }
+
+    public static class SpecProviderExtensions
+    {
+        public static IReleaseSpec GetSpec(this ISpecProvider specProvider, ForkActivation forkActivation)
+            => specProvider.SealEngine == SealEngineType.AuRa
+                ? new AuraSpecProvider(specProvider.GetSpecInternal(forkActivation))
+                : specProvider.GetSpecInternal(forkActivation);
+
+        public static IReleaseSpec GetSpec(this ISpecProvider specProvider, long blockNumber, ulong? timestamp) => specProvider.GetSpec(new ForkActivation(blockNumber, timestamp));
+        public static IReleaseSpec GetSpec(this ISpecProvider specProvider, BlockHeader blockHeader) => specProvider.GetSpec(new ForkActivation(blockHeader.Number, blockHeader.Timestamp));
 
         /// <summary>
         /// Resolves a spec for all planned forks applied.
         /// </summary>
         /// <returns>A spec for all planned forks applied</returns>
-        IReleaseSpec GetFinalSpec() => GetSpec(long.MaxValue, ulong.MaxValue);
+        /// <remarks> The default value is long.MaxValue for block numbers and ulong.MaxValue for timestamps
+        /// for every new not yet scheduled EIP. Because of that we can't use long.MaxValue and
+        /// ulong.MaxValue for GetFinalSpec that is why we have long.MaxValue-1, ulong.MaxValue-1 </remarks>
+        public static IReleaseSpec GetFinalSpec(this ISpecProvider specProvider) => specProvider.GetSpec(long.MaxValue - 1, ulong.MaxValue - 1);
     }
 }

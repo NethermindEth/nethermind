@@ -31,24 +31,32 @@ namespace Nethermind.Clique.Test
         {
             CliqueConfig cliqueConfig = new();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            Signer signer = new(BlockchainIds.Ropsten, TestItem.PrivateKeyA, LimboLogs.Instance);
+            Signer signer = new(BlockchainIds.Sepolia, TestItem.PrivateKeyA, LimboLogs.Instance);
             CliqueBlockProducer producer = new(
                 Substitute.For<ITxSource>(),
                 Substitute.For<IBlockchainProcessor>(),
-                Substitute.For<IStateProvider>(),
-                blockTree,
+                Substitute.For<IWorldState>(),
                 Substitute.For<ITimestamper>(),
                 Substitute.For<ICryptoRandom>(),
                 Substitute.For<ISnapshotManager>(),
                 new CliqueSealer(signer, cliqueConfig, Substitute.For<ISnapshotManager>(), LimboLogs.Instance),
-                new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new BlocksConfig()),
+                new TargetAdjustedGasLimitCalculator(HoleskySpecProvider.Instance, new BlocksConfig()),
                 MainnetSpecProvider.Instance,
                 cliqueConfig,
                 LimboLogs.Instance);
 
             SnapshotManager snapshotManager = new(CliqueConfig.Default, new MemDb(), Substitute.For<IBlockTree>(), NullEthereumEcdsa.Instance, LimboLogs.Instance);
 
-            CliqueRpcModule bridge = new(producer, snapshotManager, blockTree);
+            CliqueBlockProducerRunner producerRunner = new CliqueBlockProducerRunner(
+                blockTree,
+                Substitute.For<ITimestamper>(),
+                Substitute.For<ICryptoRandom>(),
+                snapshotManager,
+                producer,
+                cliqueConfig,
+                LimboLogs.Instance);
+
+            CliqueRpcModule bridge = new(producerRunner, snapshotManager, blockTree);
             Assert.DoesNotThrow(() => bridge.CastVote(TestItem.AddressB, true));
             Assert.DoesNotThrow(() => bridge.UncastVote(TestItem.AddressB));
             Assert.DoesNotThrow(() => bridge.CastVote(TestItem.AddressB, false));
@@ -61,9 +69,9 @@ namespace Nethermind.Clique.Test
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             BlockHeader header = Build.A.BlockHeader.TestObject;
-            blockFinder.FindHeader(Arg.Any<Keccak>()).Returns(header);
+            blockFinder.FindHeader(Arg.Any<Hash256>()).Returns(header);
             snapshotManager.GetBlockSealer(header).Returns(TestItem.AddressA);
-            CliqueRpcModule rpcModule = new(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
+            CliqueRpcModule rpcModule = new(Substitute.For<ICliqueBlockProducerRunner>(), snapshotManager, blockFinder);
             rpcModule.clique_getBlockSigner(Keccak.Zero).Result.ResultType.Should().Be(ResultType.Success);
             rpcModule.clique_getBlockSigner(Keccak.Zero).Data.Should().Be(TestItem.AddressA);
         }
@@ -73,8 +81,8 @@ namespace Nethermind.Clique.Test
         {
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.FindHeader(Arg.Any<Keccak>()).Returns((BlockHeader)null);
-            CliqueRpcModule rpcModule = new(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
+            blockFinder.FindHeader(Arg.Any<Hash256>()).Returns((BlockHeader)null);
+            CliqueRpcModule rpcModule = new(Substitute.For<ICliqueBlockProducerRunner>(), snapshotManager, blockFinder);
             rpcModule.clique_getBlockSigner(Keccak.Zero).Result.ResultType.Should().Be(ResultType.Failure);
         }
 
@@ -83,7 +91,7 @@ namespace Nethermind.Clique.Test
         {
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            CliqueRpcModule rpcModule = new(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
+            CliqueRpcModule rpcModule = new(Substitute.For<ICliqueBlockProducerRunner>(), snapshotManager, blockFinder);
             rpcModule.clique_getBlockSigner(null).Result.ResultType.Should().Be(ResultType.Failure);
         }
     }

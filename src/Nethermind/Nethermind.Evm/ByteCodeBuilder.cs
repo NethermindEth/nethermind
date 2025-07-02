@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -214,6 +215,34 @@ namespace Nethermind.Evm
             return this;
         }
 
+        public Prepare Log(int size, int position, Hash256[]? topics = null)
+        {
+            if (topics?.Length > 4)
+            {
+                throw new ArgumentException("Too many topics - must be 4 or less");
+            }
+            int numTopics = topics?.Length ?? 0;
+            if (topics is not null)
+            {
+                foreach (Hash256 topic in topics)
+                {
+                    PushData(topic.Bytes.ToArray());
+                }
+            }
+            PushData(size);
+            PushData(position);
+            Op(Instruction.LOG0 + (byte)numTopics);
+            return this;
+        }
+
+        public Prepare Revert(int size, int position)
+        {
+            PushData(size);
+            PushData(position);
+            Op(Instruction.REVERT);
+            return this;
+        }
+
         public Prepare PushData(Address address)
         {
             PushData(address.Bytes);
@@ -245,10 +274,10 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare PushData(byte[] data)
+        public Prepare PushData(ReadOnlyMemory<byte> data)
         {
             _byteCode.Add((byte)(Instruction.PUSH1 + (byte)data.Length - 1));
-            _byteCode.AddRange(data);
+            _byteCode.AddRange(data.Span);
             return this;
         }
 
@@ -295,7 +324,7 @@ namespace Nethermind.Evm
             return StoreDataInMemory(position, Bytes.FromHexString(hexString));
         }
 
-        private Prepare StoreDataInMemory(int position, byte[] data)
+        public Prepare StoreDataInMemory(int position, byte[] data)
         {
             for (int i = 0; i < data.Length; i += 32)
             {
@@ -308,7 +337,7 @@ namespace Nethermind.Evm
         }
 
         /// <summary>
-        /// Take the data already on stack and store it in memory 
+        /// Take the data already on stack and store it in memory
         /// at specified position
         /// </summary>
         /// <param name="position">Memory position</param>

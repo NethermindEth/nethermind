@@ -36,40 +36,59 @@ namespace Nethermind.Db.Rpc
             _recordDb.Dispose();
         }
 
+        public long GetSize() => 0;
+        public long GetCacheSize() => 0;
+        public long GetIndexSize() => 0;
+        public long GetMemtableSize() => 0;
+
         public string Name { get; } = "RpcDb";
 
-        public byte[] this[byte[] key]
+        public byte[] this[ReadOnlySpan<byte> key]
         {
-            get => GetThroughRpc(key);
-            set => throw new InvalidOperationException("RPC DB does not support writes");
+            get => Get(key);
+            set => Set(key, value);
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, GetThroughRpc(k))).ToArray();
-
-        public void Remove(byte[] key)
+        public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None)
         {
             throw new InvalidOperationException("RPC DB does not support writes");
         }
 
-        public bool KeyExists(byte[] key)
+        public byte[] Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return GetThroughRpc(key);
+        }
+
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, GetThroughRpc(k))).ToArray();
+
+        public void Remove(ReadOnlySpan<byte> key)
+        {
+            throw new InvalidOperationException("RPC DB does not support writes");
+        }
+
+        public bool KeyExists(ReadOnlySpan<byte> key)
         {
             return GetThroughRpc(key) is not null;
         }
 
         public IDb Innermost => this; // record db is just a helper DB here
         public void Flush() { }
+        public void Flush(bool onlyWal = false) { }
+
         public void Clear() { }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _recordDb.GetAll();
 
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _recordDb.GetAllKeys();
+
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _recordDb.GetAllValues();
 
-        public IBatch StartBatch()
+        public IWriteBatch StartWriteBatch()
         {
             throw new InvalidOperationException("RPC DB does not support writes");
         }
 
-        private byte[] GetThroughRpc(byte[] key)
+        private byte[] GetThroughRpc(ReadOnlySpan<byte> key)
         {
             string responseJson = _rpcClient.Post("debug_getFromDb", _dbName, key.ToHexString()).Result;
             JsonRpcSuccessResponse response = _jsonSerializer.Deserialize<JsonRpcSuccessResponse>(responseJson);
@@ -85,6 +104,20 @@ namespace Nethermind.Db.Rpc
             }
 
             return value;
+        }
+
+        public Span<byte> GetSpan(ReadOnlySpan<byte> key)
+        {
+            return Get(key);
+        }
+
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags)
+        {
+            Set(key, value.ToArray(), writeFlags);
+        }
+
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
+        {
         }
     }
 }

@@ -6,7 +6,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -14,19 +13,19 @@ namespace Nethermind.Blockchain.Test.Receipts;
 
 public class ReceiptsRecoveryTests
 {
-    private IReceiptsRecovery _receiptsRecovery;
+    private IReceiptsRecovery _receiptsRecovery = null!;
 
     [SetUp]
     public void Setup()
     {
-        RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
-        EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
+        MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
+        EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId);
 
         _receiptsRecovery = new ReceiptsRecovery(ethereumEcdsa, specProvider);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
-    [TestCase(5, 5, true, ReceiptsRecoveryResult.Success)]
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(5, 5, true, ReceiptsRecoveryResult.NeedReinsert)]
     [TestCase(5, 5, false, ReceiptsRecoveryResult.Skipped)]
     [TestCase(0, 0, true, ReceiptsRecoveryResult.Skipped)]
     [TestCase(1, 0, true, ReceiptsRecoveryResult.Fail)]
@@ -50,5 +49,21 @@ public class ReceiptsRecoveryTests
         }
 
         _receiptsRecovery.TryRecover(block, receipts, forceRecoverSender).Should().Be(expected);
+    }
+
+    [Test]
+    public void TryRecover_should_recover_contract_address()
+    {
+        Transaction tx = Build.A.Transaction.WithSenderAddress(null).WithTo(null).Signed().TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).TestObject;
+
+        tx.SenderAddress.Should().BeNull();
+        receipt.ContractAddress.Should().BeNull();
+
+        ReceiptsRecoveryResult result = _receiptsRecovery.TryRecover(block, new[] { receipt });
+
+        result.Should().Be(ReceiptsRecoveryResult.NeedReinsert);
+        receipt.ContractAddress.Should().Be(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b"));
     }
 }

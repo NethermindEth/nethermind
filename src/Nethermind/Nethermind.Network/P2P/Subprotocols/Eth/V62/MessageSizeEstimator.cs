@@ -25,10 +25,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 return 0;
             }
 
-            return 100UL + (ulong)(tx.Data?.Length ?? 0);
+            return 100UL + (ulong)(tx.Data.Length);
         }
 
-        public static ulong EstimateSize(Block block)
+        public static ulong EstimateSize(Block? block)
         {
             if (block is null)
             {
@@ -50,7 +50,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             ulong estimate = Bloom.ByteLength; // receipt is mostly Bloom + Logs
             for (int i = 0; i < receipt.Logs.Length; i++)
             {
-                estimate += (ulong)receipt.Logs[i].Data.Length + (ulong)receipt.Logs[i].Topics.Length * Keccak.Size;
+                estimate += (ulong)receipt.Logs[i].Data.Length + (ulong)receipt.Logs[i].Topics.Length * Hash256.Size;
             }
 
             return estimate;

@@ -7,56 +7,53 @@ using Nethermind.Core;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Services
+namespace Nethermind.Blockchain.Test.Services;
+
+public class HealthHintServiceTests
 {
-    public class HealthHintServiceTests
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void GetBlockProcessorAndProducerIntervalHint_returns_expected_result(
+        [ValueSource(nameof(BlockProcessorIntervalHintTestCases))]
+        BlockProcessorIntervalHint test)
     {
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void GetBlockProcessorAndProducerIntervalHint_returns_expected_result(
-            [ValueSource(nameof(BlockProcessorIntervalHintTestCases))]
-            BlockProcessorIntervalHint test)
+        IHealthHintService healthHintService = new HealthHintService(test.ChainSpec);
+        ulong? actualProcessing = healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
+        ulong? actualProducing = healthHintService.MaxSecondsIntervalForProducingBlocksHint();
+        Assert.That(actualProcessing, Is.EqualTo(test.ExpectedProcessingHint));
+        Assert.That(actualProducing, Is.EqualTo(test.ExpectedProducingHint));
+    }
+
+    public class BlockProcessorIntervalHint
+    {
+        public required ChainSpec ChainSpec { get; init; }
+        public ulong? ExpectedProcessingHint { get; init; }
+        public ulong? ExpectedProducingHint { get => null; }
+
+        public override string ToString() =>
+            $"SealEngineType: {ChainSpec.SealEngineType}, ExpectedProcessingHint: {ExpectedProcessingHint}, ExpectedProducingHint: {ExpectedProducingHint}";
+    }
+
+    public static IEnumerable<BlockProcessorIntervalHint> BlockProcessorIntervalHintTestCases
+    {
+        get
         {
-            IHealthHintService healthHintService = new HealthHintService(test.ChainSpec);
-            ulong? actualProcessing = healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
-            ulong? actualProducing = healthHintService.MaxSecondsIntervalForProducingBlocksHint();
-            Assert.AreEqual(test.ExpectedProcessingHint, actualProcessing);
-            Assert.AreEqual(test.ExpectedProducingHint, actualProducing);
-        }
-
-        public class BlockProcessorIntervalHint
-        {
-            public ChainSpec ChainSpec { get; set; }
-
-            public ulong? ExpectedProcessingHint { get; set; }
-
-            public ulong? ExpectedProducingHint { get; set; }
-
-            public override string ToString() =>
-                $"SealEngineType: {ChainSpec.SealEngineType}, ExpectedProcessingHint: {ExpectedProcessingHint}, ExpectedProducingHint: {ExpectedProducingHint}";
-        }
-
-        public static IEnumerable<BlockProcessorIntervalHint> BlockProcessorIntervalHintTestCases
-        {
-            get
+            yield return new BlockProcessorIntervalHint
             {
-                yield return new BlockProcessorIntervalHint()
-                {
-                    ChainSpec = new ChainSpec() { SealEngineType = SealEngineType.NethDev, }
-                };
-                yield return new BlockProcessorIntervalHint()
-                {
-                    ChainSpec = new ChainSpec() { SealEngineType = SealEngineType.Ethash },
-                    ExpectedProcessingHint = 180
-                };
-                yield return new BlockProcessorIntervalHint()
-                {
-                    ChainSpec = new ChainSpec() { SealEngineType = "Interval" }
-                };
-                yield return new BlockProcessorIntervalHint()
-                {
-                    ChainSpec = new ChainSpec() { SealEngineType = SealEngineType.None }
-                };
-            }
+                ChainSpec = new ChainSpec { SealEngineType = SealEngineType.NethDev, }
+            };
+            yield return new BlockProcessorIntervalHint
+            {
+                ChainSpec = new ChainSpec { SealEngineType = SealEngineType.Ethash },
+                ExpectedProcessingHint = 180
+            };
+            yield return new BlockProcessorIntervalHint
+            {
+                ChainSpec = new ChainSpec { SealEngineType = "Interval" }
+            };
+            yield return new BlockProcessorIntervalHint
+            {
+                ChainSpec = new ChainSpec { SealEngineType = SealEngineType.None }
+            };
         }
     }
 }

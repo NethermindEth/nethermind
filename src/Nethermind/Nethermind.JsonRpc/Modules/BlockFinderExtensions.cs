@@ -11,6 +11,21 @@ namespace Nethermind.JsonRpc.Modules
 {
     public static class BlockFinderExtensions
     {
+
+        public static bool IsBlockPruned(this IBlockFinder blockFinder, BlockParameter blockParameter)
+        {
+            var requestedBlock = blockParameter.BlockNumber;
+            if (requestedBlock is null)
+            {
+                SearchResult<BlockHeader> headerResult = blockFinder.SearchForHeader(blockParameter);
+                if (!headerResult.IsError)
+                {
+                    requestedBlock = headerResult.Object.Number;
+                }
+            }
+            return requestedBlock < blockFinder.GetLowestBlock();
+        }
+
         public static SearchResult<BlockHeader> SearchForHeader(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false)
         {
             if (blockFinder.Head is null)
@@ -43,12 +58,14 @@ namespace Nethermind.JsonRpc.Modules
                 : new SearchResult<BlockHeader>(header);
         }
 
-        public static SearchResult<Block> SearchForBlock(this IBlockFinder blockFinder, BlockParameter blockParameter, bool allowNulls = false)
+        public static SearchResult<Block> SearchForBlock(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false)
         {
+            blockParameter ??= BlockParameter.Latest;
+
             Block block;
             if (blockParameter.RequireCanonical)
             {
-                block = blockFinder.FindBlock(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
+                block = blockFinder.FindBlock(blockParameter.BlockHash!, BlockTreeLookupOptions.RequireCanonical);
                 if (block is null && !allowNulls)
                 {
                     BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
@@ -68,6 +85,11 @@ namespace Nethermind.JsonRpc.Modules
                 if (blockParameter.Equals(BlockParameter.Finalized) || blockParameter.Equals(BlockParameter.Safe))
                 {
                     return new SearchResult<Block>("Unknown block error", ErrorCodes.UnknownBlockError);
+                }
+
+                if (blockFinder.IsBlockPruned(blockParameter))
+                {
+                    return new SearchResult<Block>("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable);
                 }
 
                 if (!allowNulls)
@@ -95,7 +117,7 @@ namespace Nethermind.JsonRpc.Modules
                 bool isStartingBlockOnMainChain = blockFinder.IsMainChain(startingBlock.Object.Header);
                 if (!isFinalBlockOnMainChain || !isStartingBlockOnMainChain)
                 {
-                    Keccak? notCanonicalBlockHash = isFinalBlockOnMainChain
+                    Hash256? notCanonicalBlockHash = isFinalBlockOnMainChain
                         ? startingBlock.Object.Hash
                         : finalBlockHeader.Object.Hash;
                     yield return new SearchResult<Block>($"{notCanonicalBlockHash} block is not canonical", ErrorCodes.InvalidInput);

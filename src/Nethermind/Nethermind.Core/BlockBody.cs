@@ -1,16 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-
 namespace Nethermind.Core
 {
     public class BlockBody
     {
         public BlockBody(Transaction[]? transactions, BlockHeader[]? uncles, Withdrawal[]? withdrawals = null)
         {
-            Transactions = transactions ?? Array.Empty<Transaction>();
-            Uncles = uncles ?? Array.Empty<BlockHeader>();
+            Transactions = transactions ?? [];
+            Uncles = uncles ?? [];
             Withdrawals = withdrawals;
         }
 

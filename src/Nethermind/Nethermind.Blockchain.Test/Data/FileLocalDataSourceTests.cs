@@ -12,15 +12,13 @@ using Nethermind.Blockchain.Data;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Data
 {
     public class FileLocalDataSourceTests
     {
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void correctly_reads_existing_file()
         {
             using (var tempFile = TempPath.GetTempFile())
@@ -33,7 +31,7 @@ namespace Nethermind.Blockchain.Test.Data
         }
 
         [Ignore("flaky")]
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public async Task correctly_updates_from_existing_file()
         {
             using (var tempFile = TempPath.GetTempFile())
@@ -62,7 +60,7 @@ namespace Nethermind.Blockchain.Test.Data
             }
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         [Ignore("flaky test")]
         public async Task correctly_updates_from_new_file()
         {
@@ -83,9 +81,9 @@ namespace Nethermind.Blockchain.Test.Data
             }
         }
 
-        private static string GenerateStringJson(params string[] items) => $"[{string.Join(", ", items.Select(i => $"\"{i}\""))}]";
+        private static string GenerateStringJson(params string[] items) => $"[{string.Join(", ", items.Select(static i => $"\"{i}\""))}]";
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void loads_default_when_failed_loading_file()
         {
             using var tempFile = TempPath.GetTempFile();
@@ -96,7 +94,7 @@ namespace Nethermind.Blockchain.Test.Data
             }
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         [Retry(10)]
         [Ignore("Causing repeated pains on GitHub actions.")]
         public async Task retries_loading_file()
@@ -125,7 +123,7 @@ namespace Nethermind.Blockchain.Test.Data
         }
 
         [Ignore("flaky test")]
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public async Task loads_default_when_deleted_file()
         {
             using (var tempFile = TempPath.GetTempFile())

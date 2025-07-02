@@ -14,7 +14,7 @@ namespace Nethermind.JsonRpc.TraceStore;
 public class TraceStoreModuleFactory : ModuleFactoryBase<ITraceRpcModule>
 {
     private readonly IRpcModuleFactory<ITraceRpcModule> _innerFactory;
-    private readonly IDbWithSpan _traceStore;
+    private readonly IDb _traceStore;
     private readonly IBlockFinder _blockFinder;
     private readonly IReceiptFinder _receiptFinder;
     private readonly ITraceSerializer<ParityLikeTxTrace> _traceSerializer;
@@ -22,7 +22,7 @@ public class TraceStoreModuleFactory : ModuleFactoryBase<ITraceRpcModule>
     private readonly int _parallelization;
 
     public TraceStoreModuleFactory(IRpcModuleFactory<ITraceRpcModule> innerFactory,
-        IDbWithSpan traceStore,
+        IDb traceStore,
         IBlockFinder blockFinder,
         IReceiptFinder receiptFinder,
         ITraceSerializer<ParityLikeTxTrace> traceSerializer,

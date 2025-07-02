@@ -3,25 +3,44 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Peers
 {
-    public interface ISyncPeerPool : IDisposable
+    public interface ISyncPeerPool : IAsyncDisposable
     {
-        Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts, int timeoutMilliseconds = 0);
+        Task<SyncPeerAllocation> Allocate(
+            IPeerAllocationStrategy peerAllocationStrategy,
+            AllocationContexts allocationContexts,
+            int timeoutMilliseconds = 0,
+            CancellationToken cancellationToken = default);
 
         void Free(SyncPeerAllocation syncPeerAllocation);
 
         void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts allocationContexts);
 
-        void ReportBreachOfProtocol(PeerInfo peerInfo, InitiateDisconnectReason initiateDisconnectReason, string details);
+        void ReportBreachOfProtocol(PeerInfo peerInfo, DisconnectReason disconnectReason, string details);
 
         void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts allocationContexts);
+
+        /// <summary>
+        /// Estimate the request limit for a specific request type for the peer which get allocated next based
+        /// on the allocation strategy and context. May not be accurate as different peer may get allocated.
+        /// </summary>
+        Task<int?> EstimateRequestLimit(
+            RequestType requestType,
+            IPeerAllocationStrategy peerAllocationStrategy,
+            AllocationContexts contexts,
+            CancellationToken token);
 
         /// <summary>
         /// Wakes up all the sleeping peers.
@@ -77,23 +96,78 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         /// <param name="syncPeer"></param>
         /// <param name="hash">Hash of a block that we know might be the head block of the peer</param>
-        void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak hash);
+        void RefreshTotalDifficulty(ISyncPeer syncPeer, Hash256 hash);
 
         /// <summary>
         /// Starts the pool loops.
         /// </summary>
         void Start();
 
-        /// <summary>
-        /// Stops the pool loops
-        /// </summary>
-        /// <returns></returns>
-        Task StopAsync();
-
         PeerInfo? GetPeer(Node node);
 
         event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
+    }
 
-        event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed;
+    public static class SyncPeerPoolExtensions
+    {
+        public static Task<T> AllocateAndRun<T>(
+            this ISyncPeerPool syncPeerPool,
+            Func<ISyncPeer, Task<T>> func,
+            IPeerAllocationStrategy peerAllocationStrategy,
+            AllocationContexts allocationContexts,
+            CancellationToken cancellationToken)
+        {
+            return syncPeerPool.AllocateAndRun(
+                (peerInfo) => func(peerInfo?.SyncPeer),
+                peerAllocationStrategy,
+                allocationContexts,
+                cancellationToken);
+        }
+
+        public static async Task<T> AllocateAndRun<T>(
+            this ISyncPeerPool syncPeerPool,
+            Func<PeerInfo, Task<T>> func,
+            IPeerAllocationStrategy peerAllocationStrategy,
+            AllocationContexts allocationContexts,
+            CancellationToken cancellationToken)
+        {
+            SyncPeerAllocation? allocation = await syncPeerPool.Allocate(
+                peerAllocationStrategy,
+                allocationContexts,
+                timeoutMilliseconds: int.MaxValue,
+                cancellationToken: cancellationToken);
+            try
+            {
+                if (allocation?.Current is null) return default;
+                return await func(allocation.Current);
+            }
+            finally
+            {
+                syncPeerPool.Free(allocation);
+            }
+        }
+
+
+        public static async Task<BlockHeader?> FetchHeaderFromPeer(this ISyncPeerPool syncPeerPool, Hash256 hash, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(Timeouts.DefaultFetchHeaderTimeout);
+
+                using IOwnedReadOnlyList<BlockHeader>? headers = await syncPeerPool.AllocateAndRun(
+                    peer => peer.GetBlockHeaders(hash, 1, 0, cancellationToken),
+                    BySpeedStrategy.FastestHeader,
+                    AllocationContexts.Headers,
+                    cts.Token);
+
+                return headers?.Count == 1 ? headers[0] : null;
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
+            {
+                // Timeout or no peer.
+                return null;
+            }
+        }
     }
 }

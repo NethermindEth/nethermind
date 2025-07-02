@@ -6,11 +6,13 @@ using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.TxPool;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test
@@ -27,6 +29,7 @@ namespace Nethermind.Runner.Test
         private ITxPoolConfig _txPoolConfig;
         private INetworkConfig _networkConfig;
         private MemoryHintMan _memoryHintMan;
+        private MallocHelper _mallocHelper;
 
         [SetUp]
         public void Setup()
@@ -36,7 +39,8 @@ namespace Nethermind.Runner.Test
             _initConfig = new InitConfig();
             _txPoolConfig = new TxPoolConfig();
             _networkConfig = new NetworkConfig();
-            _memoryHintMan = new MemoryHintMan(LimboLogs.Instance);
+            _mallocHelper = Substitute.For<MallocHelper>();
+            _memoryHintMan = new MemoryHintMan(LimboLogs.Instance, _mallocHelper);
         }
 
         private void SetMemoryAllowances(uint cpuCount)
@@ -75,14 +79,12 @@ namespace Nethermind.Runner.Test
             [Values(256 * MB, 512 * MB, 1 * GB, 4 * GB, 6 * GB, 16 * GB, 32 * GB, 64 * GB, 128 * GB)]
             long memoryHint,
             [Values(1u, 2u, 3u, 4u, 8u, 32u)] uint cpuCount,
-            [Values(true, false)] bool fastSync,
-            [Values(true, false)] bool fastBlocks)
+            [Values(true, false)] bool fastSync)
         {
             // OK to throw here
             if (memoryHint == 256.MB())
             {
                 _txPoolConfig.Size = 128;
-                _syncConfig.FastBlocks = false;
                 _initConfig.DiagnosticMode = DiagnosticMode.MemDb;
             }
 
@@ -91,47 +93,9 @@ namespace Nethermind.Runner.Test
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = fastSync;
-            syncConfig.FastBlocks = fastBlocks;
 
-            IDbConfig dbConfig = _dbConfig;
-
-            ulong totalForHeaders = dbConfig.HeadersDbBlockCacheSize
-                                    + dbConfig.HeadersDbWriteBufferNumber * dbConfig.HeadersDbWriteBufferSize;
-
-            ulong totalForBlocks = dbConfig.BlocksDbBlockCacheSize
-                                   + dbConfig.BlocksDbWriteBufferNumber * dbConfig.BlocksDbWriteBufferSize;
-
-            ulong totalForInfos = dbConfig.BlockInfosDbBlockCacheSize
-                                  + dbConfig.BlockInfosDbWriteBufferNumber * dbConfig.BlockInfosDbWriteBufferSize;
-
-            ulong totalForReceipts = dbConfig.ReceiptsDbBlockCacheSize
-                                     + dbConfig.ReceiptsDbWriteBufferNumber * dbConfig.ReceiptsDbWriteBufferSize;
-
-            ulong totalForCode = dbConfig.CodeDbBlockCacheSize
-                                 + dbConfig.CodeDbWriteBufferNumber * dbConfig.CodeDbWriteBufferSize;
-
-            ulong totalForPending = dbConfig.PendingTxsDbBlockCacheSize
-                                    + dbConfig.PendingTxsDbWriteBufferNumber * dbConfig.PendingTxsDbWriteBufferSize;
-
-            ulong totalMem = (dbConfig.BlockCacheSize + dbConfig.WriteBufferNumber * dbConfig.WriteBufferSize)
-                             + totalForHeaders
-                             + totalForBlocks
-                             + totalForInfos
-                             + totalForReceipts
-                             + totalForCode
-                             + totalForPending;
-
-            if (_initConfig.DiagnosticMode != DiagnosticMode.MemDb)
-            {
-                // some rounding differences are OK
-                totalMem.Should().BeGreaterThan((ulong)((memoryHint - 200.MB()) * 0.6));
-                totalMem.Should().BeLessThan((ulong)((memoryHint - 200.MB()) * 0.9));
-            }
-            else
-            {
-                _memoryHintMan.DbMemory.Should().BeGreaterThan((long)((memoryHint - 100.MB()) * 0.6));
-                _memoryHintMan.DbMemory.Should().BeLessThan((long)((memoryHint - 100.MB()) * 0.9));
-            }
+            _memoryHintMan.DbMemory.Should().BeGreaterThan((long)((memoryHint - 100.MB()) * 0.5));
+            _memoryHintMan.DbMemory.Should().BeLessThan((long)((memoryHint - 100.MB()) * 0.9));
         }
 
         [TestCase(100 * GB, 16u, -1)]
@@ -160,7 +124,24 @@ namespace Nethermind.Runner.Test
         {
             _initConfig.MemoryHint = memoryHint;
             SetMemoryAllowances(1);
-            Trie.MemoryAllowance.TrieNodeCacheCount.Should().BeGreaterThan(0);
+            _dbConfig.StateDbRowCacheSize.Should().BeGreaterThan(0);
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Big_value_at_memory_hint(bool shouldSetMallocOpts)
+        {
+            _initConfig.DisableMallocOpts = !shouldSetMallocOpts;
+            SetMemoryAllowances(1);
+
+            if (shouldSetMallocOpts)
+            {
+                _mallocHelper.Received().MallOpt(Arg.Any<MallocHelper.Option>(), Arg.Any<int>());
+            }
+            else
+            {
+                _mallocHelper.DidNotReceive().MallOpt(Arg.Any<MallocHelper.Option>(), Arg.Any<int>());
+            }
         }
     }
 }

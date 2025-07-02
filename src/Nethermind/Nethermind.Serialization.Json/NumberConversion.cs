@@ -7,6 +7,7 @@ namespace Nethermind.Serialization.Json
     {
         Hex,
         Decimal,
-        Raw
+        Raw,
+        ZeroPaddedHex
     }
 }

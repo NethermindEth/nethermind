@@ -3,16 +3,18 @@
 
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
+
+using Nethermind.Serialization.Json;
+
+using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 
 namespace Nethermind.JsonRpc.Modules
 {
     public class NullModuleProvider : IRpcModuleProvider
     {
         public static NullModuleProvider Instance = new();
-        private static Task<IRpcModule> Null = Task.FromResult(default(IRpcModule));
+        private static readonly Task<IRpcModule> Null = Task.FromResult(default(IRpcModule));
 
         private NullModuleProvider()
         {
@@ -22,22 +24,24 @@ namespace Nethermind.JsonRpc.Modules
         {
         }
 
-        public JsonSerializer Serializer { get; } = new();
-
-        public IReadOnlyCollection<JsonConverter> Converters => Array.Empty<JsonConverter>();
+        public IJsonSerializer Serializer { get; } = new EthereumJsonSerializer();
 
         public IReadOnlyCollection<string> Enabled => Array.Empty<string>();
 
         public IReadOnlyCollection<string> All => Array.Empty<string>();
 
-        public ModuleResolution Check(string methodName, JsonRpcContext context) => ModuleResolution.Unknown;
+        public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module)
+        {
+            module = null;
+            return ModuleResolution.Unknown;
+        }
 
-        public (MethodInfo, bool) Resolve(string methodName) => (null, false);
+        public ResolvedMethodInfo Resolve(string methodName) => new();
 
         public Task<IRpcModule> Rent(string methodName, bool canBeShared) => Null;
 
         public void Return(string methodName, IRpcModule rpcModule) { }
 
-        public IRpcModulePool? GetPool(string moduleType) => null;
+        public IRpcModulePool? GetPoolForMethod(string moduleType) => null;
     }
 }

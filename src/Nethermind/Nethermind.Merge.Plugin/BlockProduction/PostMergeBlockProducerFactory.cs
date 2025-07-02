@@ -3,7 +3,6 @@
 
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -37,8 +36,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         }
 
         public virtual PostMergeBlockProducer Create(
-            BlockProducerEnv producerEnv,
-            IBlockProductionTrigger blockProductionTrigger,
+            IBlockProducerEnv producerEnv,
             ITxSource? txSource = null)
         {
 
@@ -46,7 +44,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 txSource ?? producerEnv.TxSource,
                 producerEnv.ChainProcessor,
                 producerEnv.BlockTree,
-                blockProductionTrigger,
                 producerEnv.ReadOnlyStateProvider,
                 _gasLimitCalculator ?? new TargetAdjustedGasLimitCalculator(_specProvider, _blocksConfig),
                 _sealEngine,

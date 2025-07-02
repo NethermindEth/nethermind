@@ -3,11 +3,12 @@
 
 using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.IO;
+using System.Text;
+using System.Text.Json;
+
 using FluentAssertions;
 using Nethermind.Blockchain.Contracts.Json;
-using Newtonsoft.Json;
+
 using NUnit.Framework;
 
 namespace Nethermind.Abi.Test.Json
@@ -46,45 +47,44 @@ namespace Nethermind.Abi.Test.Json
                 yield return new TestCaseData(GetTestData("int[]", new AbiArray(AbiType.Int256)));
                 yield return new TestCaseData(GetTestData("string[5]", new AbiFixedLengthArray(AbiType.String, 5)));
 
-                yield return new TestCaseData(GetTestData("tuple", new AbiTuple(Array.Empty<AbiType>())));
+                yield return new TestCaseData(GetTestData("tuple", new AbiTuple([])));
                 yield return new TestCaseData(GetTestData("tuple",
                     new AbiTuple(new AbiType[] { AbiType.Int256 }),
                     new { name = "property", type = "int" }));
 
                 yield return new TestCaseData(GetTestData("tuple", new AbiTuple<CustomAbiType>(),
                     new { name = "c", type = "int32" }));
-                yield return new TestCaseData(GetTestDataWithException("int1", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataWithException("int9", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataWithException("int300", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("int1", new ArgumentOutOfRangeException()));
+                yield return new TestCaseData(GetTestDataWithException("int9", new ArgumentOutOfRangeException()));
+                yield return new TestCaseData(GetTestDataWithException("int300", new ArgumentOutOfRangeException()));
                 yield return new TestCaseData(GetTestDataWithException("int3000", new ArgumentException()));
                 yield return new TestCaseData(GetTestDataWithException("fixed80", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataWithException("fixed80x81", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataWithException("bytes33", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("fixed80x81", new ArgumentOutOfRangeException()));
+                yield return new TestCaseData(GetTestDataWithException("bytes33", new ArgumentOutOfRangeException()));
             }
         }
 
         [TestCaseSource(nameof(TypeTestCases))]
         public void Can_read_json(string type, AbiType expectedType, Exception expectedException, object[] components)
         {
-            List<IAbiTypeFactory> abiTypeFactories = new List<IAbiTypeFactory>() { new AbiTypeFactory(new AbiTuple<CustomAbiType>()) };
-            var converter = new AbiParameterConverter(abiTypeFactories);
+            AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<CustomAbiType>()));
+
+            var converter = new AbiParameterConverter();
             var model = new { name = "theName", type, components };
-            string json = JsonConvert.SerializeObject(model);
-            using (var jsonReader = new JsonTextReader(new StringReader(json)))
+            byte[] json = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(model));
+            Utf8JsonReader jsonReader = new Utf8JsonReader(json);
+            try
             {
-                try
+                var result = converter.Read(ref jsonReader, typeof(AbiParameter), JsonSerializerOptions.Default);
+                var expectation = new AbiParameter() { Name = "theName", Type = expectedType };
+                expectedException.Should().BeNull();
+                result.Should().BeEquivalentTo(expectation);
+            }
+            catch (Exception e)
+            {
+                if (e.GetType() != expectedException?.GetType())
                 {
-                    var result = converter.ReadJson(jsonReader, typeof(AbiParameter), null, false, new JsonSerializer());
-                    var expectation = new AbiParameter() { Name = "theName", Type = expectedType };
-                    expectedException.Should().BeNull();
-                    result.Should().BeEquivalentTo(expectation);
-                }
-                catch (Exception e)
-                {
-                    if (e.GetType() != expectedException?.GetType())
-                    {
-                        throw;
-                    }
+                    throw;
                 }
             }
         }

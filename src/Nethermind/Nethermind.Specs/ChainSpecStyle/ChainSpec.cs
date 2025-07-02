@@ -11,7 +11,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     /// <summary>
     /// https://github.com/ethereum/wiki/wiki/Ethereum-Chain-Spec-Format
-    /// https://wiki.parity.io/Chain-specification 
+    /// https://openethereum.github.io/Chain-specification
     /// </summary>
     [DebuggerDisplay("{Name}, ChainId = {ChainId}")]
     public class ChainSpec
@@ -29,17 +29,14 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public NetworkNode[] Bootnodes { get; set; }
 
+        public bool GenesisStateUnavailable { get; set; }
         public Block Genesis { get; set; }
 
         public string SealEngineType { get; set; }
 
-        public AuRaParameters AuRa { get; set; }
-
-        public CliqueParameters Clique { get; set; }
-
-        public EthashParameters Ethash { get; set; }
-
         public ChainParameters Parameters { get; set; }
+
+        public IChainSpecParametersProvider EngineChainSpecParametersProvider { get; set; }
 
         public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
 
@@ -78,5 +75,11 @@ namespace Nethermind.Specs.ChainSpecStyle
         public UInt256? TerminalTotalDifficulty { get; set; }
 
         public ulong? ShanghaiTimestamp { get; set; }
+
+        public ulong? CancunTimestamp { get; set; }
+
+        public ulong? PragueTimestamp { get; set; }
+
+        public ulong? OsakaTimestamp { get; set; }
     }
 }

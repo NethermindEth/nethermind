@@ -1,17 +1,20 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://user-images.githubusercontent.com/337518/184757509-5ac8a259-659a-42dd-a51c-cd093a41a0ad.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/337518/184757473-5d70ac41-4afd-42f6-ab7b-5338ae09b2fb.png">
-  <img alt="Nethermind" src="https://user-images.githubusercontent.com/337518/184757473-5d70ac41-4afd-42f6-ab7b-5338ae09b2fb.png" height="64">
-</picture>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/nethermindeth/nethermind/assets/337518/3e3b3c06-9cf3-4364-a774-158e649588cc">
+    <source media="(prefers-color-scheme: light)" srcset="https://github.com/nethermindeth/nethermind/assets/337518/d1cc365c-6045-409f-a961-18d22ddb2535">
+    <img alt="Nethermind" src="https://github.com/nethermindeth/nethermind/assets/337518/d1cc365c-6045-409f-a961-18d22ddb2535" height="64">
+  </picture>
+</p>
 
 # Nethermind Ethereum client
 
 [![Tests](https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml/badge.svg)](https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml)
+[![Follow us on X](https://img.shields.io/twitter/follow/nethermindeth?style=social&label=Follow%20us)](https://x.com/nethermindeth)
 [![Chat on Discord](https://img.shields.io/discord/629004402170134531?style=social&logo=discord)](https://discord.gg/GXJFaYk)
-[![Follow us on Twitter](https://img.shields.io/twitter/follow/nethermindeth?style=social&label=Follow)](https://twitter.com/nethermindeth)
-[![Ask on Discourse](https://img.shields.io/discourse/posts?style=social&label=Community&logo=discourse&server=https%3A%2F%2Fcommunity.nethermind.io)](https://community.nethermind.io/c/nethermind-client)
+[![GitHub Discussions](https://img.shields.io/github/discussions/nethermindeth/nethermind?style=social)](https://github.com/nethermindeth/nethermind/discussions)
+[![GitPOAPs](https://public-api.gitpoap.io/v1/repo/NethermindEth/nethermind/badge)](https://www.gitpoap.io/gh/NethermindEth/nethermind)
 
-Nethermind is a high-performance, highly configurable full Ethereum protocol execution client built on .NET that runs on Linux, Windows, and macOS, and supports Clique, Aura, and Ethash. Nethermind offers very fast sync speeds and support for external plugins. Enjoy reliable access to rich on-chain data thanks to high-performance JSON-RPC based on the Kestrel web server. Healthy node monitoring is secured with Grafana analytics and Seq logging.
+The Nethermind Ethereum execution client, built on .NET, delivers industry-leading performance in syncing and tip-of-chain processing. With its modular design and plugin system, it offers extensibility and features for new chains. As one of the most adopted execution clients on Ethereum, Nethermind plays a crucial role in enhancing the diversity and resilience of the Ethereum ecosystem.
 
 ## Documentation
 
@@ -19,133 +22,115 @@ Nethermind documentation is available at [docs.nethermind.io](https://docs.nethe
 
 ### Supported networks
 
-**`Mainnet`** **`Goerli`** **`Sepolia`** **`Gnosis (xDai)`** **`Energy Web`** **`Volta`**
+**Ethereum** · **Gnosis** · **Optimism** · **Base** · **Taiko** · **World Chain** · **Linea** · **Energy Web**
 
-## Download and run
+## Installing
 
-Release builds are available on the [Releases page](https://github.com/nethermindeth/nethermind/releases) and at [downloads.nethermind.io](https://downloads.nethermind.io).
+The standalone release builds are available on [GitHub Releases](https://github.com/nethermindeth/nethermind/releases).
 
-#### On Linux using PPA
+### Package managers
 
-1. `sudo add-apt-repository ppa:nethermindeth/nethermind` \
-   If command not found: `sudo apt install software-properties-common`
-2. `sudo apt install nethermind`
-3. To run the launcher: `nethermind`
-4. To run the runner: `nethermind -c mainnet`
+- **Linux**
 
-#### On Windows using Windows Package Manager
+  On Debian-based distros, Nethermind can be installed via Launchpad PPA:
 
-1. `winget install nethermind`
-2. To run the launcher: `nethermind.launcher.exe`
-3. To run the runner: `nethermind.runner.exe -c mainnet`
+  ```bash
+  sudo add-apt-repository ppa:nethermindeth/nethermind
+  # If command not found, run
+  # sudo apt-get install software-properties-common
 
-#### On macOS using Homebrew
+  sudo apt-get install nethermind
+  ```
 
-1. `brew tap nethermindeth/nethermind`
-2. `brew install nethermind`
-3. To run the launcher: `nethermind-launcher`
-4. To run the runner: `nethermind -c mainnet`
+- **Windows**
 
-## Docker image
+  On Windows, Nethermind can be installed via Windows Package Manager:
 
-The official Docker images of Nethermind are available on [Docker Hub](https://hub.docker.com/r/nethermind/nethermind).
+  ```powershell
+  winget install nethermind
+  ```
 
-### Get the digest of the Docker image
+- **macOS**
 
-In case of any Docker image need to be updated in the repository, you can update the digest of these images as follows:
+  On macOS, Nethermind can be installed via Homebrew:
 
-```sh
-docker inspect --format='{{index .RepoDigests 0}}' <image_name>
+  ```bash
+  brew tap nethermindeth/nethermind
+  brew install nethermind
+  ```
+
+Once installed, Nethermind can be launched as follows:
+
+```bash
+nethermind -c mainnet --data-dir path/to/data/dir
 ```
 
-The output should show the image digest, and then you can copy that to the `FROM` tag in the Dockerfile.
+For further instructions, see [Running a node](https://docs.nethermind.io/get-started/running-node).
 
-## Build from source
+### Docker containers
 
-### Prerequisites
+The official Docker images of Nethermind are available on [Docker Hub](https://hub.docker.com/r/nethermind/nethermind) and tagged as follows:
 
-#### Windows
+- `latest`: the latest version of Nethermind (the default tag)
+- `latest-chiseled`: a rootless and chiseled image of the latest version of Nethermind
+- `x.x.x`: a specific version of Nethermind
+- `x.x.x-chiseled`: a rootless and chiseled image of the specific version of Nethermind
 
--   [Install .NET](https://dotnet.microsoft.com/en-us/download?initial-os=windows)
+For more info, see [Installing Nethermind](https://docs.nethermind.io/get-started/installing-nethermind).
 
-#### macOS
+## Building from source
 
--   [Install .NET](https://dotnet.microsoft.com/en-us/download?initial-os=macos)
--   Install dependencies:
+### Docker image
 
-    ```sh
-    brew install gmp snappy lz4 zstd
-    ```
+This is the easiest and fastest way to build Nethermind if you don't want to clone the Nethermind repo, deal with .NET SDK installation, and other configurations. Running the following simple command builds the Docker image, which is ready to run right after:
 
-#### Ubuntu
+```bash
+docker build https://github.com/nethermindeth/nethermind.git -t nethermind
+```
 
--   [Install .NET](https://docs.microsoft.com/en-us/dotnet/core/install/linux-ubuntu)
--   Install dependencies:
+For more info, see [Building Docker image](https://docs.nethermind.io/developers/building-from-source#building-docker-image).
 
-    ```sh
-    sudo apt-get install libsnappy-dev libc6-dev libc6
-    ```
+### Standalone binaries
 
-    An extra dependency for aarch64 (arm64):
+**Prerequisites**
 
-    ```sh
-    sudo apt-get install libgflags-dev
-    ```
+Install the [.NET SDK](https://aka.ms/dotnet/download).
 
-#### Debian
+**Clone the repository**
 
--   [Install .NET](https://docs.microsoft.com/en-us/dotnet/core/install/linux-debian)
--   Install dependencies:
+```bash
+git clone --recursive https://github.com/nethermindeth/nethermind.git
+```
 
-    ```sh
-    sudo apt-get install libsnappy-dev libc6-dev libc6
-    ```
+**Build and run**
 
-#### CentOS
-
--   [Install .NET](https://docs.microsoft.com/en-us/dotnet/core/install/linux-centos)
--   Install dependencies:
-
-    ```sh
-    sudo yum install -y glibc-devel bzip2-devel libzstd
-
-    # Link libraries
-    sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0
-    ```
-
-#### Fedora
-
--   [Install .NET](https://docs.microsoft.com/en-us/dotnet/core/install/linux-fedora)
--   Install dependencies:
-
-    ```sh
-    sudo yum install -y glibc-devel snappy libzstd
-
-    # Link libraries
-    sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0
-    ```
-
-### Build and run
-
-```sh
-git clone https://github.com/nethermindeth/nethermind --recursive
+```bash
 cd nethermind/src/Nethermind/Nethermind.Runner
 dotnet run -c release -- -c mainnet
 ```
 
-## Test
+**Test**
 
-Run the Nethermind and/or Ethereum Foundation tests as follows:
+```bash
+cd nethermind/src/Nethermind
 
-```sh
-dotnet test Nethermind.sln -c debug
-dotnet test EthereumTests.sln -c debug
+# Run Nethermind tests
+dotnet test Nethermind.slnx -c release
+
+# Run Ethereum Foundation tests
+dotnet test EthereumTests.slnx -c release
 ```
+
+For more info, see [Building standalone binaries](https://docs.nethermind.io/developers/building-from-source#building-standalone-binaries).
 
 ## Contributing
 
-BEFORE you start work on a feature or fix, please read and follow our [contribution guide](https://github.com/nethermindeth/nethermind/blob/master/CONTRIBUTING.md) to help avoid any wasted or duplicate effort.
+Before you start working on a feature or fix, please read and follow our [contributing guidelines](./CONTRIBUTING.md) to help avoid any wasted or duplicate effort.
+
+## Security
+
+If you believe you have found a security vulnerability in our code, please report it to us as described in our [security policy](SECURITY.md).
 
 ## License
 
-Nethermind is an open-source software licensed under the [LGPL-3.0](https://github.com/nethermindeth/nethermind/blob/master/LICENSE-LGPL).
+Nethermind is an open-source software licensed under the [LGPL-3.0](./LICENSE-LGPL). By using this project, you agree to abide by the license and [additional terms](https://nethermindeth.github.io/NethermindEthereumClientTermsandConditions/).

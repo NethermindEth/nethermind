@@ -5,12 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
@@ -34,13 +34,14 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         IMessageSerializationService serializer,
         INodeStatsManager nodeStatsManager,
         ISyncServer syncServer,
+        IBackgroundTaskScheduler backgroundTaskScheduler,
         ITxPool txPool,
         IPooledTxsRequestor pooledTxsRequestor,
         IGossipPolicy gossipPolicy,
-        ForkInfo forkInfo,
-        ILogManager logManager)
-        : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy,
-            forkInfo, logManager)
+        IForkInfo forkInfo,
+        ILogManager logManager,
+        ITxGossipPolicy? transactionsGossipPolicy = null)
+        : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
     {
         _pooledTxsRequestor = pooledTxsRequestor;
 
@@ -50,13 +51,23 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
     public override void HandleMessage(ZeroPacket message)
     {
+        int size = message.Content.ReadableBytes;
         switch (message.PacketType)
         {
             case Eth68MessageCode.NewPooledTransactionHashes:
-                NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
-                    Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
-                ReportIn(newPooledTxHashesMsg);
-                Handle(newPooledTxHashesMsg);
+                if (CanReceiveTransactions)
+                {
+                    NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
+                        Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
+                    ReportIn(newPooledTxHashesMsg, size);
+                    Handle(newPooledTxHashesMsg);
+                }
+                else
+                {
+                    const string ignored = $"{nameof(NewPooledTransactionHashesMessage68)} ignored, syncing";
+                    ReportIn(ignored, size);
+                }
+
                 break;
             default:
                 base.HandleMessage(message);
@@ -64,8 +75,9 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
     }
 
-    private void Handle(NewPooledTransactionHashesMessage68 message)
+    private void Handle(NewPooledTransactionHashesMessage68 msg)
     {
+        using var message = msg;
         bool isTrace = Logger.IsTrace;
         if (message.Hashes.Count != message.Types.Count || message.Hashes.Count != message.Sizes.Count)
         {
@@ -73,52 +85,66 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
                                   $"Hashes count: {message.Hashes.Count} " +
                                   $"Types count: {message.Types.Count} " +
                                   $"Sizes count: {message.Sizes.Count}";
-            if (isTrace)
-                Logger.Trace(errorMessage);
+            if (isTrace) Logger.Trace(errorMessage);
 
             throw new SubprotocolException(errorMessage);
         }
 
-        Metrics.Eth68NewPooledTransactionHashesReceived++;
+        TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
 
-        Stopwatch? stopwatch = isTrace ? Stopwatch.StartNew() : null;
+        AddNotifiedTransactions(message.Hashes);
 
-        _pooledTxsRequestor.RequestTransactionsEth66(_sendAction, message.Hashes);
+        long startTime = isTrace ? Stopwatch.GetTimestamp() : 0;
 
-        stopwatch?.Stop();
+        _pooledTxsRequestor.RequestTransactionsEth68(_sendAction, message.Hashes, message.Sizes, message.Types);
 
-        if (isTrace)
-            Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} " +
-                         $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        if (isTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
     }
 
-    public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
+    protected override void SendNewTransactionCore(Transaction tx)
+    {
+        if (tx.CanBeBroadcast())
+        {
+            base.SendNewTransactionCore(tx);
+        }
+        else
+        {
+            SendMessage(
+                new ArrayPoolList<byte>(1) { (byte)tx.Type },
+                new ArrayPoolList<int>(1) { tx.GetLength() },
+                new ArrayPoolList<Hash256>(1) { tx.Hash }
+            );
+        }
+    }
+
+    protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
     {
         if (sendFullTx)
         {
-            base.SendNewTransactions(txs, sendFullTx);
+            base.SendNewTransactionsCore(txs, sendFullTx);
             return;
         }
 
-        using ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
-        using ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
-        using ArrayPoolList<Keccak> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
+        ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        ArrayPoolList<Hash256> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
 
         foreach (Transaction tx in txs)
         {
             if (hashes.Count == NewPooledTransactionHashesMessage68.MaxCount)
             {
                 SendMessage(types, sizes, hashes);
-                types.Clear();
-                sizes.Clear();
-                hashes.Clear();
+                types = new(NewPooledTransactionHashesMessage68.MaxCount);
+                sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
+                hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
             }
 
             if (tx.Hash is not null)
             {
                 types.Add((byte)tx.Type);
-                sizes.Add(tx.GetLength(_txDecoder));
+                sizes.Add(tx.GetLength());
                 hashes.Add(tx.Hash);
+                TxPool.Metrics.PendingTransactionsHashesSent++;
             }
         }
 
@@ -126,12 +152,17 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         {
             SendMessage(types, sizes, hashes);
         }
+        else
+        {
+            types.Dispose();
+            sizes.Dispose();
+            hashes.Dispose();
+        }
     }
 
-    private void SendMessage(IReadOnlyList<byte> types, IReadOnlyList<int> sizes, IReadOnlyList<Keccak> hashes)
+    private void SendMessage(IOwnedReadOnlyList<byte> types, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<Hash256> hashes)
     {
         NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
-        Metrics.Eth68NewPooledTransactionHashesSent++;
         Send(message);
     }
 }

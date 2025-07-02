@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Db.FullPruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -66,6 +67,34 @@ namespace Nethermind.Db.Test.FullPruning
         }
 
         [Test]
+        public void during_pruning_duplicate_on_read()
+        {
+            TestContext test = new();
+            byte[] key = { 1, 2 };
+            byte[] value = { 5, 6 };
+            test.FullPruningDb[key] = value;
+
+            test.FullPruningDb.TryStartPruning(out IPruningContext _);
+
+            test.FullPruningDb.Get(key);
+            test.CurrentMirrorDb[key].Should().BeEquivalentTo(value);
+        }
+
+        [Test]
+        public void during_pruning_dont_duplicate_read_with_skip_duplicate_read()
+        {
+            TestContext test = new();
+            byte[] key = { 1, 2 };
+            byte[] value = { 5, 6 };
+            test.FullPruningDb[key] = value;
+
+            test.FullPruningDb.TryStartPruning(out IPruningContext _);
+
+            test.FullPruningDb.Get(key, ReadFlags.SkipDuplicateRead);
+            test.CurrentMirrorDb[key].Should().BeNull();
+        }
+
+        [Test]
         public void increments_metrics_on_write_to_mirrored_db()
         {
             TestContext test = new();
@@ -83,14 +112,14 @@ namespace Nethermind.Db.Test.FullPruning
             public int DbIndex { get; private set; } = -1;
             public string Name { get; }
             public long Metrics { get; private set; }
-            public IRocksDbFactory RocksDbFactory { get; } = Substitute.For<IRocksDbFactory>();
+            public IDbFactory DbFactory { get; } = Substitute.For<IDbFactory>();
             public FullPruningDb FullPruningDb { get; }
 
             public TestContext()
             {
-                RocksDbFactory.CreateDb(Arg.Any<RocksDbSettings>()).Returns(_ => CurrentMirrorDb = new MemDb((++DbIndex).ToString()));
+                DbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(_ => CurrentMirrorDb = new MemDb((++DbIndex).ToString()));
                 Name = "name";
-                FullPruningDb = new FullPruningDb(new RocksDbSettings(Name, "path"), RocksDbFactory, () => Metrics++);
+                FullPruningDb = new FullPruningDb(new DbSettings(Name, "path"), DbFactory, () => Metrics++);
             }
         }
     }

@@ -15,4 +15,13 @@ public static class ExitCodes
     public const int TooLongExtraData = 102;
     public const int ConflictingConfigurations = 103;
     public const int LowDiskSpace = 104;
+    public const int DuplicatedOption = 105;
+    public const int UnrecognizedOption = 106;
+    public const int ForbiddenOptionValue = 107;
+    public const int MissingChainspecEipConfiguration = 108;
+
+    // Posix exit code
+    // https://tldp.org/LDP/abs/html/exitcodes.html
+    public const int SigInt = 130; // 128 + 2 (sigint)
+    public const int SigTerm = 143; // 128 + 15 (sigterm)
 }

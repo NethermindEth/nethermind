@@ -7,24 +7,25 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Evm;
 
 namespace Nethermind.AuRa.Test.Reward
 {
     public class AuRaRewardCalculatorTests
     {
-        private AuRaParameters _auraParameters;
+        private AuRaChainSpecEngineParameters _auraParameters;
         private IAbiEncoder _abiEncoder;
         private ITransactionProcessor _transactionProcessor;
         private Block _block;
@@ -39,11 +40,11 @@ namespace Nethermind.AuRa.Test.Reward
             _address10 = TestItem.AddressA;
             _address50 = TestItem.AddressB;
             _address150 = TestItem.AddressC;
-            _auraParameters = new AuRaParameters
+            _auraParameters = new AuRaChainSpecEngineParameters()
             {
                 BlockRewardContractAddress = _address10,
                 BlockRewardContractTransition = 10,
-                BlockReward = new Dictionary<long, UInt256>() { { 0, 200 } },
+                BlockReward = new SortedDictionary<long, UInt256>() { { 0, 200 } },
             };
 
             _abiEncoder = Substitute.For<IAbiEncoder>();
@@ -52,7 +53,7 @@ namespace Nethermind.AuRa.Test.Reward
             _block = new Block(Build.A.BlockHeader.TestObject, new BlockBody());
 
             _abiEncoder
-                .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(s => s.Name == "reward"), Arg.Any<object[]>())
+                .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(static s => s.Name == "reward"), Arg.Any<object[]>())
                 .Returns(_rewardData);
         }
 
@@ -197,7 +198,7 @@ namespace Nethermind.AuRa.Test.Reward
         {
             _transactionProcessor.When(x => x.Execute(
                     Arg.Is<Transaction>(t => CheckTransaction(t, rewards.Keys, _rewardData)),
-                    _block.Header,
+                    Arg.Is<BlockHeader>(header => header.Equals(_block.Header)),
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer)))
                 .Do(args =>
                 {
@@ -206,26 +207,26 @@ namespace Nethermind.AuRa.Test.Reward
                         recipient,
                         0,
                         SetupAbiAddresses(rewards[recipient]),
-                        Array.Empty<LogEntry>());
+                        []);
                 });
         }
 
         private bool CheckTransaction(Transaction t, ICollection<Address> addresses, byte[] transactionData) =>
             t.SenderAddress == Address.SystemUser
             && (t.To == _auraParameters.BlockRewardContractAddress || addresses.Contains(t.To))
-            && t.Data == transactionData;
+            && t.Data.AsArray() == transactionData;
 
         private byte[] SetupAbiAddresses(params BlockReward[] rewards)
         {
-            byte[] data = rewards.Select(r => r.Address).SelectMany(a => a.Bytes).ToArray();
+            byte[] data = rewards.Select(static r => r.Address).SelectMany(static a => a.Bytes).ToArray();
 
             _abiEncoder.Decode(
                 AbiEncodingStyle.None,
-                Arg.Is<AbiSignature>(s =>
+                Arg.Is<AbiSignature>(static s =>
                     s.Types.Length == 2
                     && s.Types[0] is AbiArray && ((AbiArray)s.Types[0]).ElementType is AbiAddress
                     && s.Types[1] is AbiArray && ((AbiArray)s.Types[1]).ElementType is AbiUInt),
-                data).Returns(new object[] { rewards.Select(r => r.Address).ToArray(), rewards.Select(r => r.Value).ToArray() });
+                data).Returns(new object[] { rewards.Select(static r => r.Address).ToArray(), rewards.Select(static r => r.Value).ToArray() });
 
             return data;
         }

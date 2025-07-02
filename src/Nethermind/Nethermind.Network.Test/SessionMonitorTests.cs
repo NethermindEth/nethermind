@@ -60,8 +60,8 @@ namespace Nethermind.Network.Test
             await _pingSender.Received().SendPing();
             await _noPong.Received().SendPing();
 
-            Assert.AreEqual(SessionState.Initialized, session1.State);
-            Assert.AreEqual(SessionState.Disconnected, session2.State);
+            Assert.That(session1.State, Is.EqualTo(SessionState.Initialized));
+            Assert.That(session2.State, Is.EqualTo(SessionState.Disconnected));
         }
 
         private ISession CreateSession()

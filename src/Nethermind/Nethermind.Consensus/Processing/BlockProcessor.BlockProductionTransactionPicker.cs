@@ -3,30 +3,43 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Config;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.State;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing
 {
     public partial class BlockProcessor
     {
-        protected class BlockProductionTransactionPicker
+        public class BlockProductionTransactionPicker : IBlockProductionTransactionPicker
         {
-            private readonly ISpecProvider _specProvider;
+            private readonly long _maxTxLengthBytes;
 
-            public BlockProductionTransactionPicker(ISpecProvider specProvider)
+            protected readonly ISpecProvider _specProvider;
+            private readonly bool _ignoreEip3607;
+
+            public BlockProductionTransactionPicker(ISpecProvider specProvider, long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes, bool ignoreEip3607 = false)
             {
                 _specProvider = specProvider;
+                _maxTxLengthBytes = maxTxLengthKilobytes.KiB();
+                _ignoreEip3607 = ignoreEip3607;
             }
 
             public event EventHandler<AddingTxEventArgs>? AddingTransaction;
 
-            public AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IStateProvider stateProvider)
+            protected void OnAddingTransaction(AddingTxEventArgs e)
+            {
+                AddingTransaction?.Invoke(this, e);
+            }
+
+            public virtual AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IWorldState stateProvider)
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
@@ -37,6 +50,14 @@ namespace Nethermind.Consensus.Processing
                 if (GasCostOf.Transaction > gasRemaining)
                 {
                     return args.Set(TxAction.Stop, "Block full");
+                }
+
+                if (block is BlockToProduce blockToProduce && blockToProduce.TxByteLength + currentTx.GetLength(false) > _maxTxLengthBytes)
+                {
+                    return args.Set(
+                        // If smallest tx is too large, stop picking
+                        currentTx.GasLimit == GasCostOf.Transaction ? TxAction.Stop : TxAction.Skip,
+                        "Too large for CL");
                 }
 
                 if (currentTx.SenderAddress is null)
@@ -57,10 +78,10 @@ namespace Nethermind.Consensus.Processing
                 IReleaseSpec spec = _specProvider.GetSpec(block.Header);
                 if (currentTx.IsAboveInitCode(spec))
                 {
-                    return args.Set(TxAction.Skip, $"EIP-3860 - transaction size over max init code size");
+                    return args.Set(TxAction.Skip, TransactionResult.TransactionSizeOverMaxInitCodeSize.Error);
                 }
 
-                if (stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
+                if (!_ignoreEip3607 && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
                     return args.Set(TxAction.Skip, $"Sender is contract");
                 }
@@ -72,16 +93,16 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
-                if (!HasEnoughFounds(currentTx, balance, args, block, spec))
+                if (!HasEnoughFunds(currentTx, balance, args, block, spec))
                 {
                     return args;
                 }
 
-                AddingTransaction?.Invoke(this, args);
+                OnAddingTransaction(args);
                 return args;
             }
 
-            private bool HasEnoughFounds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
+            private static bool HasEnoughFunds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
             {
                 bool eip1559Enabled = releaseSpec.IsEip1559Enabled;
                 UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(eip1559Enabled, block.BaseFeePerGas);
@@ -92,12 +113,24 @@ namespace Nethermind.Consensus.Processing
                     return false;
                 }
 
-                if (eip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + transaction.Value)
+                if (!transaction.IsServiceTransaction && eip1559Enabled)
                 {
-                    e.Set(TxAction.Skip, $"MaxFeePerGas ({transaction.MaxFeePerGas}) times GasLimit {transaction.GasLimit} is higher than sender balance ({senderBalance})");
-                    return false;
-                }
+                    UInt256 maxFee = (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + transaction.Value;
 
+                    if (senderBalance < maxFee)
+                    {
+                        e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}");
+                        return false;
+                    }
+
+                    if (transaction.SupportsBlobs && (
+                        !BlobGasCalculator.TryCalculateBlobBaseFee(block.Header, transaction, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee) ||
+                        senderBalance < (maxFee += blobBaseFee)))
+                    {
+                        e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}, BlobBaseFee: {blobBaseFee}");
+                        return false;
+                    }
+                }
                 return true;
             }
         }

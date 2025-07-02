@@ -9,10 +9,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Caching
 {
-    public sealed class MemCountingCache : ICache<KeccakKey, byte[]>
+    public sealed class MemCountingCache : ICache<ValueHash256, byte[]>
     {
         private readonly int _maxCapacity;
-        private readonly Dictionary<KeccakKey, LinkedListNode<LruCacheItem>> _cacheMap;
+        private readonly Dictionary<ValueHash256, LinkedListNode<LruCacheItem>> _cacheMap;
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
 
         private const int PreInitMemorySize =
@@ -45,7 +45,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public byte[]? Get(KeccakKey key)
+        public byte[]? Get(ValueHash256 key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -58,7 +58,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGet(KeccakKey key, out byte[]? value)
+        public bool TryGet(ValueHash256 key, out byte[]? value)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -72,7 +72,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Set(KeccakKey key, byte[]? val)
+        public bool Set(ValueHash256 key, byte[]? val)
         {
             if (val is null)
             {
@@ -118,7 +118,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Delete(KeccakKey key)
+        public bool Delete(ValueHash256 key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -133,9 +133,9 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Contains(KeccakKey key) => _cacheMap.ContainsKey(key);
+        public bool Contains(ValueHash256 key) => _cacheMap.ContainsKey(key);
 
-        private void Replace(KeccakKey key, byte[] value)
+        private void Replace(ValueHash256 key, byte[] value)
         {
             LinkedListNode<LruCacheItem> node = _leastRecentlyUsed!;
             if (node is null)
@@ -162,21 +162,21 @@ namespace Nethermind.Core.Caching
 
         private struct LruCacheItem
         {
-            public LruCacheItem(KeccakKey k, byte[] v)
+            public LruCacheItem(ValueHash256 k, byte[] v)
             {
                 Key = k;
                 Value = v;
             }
 
-            public readonly KeccakKey Key;
+            public readonly ValueHash256 Key;
             public byte[] Value;
 
-            public long MemorySize => FindMemorySize(Value);
+            public readonly long MemorySize => FindMemorySize(Value);
 
             public static long FindMemorySize(byte[] withValue)
             {
                 return MemorySizes.Align(
-                    Keccak.MemorySize +
+                    Hash256.MemorySize +
                     MemorySizes.ArrayOverhead +
                     withValue.Length);
             }
@@ -196,5 +196,6 @@ namespace Nethermind.Core.Caching
         }
 
         public long MemorySize { get; private set; } = PreInitMemorySize;
+        public int Count => _cacheMap.Count;
     }
 }

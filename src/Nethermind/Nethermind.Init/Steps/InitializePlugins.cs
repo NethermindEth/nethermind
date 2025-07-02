@@ -7,34 +7,27 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(InitializeBlockTree))]
-    public class InitializePlugins : IStep
+    public class InitializePlugins(INethermindApi api) : IStep
     {
-        private readonly INethermindApi _api;
-
-        public InitializePlugins(INethermindApi api)
-        {
-            _api = api;
-        }
-
         public async Task Execute(CancellationToken cancellationToken)
         {
-            ILogger logger = _api.LogManager.GetClassLogger();
-            if (logger.IsInfo) logger.Info($"Initializing {_api.Plugins.Count} plugins");
-            foreach (INethermindPlugin plugin in _api.Plugins)
+            ILogger logger = api.LogManager.GetClassLogger();
+            if (logger.IsInfo) logger.Info($"Initializing {api.Plugins.Count} plugins");
+            foreach (INethermindPlugin plugin in api.Plugins)
             {
                 try
                 {
                     if (logger.IsInfo) logger.Info($"  {plugin.Name} by {plugin.Author}");
-                    Stopwatch stopwatch = Stopwatch.StartNew();
-                    await plugin.Init(_api);
-                    stopwatch.Stop();
+                    long startTime = Stopwatch.GetTimestamp();
+                    await plugin.Init(api);
                     if (logger.IsInfo)
-                        logger.Info($"  {plugin.Name} by {plugin.Author} initialized in {stopwatch.ElapsedMilliseconds}ms");
+                        logger.Info($"  {plugin.Name} by {plugin.Author} initialized in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
                 }
                 catch (Exception e)
                 {

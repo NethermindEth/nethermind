@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 
 namespace Nethermind.Network.Config
 {
@@ -34,5 +35,14 @@ namespace Nethermind.Network.Config
         public int DiscoveryPort { get; set; } = 30303;
         public int P2PPort { get; set; } = 30303;
         public long SimulateSendLatencyMs { get; set; } = 0;
+        public int NumConcurrentOutgoingConnects { get; set; } = 0;
+        public int MaxOutgoingConnectPerSec { get; set; } = 20;
+        public int ConnectTimeoutMs { get; set; } = 2000;
+        public int ProcessingThreadCount { get; set; } = 1;
+        public string? ClientIdMatcher { get; set; } = null;
+        public bool DisableDiscV4DnsFeeder { get; set; } = false;
+        public long RlpxHostShutdownCloseTimeoutMs { get; set; } = 1000;
+        public string PublicClientIdFormat { get; set; } = ProductInfo.DefaultPublicClientIdFormat;
+        public bool EnableEnrDiscovery { get; set; } = true;
     }
 }

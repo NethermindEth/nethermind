@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -12,7 +10,7 @@ namespace Nethermind.Core.Test.Builders
         public ReceiptBuilder()
         {
             TestObjectInternal = new TxReceipt();
-            TestObjectInternal.Logs = new[] { new LogEntry(Address.Zero, Array.Empty<byte>(), new[] { Keccak.Zero }) };
+            TestObjectInternal.Logs = new[] { new LogEntry(Address.Zero, [], new[] { Keccak.Zero }) };
         }
 
         public ReceiptBuilder WithAllFieldsFilled => WithBloom(TestItem.NonZeroBloom)
@@ -30,7 +28,7 @@ namespace Nethermind.Core.Test.Builders
             .WithGasUsedTotal(1000)
             .WithStatusCode(1);
 
-        public ReceiptBuilder WithState(Keccak state)
+        public ReceiptBuilder WithState(Hash256 state)
         {
             TestObjectInternal.PostTransactionState = state;
             return this;
@@ -49,7 +47,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public ReceiptBuilder WithTransactionHash(Keccak hash)
+        public ReceiptBuilder WithTransactionHash(Hash256? hash)
         {
             TestObject.TxHash = hash;
             return this;
@@ -61,7 +59,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public ReceiptBuilder WithBlockHash(Keccak hash)
+        public ReceiptBuilder WithBlockHash(Hash256? hash)
         {
             TestObject.BlockHash = hash;
             return this;
@@ -85,7 +83,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public ReceiptBuilder WithError(string error)
+        public ReceiptBuilder WithError(string? error)
         {
             TestObjectInternal.Error = error;
             return this;
@@ -103,13 +101,13 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public ReceiptBuilder WithContractAddress(Address contractAddress)
+        public ReceiptBuilder WithContractAddress(Address? contractAddress)
         {
             TestObjectInternal.ContractAddress = contractAddress;
             return this;
         }
 
-        public ReceiptBuilder WithRecipient(Address recipient)
+        public ReceiptBuilder WithRecipient(Address? recipient)
         {
             TestObjectInternal.Recipient = recipient;
             return this;
@@ -118,6 +116,12 @@ namespace Nethermind.Core.Test.Builders
         public ReceiptBuilder WithStatusCode(byte statusCode)
         {
             TestObjectInternal.StatusCode = statusCode;
+            return this;
+        }
+
+        public ReceiptBuilder WithCalculatedBloom()
+        {
+            TestObjectInternal.Bloom = new Bloom(TestObjectInternal.Logs);
             return this;
         }
     }

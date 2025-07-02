@@ -25,7 +25,7 @@ namespace Nethermind.Synchronization.FastSync
 
     internal class PendingSyncItems : IPendingSyncItems
     {
-        private ConcurrentStack<StateSyncItem>[] _allStacks = new ConcurrentStack<StateSyncItem>[7];
+        private readonly ConcurrentStack<StateSyncItem>[] _allStacks = new ConcurrentStack<StateSyncItem>[7];
 
         private ConcurrentStack<StateSyncItem> CodeItems => _allStacks[0];
 
@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private string LevelsDescription => $"{MaxStorageLevel:D2} {_maxStorageRightness:D8} | {MaxStateLevel:D2} {_maxRightness:D8}";
         public string Description => $"{CodeItems?.Count ?? 0:D4} + {StorageItemsPriority0?.Count ?? 0:D6} {StorageItemsPriority1?.Count ?? 0:D6} {StorageItemsPriority2?.Count ?? 0:D6} + {StateItemsPriority0?.Count ?? 0:D6} {StateItemsPriority1?.Count ?? 0:D6} {StateItemsPriority2?.Count ?? 0:D6}";
-        public int Count => _allStacks.Sum(n => n?.Count ?? 0);
+        public int Count => _allStacks.Sum(static n => n?.Count ?? 0);
 
         public StateSyncItem? PeekState()
         {
@@ -183,7 +183,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
 
-            // Take Stae Nodes if no codes queued up
+            // Take State Nodes if no codes queued up
             for (int i = 0; i < length; i++)
             {
                 if (TryTake(out StateSyncItem? requestItem))
@@ -202,7 +202,7 @@ namespace Nethermind.Synchronization.FastSync
         [MethodImpl(MethodImplOptions.Synchronized)]
         public string RecalculatePriorities()
         {
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
 
             string reviewMessage = $"Node sync queues review ({LevelsDescription}):" + Environment.NewLine;
             reviewMessage += $"  before {Description}" + Environment.NewLine;
@@ -225,8 +225,7 @@ namespace Nethermind.Synchronization.FastSync
 
             reviewMessage += $"  after {Description}" + Environment.NewLine;
 
-            stopwatch.Stop();
-            reviewMessage += $"  time spent in review: {stopwatch.ElapsedMilliseconds}ms";
+            reviewMessage += $"  time spent in review: {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms";
             return reviewMessage;
         }
     }

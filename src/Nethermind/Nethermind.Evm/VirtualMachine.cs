@@ -3,3082 +3,1410 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Int256;
+using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Bls.Shamatar;
-using Nethermind.Evm.Precompiles.Snarks.Shamatar;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 
+using static Nethermind.Evm.EvmObjectFormat.EofValidator;
+
+#if DEBUG
+using Nethermind.Evm.Tracing.Debugger;
+#endif
+
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
+namespace Nethermind.Evm;
 
-namespace Nethermind.Evm
+using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
+using Int256;
+
+public sealed unsafe partial class VirtualMachine(
+    IBlockhashProvider? blockHashProvider,
+    ISpecProvider? specProvider,
+    ILogManager? logManager) : IVirtualMachine
 {
-    public class VirtualMachine : IVirtualMachine
+    public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
+    private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    internal readonly static byte[] EofHash256 = KeccakHash.ComputeHashBytes(MAGIC);
+    internal static ref readonly UInt256 P255 => ref P255Int;
+    internal static readonly UInt256 BigInt256 = 256;
+    internal static readonly UInt256 BigInt32 = 32;
+
+    internal static readonly byte[] BytesZero = [0];
+
+    internal static readonly byte[] BytesZero32 =
     {
-        public const int MaxCallDepth = 1024;
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+    };
 
-        private bool _simdOperationsEnabled = Vector<byte>.Count == 32;
-        private UInt256 P255Int = (UInt256)BigInteger.Pow(2, 255);
-        private UInt256 P255 => P255Int;
-        private UInt256 BigInt256 = 256;
-        public UInt256 BigInt32 = 32;
+    internal static readonly byte[] BytesMax32 =
+    {
+        255, 255, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255
+    };
 
-        internal byte[] BytesZero = { 0 };
+    internal static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
+    internal static readonly OutOfGasException PrecompileOutOfGasException = new();
 
-        internal byte[] BytesZero32 =
+    private readonly ValueHash256 _chainId = ((UInt256)specProvider.ChainId).ToValueHash();
+
+    private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
+    private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly Stack<EvmState> _stateStack = new();
+
+    private IWorldState _worldState;
+    private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
+    private ITxTracer _txTracer = NullTxTracer.Instance;
+
+    private ICodeInfoRepository _codeInfoRepository;
+
+    private OpCode[] _opcodeMethods;
+    private static long _txCount;
+
+    private EvmState _currentState;
+    private ReadOnlyMemory<byte>? _previousCallResult;
+    private UInt256 _previousCallOutputDestination;
+
+    public ICodeInfoRepository CodeInfoRepository => _codeInfoRepository;
+    public IReleaseSpec Spec => _blockExecutionContext.Spec;
+    public ITxTracer TxTracer => _txTracer;
+    public IWorldState WorldState => _worldState;
+    public ref readonly ValueHash256 ChainId => ref _chainId;
+    public ReadOnlyMemory<byte> ReturnDataBuffer { get; set; } = Array.Empty<byte>();
+    public object ReturnData { get; set; }
+    public IBlockhashProvider BlockHashProvider => _blockHashProvider;
+
+    private BlockExecutionContext _blockExecutionContext;
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
+    public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
+
+    private TxExecutionContext _txExecutionContext;
+    public ref readonly TxExecutionContext TxExecutionContext => ref _txExecutionContext;
+    /// <summary>
+    /// Transaction context
+    /// </summary>
+    public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
+
+    public EvmState EvmState { get => _currentState; private set => _currentState = value; }
+    public int SectionIndex { get; set; }
+
+    /// <summary>
+    /// Executes a transaction by iteratively processing call frames until a top-level call returns
+    /// or a failure condition is reached. This method handles both precompiled contracts and regular
+    /// EVM calls, along with proper state management, tracing, and error handling.
+    /// </summary>
+    /// <typeparam name="TTracingInst">
+    /// The type of tracing instructions flag used to conditionally trace execution actions.
+    /// </typeparam>
+    /// <param name="evmState">The initial EVM state to begin transaction execution.</param>
+    /// <param name="worldState">The current world state that may be modified during execution.</param>
+    /// <param name="txTracer">An object used to record execution details and trace transaction actions.</param>
+    /// <returns>
+    /// A <see cref="TransactionSubstate"/> representing the final state of the transaction execution.
+    /// </returns>
+    /// <exception cref="EvmException">
+    /// Thrown when an EVM-specific error occurs during execution.
+    /// </exception>
+    public TransactionSubstate ExecuteTransaction<TTracingInst>(
+        EvmState evmState,
+        IWorldState worldState,
+        ITxTracer txTracer)
+        where TTracingInst : struct, IFlag
+    {
+        // Initialize dependencies for transaction tracing and state access.
+        _txTracer = txTracer;
+        _worldState = worldState;
+
+        // Prepare the specification and opcode mapping based on the current block header.
+        IReleaseSpec spec = BlockExecutionContext.Spec;
+        PrepareOpcodes<TTracingInst>(spec);
+
+        // Initialize the code repository and set up the initial execution state.
+        _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
+        _currentState = evmState;
+        _previousCallResult = null;
+        _previousCallOutputDestination = UInt256.Zero;
+        ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
+
+        // Main execution loop: processes call frames until the top-level transaction completes.
+        while (true)
         {
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0
-        };
-
-        internal byte[] BytesMax32 =
-        {
-            255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255
-        };
-
-        private readonly byte[] _chainId;
-
-        private readonly IBlockhashProvider _blockhashProvider;
-        private readonly ISpecProvider _specProvider;
-        private static readonly LruCache<KeccakKey, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
-        private readonly ILogger _logger;
-        private IWorldState _worldState;
-        private IStateProvider _state;
-        private readonly Stack<EvmState> _stateStack = new();
-        private IStorageProvider _storage;
-        private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
-        private Dictionary<Address, CodeInfo>? _precompiles;
-        private byte[] _returnDataBuffer = Array.Empty<byte>();
-        private ITxTracer _txTracer = NullTxTracer.Instance;
-
-        public VirtualMachine(
-            IBlockhashProvider? blockhashProvider,
-            ISpecProvider? specProvider,
-            ILogManager? logManager)
-        {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-            InitializePrecompiledContracts();
-        }
-
-        public TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer txTracer)
-        {
-            _txTracer = txTracer;
-
-            _state = worldState.StateProvider;
-            _storage = worldState.StorageProvider;
-            _worldState = worldState;
-
-            IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number, state.Env.TxExecutionContext.Header.Timestamp);
-            EvmState currentState = state;
-            byte[] previousCallResult = null;
-            ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
-            UInt256 previousCallOutputDestination = UInt256.Zero;
-            while (true)
+            // For non-continuation frames, clear any previously stored return data.
+            if (!_currentState.IsContinuation)
             {
-                if (!currentState.IsContinuation)
-                {
-                    _returnDataBuffer = Array.Empty<byte>();
-                }
+                ReturnDataBuffer = Array.Empty<byte>();
+            }
 
-                try
+            Exception? failure;
+            try
+            {
+                CallResult callResult;
+
+                // If the current state represents a precompiled contract, handle it separately.
+                if (_currentState.IsPrecompile)
                 {
-                    CallResult callResult;
-                    if (currentState.IsPrecompile)
+                    callResult = ExecutePrecompile(_currentState, _txTracer.IsTracingActions, out failure);
+                    if (failure is not null)
                     {
-                        if (_txTracer.IsTracingActions)
-                        {
-                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
-                        }
+                        // Jump to the failure handler if a precompile error occurred.
+                        goto Failure;
+                    }
+                }
+                else
+                {
+                    // Start transaction tracing for non-continuation frames if tracing is enabled.
+                    if (_txTracer.IsTracingActions && !_currentState.IsContinuation)
+                    {
+                        TraceTransactionActionStart(_currentState);
+                    }
 
-                        callResult = ExecutePrecompile(currentState, spec);
-
-                        if (!callResult.PrecompileSuccess.Value)
-                        {
-                            if (currentState.IsPrecompile && currentState.IsTopLevel)
-                            {
-                                Metrics.EvmExceptions++;
-                                // TODO: when direct / calls are treated same we should not need such differentiation
-                                throw new PrecompileExecutionFailureException();
-                            }
-
-                            // TODO: testing it as it seems the way to pass zkSNARKs tests
-                            currentState.GasAvailable = 0;
-                        }
+                    // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
+                    if (_currentState.Env.CodeInfo is not null)
+                    {
+                        callResult = ExecuteCall<TTracingInst>(
+                            _previousCallResult,
+                            previousCallOutput,
+                            _previousCallOutputDestination);
                     }
                     else
                     {
-                        if (_txTracer.IsTracingActions && !currentState.IsContinuation)
-                        {
-                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData, currentState.ExecutionType);
-                            if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);
-                        }
-
-                        callResult = ExecuteCall(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
-                        if (!callResult.IsReturn)
-                        {
-                            _stateStack.Push(currentState);
-                            currentState = callResult.StateToExecute;
-                            previousCallResult = null; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests (failing block 9411 on Ropsten https://ropsten.etherscan.io/vmtrace?txhash=0x666194d15c14c54fffafab1a04c08064af165870ef9a87f65711dcce7ed27fe1)
-                            _returnDataBuffer = Array.Empty<byte>();
-                            previousCallOutput = ZeroPaddedSpan.Empty;
-                            continue;
-                        }
-
-                        if (callResult.IsException)
-                        {
-                            if (_txTracer.IsTracingActions) _txTracer.ReportActionError(callResult.ExceptionType);
-                            _worldState.Restore(currentState.Snapshot);
-
-                            RevertParityTouchBugAccount(spec);
-
-                            if (currentState.IsTopLevel)
-                            {
-                                return new TransactionSubstate(callResult.ExceptionType, _txTracer != NullTxTracer.Instance);
-                            }
-
-                            previousCallResult = StatusCode.FailureBytes;
-                            previousCallOutputDestination = UInt256.Zero;
-                            _returnDataBuffer = Array.Empty<byte>();
-                            previousCallOutput = ZeroPaddedSpan.Empty;
-
-                            currentState.Dispose();
-                            currentState = _stateStack.Pop();
-                            currentState.IsContinuation = true;
-                            continue;
-                        }
+                        callResult = CallResult.InvalidCodeException;
                     }
 
-                    if (currentState.IsTopLevel)
+                    // If the call did not finish with a return, set up the next call frame and continue.
+                    if (!callResult.IsReturn)
                     {
-                        if (_txTracer.IsTracingActions)
-                        {
-                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-
-                            if (callResult.IsException)
-                            {
-                                _txTracer.ReportActionError(callResult.ExceptionType);
-                            }
-                            else if (callResult.ShouldRevert)
-                            {
-                                if (currentState.ExecutionType.IsAnyCreate())
-                                {
-                                    _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable - codeDepositGasCost);
-                                }
-                                else
-                                {
-                                    _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable);
-                                }
-                            }
-                            else
-                            {
-                                if (currentState.ExecutionType.IsAnyCreate() && currentState.GasAvailable < codeDepositGasCost)
-                                {
-                                    if (spec.ChargeForTopLevelCreate)
-                                    {
-                                        _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
-                                    }
-                                    else
-                                    {
-                                        _txTracer.ReportActionEnd(currentState.GasAvailable, currentState.To, callResult.Output);
-                                    }
-                                }
-                                // Reject code starting with 0xEF if EIP-3541 is enabled.
-                                else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(spec, callResult.Output))
-                                {
-                                    _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
-                                }
-                                else
-                                {
-                                    if (currentState.ExecutionType.IsAnyCreate())
-                                    {
-                                        _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output);
-                                    }
-                                    else
-                                    {
-                                        _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);
-                                    }
-                                }
-                            }
-                        }
-
-                        return new TransactionSubstate(
-                            callResult.Output,
-                            currentState.Refund,
-                            (IReadOnlyCollection<Address>)currentState.DestroyList,
-                            (IReadOnlyCollection<LogEntry>)currentState.Logs,
-                            callResult.ShouldRevert,
-                            _txTracer != NullTxTracer.Instance);
+                        PrepareNextCallFrame(in callResult, ref previousCallOutput);
+                        continue;
                     }
 
-                    Address callCodeOwner = currentState.Env.ExecutingAccount;
-                    using EvmState previousState = currentState;
-                    currentState = _stateStack.Pop();
-                    currentState.IsContinuation = true;
-                    currentState.GasAvailable += previousState.GasAvailable;
+                    // Handle exceptions raised during the call execution.
+                    if (callResult.IsException)
+                    {
+                        TransactionSubstate substate = HandleException(in callResult, ref previousCallOutput, out bool terminate);
+                        if (terminate)
+                        {
+                            _currentState = null;
+                            return substate;
+                        }
+                        // Continue execution if the exception did not immediately finalize the transaction.
+                        continue;
+                    }
+                }
+
+                // If the current execution state is the top-level call, finalize tracing and return the result.
+                if (_currentState.IsTopLevel)
+                {
+                    if (_txTracer.IsTracingActions)
+                    {
+                        TraceTransactionActionEnd(_currentState, callResult);
+                    }
+                    TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
+                    _currentState = null;
+                    return substate;
+                }
+
+                // For nested call frames, merge the results and restore the previous execution state.
+                using (EvmState previousState = _currentState)
+                {
+                    // Restore the previous state from the stack and mark it as a continuation.
+                    _currentState = _stateStack.Pop();
+                    _currentState.IsContinuation = true;
+                    // Refund the remaining gas from the completed call frame.
+                    _currentState.GasAvailable += previousState.GasAvailable;
                     bool previousStateSucceeded = true;
 
                     if (!callResult.ShouldRevert)
                     {
-                        long gasAvailableForCodeDeposit = previousState.GasAvailable; // TODO: refactor, this is to fix 61363 Ropsten
+                        long gasAvailableForCodeDeposit = previousState.GasAvailable;
+
+                        // Process contract creation calls differently from regular calls.
                         if (previousState.ExecutionType.IsAnyCreate())
                         {
-                            previousCallResult = callCodeOwner.Bytes;
-                            previousCallOutputDestination = UInt256.Zero;
-                            _returnDataBuffer = Array.Empty<byte>();
-                            previousCallOutput = ZeroPaddedSpan.Empty;
-
-                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                            bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
-                            if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
+                            PrepareCreateData(previousState, ref previousCallOutput);
+                            if (previousState.ExecutionType.IsAnyCreateLegacy())
                             {
-                                Keccak codeHash = _state.UpdateCode(callResult.Output);
-                                _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
-                                currentState.GasAvailable -= codeDepositGasCost;
-
-                                if (_txTracer.IsTracingActions)
-                                {
-                                    _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output);
-                                }
+                                HandleLegacyCreate(
+                                    in callResult,
+                                    previousState,
+                                    gasAvailableForCodeDeposit,
+                                    ref previousStateSucceeded);
                             }
-                            else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
+                            else if (previousState.ExecutionType.IsAnyCreateEof())
                             {
-                                currentState.GasAvailable -= gasAvailableForCodeDeposit;
-                                worldState.Restore(previousState.Snapshot);
-                                if (!previousState.IsCreateOnPreExistingAccount)
-                                {
-                                    _state.DeleteAccount(callCodeOwner);
-                                }
-
-                                previousCallResult = BytesZero;
-                                previousStateSucceeded = false;
-
-                                if (_txTracer.IsTracingActions)
-                                {
-                                    _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
-                                }
-                            }
-                            else if (_txTracer.IsTracingActions)
-                            {
-                                _txTracer.ReportActionEnd(0L, callCodeOwner, callResult.Output);
+                                HandleEofCreate(
+                                    in callResult,
+                                    previousState,
+                                    gasAvailableForCodeDeposit,
+                                    ref previousStateSucceeded);
                             }
                         }
                         else
                         {
-                            _returnDataBuffer = callResult.Output;
-                            previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
-                            previousCallOutput = callResult.Output.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
-                            previousCallOutputDestination = (ulong)previousState.OutputDestination;
-                            if (previousState.IsPrecompile)
-                            {
-                                // parity induced if else for vmtrace
-                                if (_txTracer.IsTracingInstructions)
-                                {
-                                    _txTracer.ReportMemoryChange((long)previousCallOutputDestination, previousCallOutput);
-                                }
-                            }
-
-                            if (_txTracer.IsTracingActions)
-                            {
-                                _txTracer.ReportActionEnd(previousState.GasAvailable, _returnDataBuffer);
-                            }
+                            // Process a standard call return.
+                            previousCallOutput = HandleRegularReturn<TTracingInst>(in callResult, previousState);
                         }
 
+                        // Commit the changes from the completed call frame if execution was successful.
                         if (previousStateSucceeded)
                         {
-                            previousState.CommitToParent(currentState);
+                            previousState.CommitToParent(_currentState);
                         }
                     }
                     else
                     {
-                        worldState.Restore(previousState.Snapshot);
-                        _returnDataBuffer = callResult.Output;
-                        previousCallResult = StatusCode.FailureBytes;
-                        previousCallOutput = callResult.Output.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
-                        previousCallOutputDestination = (ulong)previousState.OutputDestination;
-
-
-                        if (_txTracer.IsTracingActions)
-                        {
-                            _txTracer.ReportActionError(EvmExceptionType.Revert, previousState.GasAvailable);
-                        }
+                        // Revert state changes for the previous call frame when a revert condition is signaled.
+                        HandleRevert(previousState, callResult, ref previousCallOutput);
                     }
                 }
-                catch (Exception ex) when (ex is EvmException or OverflowException)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"exception ({ex.GetType().Name}) in {currentState.ExecutionType} at depth {currentState.Env.CallDepth} - restoring snapshot");
+            }
+            // Handle specific EVM or overflow exceptions by routing to the failure handling block.
+            catch (Exception ex) when (ex is EvmException or OverflowException)
+            {
+                failure = ex;
+                goto Failure;
+            }
 
-                    _worldState.Restore(currentState.Snapshot);
+            // Continue with the next iteration of the execution loop.
+            continue;
 
-                    RevertParityTouchBugAccount(spec);
+        // Failure handling: attempts to process and possibly finalize the transaction after an error.
+        Failure:
+            TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, ref previousCallOutput, out bool shouldExit);
+            if (shouldExit)
+            {
+                _currentState = null;
+                return failSubstate;
+            }
+        }
+    }
 
-                    if (txTracer.IsTracingInstructions)
-                    {
-                        txTracer.ReportOperationError(ex is EvmException evmException ? evmException.ExceptionType : EvmExceptionType.Other);
-                        txTracer.ReportOperationRemainingGas(0);
-                    }
+    private void PrepareCreateData(EvmState previousState, ref ZeroPaddedSpan previousCallOutput)
+    {
+        _previousCallResult = previousState.Env.ExecutingAccount.Bytes;
+        _previousCallOutputDestination = UInt256.Zero;
+        ReturnDataBuffer = Array.Empty<byte>();
+        previousCallOutput = ZeroPaddedSpan.Empty;
+    }
 
-                    if (_txTracer.IsTracingActions)
-                    {
-                        EvmException evmException = ex as EvmException;
-                        _txTracer.ReportActionError(evmException?.ExceptionType ?? EvmExceptionType.Other);
-                    }
-
-                    if (currentState.IsTopLevel)
-                    {
-                        return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, _txTracer != NullTxTracer.Instance);
-                    }
-
-                    previousCallResult = StatusCode.FailureBytes;
-                    previousCallOutputDestination = UInt256.Zero;
-                    _returnDataBuffer = Array.Empty<byte>();
-                    previousCallOutput = ZeroPaddedSpan.Empty;
-
-                    currentState.Dispose();
-                    currentState = _stateStack.Pop();
-                    currentState.IsContinuation = true;
-                }
+    private ZeroPaddedSpan HandleRegularReturn<TTracingInst>(scoped in CallResult callResult, EvmState previousState)
+        where TTracingInst : struct, IFlag
+    {
+        ZeroPaddedSpan previousCallOutput;
+        ReturnDataBuffer = callResult.Output.Bytes;
+        _previousCallResult = previousState.ExecutionType.IsAnyCallEof() ? EofStatusCode.SuccessBytes :
+            callResult.PrecompileSuccess.HasValue
+            ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes)
+            : StatusCode.SuccessBytes;
+        previousCallOutput = callResult.Output.Bytes.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
+        _previousCallOutputDestination = (ulong)previousState.OutputDestination;
+        if (previousState.IsPrecompile)
+        {
+            // parity induced if else for vmtrace
+            if (TTracingInst.IsActive)
+            {
+                _txTracer.ReportMemoryChange(_previousCallOutputDestination, previousCallOutput);
             }
         }
 
-        private void RevertParityTouchBugAccount(IReleaseSpec spec)
+        if (_txTracer.IsTracingActions)
         {
-            if (_parityTouchBugAccount.ShouldDelete)
-            {
-                if (_state.AccountExists(_parityTouchBugAccount.Address))
-                {
-                    _state.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, spec);
-                }
-
-                _parityTouchBugAccount.ShouldDelete = false;
-            }
+            _txTracer.ReportActionEnd(previousState.GasAvailable, ReturnDataBuffer);
         }
 
-        public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
+        return previousCallOutput;
+    }
+
+    private void HandleEofCreate(in CallResult callResult, EvmState previousState, long gasAvailableForCodeDeposit, ref bool previousStateSucceeded)
+    {
+        Address callCodeOwner = previousState.Env.ExecutingAccount;
+        // ReturnCode was called with a container index and auxdata
+        // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCODE is executed
+        ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
+        EofCodeInfo deployCodeInfo = (EofCodeInfo)callResult.Output.Container;
+
+        // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
+        Span<byte> bytecodeResult = new byte[deployCodeInfo.Code.Length + auxExtraData.Length];
+        // 2 - 1 - 1 - copy old container
+        deployCodeInfo.Code.Span.CopyTo(bytecodeResult);
+        // 2 - 1 - 2 - copy aux data to dataSection
+        auxExtraData.CopyTo(bytecodeResult[deployCodeInfo.Code.Length..]);
+
+        // 2 - 2 - update data section size in the header u16
+        int dataSubHeaderSectionStart =
+            // magic + version
+            VERSION_OFFSET
+            // type section : (1 byte of separator + 2 bytes for size)
+            + Eof1.MINIMUM_HEADER_SECTION_SIZE
+            // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
+            + ONE_BYTE_LENGTH
+            + TWO_BYTE_LENGTH
+            + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.CodeSections.Count
+            // container section
+            + (deployCodeInfo.EofContainer.Header.ContainerSections is null
+                // bytes if no container section is available
+                ? 0
+                // 1 byte of separator + (ContainerSections count) * 2 bytes for size
+                : ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.ContainerSections.Value.Count)
+            // data section separator
+            + ONE_BYTE_LENGTH;
+
+        ushort dataSize = (ushort)(deployCodeInfo.DataSection.Length + auxExtraData.Length);
+        bytecodeResult[dataSubHeaderSectionStart + 1] = (byte)(dataSize >> 8);
+        bytecodeResult[dataSubHeaderSectionStart + 2] = (byte)(dataSize & 0xFF);
+
+        byte[] bytecodeResultArray = bytecodeResult.ToArray();
+
+        IReleaseSpec spec = BlockExecutionContext.Spec;
+        // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
+        bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
+        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, bytecodeResultArray?.Length ?? 0);
+        if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
         {
-            IStateProvider state = worldState.StateProvider;
-            if (codeSource.IsPrecompile(vmSpec))
-            {
-                if (_precompiles is null)
-                {
-                    throw new InvalidOperationException("EVM precompile have not been initialized properly.");
-                }
+            // 4 - set state[new_address].code to the updated deploy container
+            // push new_address onto the stack (already done before the ifs)
+            _codeInfoRepository.InsertCode(_worldState, bytecodeResultArray, callCodeOwner, spec);
+            _currentState.GasAvailable -= codeDepositGasCost;
 
-                return _precompiles[codeSource];
+            if (_txTracer.IsTracingActions)
+            {
+                _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, bytecodeResultArray);
+            }
+        }
+        else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
+        {
+            _currentState.GasAvailable -= gasAvailableForCodeDeposit;
+            _worldState.Restore(previousState.Snapshot);
+            if (!previousState.IsCreateOnPreExistingAccount)
+            {
+                _worldState.DeleteAccount(callCodeOwner);
             }
 
-            Keccak codeHash = state.GetCodeHash(codeSource);
-            CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
-            if (cachedCodeInfo is null)
+            _previousCallResult = BytesZero;
+            previousStateSucceeded = false;
+
+            if (_txTracer.IsTracingActions)
             {
-                byte[] code = state.GetCode(codeHash);
-
-                if (code is null)
-                {
-                    throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
-                }
-
-                cachedCodeInfo = new CodeInfo(code);
-                _codeCache.Set(codeHash, cachedCodeInfo);
+                _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
+        }
+        else if (_txTracer.IsTracingActions)
+        {
+            _txTracer.ReportActionEnd(0L, callCodeOwner, bytecodeResultArray);
+        }
+    }
+
+    /// <summary>
+    /// Handles the code deposit for a legacy contract creation operation.
+    /// This method calculates the gas cost for depositing the contract code using legacy rules,
+    /// validates the code, and either deposits the code or reverts the world state if the deposit fails.
+    /// </summary>
+    /// <param name="callResult">
+    /// The result of the contract creation call, which includes the output code intended for deposit.
+    /// </param>
+    /// <param name="previousState">
+    /// The EVM state prior to the current call frame. It provides access to the snapshot, the executing account,
+    /// and flags indicating if the account pre-existed.
+    /// </param>
+    /// <param name="gasAvailableForCodeDeposit">
+    /// The amount of gas available for covering the cost of code deposit.
+    /// </param>
+    /// <param name="spec">
+    /// The release specification containing the rules and parameters that affect code deposit behavior.
+    /// </param>
+    /// <param name="previousStateSucceeded">
+    /// A reference flag indicating whether the previous call frame executed successfully. This flag is set to false if the deposit fails.
+    /// </param>
+    private void HandleLegacyCreate(
+        in CallResult callResult,
+        EvmState previousState,
+        long gasAvailableForCodeDeposit,
+        ref bool previousStateSucceeded)
+    {
+        // Cache whether transaction tracing is enabled to avoid multiple property lookups.
+        bool isTracing = _txTracer.IsTracingActions;
+
+        // Get the address of the account that initiated the contract creation.
+        Address callCodeOwner = previousState.Env.ExecutingAccount;
+
+        IReleaseSpec spec = BlockExecutionContext.Spec;
+        // Calculate the gas cost required to deposit the contract code using legacy cost rules.
+        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
+
+        // Validate the code against legacy rules; mark it invalid if it fails these checks.
+        bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(spec, callResult.Output.Bytes);
+
+        // Check if there is sufficient gas and the code is valid.
+        if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
+        {
+            // Deposit the contract code into the repository.
+            ReadOnlyMemory<byte> code = callResult.Output.Bytes;
+            _codeInfoRepository.InsertCode(_worldState, code, callCodeOwner, spec);
+
+            // Deduct the gas cost for the code deposit from the current state's available gas.
+            _currentState.GasAvailable -= codeDepositGasCost;
+
+            // If tracing is enabled, report the successful code deposit operation.
+            if (isTracing)
+            {
+                _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
+            }
+        }
+        // If the code deposit should fail due to out-of-gas or invalid code conditions...
+        else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
+        {
+            // Consume all remaining gas allocated for the code deposit.
+            _currentState.GasAvailable -= gasAvailableForCodeDeposit;
+
+            // Roll back the world state to its snapshot from before the creation attempt.
+            _worldState.Restore(previousState.Snapshot);
+
+            // If the contract creation did not target a pre-existing account, delete the account.
+            if (!previousState.IsCreateOnPreExistingAccount)
+            {
+                _worldState.DeleteAccount(callCodeOwner);
+            }
+
+            // Reset the previous call result to indicate that no valid code was deployed.
+            _previousCallResult = BytesZero;
+
+            // Mark the previous state execution as failed.
+            previousStateSucceeded = false;
+
+            // Report an error via the tracer, indicating whether the failure was due to invalid code or gas exhaustion.
+            if (isTracing)
+            {
+                _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
+            }
+        }
+        // In scenarios where the code deposit does not strictly mandate a failure,
+        // report the end of the action if tracing is enabled.
+        else if (isTracing)
+        {
+            _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
+        }
+    }
+
+    private TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
+    {
+        return new TransactionSubstate(
+            callResult.Output,
+            _currentState.Refund,
+            _currentState.AccessTracker.DestroyList,
+            _currentState.AccessTracker.Logs,
+            callResult.ShouldRevert,
+            isTracerConnected: _txTracer.IsTracing,
+            _logger);
+    }
+
+    /// <summary>
+    /// Reverts the state changes made during the execution of a call frame.
+    /// This method restores the world state to a previous snapshot, sets appropriate
+    /// failure indicators and output data, and reports the revert action via the tracer.
+    /// </summary>
+    /// <param name="previousState">
+    /// The EVM state prior to the current call, which contains the snapshot for restoration,
+    /// output length, output destination, and execution type.
+    /// </param>
+    /// <param name="callResult">
+    /// The result of the call that triggered the revert, containing output data and flags
+    /// indicating precompile success.
+    /// </param>
+    /// <param name="previousCallOutput">
+    /// A reference to the output data buffer that will be updated with the reverted call's output,
+    /// padded to match the expected length.
+    /// </param>
+    private void HandleRevert(EvmState previousState, in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+    {
+        // Restore the world state to the snapshot taken before the execution of the call.
+        _worldState.Restore(previousState.Snapshot);
+
+        // Cache the output bytes from the call result to avoid multiple property accesses.
+        ReadOnlyMemory<byte> outputBytes = callResult.Output.Bytes;
+
+        // Set the return data buffer to the output bytes from the failed call.
+        ReturnDataBuffer = outputBytes;
+
+        // Determine the appropriate failure status code.
+        // For calls with EOF semantics, differentiate between precompile failure and regular revert.
+        // Otherwise, use the standard failure status code.
+        _previousCallResult = previousState.ExecutionType.IsAnyCallEof()
+            ? (callResult.PrecompileSuccess is not null
+                ? EofStatusCode.FailureBytes
+                : EofStatusCode.RevertBytes)
+            : StatusCode.FailureBytes;
+
+        // Slice the output bytes, zero-padding if necessary, to match the expected output length.
+        // This ensures that the returned data conforms to the caller's output length expectations.
+        previousCallOutput = outputBytes.Span.SliceWithZeroPadding(0, Math.Min(outputBytes.Length, (int)previousState.OutputLength));
+
+        // Record the output destination address for subsequent operations.
+        _previousCallOutputDestination = (ulong)previousState.OutputDestination;
+
+        // If transaction tracing is enabled, report the revert action along with the available gas and output bytes.
+        if (_txTracer.IsTracingActions)
+        {
+            _txTracer.ReportActionRevert(previousState.GasAvailable, outputBytes);
+        }
+    }
+
+    /// <summary>
+    /// Handles a failure during transaction execution by restoring the world state,
+    /// reporting error details via the tracer, and either finalizing the top-level transaction
+    /// or preparing to revert to the parent call frame.
+    /// </summary>
+    /// <typeparam name="TTracingInst">
+    /// A type parameter representing tracing instructions. It must be a struct implementing <see cref="IFlag"/>.
+    /// </typeparam>
+    /// <param name="failure">The exception that caused the failure during execution.</param>
+    /// <param name="previousCallOutput">
+    /// A reference to the zero-padded span that holds the previous call's output; it will be reset upon failure.
+    /// </param>
+    /// <returns>
+    /// A <see cref="TransactionSubstate"/> if the failure occurs in the top-level call; otherwise, <c>null</c>
+    /// to indicate that execution should continue with the parent call frame.
+    /// </returns>
+    private TransactionSubstate HandleFailure<TTracingInst>(Exception failure, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
+        where TTracingInst : struct, IFlag
+    {
+        // Log the exception if trace logging is enabled.
+        if (_logger.IsTrace)
+        {
+            _logger.Trace($"exception ({failure.GetType().Name}) in {_currentState.ExecutionType} at depth {_currentState.Env.CallDepth} - restoring snapshot");
+        }
+
+        // Revert the world state to the snapshot taken at the start of the current state's execution.
+        _worldState.Restore(_currentState.Snapshot);
+
+        // Revert any modifications specific to the Parity touch bug, if applicable.
+        RevertParityTouchBugAccount();
+
+        // Cache the transaction tracer for local use.
+        ITxTracer txTracer = _txTracer;
+
+        // Attempt to cast the exception to EvmException to extract a specific error type.
+        EvmException? evmException = failure as EvmException;
+        EvmExceptionType errorType = evmException?.ExceptionType ?? EvmExceptionType.Other;
+
+        // If the tracing instructions flag is active, report zero remaining gas and log the error.
+        if (TTracingInst.IsActive)
+        {
+            txTracer.ReportOperationRemainingGas(0);
+            txTracer.ReportOperationError(errorType);
+        }
+
+        // If action-level tracing is enabled, report the error associated with the action.
+        if (txTracer.IsTracingActions)
+        {
+            txTracer.ReportActionError(errorType);
+        }
+
+        // For a top-level call, immediately return a final transaction substate.
+        if (_currentState.IsTopLevel)
+        {
+            // For an OverflowException, force the error type to a generic Other error.
+            EvmExceptionType finalErrorType = failure is OverflowException ? EvmExceptionType.Other : errorType;
+            shouldExit = true;
+            return new TransactionSubstate(finalErrorType, txTracer.IsTracing);
+        }
+
+        // For nested call frames, prepare to revert to the parent frame.
+        // Set the previous call result to a failure code depending on the call type.
+        _previousCallResult = _currentState.ExecutionType.IsAnyCallEof()
+            ? EofStatusCode.FailureBytes
+            : StatusCode.FailureBytes;
+
+        // Reset output destination and return data.
+        _previousCallOutputDestination = UInt256.Zero;
+        ReturnDataBuffer = Array.Empty<byte>();
+        previousCallOutput = ZeroPaddedSpan.Empty;
+
+        // Dispose of the current failing state and restore the previous call frame from the stack.
+        _currentState.Dispose();
+        _currentState = _stateStack.Pop();
+        _currentState.IsContinuation = true;
+
+        shouldExit = false;
+        return default;
+    }
+
+    /// <summary>
+    /// Prepares the execution environment for the next call frame by updating the current state
+    /// and resetting relevant output fields.
+    /// </summary>
+    /// <param name="callResult">
+    /// The result object from the current call, which contains the state to be executed next.
+    /// </param>
+    /// <param name="previousCallOutput">
+    /// A reference to the buffer holding the previous call's output, which is cleared in preparation for the new call.
+    /// </param>
+    private void PrepareNextCallFrame(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
+    {
+        // Push the current execution state onto the state stack so it can be restored later.
+        _stateStack.Push(_currentState);
+
+        // Transition to the next call frame's state provided by the call result.
+        _currentState = callResult.StateToExecute;
+
+        // Clear the previous call result as the execution context is moving to a new frame.
+        _previousCallResult = null;
+
+        // Reset the return data buffer to ensure no residual data persists across call frames.
+        ReturnDataBuffer = Array.Empty<byte>();
+
+        // Clear the previous call output, preparing for new output data in the next call frame.
+        previousCallOutput = ZeroPaddedSpan.Empty;
+    }
+
+    /// <summary>
+    /// Handles exceptions that occur during the execution of a call frame by restoring the world state,
+    /// reverting known side effects, and either finalizing the transaction (for top-level calls) or
+    /// preparing to resume execution in a parent call frame (for nested calls).
+    /// </summary>
+    /// <param name="callResult">
+    /// The result object that contains the exception type and any output data from the failed call.
+    /// </param>
+    /// <param name="previousCallOutput">
+    /// A reference to the zero-padded span that holds the previous call's output, which is reset on exception.
+    /// </param>
+    /// <returns>
+    /// A <see cref="TransactionSubstate"/> instance if the failure occurred in a top-level call,
+    /// otherwise <c>null</c> to indicate that execution should continue in the parent frame.
+    /// </returns>
+    private TransactionSubstate HandleException(scoped in CallResult callResult, scoped ref ZeroPaddedSpan previousCallOutput, out bool shouldExit)
+    {
+        // Cache the tracer to minimize repeated field accesses.
+        ITxTracer txTracer = _txTracer;
+
+        // Report the error for action-level tracing if enabled.
+        if (txTracer.IsTracingActions)
+        {
+            txTracer.ReportActionError(callResult.ExceptionType);
+        }
+
+        // Restore the world state to its snapshot before the current call execution.
+        _worldState.Restore(_currentState.Snapshot);
+
+        // Revert any modifications that might have been applied due to the Parity touch bug.
+        RevertParityTouchBugAccount();
+
+        // If this is the top-level call, return a final transaction substate encapsulating the error.
+        if (_currentState.IsTopLevel)
+        {
+            shouldExit = true;
+            return new TransactionSubstate(callResult.ExceptionType, txTracer.IsTracing);
+        }
+
+        // For nested calls, mark the previous call result as a failure code based on the call's EOF semantics.
+        _previousCallResult = _currentState.ExecutionType.IsAnyCallEof()
+            ? EofStatusCode.FailureBytes
+            : StatusCode.FailureBytes;
+
+        // Reset output destination and clear return data.
+        _previousCallOutputDestination = UInt256.Zero;
+        ReturnDataBuffer = Array.Empty<byte>();
+        previousCallOutput = ZeroPaddedSpan.Empty;
+
+        // Clean up the current failing state and pop the parent call frame from the state stack.
+        _currentState.Dispose();
+        _currentState = _stateStack.Pop();
+        _currentState.IsContinuation = true;
+
+        // Return null to indicate that the failure was handled and execution should continue in the parent frame.
+        shouldExit = false;
+        return default;
+    }
+
+    /// <summary>
+    /// Executes a precompiled contract operation based on the current execution state. 
+    /// If tracing is enabled, reports the precompile action. It then runs the precompile operation,
+    /// checks for failure conditions, and adjusts the execution state accordingly.
+    /// </summary>
+    /// <param name="currentState">The current EVM state containing execution parameters for the precompile.</param>
+    /// <param name="isTracingActions">
+    /// A boolean indicating whether detailed tracing actions should be reported during execution.
+    /// </param>
+    /// <param name="failure">
+    /// An output parameter that is set to the encountered exception if the precompile fails; otherwise, <c>null</c>.
+    /// </param>
+    /// <returns>
+    /// A <see cref="CallResult"/> containing the results of the precompile execution. In case of a failure,
+    /// returns the default value of <see cref="CallResult"/>.
+    /// </returns>
+    private CallResult ExecutePrecompile(EvmState currentState, bool isTracingActions, out Exception? failure)
+    {
+        // Report the precompile action if tracing is enabled.
+        if (isTracingActions)
+        {
+            _txTracer.ReportAction(
+                currentState.GasAvailable,
+                currentState.Env.Value,
+                currentState.From,
+                currentState.To,
+                currentState.Env.InputData,
+                currentState.ExecutionType,
+                true);
+        }
+
+        // Execute the precompile operation with the current state.
+        CallResult callResult = RunPrecompile(currentState);
+
+        // If the precompile did not succeed, handle the failure conditions.
+        if (!callResult.PrecompileSuccess.Value)
+        {
+            // If the failure is due to an exception (e.g., out-of-gas), set the corresponding failure exception.
+            if (callResult.IsException)
+            {
+                failure = PrecompileOutOfGasException;
+                goto Failure;
+            }
+
+            // If running a precompile on a top-level call frame and it fails, assign a general execution failure.
+            if (currentState.IsPrecompile && currentState.IsTopLevel)
+            {
+                failure = PrecompileExecutionFailureException;
+                goto Failure;
+            }
+
+            // Otherwise, if no exception but precompile did not succeed, exhaust the remaining gas.
+            currentState.GasAvailable = 0;
+        }
+
+        // If execution reaches here, the precompile operation is considered successful.
+        failure = null;
+        return callResult;
+
+    Failure:
+        // Return the default CallResult to signal failure, with the failure exception set via the out parameter.
+        return default;
+    }
+
+
+    private void TraceTransactionActionStart(EvmState currentState)
+    {
+        _txTracer.ReportAction(currentState.GasAvailable,
+            currentState.Env.Value,
+            currentState.From,
+            currentState.To,
+            currentState.ExecutionType.IsAnyCreate()
+                ? currentState.Env.CodeInfo.Code
+                : currentState.Env.InputData,
+            currentState.ExecutionType);
+
+        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo?.Code ?? default);
+    }
+
+    /// <summary>
+    /// Prepares the opcode methods to be used during EVM execution,
+    /// based on the provided release specification.
+    /// </summary>
+    /// <typeparam name="TTracingInst">
+    /// A value type implementing <see cref="IFlag"/> that indicates whether tracing-specific opcodes
+    /// should be used.
+    /// </typeparam>
+    /// <param name="spec">
+    /// The release specification, which is used to prepare the appropriate opcodes.
+    /// </param>
+    private void PrepareOpcodes<TTracingInst>(IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+    {
+        // Check if tracing instructions are inactive.
+        if (!TTracingInst.IsActive)
+        {
+            // Occasionally refresh the opcode cache for non-tracing opcodes.
+            // The cache is flushed every 10,000 transactions until a threshold of 500,000 transactions.
+            // This is to have the function pointers directly point at any PGO optimized methods rather than via pre-stubs
+            // May be a few cycles to pick up pointers to the re-Jitted optimized methods depending on what's in the blocks,
+            // however the the refreshes don't take long. (re-Jitting doesn't update prior captured function pointers)
+            if (_txCount < 500_000 && Interlocked.Increment(ref _txCount) % 10_000 == 0)
+            {
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug("Refreshing EVM instruction cache");
+                }
+                // Regenerate the non-traced opcode set to pick up any updated PGO optimized methods.
+                spec.EvmInstructionsNoTrace = EvmInstructions.GenerateOpCodes<TTracingInst>(spec);
+            }
+            // Ensure the non-traced opcode set is generated and assign it to the _opcodeMethods field.
+            _opcodeMethods = (OpCode[])(spec.EvmInstructionsNoTrace ??= EvmInstructions.GenerateOpCodes<TTracingInst>(spec));
+        }
+        else
+        {
+            // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
+            _opcodeMethods = (OpCode[])(spec.EvmInstructionsTraced ??= EvmInstructions.GenerateOpCodes<TTracingInst>(spec));
+        }
+    }
+
+    /// <summary>
+    /// Reports the final outcome of a transaction action to the transaction tracer, taking into account
+    /// various conditions such as exceptions, reverts, and contract creation flows. For contract creation,
+    /// the method adjusts the available gas by the code deposit cost and validates the deployed code.
+    /// </summary>
+    /// <param name="currentState">
+    /// The current EVM state, which contains the available gas, execution type, and target address.
+    /// </param>
+    /// <param name="spec">
+    /// The release specification that provides rules and parameters such as code deposit cost and code validation.
+    /// </param>
+    /// <param name="callResult">
+    /// The result of the executed call, including output bytes, exception and revert flags, and additional metadata.
+    /// </param>
+    private void TraceTransactionActionEnd(EvmState currentState, in CallResult callResult)
+    {
+        IReleaseSpec spec = BlockExecutionContext.Spec;
+        // Calculate the gas cost required for depositing the contract code based on the length of the output.
+        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
+
+        // Cache the output bytes for reuse in the tracing reports.
+        ReadOnlyMemory<byte> outputBytes = callResult.Output.Bytes;
+
+        // If an exception occurred during execution, report the error immediately.
+        if (callResult.IsException)
+        {
+            _txTracer.ReportActionError(callResult.ExceptionType);
+        }
+        // If the call is set to revert, report a revert action, adjusting the reported gas for creation operations.
+        else if (callResult.ShouldRevert)
+        {
+            // For creation operations, subtract the code deposit cost from the available gas; otherwise, use full gas.
+            long reportedGas = currentState.ExecutionType.IsAnyCreate() ? currentState.GasAvailable - codeDepositGasCost : currentState.GasAvailable;
+            _txTracer.ReportActionRevert(reportedGas, outputBytes);
+        }
+        // Process contract creation flows.
+        else if (currentState.ExecutionType.IsAnyCreate())
+        {
+            // If available gas is insufficient to cover the code deposit cost...
+            if (currentState.GasAvailable < codeDepositGasCost)
+            {
+                // When the spec mandates charging for top-level creation, report an out-of-gas error.
+                if (spec.ChargeForTopLevelCreate)
+                {
+                    _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
+                }
+                // Otherwise, report a successful action end with the remaining gas.
+                else
+                {
+                    _txTracer.ReportActionEnd(currentState.GasAvailable, currentState.To, outputBytes);
+                }
+            }
+            // If the generated code is invalid (e.g., violates EIP-3541 by starting with 0xEF), report an invalid code error.
+            else if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes, callResult.FromVersion))
+            {
+                _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
+            }
+            // In the successful contract creation case, deduct the code deposit gas cost and report a normal action end.
             else
             {
-                // need to touch code so that any collectors that track database access are informed
-                state.TouchCode(codeHash);
+                _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, outputBytes);
+            }
+        }
+        // For non-creation calls, report the action end using the current available gas and the standard return data.
+        else
+        {
+            _txTracer.ReportActionEnd(currentState.GasAvailable, ReturnDataBuffer);
+        }
+    }
+
+    private void RevertParityTouchBugAccount()
+    {
+        if (_parityTouchBugAccount.ShouldDelete)
+        {
+            if (_worldState.AccountExists(_parityTouchBugAccount.Address))
+            {
+                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Spec);
             }
 
-            return cachedCodeInfo;
+            _parityTouchBugAccount.ShouldDelete = false;
+        }
+    }
+
+    private static bool UpdateGas(long gasCost, ref long gasAvailable)
+    {
+        if (gasAvailable < gasCost)
+        {
+            return false;
         }
 
-        public void DisableSimdInstructions()
+        gasAvailable -= gasCost;
+        return true;
+    }
+
+    private enum StorageAccessType
+    {
+        SLOAD,
+        SSTORE
+    }
+
+    private CallResult RunPrecompile(EvmState state)
+    {
+        ReadOnlyMemory<byte> callData = state.Env.InputData;
+        UInt256 transferValue = state.Env.TransferValue;
+        long gasAvailable = state.GasAvailable;
+
+        IPrecompile precompile = ((PrecompileInfo)state.Env.CodeInfo).Precompile;
+
+        IReleaseSpec spec = BlockExecutionContext.Spec;
+        long baseGasCost = precompile.BaseGasCost(spec);
+        long blobGasCost = precompile.DataGasCost(callData, spec);
+
+        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, transferValue, spec);
+
+        // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
+        // An additional issue was found in Parity,
+        // where the Parity client incorrectly failed
+        // to revert empty account deletions in a more limited set of contexts
+        // involving out-of-gas calls to precompiled contracts;
+        // the new Geth behavior matches Parity’s,
+        // and empty accounts will cease to be a source of concern in general
+        // in about one week once the state clearing process finishes.
+        if (state.Env.ExecutingAccount.Equals(_parityTouchBugAccount.Address)
+            && !wasCreated
+            && transferValue.IsZero
+            && spec.ClearEmptyAccountWhenTouched)
         {
-            _simdOperationsEnabled = false;
+            _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        private void InitializePrecompiledContracts()
+        if (!UpdateGas(checked(baseGasCost + blobGasCost), ref gasAvailable))
         {
-            _precompiles = new Dictionary<Address, CodeInfo>
+            return new(default, false, 0, true, EvmExceptionType.OutOfGas);
+        }
+
+        state.GasAvailable = gasAvailable;
+
+        try
+        {
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
+            CallResult callResult = new(output, precompileSuccess: success, fromVersion: 0, shouldRevert: !success);
+            return callResult;
+        }
+        catch (DllNotFoundException exception)
+        {
+            if (_logger.IsError) _logger.Error($"Failed to load one of the dependencies of {precompile.GetType()} precompile", exception);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            if (_logger.IsError) _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
+            CallResult callResult = new(output: default, precompileSuccess: false, fromVersion: 0, shouldRevert: true);
+            return callResult;
+        }
+    }
+
+    /// <summary>
+    /// Executes an EVM call by preparing the execution environment, including account balance adjustments,
+    /// stack initialization, and memory updates. It then dispatches the bytecode execution using a
+    /// specialized interpreter that is optimized at compile time based on the tracing instructions flag.
+    /// </summary>
+    /// <typeparam name="TTracingInst">
+    /// A struct implementing <see cref="IFlag"/> that indicates, via a compile-time constant,
+    /// whether tracing-specific opcodes and behavior should be used.
+    /// </typeparam>
+    /// <param name="vmState">
+    /// The current EVM state containing the execution environment, gas, memory, and stack information.
+    /// </param>
+    /// <param name="previousCallResult">
+    /// An optional read-only memory buffer containing the output of a previous call; if provided, its bytes
+    /// will be pushed onto the stack for further processing.
+    /// </param>
+    /// <param name="previousCallOutput">
+    /// A zero-padded span containing output from the previous call used for updating the memory state.
+    /// </param>
+    /// <param name="previousCallOutputDestination">
+    /// The memory destination address where the previous call's output should be stored.
+    /// </param>
+    /// <returns>
+    /// A <see cref="CallResult"/> that encapsulates the result of executing the EVM call, including success,
+    /// failure, or out-of-gas conditions.
+    /// </returns>
+    /// <remarks>
+    /// The generic struct parameter is used to eliminate runtime if-statements via compile-time evaluation
+    /// of <c>TTracingInst.IsActive</c>.
+    /// </remarks>
+    [SkipLocalsInit]
+    private CallResult ExecuteCall<TTracingInst>(
+        ReadOnlyMemory<byte>? previousCallResult,
+        ZeroPaddedSpan previousCallOutput,
+        scoped in UInt256 previousCallOutputDestination)
+        where TTracingInst : struct, IFlag
+    {
+        EvmState vmState = _currentState;
+        // Obtain a reference to the execution environment for convenience.
+        ref readonly ExecutionEnvironment env = ref vmState.Env;
+
+        // If this is the first call frame (not a continuation), adjust account balances and nonces.
+        if (!vmState.IsContinuation)
+        {
+            IReleaseSpec spec = BlockExecutionContext.Spec;
+            // Ensure the executing account has sufficient balance and exists in the world state.
+            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
+
+            // For contract creation calls, increment the nonce if the specification requires it.
+            if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
             {
-                [EcRecoverPrecompile.Instance.Address] = new(EcRecoverPrecompile.Instance),
-                [Sha256Precompile.Instance.Address] = new(Sha256Precompile.Instance),
-                [Ripemd160Precompile.Instance.Address] = new(Ripemd160Precompile.Instance),
-                [IdentityPrecompile.Instance.Address] = new(IdentityPrecompile.Instance),
-
-                [Bn256AddPrecompile.Instance.Address] = new(Bn256AddPrecompile.Instance),
-                [Bn256MulPrecompile.Instance.Address] = new(Bn256MulPrecompile.Instance),
-                [Bn256PairingPrecompile.Instance.Address] = new(Bn256PairingPrecompile.Instance),
-                [ModExpPrecompile.Instance.Address] = new(ModExpPrecompile.Instance),
-
-                [Blake2FPrecompile.Instance.Address] = new(Blake2FPrecompile.Instance),
-
-                [G1AddPrecompile.Instance.Address] = new(G1AddPrecompile.Instance),
-                [G1MulPrecompile.Instance.Address] = new(G1MulPrecompile.Instance),
-                [G1MultiExpPrecompile.Instance.Address] = new(G1MultiExpPrecompile.Instance),
-                [G2AddPrecompile.Instance.Address] = new(G2AddPrecompile.Instance),
-                [G2MulPrecompile.Instance.Address] = new(G2MulPrecompile.Instance),
-                [G2MultiExpPrecompile.Instance.Address] = new(G2MultiExpPrecompile.Instance),
-                [PairingPrecompile.Instance.Address] = new(PairingPrecompile.Instance),
-                [MapToG1Precompile.Instance.Address] = new(MapToG1Precompile.Instance),
-                [MapToG2Precompile.Instance.Address] = new(MapToG2Precompile.Instance),
-
-                [PointEvaluationPrecompile.Instance.Address] = new(PointEvaluationPrecompile.Instance),
-            };
+                _worldState.IncrementNonce(env.ExecutingAccount);
+            }
         }
 
-        private static bool UpdateGas(long gasCost, ref long gasAvailable)
+        // If no machine code is present, treat the call as empty.
+        if (env.CodeInfo.CodeSpan.Length == 0)
         {
-            // Console.WriteLine($"{gasCost}");
-            if (gasAvailable < gasCost)
+            // Increment a metric for empty calls if this is a nested call.
+            if (!vmState.IsTopLevel)
             {
-                return false;
+                Metrics.IncrementEmptyCalls();
+            }
+            goto Empty;
+        }
+
+        // Initialize the internal stacks for the current call frame.
+        vmState.InitializeStacks();
+
+        // Create an EVM stack using the current stack head, tracer, and data stack slice.
+        EvmStack stack = new(vmState.DataStackHead, _txTracer, AsAlignedSpan(vmState.DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength));
+
+        // Cache the available gas from the state for local use.
+        long gasAvailable = vmState.GasAvailable;
+
+        // If a previous call result exists, push its bytes onto the stack.
+        if (previousCallResult is not null)
+        {
+            stack.PushBytes<TTracingInst>(previousCallResult.Value.Span);
+
+            // Report the remaining gas if tracing instructions are enabled.
+            if (TTracingInst.IsActive)
+            {
+                _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
+            }
+        }
+
+        // If there is previous call output, update the memory cost and save the output.
+        if (previousCallOutput.Length > 0)
+        {
+            // Use a local variable for the destination to simplify passing it by reference.
+            UInt256 localPreviousDest = previousCallOutputDestination;
+
+            // Attempt to update the memory cost; if insufficient gas is available, jump to the out-of-gas handler.
+            if (!UpdateMemoryCost(vmState, ref gasAvailable, in localPreviousDest, (ulong)previousCallOutput.Length))
+            {
+                goto OutOfGas;
             }
 
-            gasAvailable -= gasCost;
-            return true;
+            // Save the previous call's output into the VM state's memory.
+            vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
 
-        private static void UpdateGasUp(long refund, ref long gasAvailable)
+        // Dispatch the bytecode interpreter.
+        // The second generic parameter is selected based on whether the transaction tracer is cancelable:
+        // - OffFlag is used when cancelation is not needed.
+        // - OnFlag is used when cancelation is enabled.
+        // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
+        return _txTracer.IsCancelable switch
         {
-            gasAvailable += refund;
-        }
+            false => RunByteCode<TTracingInst, OffFlag>(ref stack, gasAvailable),
+            true => RunByteCode<TTracingInst, OnFlag>(ref stack, gasAvailable),
+        };
 
-        private bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, bool chargeForWarm = true)
+    Empty:
+        // Return an empty CallResult if there is no machine code to execute.
+        return CallResult.Empty(vmState.Env.CodeInfo.Version);
+
+    OutOfGas:
+        // Return an out-of-gas CallResult if updating the memory cost fails.
+        return CallResult.OutOfGasException;
+    }
+
+    /// <summary>
+    /// Executes the EVM bytecode by iterating over the instruction set and invoking corresponding opcode methods
+    /// via function pointers. The method leverages compile-time evaluation of tracing and cancellation flags to optimize
+    /// conditional branches. It also updates the VM state as instructions are executed, handles exceptions,
+    /// and returns an appropriate <see cref="CallResult"/>.
+    /// </summary>
+    /// <typeparam name="TTracingInst">
+    /// A struct implementing <see cref="IFlag"/> that indicates at compile time whether tracing-specific logic should be enabled.
+    /// </typeparam>
+    /// <typeparam name="TCancelable">
+    /// A struct implementing <see cref="IFlag"/> that indicates at compile time whether cancellation support is enabled.
+    /// </typeparam>
+    /// <param name="stack">
+    /// A reference to the current EVM stack used for execution.
+    /// </param>
+    /// <param name="gasAvailable">
+    /// The amount of gas available for executing the bytecode.
+    /// </param>
+    /// <returns>
+    /// A <see cref="CallResult"/> that encapsulates the outcome of the execution, which can be a successful result,
+    /// an empty result, a revert, or a failure due to an exception (such as out-of-gas).
+    /// </returns>
+    /// <remarks>
+    /// The method uses an unsafe context and function pointers to invoke opcode implementations directly,
+    /// which minimizes overhead and allows aggressive inlining and compile-time optimizations.
+    /// </remarks>
+    [SkipLocalsInit]
+    private unsafe CallResult RunByteCode<TTracingInst, TCancelable>(
+        scoped ref EvmStack stack,
+        long gasAvailable)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag
+    {
+        // Reset return data and set the current section index from the VM state.
+        ReturnData = null;
+        SectionIndex = EvmState.FunctionIndex;
+
+        // Retrieve the code information and create a read-only span of instructions.
+        ICodeInfo codeInfo = EvmState.Env.CodeInfo;
+        ReadOnlySpan<Instruction> codeSection = GetInstructions(codeInfo);
+
+        // Initialize the exception type to "None".
+        EvmExceptionType exceptionType = EvmExceptionType.None;
+#if DEBUG
+        // In debug mode, retrieve a tracer for interactive debugging.
+        DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
+#endif
+
+        // Set the program counter from the current VM state; it may not be zero if resuming after a call.
+        int programCounter = EvmState.ProgramCounter;
+
+        // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks and casts.
+        // If we don't use a pointer we have to cast for each call (delegate*<...> can't be used as a generic arg)
+        // Or have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
+        fixed (OpCode* opcodeMethods = &_opcodeMethods[0])
         {
-            // Console.WriteLine($"Accessing {address}");
-
-            bool result = true;
-            if (spec.UseHotAndColdStorage)
+            ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
+            // Iterate over the instructions using a while loop because opcodes may modify the program counter.
+            while ((uint)programCounter < (uint)codeSection.Length)
             {
-                if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
+#if DEBUG
+                // Allow the debugger to inspect and possibly pause execution for debugging purposes.
+                debugger?.TryWait(ref _currentState, ref programCounter, ref gasAvailable, ref stack.Head);
+#endif
+                // Fetch the current instruction from the code section.
+                Instruction instruction = Unsafe.Add(ref code, programCounter);
+
+                // If cancellation is enabled and cancellation has been requested, throw an exception.
+                if (TCancelable.IsActive && _txTracer.IsCancelled)
+                    ThrowOperationCanceledException();
+
+                // If tracing is enabled, start an instruction trace.
+                if (TTracingInst.IsActive)
+                    StartInstructionTrace(instruction, gasAvailable, programCounter, in stack);
+
+                // Advance the program counter to point to the next instruction.
+                programCounter++;
+
+                // For the very common POP opcode, use an inlined implementation to reduce overhead.
+                if (Instruction.POP == instruction)
                 {
-                    vmState.WarmUp(address);
-                }
-
-                if (vmState.IsCold(address) && !address.IsPrecompile(spec))
-                {
-                    result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
-                    vmState.WarmUp(address);
-                }
-                else if (chargeForWarm)
-                {
-                    result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
-                }
-            }
-
-            return result;
-        }
-
-        private enum StorageAccessType
-        {
-            SLOAD,
-            SSTORE
-        }
-
-        private bool ChargeStorageAccessGas(
-            ref long gasAvailable,
-            EvmState vmState,
-            StorageCell storageCell,
-            StorageAccessType storageAccessType,
-            IReleaseSpec spec)
-        {
-            // Console.WriteLine($"Accessing {storageCell} {storageAccessType}");
-
-            bool result = true;
-            if (spec.UseHotAndColdStorage)
-            {
-                if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
-                {
-                    vmState.WarmUp(storageCell);
-                }
-
-                if (vmState.IsCold(storageCell))
-                {
-                    result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
-                    vmState.WarmUp(storageCell);
-                }
-                else if (storageAccessType == StorageAccessType.SLOAD)
-                {
-                    // we do not charge for WARM_STORAGE_READ_COST in SSTORE scenario
-                    result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
-                }
-            }
-
-            return result;
-        }
-
-        private CallResult ExecutePrecompile(EvmState state, IReleaseSpec spec)
-        {
-            ReadOnlyMemory<byte> callData = state.Env.InputData;
-            UInt256 transferValue = state.Env.TransferValue;
-            long gasAvailable = state.GasAvailable;
-
-            IPrecompile precompile = state.Env.CodeInfo.Precompile;
-            long baseGasCost = precompile.BaseGasCost(spec);
-            long dataGasCost = precompile.DataGasCost(callData, spec);
-
-            bool wasCreated = false;
-            if (!_state.AccountExists(state.Env.ExecutingAccount))
-            {
-                wasCreated = true;
-                _state.CreateAccount(state.Env.ExecutingAccount, transferValue);
-            }
-            else
-            {
-                _state.AddToBalance(state.Env.ExecutingAccount, transferValue, spec);
-            }
-
-            // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
-            // An additional issue was found in Parity,
-            // where the Parity client incorrectly failed
-            // to revert empty account deletions in a more limited set of contexts
-            // involving out-of-gas calls to precompiled contracts;
-            // the new Geth behavior matches Parity’s,
-            // and empty accounts will cease to be a source of concern in general
-            // in about one week once the state clearing process finishes.
-            if (state.Env.ExecutingAccount.Equals(_parityTouchBugAccount.Address)
-                && !wasCreated
-                && transferValue.IsZero
-                && spec.ClearEmptyAccountWhenTouched)
-            {
-                _parityTouchBugAccount.ShouldDelete = true;
-            }
-
-            //if(!UpdateGas(dataGasCost, ref gasAvailable)) return CallResult.Exception;
-            if (!UpdateGas(baseGasCost, ref gasAvailable))
-            {
-                Metrics.EvmExceptions++;
-                throw new OutOfGasException();
-            }
-
-            if (!UpdateGas(dataGasCost, ref gasAvailable))
-            {
-                Metrics.EvmExceptions++;
-                throw new OutOfGasException();
-            }
-
-            state.GasAvailable = gasAvailable;
-
-            try
-            {
-                (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
-                CallResult callResult = new(output.ToArray(), success, !success);
-                return callResult;
-            }
-            catch (Exception exception)
-            {
-                if (_logger.IsDebug) _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
-                CallResult callResult = new(Array.Empty<byte>(), false, true);
-                return callResult;
-            }
-        }
-
-        [SkipLocalsInit]
-        private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
-        {
-            bool isTrace = _logger.IsTrace;
-            bool traceOpcodes = _txTracer.IsTracingInstructions;
-            ExecutionEnvironment env = vmState.Env;
-            TxExecutionContext txCtx = env.TxExecutionContext;
-
-            if (!vmState.IsContinuation)
-            {
-                if (!_state.AccountExists(env.ExecutingAccount))
-                {
-                    _state.CreateAccount(env.ExecutingAccount, env.TransferValue);
+                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gasAvailable, ref programCounter);
                 }
                 else
                 {
-                    _state.AddToBalance(env.ExecutingAccount, env.TransferValue, spec);
+                    // Retrieve the opcode function pointer corresponding to the current instruction.
+                    OpCode opcodeMethod = opcodeMethods[(int)instruction];
+                    // Invoke the opcode method, which may modify the stack, gas, and program counter.
+                    // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
+                    exceptionType = opcodeMethod(this, ref stack, ref gasAvailable, ref programCounter);
                 }
 
-                if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
-                {
-                    _state.IncrementNonce(env.ExecutingAccount);
-                }
+                // If gas is exhausted, jump to the out-of-gas handler.
+                if (gasAvailable < 0)
+                    goto OutOfGas;
+                // If an exception occurred, exit the loop.
+                if (exceptionType != EvmExceptionType.None)
+                    break;
+
+                // If tracing is enabled, complete the trace for the current instruction.
+                if (TTracingInst.IsActive)
+                    EndInstructionTrace(gasAvailable);
+
+                // If return data has been set, exit the loop to process the returned value.
+                if (ReturnData is not null)
+                    break;
             }
-
-            if (vmState.Env.CodeInfo.MachineCode.Length == 0)
-            {
-                return CallResult.Empty;
-            }
-
-            vmState.InitStacks();
-            EvmStack stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
-            long gasAvailable = vmState.GasAvailable;
-            int programCounter = vmState.ProgramCounter;
-            Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
-
-
-            static void UpdateCurrentState(EvmState state, in int pc, in long gas, in int stackHead)
-            {
-                state.ProgramCounter = pc;
-                state.GasAvailable = gas;
-                state.DataStackHead = stackHead;
-            }
-
-            void StartInstructionTrace(Instruction instruction, EvmStack stackValue)
-            {
-                _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter, txCtx.Header.IsPostMerge);
-                if (_txTracer.IsTracingMemory)
-                {
-                    _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? new List<string>());
-                }
-
-                if (_txTracer.IsTracingStack)
-                {
-                    _txTracer.SetOperationStack(stackValue.GetStackTrace());
-                }
-            }
-
-            void EndInstructionTrace()
-            {
-                if (traceOpcodes)
-                {
-                    if (_txTracer.IsTracingMemory)
-                    {
-                        _txTracer.SetOperationMemorySize(vmState.Memory?.Size ?? 0);
-                    }
-
-                    _txTracer.ReportOperationRemainingGas(gasAvailable);
-                }
-            }
-
-            void EndInstructionTraceError(EvmExceptionType evmExceptionType)
-            {
-                if (traceOpcodes)
-                {
-                    _txTracer.ReportOperationError(evmExceptionType);
-                    _txTracer.ReportOperationRemainingGas(gasAvailable);
-                }
-            }
-
-            void Jump(in UInt256 jumpDest, bool isSubroutine = false)
-            {
-                if (jumpDest > int.MaxValue)
-                {
-                    Metrics.EvmExceptions++;
-                    EndInstructionTraceError(EvmExceptionType.InvalidJumpDestination);
-                    // https://github.com/NethermindEth/nethermind/issues/140
-                    throw new InvalidJumpDestinationException();
-                    //                                return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 0xf435a354924097686ea88dab3aac1dd464e6a3b387c77aeee94145b0fa5a63d2 mainnet
-                }
-
-                int jumpDestInt = (int)jumpDest;
-
-                if (!env.CodeInfo.ValidateJump(jumpDestInt, isSubroutine))
-                {
-                    EndInstructionTraceError(EvmExceptionType.InvalidJumpDestination);
-                    // https://github.com/NethermindEth/nethermind/issues/140
-                    throw new InvalidJumpDestinationException();
-                    //                                return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
-                }
-
-                programCounter = jumpDestInt;
-            }
-
-            void UpdateMemoryCost(in UInt256 position, in UInt256 length)
-            {
-                if (vmState.Memory is null)
-                {
-                    throw new InvalidOperationException("EVM memory has not been initialized properly.");
-                }
-
-                long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length);
-                if (memoryCost != 0L)
-                {
-                    if (!UpdateGas(memoryCost, ref gasAvailable))
-                    {
-                        Metrics.EvmExceptions++;
-                        EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                        throw new OutOfGasException();
-                    }
-                }
-            }
-
-            if (previousCallResult is not null)
-            {
-                stack.PushBytes(previousCallResult);
-                if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
-            }
-
-            if (previousCallOutput.Length > 0)
-            {
-                UInt256 localPreviousDest = previousCallOutputDestination;
-                UpdateMemoryCost(in localPreviousDest, (ulong)previousCallOutput.Length);
-
-                if (vmState.Memory is null)
-                {
-                    throw new InvalidOperationException("EVM memory has not been initialized properly.");
-                }
-
-                vmState.Memory.Save(in localPreviousDest, previousCallOutput);
-                //                if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
-            }
-
-            while (programCounter < code.Length)
-            {
-                Instruction instruction = (Instruction)code[programCounter];
-                // Console.WriteLine(instruction);
-                if (traceOpcodes)
-                {
-                    StartInstructionTrace(instruction, stack);
-                }
-
-                programCounter++;
-                switch (instruction)
-                {
-                    case Instruction.STOP:
-                        {
-                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                            EndInstructionTrace();
-                            return CallResult.Empty;
-                        }
-                    case Instruction.ADD:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 b);
-                            stack.PopUInt256(out UInt256 a);
-                            UInt256.Add(in a, in b, out UInt256 c);
-                            stack.PushUInt256(c);
-
-                            break;
-                        }
-                    case Instruction.MUL:
-                        {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            UInt256.Multiply(in a, in b, out UInt256 res);
-                            stack.PushUInt256(in res);
-                            break;
-                        }
-                    case Instruction.SUB:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            UInt256.Subtract(in a, in b, out UInt256 result);
-
-                            stack.PushUInt256(in result);
-                            break;
-                        }
-                    case Instruction.DIV:
-                        {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            if (b.IsZero)
-                            {
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                UInt256.Divide(in a, in b, out UInt256 res);
-                                stack.PushUInt256(in res);
-                            }
-
-                            break;
-                        }
-                    case Instruction.SDIV:
-                        {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopSignedInt256(out Int256.Int256 b);
-                            if (b.IsZero)
-                            {
-                                stack.PushZero();
-                            }
-                            else if (b == Int256.Int256.MinusOne && a == P255)
-                            {
-                                UInt256 res = P255;
-                                stack.PushUInt256(in res);
-                            }
-                            else
-                            {
-                                Int256.Int256 signedA = new(a);
-                                Int256.Int256.Divide(in signedA, in b, out Int256.Int256 res);
-                                stack.PushSignedInt256(in res);
-                            }
-
-                            break;
-                        }
-                    case Instruction.MOD:
-                        {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            UInt256.Mod(in a, in b, out UInt256 result);
-                            stack.PushUInt256(in result);
-                            break;
-                        }
-                    case Instruction.SMOD:
-                        {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopSignedInt256(out Int256.Int256 a);
-                            stack.PopSignedInt256(out Int256.Int256 b);
-                            if (b.IsZero || b.IsOne)
-                            {
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                a.Mod(in b, out Int256.Int256 mod);
-                                stack.PushSignedInt256(in mod);
-                            }
-
-                            break;
-                        }
-                    case Instruction.ADDMOD:
-                        {
-                            if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            stack.PopUInt256(out UInt256 mod);
-
-                            if (mod.IsZero)
-                            {
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                UInt256.AddMod(a, b, mod, out UInt256 res);
-                                stack.PushUInt256(in res);
-                            }
-
-                            break;
-                        }
-                    case Instruction.MULMOD:
-                        {
-                            if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            stack.PopUInt256(out UInt256 mod);
-
-                            if (mod.IsZero)
-                            {
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                UInt256.MultiplyMod(in a, in b, in mod, out UInt256 res);
-                                stack.PushUInt256(in res);
-                            }
-
-                            break;
-                        }
-                    case Instruction.EXP:
-                        {
-                            if (!UpdateGas(GasCostOf.Exp, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            Metrics.ModExpOpcode++;
-
-                            stack.PopUInt256(out UInt256 baseInt);
-                            Span<byte> exp = stack.PopBytes();
-
-                            int leadingZeros = exp.LeadingZerosCount();
-                            if (leadingZeros != 32)
-                            {
-                                int expSize = 32 - leadingZeros;
-                                if (!UpdateGas(spec.GetExpByteCost() * expSize, ref gasAvailable))
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                    return CallResult.OutOfGasException;
-                                }
-                            }
-                            else
-                            {
-                                stack.PushOne();
-                                break;
-                            }
-
-                            if (baseInt.IsZero)
-                            {
-                                stack.PushZero();
-                            }
-                            else if (baseInt.IsOne)
-                            {
-                                stack.PushOne();
-                            }
-                            else
-                            {
-                                UInt256.Exp(baseInt, new UInt256(exp, true), out UInt256 res);
-                                stack.PushUInt256(in res);
-                            }
-
-                            break;
-                        }
-                    case Instruction.SIGNEXTEND:
-                        {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 a);
-                            if (a >= BigInt32)
-                            {
-                                stack.EnsureDepth(1);
-                                break;
-                            }
-
-                            int position = 31 - (int)a;
-
-                            Span<byte> b = stack.PopBytes();
-                            sbyte sign = (sbyte)b[position];
-
-                            if (sign >= 0)
-                            {
-                                BytesZero32.AsSpan(0, position).CopyTo(b.Slice(0, position));
-                            }
-                            else
-                            {
-                                BytesMax32.AsSpan(0, position).CopyTo(b.Slice(0, position));
-                            }
-
-                            stack.PushBytes(b);
-                            break;
-                        }
-                    case Instruction.LT:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            if (a < b)
-                            {
-                                stack.PushOne();
-                            }
-                            else
-                            {
-                                stack.PushZero();
-                            }
-
-                            break;
-                        }
-                    case Instruction.GT:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopUInt256(out UInt256 b);
-                            if (a > b)
-                            {
-                                stack.PushOne();
-                            }
-                            else
-                            {
-                                stack.PushZero();
-                            }
-
-                            break;
-                        }
-                    case Instruction.SLT:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopSignedInt256(out Int256.Int256 a);
-                            stack.PopSignedInt256(out Int256.Int256 b);
-
-                            if (a.CompareTo(b) < 0)
-                            {
-                                stack.PushOne();
-                            }
-                            else
-                            {
-                                stack.PushZero();
-                            }
-
-                            break;
-                        }
-                    case Instruction.SGT:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopSignedInt256(out Int256.Int256 a);
-                            stack.PopSignedInt256(out Int256.Int256 b);
-                            if (a.CompareTo(b) > 0)
-                            {
-                                stack.PushOne();
-                            }
-                            else
-                            {
-                                stack.PushZero();
-                            }
-
-                            break;
-                        }
-                    case Instruction.EQ:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            Span<byte> a = stack.PopBytes();
-                            Span<byte> b = stack.PopBytes();
-                            if (a.SequenceEqual(b))
-                            {
-                                stack.PushOne();
-                            }
-                            else
-                            {
-                                stack.PushZero();
-                            }
-
-                            break;
-                        }
-                    case Instruction.ISZERO:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            Span<byte> a = stack.PopBytes();
-                            if (a.SequenceEqual(BytesZero32))
-                            {
-                                stack.PushOne();
-                            }
-                            else
-                            {
-                                stack.PushZero();
-                            }
-
-                            break;
-                        }
-                    case Instruction.AND:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            Span<byte> a = stack.PopBytes();
-                            Span<byte> b = stack.PopBytes();
-
-                            if (_simdOperationsEnabled)
-                            {
-                                Vector<byte> aVec = new(a);
-                                Vector<byte> bVec = new(b);
-
-                                Vector.BitwiseAnd(aVec, bVec).CopyTo(stack.Register);
-                            }
-                            else
-                            {
-                                ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a);
-                                ref ulong refB = ref MemoryMarshal.AsRef<ulong>(b);
-                                ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                                refBuffer = refA & refB;
-                                Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) & Unsafe.Add(ref refB, 1);
-                                Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) & Unsafe.Add(ref refB, 2);
-                                Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) & Unsafe.Add(ref refB, 3);
-                            }
-
-                            stack.PushBytes(stack.Register);
-                            break;
-                        }
-                    case Instruction.OR:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            Span<byte> a = stack.PopBytes();
-                            Span<byte> b = stack.PopBytes();
-
-                            if (_simdOperationsEnabled)
-                            {
-                                Vector<byte> aVec = new(a);
-                                Vector<byte> bVec = new(b);
-
-                                Vector.BitwiseOr(aVec, bVec).CopyTo(stack.Register);
-                            }
-                            else
-                            {
-                                ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a);
-                                ref ulong refB = ref MemoryMarshal.AsRef<ulong>(b);
-                                ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                                refBuffer = refA | refB;
-                                Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) | Unsafe.Add(ref refB, 1);
-                                Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) | Unsafe.Add(ref refB, 2);
-                                Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) | Unsafe.Add(ref refB, 3);
-                            }
-
-                            stack.PushBytes(stack.Register);
-                            break;
-                        }
-                    case Instruction.XOR:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            Span<byte> a = stack.PopBytes();
-                            Span<byte> b = stack.PopBytes();
-
-                            if (_simdOperationsEnabled)
-                            {
-                                Vector<byte> aVec = new(a);
-                                Vector<byte> bVec = new(b);
-
-                                Vector.Xor(aVec, bVec).CopyTo(stack.Register);
-                            }
-                            else
-                            {
-                                ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a);
-                                ref ulong refB = ref MemoryMarshal.AsRef<ulong>(b);
-                                ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                                refBuffer = refA ^ refB;
-                                Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) ^ Unsafe.Add(ref refB, 1);
-                                Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) ^ Unsafe.Add(ref refB, 2);
-                                Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) ^ Unsafe.Add(ref refB, 3);
-                            }
-
-                            stack.PushBytes(stack.Register);
-                            break;
-                        }
-                    case Instruction.NOT:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            Span<byte> a = stack.PopBytes();
-
-                            if (_simdOperationsEnabled)
-                            {
-                                Vector<byte> aVec = new(a);
-                                Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
-
-                                negVec.CopyTo(stack.Register);
-                            }
-                            else
-                            {
-                                ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
-                                ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
-
-                                refBuffer = ~refA;
-                                Unsafe.Add(ref refBuffer, 1) = ~Unsafe.Add(ref refA, 1);
-                                Unsafe.Add(ref refBuffer, 2) = ~Unsafe.Add(ref refA, 2);
-                                Unsafe.Add(ref refBuffer, 3) = ~Unsafe.Add(ref refA, 3);
-                            }
-
-                            stack.PushBytes(stack.Register);
-                            break;
-                        }
-                    case Instruction.BYTE:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 position);
-                            Span<byte> bytes = stack.PopBytes();
-
-                            if (position >= BigInt32)
-                            {
-                                stack.PushZero();
-                                break;
-                            }
-
-                            int adjustedPosition = bytes.Length - 32 + (int)position;
-                            if (adjustedPosition < 0)
-                            {
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                stack.PushByte(bytes[adjustedPosition]);
-                            }
-
-                            break;
-                        }
-                    case Instruction.SHA3:
-                        {
-                            stack.PopUInt256(out UInt256 memSrc);
-                            stack.PopUInt256(out UInt256 memLength);
-                            if (!UpdateGas(GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(memLength),
-                                ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UpdateMemoryCost(in memSrc, memLength);
-
-                            Span<byte> memData = vmState.Memory.LoadSpan(in memSrc, memLength);
-                            stack.PushBytes(ValueKeccak.Compute(memData).BytesAsSpan);
-                            break;
-                        }
-                    case Instruction.ADDRESS:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PushBytes(env.ExecutingAccount.Bytes);
-                            break;
-                        }
-                    case Instruction.BALANCE:
-                        {
-                            long gasCost = spec.GetBalanceCost();
-                            if (gasCost != 0 && !UpdateGas(gasCost, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            Address address = stack.PopAddress();
-                            if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UInt256 balance = _state.GetBalance(address);
-                            stack.PushUInt256(in balance);
-                            break;
-                        }
-                    case Instruction.CALLER:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PushBytes(env.Caller.Bytes);
-                            break;
-                        }
-                    case Instruction.CALLVALUE:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UInt256 callValue = env.Value;
-                            stack.PushUInt256(in callValue);
-                            break;
-                        }
-                    case Instruction.ORIGIN:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PushBytes(txCtx.Origin.Bytes);
-                            break;
-                        }
-                    case Instruction.CALLDATALOAD:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 src);
-                            stack.PushBytes(env.InputData.SliceWithZeroPadding(src, 32));
-                            break;
-                        }
-                    case Instruction.CALLDATASIZE:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UInt256 callDataSize = (UInt256)env.InputData.Length;
-                            stack.PushUInt256(in callDataSize);
-                            break;
-                        }
-                    case Instruction.CALLDATACOPY:
-                        {
-                            stack.PopUInt256(out UInt256 dest);
-                            stack.PopUInt256(out UInt256 src);
-                            stack.PopUInt256(out UInt256 length);
-                            if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length),
-                                ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            if (length > UInt256.Zero)
-                            {
-                                UpdateMemoryCost(in dest, length);
-
-                                ZeroPaddedMemory callDataSlice = env.InputData.SliceWithZeroPadding(src, (int)length);
-                                vmState.Memory.Save(in dest, callDataSlice);
-                                if (_txTracer.IsTracingInstructions)
-                                {
-                                    _txTracer.ReportMemoryChange((long)dest, callDataSlice);
-                                }
-                            }
-
-                            break;
-                        }
-                    case Instruction.CODESIZE:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UInt256 codeLength = (UInt256)code.Length;
-                            stack.PushUInt256(in codeLength);
-                            break;
-                        }
-                    case Instruction.CODECOPY:
-                        {
-                            stack.PopUInt256(out UInt256 dest);
-                            stack.PopUInt256(out UInt256 src);
-                            stack.PopUInt256(out UInt256 length);
-                            if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            if (length > UInt256.Zero)
-                            {
-                                UpdateMemoryCost(in dest, length);
-
-                                ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(src, (int)length);
-                                vmState.Memory.Save(in dest, codeSlice);
-                                if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)dest, codeSlice);
-                            }
-
-                            break;
-                        }
-                    case Instruction.GASPRICE:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UInt256 gasPrice = txCtx.GasPrice;
-                            stack.PushUInt256(in gasPrice);
-                            break;
-                        }
-                    case Instruction.EXTCODESIZE:
-                        {
-                            long gasCost = spec.GetExtCodeCost();
-                            if (!UpdateGas(gasCost, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            Address address = stack.PopAddress();
-                            if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-                            UInt256 codeSize = (UInt256)accountCode.Length;
-                            stack.PushUInt256(in codeSize);
-                            break;
-                        }
-                    case Instruction.EXTCODECOPY:
-                        {
-                            Address address = stack.PopAddress();
-                            stack.PopUInt256(out UInt256 dest);
-                            stack.PopUInt256(out UInt256 src);
-                            stack.PopUInt256(out UInt256 length);
-
-                            long gasCost = spec.GetExtCodeCost();
-                            if (!UpdateGas(gasCost + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length),
-                                ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            if (length > UInt256.Zero)
-                            {
-                                UpdateMemoryCost(in dest, length);
-
-                                byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-                                ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int)length);
-                                vmState.Memory.Save(in dest, callDataSlice);
-                                if (_txTracer.IsTracingInstructions)
-                                {
-                                    _txTracer.ReportMemoryChange((long)dest, callDataSlice);
-                                }
-                            }
-
-                            break;
-                        }
-                    case Instruction.RETURNDATASIZE:
-                        {
-                            if (!spec.ReturnDataOpcodesEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UInt256 res = (UInt256)_returnDataBuffer.Length;
-                            stack.PushUInt256(in res);
-                            break;
-                        }
-                    case Instruction.RETURNDATACOPY:
-                        {
-                            if (!spec.ReturnDataOpcodesEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            stack.PopUInt256(out UInt256 dest);
-                            stack.PopUInt256(out UInt256 src);
-                            stack.PopUInt256(out UInt256 length);
-                            if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            if (UInt256.AddOverflow(length, src, out UInt256 newLength) || newLength > _returnDataBuffer.Length)
-                            {
-                                return CallResult.AccessViolationException;
-                            }
-
-                            if (length > UInt256.Zero)
-                            {
-                                UpdateMemoryCost(in dest, length);
-
-                                ZeroPaddedSpan returnDataSlice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(src, (int)length);
-                                vmState.Memory.Save(in dest, returnDataSlice);
-                                if (_txTracer.IsTracingInstructions)
-                                {
-                                    _txTracer.ReportMemoryChange((long)dest, returnDataSlice);
-                                }
-                            }
-
-                            break;
-                        }
-                    case Instruction.BLOCKHASH:
-                        {
-                            Metrics.BlockhashOpcode++;
-
-                            if (!UpdateGas(GasCostOf.BlockHash, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 a);
-                            long number = a > long.MaxValue ? long.MaxValue : (long)a;
-                            Keccak blockHash = _blockhashProvider.GetBlockhash(txCtx.Header, number);
-                            stack.PushBytes(blockHash?.Bytes ?? BytesZero32);
-
-                            if (isTrace)
-                            {
-                                if (_txTracer.IsTracingBlockHash && blockHash is not null)
-                                {
-                                    _txTracer.ReportBlockHash(blockHash);
-                                }
-                            }
-
-                            break;
-                        }
-                    case Instruction.COINBASE:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PushBytes(txCtx.Header.GasBeneficiary.Bytes);
-                            break;
-                        }
-                    case Instruction.PREVRANDAO:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            if (txCtx.Header.IsPostMerge)
-                            {
-                                byte[] random = txCtx.Header.Random.Bytes;
-                                stack.PushBytes(random);
-                            }
-                            else
-                            {
-                                UInt256 diff = txCtx.Header.Difficulty;
-                                stack.PushUInt256(in diff);
-                            }
-                            break;
-                        }
-                    case Instruction.TIMESTAMP:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UInt256 timestamp = txCtx.Header.Timestamp;
-                            stack.PushUInt256(in timestamp);
-                            break;
-                        }
-                    case Instruction.NUMBER:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UInt256 blockNumber = (UInt256)txCtx.Header.Number;
-                            stack.PushUInt256(in blockNumber);
-                            break;
-                        }
-                    case Instruction.GASLIMIT:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UInt256 gasLimit = (UInt256)txCtx.Header.GasLimit;
-                            stack.PushUInt256(in gasLimit);
-                            break;
-                        }
-                    case Instruction.CHAINID:
-                        {
-                            if (!spec.ChainIdOpcodeEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PushBytes(_chainId);
-                            break;
-                        }
-                    case Instruction.SELFBALANCE:
-                        {
-                            if (!spec.SelfBalanceOpcodeEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            if (!UpdateGas(GasCostOf.SelfBalance, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UInt256 balance = _state.GetBalance(env.ExecutingAccount);
-                            stack.PushUInt256(in balance);
-                            break;
-                        }
-                    case Instruction.BASEFEE:
-                        {
-                            if (!spec.BaseFeeEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UInt256 baseFee = txCtx.Header.BaseFeePerGas;
-                            stack.PushUInt256(in baseFee);
-                            break;
-                        }
-                    case Instruction.DATAHASH:
-                        {
-                            if (!spec.IsEip4844Enabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            if (!UpdateGas(GasCostOf.DataHash, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 blobIndex);
-
-                            if (txCtx.BlobVersionedHashes is not null && blobIndex < txCtx.BlobVersionedHashes.Length)
-                            {
-                                stack.PushBytes(txCtx.BlobVersionedHashes[blobIndex.u0]);
-                            }
-                            else
-                            {
-                                stack.PushZero();
-                            }
-                            break;
-                        }
-                    case Instruction.POP:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopLimbo();
-                            break;
-                        }
-                    case Instruction.MLOAD:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 memPosition);
-                            UpdateMemoryCost(in memPosition, 32);
-                            Span<byte> memData = vmState.Memory.LoadSpan(in memPosition);
-                            if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange(memPosition, memData);
-
-                            stack.PushBytes(memData);
-                            break;
-                        }
-                    case Instruction.MSTORE:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 memPosition);
-
-                            Span<byte> data = stack.PopBytes();
-                            UpdateMemoryCost(in memPosition, 32);
-                            vmState.Memory.SaveWord(in memPosition, data);
-                            if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, data.SliceWithZeroPadding(0, 32, PadDirection.Left));
-
-                            break;
-                        }
-                    case Instruction.MSTORE8:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 memPosition);
-                            byte data = stack.PopByte();
-                            UpdateMemoryCost(in memPosition, UInt256.One);
-                            vmState.Memory.SaveByte(in memPosition, data);
-                            if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)memPosition, data);
-
-                            break;
-                        }
-                    case Instruction.SLOAD:
-                        {
-                            Metrics.SloadOpcode++;
-                            var gasCost = spec.GetSLoadCost();
-
-                            if (!UpdateGas(gasCost, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 storageIndex);
-                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
-                            if (!ChargeStorageAccessGas(
-                                ref gasAvailable,
-                                vmState,
-                                storageCell,
-                                StorageAccessType.SLOAD,
-                                spec))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            byte[] value = _storage.Get(storageCell);
-                            stack.PushBytes(value);
-
-                            if (_txTracer.IsTracingOpLevelStorage)
-                            {
-                                _txTracer.LoadOperationStorage(storageCell.Address, storageIndex, value);
-                            }
-
-                            break;
-                        }
-                    case Instruction.SSTORE:
-                        {
-                            Metrics.SstoreOpcode++;
-
-                            if (vmState.IsStatic)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.StaticCallViolation);
-                                return CallResult.StaticCallViolationException;
-                            }
-
-                            // fail fast before the first storage read if gas is not enough even for reset
-                            if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            if (spec.UseNetGasMeteringWithAStipendFix)
-                            {
-                                if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
-                                if (gasAvailable <= GasCostOf.CallStipend)
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                    return CallResult.OutOfGasException;
-                                }
-                            }
-
-                            stack.PopUInt256(out UInt256 storageIndex);
-                            Span<byte> newValue = stack.PopBytes();
-                            bool newIsZero = newValue.IsZero();
-                            if (!newIsZero)
-                            {
-                                newValue = newValue.WithoutLeadingZeros().ToArray();
-                            }
-                            else
-                            {
-                                newValue = new byte[] { 0 };
-                            }
-
-                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
-
-                            if (!ChargeStorageAccessGas(
-                                ref gasAvailable,
-                                vmState,
-                                storageCell,
-                                StorageAccessType.SSTORE,
-                                spec))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            Span<byte> currentValue = _storage.Get(storageCell);
-                            // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
-                            bool currentIsZero = currentValue.IsZero();
-
-                            bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
-                            long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
-
-                            if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
-                            {
-                                if (newIsZero)
-                                {
-                                    if (!newSameAsCurrent)
-                                    {
-                                        vmState.Refund += sClearRefunds;
-                                        if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
-                                    }
-                                }
-                                else if (currentIsZero)
-                                {
-                                    if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable))
-                                    {
-                                        EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                        return CallResult.OutOfGasException;
-                                    }
-                                }
-                            }
-                            else // net metered
-                            {
-                                if (newSameAsCurrent)
-                                {
-                                    if (!UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable))
-                                    {
-                                        EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                        return CallResult.OutOfGasException;
-                                    }
-                                }
-                                else // net metered, C != N
-                                {
-                                    Span<byte> originalValue = _storage.GetOriginal(storageCell);
-                                    bool originalIsZero = originalValue.IsZero();
-
-                                    bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
-                                    if (currentSameAsOriginal)
-                                    {
-                                        if (currentIsZero)
-                                        {
-                                            if (!UpdateGas(GasCostOf.SSet, ref gasAvailable))
-                                            {
-                                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                                return CallResult.OutOfGasException;
-                                            }
-                                        }
-                                        else // net metered, current == original != new, !currentIsZero
-                                        {
-                                            if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable))
-                                            {
-                                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                                return CallResult.OutOfGasException;
-                                            }
-
-                                            if (newIsZero)
-                                            {
-                                                vmState.Refund += sClearRefunds;
-                                                if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
-                                            }
-                                        }
-                                    }
-                                    else // net metered, new != current != original
-                                    {
-                                        long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
-                                        if (!UpdateGas(netMeteredStoreCost, ref gasAvailable))
-                                        {
-                                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                            return CallResult.OutOfGasException;
-                                        }
-
-                                        if (!originalIsZero) // net metered, new != current != original != 0
-                                        {
-                                            if (currentIsZero)
-                                            {
-                                                vmState.Refund -= sClearRefunds;
-                                                if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(-sClearRefunds);
-                                            }
-
-                                            if (newIsZero)
-                                            {
-                                                vmState.Refund += sClearRefunds;
-                                                if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(sClearRefunds);
-                                            }
-                                        }
-
-                                        bool newSameAsOriginal = Bytes.AreEqual(originalValue, newValue);
-                                        if (newSameAsOriginal)
-                                        {
-                                            long refundFromReversal;
-                                            if (originalIsZero)
-                                            {
-                                                refundFromReversal = spec.GetSetReversalRefund();
-                                            }
-                                            else
-                                            {
-                                                refundFromReversal = spec.GetClearReversalRefund();
-                                            }
-
-                                            vmState.Refund += refundFromReversal;
-                                            if (_txTracer.IsTracingRefunds) _txTracer.ReportRefund(refundFromReversal);
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (!newSameAsCurrent)
-                            {
-                                Span<byte> valueToStore = newIsZero ? BytesZero : newValue;
-                                _storage.Set(storageCell, valueToStore.ToArray());
-                            }
-
-                            if (_txTracer.IsTracingInstructions)
-                            {
-                                Span<byte> valueToStore = newIsZero ? BytesZero : newValue;
-                                Span<byte> span = new byte[32]; // do not stackalloc here
-                                storageCell.Index.ToBigEndian(span);
-                                _txTracer.ReportStorageChange(span, valueToStore);
-                            }
-
-                            if (_txTracer.IsTracingOpLevelStorage)
-                            {
-                                _txTracer.SetOperationStorage(storageCell.Address, storageIndex, newValue, currentValue);
-                            }
-
-                            break;
-                        }
-                    case Instruction.TLOAD:
-                        {
-                            Metrics.TloadOpcode++;
-                            if (!spec.TransientStorageEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-                            var gasCost = GasCostOf.TLoad;
-
-                            if (!UpdateGas(gasCost, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 storageIndex);
-                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
-
-                            byte[] value = _storage.GetTransientState(storageCell);
-                            stack.PushBytes(value);
-
-                            if (_txTracer.IsTracingOpLevelStorage)
-                            {
-                                _txTracer.LoadOperationTransientStorage(storageCell.Address, storageIndex, value);
-                            }
-
-                            break;
-                        }
-                    case Instruction.TSTORE:
-                        {
-                            Metrics.TstoreOpcode++;
-                            if (!spec.TransientStorageEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            if (vmState.IsStatic)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.StaticCallViolation);
-                                return CallResult.StaticCallViolationException;
-                            }
-
-                            long gasCost = GasCostOf.TStore;
-                            if (!UpdateGas(gasCost, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 storageIndex);
-                            Span<byte> newValue = stack.PopBytes();
-                            bool newIsZero = newValue.IsZero();
-                            if (!newIsZero)
-                            {
-                                newValue = newValue.WithoutLeadingZeros().ToArray();
-                            }
-                            else
-                            {
-                                newValue = BytesZero;
-                            }
-
-                            StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
-                            byte[] currentValue = newValue.ToArray();
-                            _storage.SetTransientState(storageCell, currentValue);
-
-                            if (_txTracer.IsTracingOpLevelStorage)
-                            {
-                                _txTracer.SetOperationTransientStorage(storageCell.Address, storageIndex, newValue, currentValue);
-                            }
-
-                            break;
-                        }
-                    case Instruction.JUMP:
-                        {
-                            if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 jumpDest);
-                            Jump(jumpDest);
-                            break;
-                        }
-                    case Instruction.JUMPI:
-                        {
-                            if (!UpdateGas(GasCostOf.High, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 jumpDest);
-                            Span<byte> condition = stack.PopBytes();
-                            if (!condition.SequenceEqual(BytesZero32))
-                            {
-                                Jump(jumpDest);
-                            }
-
-                            break;
-                        }
-                    case Instruction.PC:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PushUInt32(programCounter - 1);
-                            break;
-                        }
-                    case Instruction.MSIZE:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UInt256 size = vmState.Memory.Size;
-                            stack.PushUInt256(in size);
-                            break;
-                        }
-                    case Instruction.GAS:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UInt256 gas = (UInt256)gasAvailable;
-                            stack.PushUInt256(in gas);
-                            break;
-                        }
-                    case Instruction.JUMPDEST:
-                        {
-                            if (!UpdateGas(GasCostOf.JumpDest, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            break;
-                        }
-                    case Instruction.PUSH0:
-                        {
-                            if (spec.IncludePush0Instruction)
-                            {
-                                if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                    return CallResult.OutOfGasException;
-                                }
-
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-                            break;
-                        }
-                    case Instruction.PUSH1:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            int programCounterInt = programCounter;
-                            if (programCounterInt >= code.Length)
-                            {
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                stack.PushByte(code[programCounterInt]);
-                            }
-
-                            programCounter++;
-                            break;
-                        }
-                    case Instruction.PUSH2:
-                    case Instruction.PUSH3:
-                    case Instruction.PUSH4:
-                    case Instruction.PUSH5:
-                    case Instruction.PUSH6:
-                    case Instruction.PUSH7:
-                    case Instruction.PUSH8:
-                    case Instruction.PUSH9:
-                    case Instruction.PUSH10:
-                    case Instruction.PUSH11:
-                    case Instruction.PUSH12:
-                    case Instruction.PUSH13:
-                    case Instruction.PUSH14:
-                    case Instruction.PUSH15:
-                    case Instruction.PUSH16:
-                    case Instruction.PUSH17:
-                    case Instruction.PUSH18:
-                    case Instruction.PUSH19:
-                    case Instruction.PUSH20:
-                    case Instruction.PUSH21:
-                    case Instruction.PUSH22:
-                    case Instruction.PUSH23:
-                    case Instruction.PUSH24:
-                    case Instruction.PUSH25:
-                    case Instruction.PUSH26:
-                    case Instruction.PUSH27:
-                    case Instruction.PUSH28:
-                    case Instruction.PUSH29:
-                    case Instruction.PUSH30:
-                    case Instruction.PUSH31:
-                    case Instruction.PUSH32:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            int length = instruction - Instruction.PUSH1 + 1;
-                            int programCounterInt = programCounter;
-                            int usedFromCode = Math.Min(code.Length - programCounterInt, length);
-
-                            stack.PushLeftPaddedBytes(code.Slice(programCounterInt, usedFromCode), length);
-
-                            programCounter += length;
-                            break;
-                        }
-                    case Instruction.DUP1:
-                    case Instruction.DUP2:
-                    case Instruction.DUP3:
-                    case Instruction.DUP4:
-                    case Instruction.DUP5:
-                    case Instruction.DUP6:
-                    case Instruction.DUP7:
-                    case Instruction.DUP8:
-                    case Instruction.DUP9:
-                    case Instruction.DUP10:
-                    case Instruction.DUP11:
-                    case Instruction.DUP12:
-                    case Instruction.DUP13:
-                    case Instruction.DUP14:
-                    case Instruction.DUP15:
-                    case Instruction.DUP16:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.Dup(instruction - Instruction.DUP1 + 1);
-                            break;
-                        }
-                    case Instruction.SWAP1:
-                    case Instruction.SWAP2:
-                    case Instruction.SWAP3:
-                    case Instruction.SWAP4:
-                    case Instruction.SWAP5:
-                    case Instruction.SWAP6:
-                    case Instruction.SWAP7:
-                    case Instruction.SWAP8:
-                    case Instruction.SWAP9:
-                    case Instruction.SWAP10:
-                    case Instruction.SWAP11:
-                    case Instruction.SWAP12:
-                    case Instruction.SWAP13:
-                    case Instruction.SWAP14:
-                    case Instruction.SWAP15:
-                    case Instruction.SWAP16:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.Swap(instruction - Instruction.SWAP1 + 2);
-                            break;
-                        }
-                    case Instruction.LOG0:
-                    case Instruction.LOG1:
-                    case Instruction.LOG2:
-                    case Instruction.LOG3:
-                    case Instruction.LOG4:
-                        {
-                            if (vmState.IsStatic)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.StaticCallViolation);
-                                return CallResult.StaticCallViolationException;
-                            }
-
-                            stack.PopUInt256(out UInt256 memoryPos);
-                            stack.PopUInt256(out UInt256 length);
-                            long topicsCount = instruction - Instruction.LOG0;
-                            UpdateMemoryCost(in memoryPos, length);
-                            if (!UpdateGas(
-                                GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
-                                (long)length * GasCostOf.LogData, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            ReadOnlyMemory<byte> data = vmState.Memory.Load(in memoryPos, length);
-                            Keccak[] topics = new Keccak[topicsCount];
-                            for (int i = 0; i < topicsCount; i++)
-                            {
-                                topics[i] = new Keccak(stack.PopBytes().ToArray());
-                            }
-
-                            LogEntry logEntry = new(
-                                env.ExecutingAccount,
-                                data.ToArray(),
-                                topics);
-                            vmState.Logs.Add(logEntry);
-                            break;
-                        }
-                    case Instruction.CREATE:
-                    case Instruction.CREATE2:
-                        {
-                            if (!spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            if (vmState.IsStatic)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.StaticCallViolation);
-                                return CallResult.StaticCallViolationException;
-                            }
-
-                            // TODO: happens in CREATE_empty000CreateInitCode_Transaction but probably has to be handled differently
-                            if (!_state.AccountExists(env.ExecutingAccount))
-                            {
-                                _state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
-                            }
-
-                            stack.PopUInt256(out UInt256 value);
-                            stack.PopUInt256(out UInt256 memoryPositionOfInitCode);
-                            stack.PopUInt256(out UInt256 initCodeLength);
-                            Span<byte> salt = null;
-                            if (instruction == Instruction.CREATE2)
-                            {
-                                salt = stack.PopBytes();
-                            }
-
-                            //EIP-3860
-                            if (spec.IsEip3860Enabled)
-                            {
-                                if (initCodeLength > spec.MaxInitCodeSize)
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                    return CallResult.OutOfGasException;
-                                }
-                            }
-
-                            long gasCost = GasCostOf.Create +
-                                (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0) +
-                                (instruction == Instruction.CREATE2 ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0);
-
-                            if (!UpdateGas(gasCost, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UpdateMemoryCost(in memoryPositionOfInitCode, initCodeLength);
-
-                            // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
-                            if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
-                            {
-                                // TODO: need a test for this
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
-                            Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
-
-                            UInt256 balance = _state.GetBalance(env.ExecutingAccount);
-                            if (value > balance)
-                            {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
-                            UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
-                            UInt256 maxNonce = ulong.MaxValue;
-                            if (accountNonce >= maxNonce)
-                            {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
-                            EndInstructionTrace();
-                            // todo: === below is a new call - refactor / move
-
-                            long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-                            if (!UpdateGas(callGas, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            Address contractAddress = instruction == Instruction.CREATE
-                                ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
-                                : ContractAddress.From(env.ExecutingAccount, salt, initCode);
-
-                            if (spec.UseHotAndColdStorage)
-                            {
-                                // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
-                                vmState.WarmUp(contractAddress);
-                            }
-
-                            _state.IncrementNonce(env.ExecutingAccount);
-
-                            Snapshot snapshot = _worldState.TakeSnapshot();
-
-                            bool accountExists = _state.AccountExists(contractAddress);
-                            if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
-                            {
-                                /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
-                                if (isTrace) _logger.Trace($"Contract collision at {contractAddress}");
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-                                break;
-                            }
-
-                            if (accountExists)
-                            {
-                                _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
-                            }
-                            else if (_state.IsDeadAccount(contractAddress))
-                            {
-                                _storage.ClearStorage(contractAddress);
-                            }
-
-                            _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
-                            ExecutionEnvironment callEnv = new();
-                            callEnv.TxExecutionContext = env.TxExecutionContext;
-                            callEnv.CallDepth = env.CallDepth + 1;
-                            callEnv.Caller = env.ExecutingAccount;
-                            callEnv.ExecutingAccount = contractAddress;
-                            callEnv.CodeSource = null;
-                            callEnv.CodeInfo = new CodeInfo(initCode.ToArray());
-                            callEnv.InputData = ReadOnlyMemory<byte>.Empty;
-                            callEnv.TransferValue = value;
-                            callEnv.Value = value;
-
-                            EvmState callState = new(
-                                callGas,
-                                callEnv,
-                                instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
-                                false,
-                                snapshot,
-                                0L,
-                                0L,
-                                vmState.IsStatic,
-                                vmState,
-                                false,
-                                accountExists);
-
-                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                            return new CallResult(callState);
-                        }
-                    case Instruction.RETURN:
-                        {
-                            stack.PopUInt256(out UInt256 memoryPos);
-                            stack.PopUInt256(out UInt256 length);
-
-                            UpdateMemoryCost(in memoryPos, length);
-                            ReadOnlyMemory<byte> returnData = vmState.Memory.Load(in memoryPos, length);
-
-                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                            EndInstructionTrace();
-                            return new CallResult(returnData.ToArray(), null);
-                        }
-                    case Instruction.CALL:
-                    case Instruction.CALLCODE:
-                    case Instruction.DELEGATECALL:
-                    case Instruction.STATICCALL:
-                        {
-                            Metrics.Calls++;
-
-                            if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
-                                instruction == Instruction.STATICCALL && !spec.StaticCallEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            stack.PopUInt256(out UInt256 gasLimit);
-                            Address codeSource = stack.PopAddress();
-
-                            // Console.WriteLine($"CALLIN {codeSource}");
-                            if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UInt256 callValue;
-                            switch (instruction)
-                            {
-                                case Instruction.STATICCALL:
-                                    callValue = UInt256.Zero;
-                                    break;
-                                case Instruction.DELEGATECALL:
-                                    callValue = env.Value;
-                                    break;
-                                default:
-                                    stack.PopUInt256(out callValue);
-                                    break;
-                            }
-
-                            UInt256 transferValue = instruction == Instruction.DELEGATECALL ? UInt256.Zero : callValue;
-                            stack.PopUInt256(out UInt256 dataOffset);
-                            stack.PopUInt256(out UInt256 dataLength);
-                            stack.PopUInt256(out UInt256 outputOffset);
-                            stack.PopUInt256(out UInt256 outputLength);
-
-                            if (vmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.StaticCallViolation);
-                                return CallResult.StaticCallViolationException;
-                            }
-
-                            Address caller = instruction == Instruction.DELEGATECALL ? env.Caller : env.ExecutingAccount;
-                            Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? codeSource : env.ExecutingAccount;
-
-                            if (isTrace)
-                            {
-                                _logger.Trace($"caller {caller}");
-                                _logger.Trace($"code source {codeSource}");
-                                _logger.Trace($"target {target}");
-                                _logger.Trace($"value {callValue}");
-                                _logger.Trace($"transfer value {transferValue}");
-                            }
-
-                            long gasExtra = 0L;
-
-                            if (!transferValue.IsZero)
-                            {
-                                gasExtra += GasCostOf.CallValue;
-                            }
-
-                            if (!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(target))
-                            {
-                                gasExtra += GasCostOf.NewAccount;
-                            }
-                            else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && _state.IsDeadAccount(target))
-                            {
-                                gasExtra += GasCostOf.NewAccount;
-                            }
-
-                            if (!UpdateGas(spec.GetCallCost(), ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            UpdateMemoryCost(in dataOffset, dataLength);
-                            UpdateMemoryCost(in outputOffset, outputLength);
-                            if (!UpdateGas(gasExtra, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            if (spec.Use63Over64Rule)
-                            {
-                                gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
-                            }
-
-                            if (gasLimit >= long.MaxValue)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            long gasLimitUl = (long)gasLimit;
-                            if (!UpdateGas(gasLimitUl, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            if (!transferValue.IsZero)
-                            {
-                                if (_txTracer.IsTracingRefunds) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
-                                gasLimitUl += GasCostOf.CallStipend;
-                            }
-
-                            if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
-                            {
-                                _returnDataBuffer = Array.Empty<byte>();
-                                stack.PushZero();
-
-                                if (_txTracer.IsTracingInstructions)
-                                {
-                                    // very specific for Parity trace, need to find generalization - very peculiar 32 length...
-                                    ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
-                                    _txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
-                                }
-
-                                if (isTrace) _logger.Trace("FAIL - call depth");
-                                if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationRemainingGas(gasAvailable);
-                                if (_txTracer.IsTracingInstructions) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
-
-                                UpdateGasUp(gasLimitUl, ref gasAvailable);
-                                if (_txTracer.IsTracingInstructions) _txTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
-                                break;
-                            }
-
-                            ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
-
-                            Snapshot snapshot = _worldState.TakeSnapshot();
-                            _state.SubtractFromBalance(caller, transferValue, spec);
-
-                            ExecutionEnvironment callEnv = new();
-                            callEnv.TxExecutionContext = env.TxExecutionContext;
-                            callEnv.CallDepth = env.CallDepth + 1;
-                            callEnv.Caller = caller;
-                            callEnv.CodeSource = codeSource;
-                            callEnv.ExecutingAccount = target;
-                            callEnv.TransferValue = transferValue;
-                            callEnv.Value = callValue;
-                            callEnv.InputData = callData;
-                            callEnv.CodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
-
-                            if (isTrace) _logger.Trace($"Tx call gas {gasLimitUl}");
-                            if (outputLength == 0)
-                            {
-                                // TODO: when output length is 0 outputOffset can have any value really
-                                // and the value does not matter and it can cause trouble when beyond long range
-                                outputOffset = 0;
-                            }
-
-                            ExecutionType executionType = GetCallExecutionType(instruction, txCtx.Header.IsPostMerge);
-                            EvmState callState = new(
-                                gasLimitUl,
-                                callEnv,
-                                executionType,
-                                false,
-                                snapshot,
-                                (long)outputOffset,
-                                (long)outputLength,
-                                instruction == Instruction.STATICCALL || vmState.IsStatic,
-                                vmState,
-                                false,
-                                false);
-
-                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                            EndInstructionTrace();
-                            return new CallResult(callState);
-                        }
-                    case Instruction.REVERT:
-                        {
-                            if (!spec.RevertOpcodeEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            stack.PopUInt256(out UInt256 memoryPos);
-                            stack.PopUInt256(out UInt256 length);
-
-                            UpdateMemoryCost(in memoryPos, length);
-                            ReadOnlyMemory<byte> errorDetails = vmState.Memory.Load(in memoryPos, length);
-
-                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                            EndInstructionTrace();
-                            return new CallResult(errorDetails.ToArray(), null, true);
-                        }
-                    case Instruction.INVALID:
-                        {
-                            if (!UpdateGas(GasCostOf.High, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                            return CallResult.InvalidInstructionException;
-                        }
-                    case Instruction.SELFDESTRUCT:
-                        {
-                            if (vmState.IsStatic)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.StaticCallViolation);
-                                return CallResult.StaticCallViolationException;
-                            }
-
-                            if (spec.UseShanghaiDDosProtection && !UpdateGas(GasCostOf.SelfDestructEip150, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            Metrics.SelfDestructs++;
-
-                            Address inheritor = stack.PopAddress();
-                            if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            vmState.DestroyList.Add(env.ExecutingAccount);
-
-                            UInt256 ownerBalance = _state.GetBalance(env.ExecutingAccount);
-                            if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(env.ExecutingAccount, ownerBalance, inheritor);
-                            if (spec.ClearEmptyAccountWhenTouched && ownerBalance != 0 && _state.IsDeadAccount(inheritor))
-                            {
-                                if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                    return CallResult.OutOfGasException;
-                                }
-                            }
-
-                            bool inheritorAccountExists = _state.AccountExists(inheritor);
-                            if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
-                            {
-                                if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
-                                {
-                                    EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                    return CallResult.OutOfGasException;
-                                }
-                            }
-
-                            if (!inheritorAccountExists)
-                            {
-                                _state.CreateAccount(inheritor, ownerBalance);
-                            }
-                            else if (!inheritor.Equals(env.ExecutingAccount))
-                            {
-                                _state.AddToBalance(inheritor, ownerBalance, spec);
-                            }
-
-                            _state.SubtractFromBalance(env.ExecutingAccount, ownerBalance, spec);
-
-                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-                            EndInstructionTrace();
-                            return CallResult.Empty;
-                        }
-                    case Instruction.SHL:
-                        {
-                            if (!spec.ShiftOpcodesEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 a);
-                            if (a >= 256UL)
-                            {
-                                stack.PopLimbo();
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                stack.PopUInt256(out UInt256 b);
-                                UInt256 res = b << (int)a.u0;
-                                stack.PushUInt256(in res);
-                            }
-
-                            break;
-                        }
-                    case Instruction.SHR:
-                        {
-                            if (!spec.ShiftOpcodesEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 a);
-                            if (a >= 256)
-                            {
-                                stack.PopLimbo();
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                stack.PopUInt256(out UInt256 b);
-                                UInt256 res = b >> (int)a.u0;
-                                stack.PushUInt256(in res);
-                            }
-
-                            break;
-                        }
-                    case Instruction.SAR:
-                        {
-                            if (!spec.ShiftOpcodesEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            stack.PopUInt256(out UInt256 a);
-                            stack.PopSignedInt256(out Int256.Int256 b);
-                            if (a >= BigInt256)
-                            {
-                                if (b.Sign >= 0)
-                                {
-                                    stack.PushZero();
-                                }
-                                else
-                                {
-                                    Int256.Int256 res = Int256.Int256.MinusOne;
-                                    stack.PushSignedInt256(in res);
-                                }
-                            }
-                            else
-                            {
-                                b.RightShift((int)a, out Int256.Int256 res);
-                                stack.PushSignedInt256(in res);
-                            }
-
-                            break;
-                        }
-                    case Instruction.EXTCODEHASH:
-                        {
-                            if (!spec.ExtCodeHashOpcodeEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            var gasCost = spec.GetExtCodeHashCost();
-                            if (!UpdateGas(gasCost, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            Address address = stack.PopAddress();
-                            if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            if (!_state.AccountExists(address) || _state.IsDeadAccount(address))
-                            {
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                stack.PushBytes(_state.GetCodeHash(address).Bytes);
-                            }
-
-                            break;
-                        }
-                    case Instruction.BEGINSUB:
-                        {
-                            if (!spec.SubroutinesEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            // why do we even need the cost of it?
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            EndInstructionTraceError(EvmExceptionType.InvalidSubroutineEntry);
-                            return CallResult.InvalidSubroutineEntry;
-                        }
-                    case Instruction.RETURNSUB:
-                        {
-                            if (!spec.SubroutinesEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            if (vmState.ReturnStackHead == 0)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.InvalidSubroutineReturn);
-                                return CallResult.InvalidSubroutineReturn;
-                            }
-
-                            programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
-                            break;
-                        }
-                    case Instruction.JUMPSUB:
-                        {
-                            if (!spec.SubroutinesEnabled)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                                return CallResult.InvalidInstructionException;
-                            }
-
-                            if (!UpdateGas(GasCostOf.High, ref gasAvailable))
-                            {
-                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                                return CallResult.OutOfGasException;
-                            }
-
-                            if (vmState.ReturnStackHead == EvmStack.ReturnStackSize)
-                            {
-                                EndInstructionTraceError(EvmExceptionType.StackOverflow);
-                                return CallResult.StackOverflowException;
-                            }
-
-                            vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
-
-                            stack.PopUInt256(out UInt256 jumpDest);
-                            Jump(jumpDest, true);
-                            programCounter++;
-
-                            break;
-                        }
-                    default:
-                        {
-                            EndInstructionTraceError(EvmExceptionType.BadInstruction);
-                            return CallResult.InvalidInstructionException;
-                        }
-                }
-
-                EndInstructionTrace();
-            }
-
-            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
-            return CallResult.Empty;
         }
 
-        private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)
+        // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
+        if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
         {
-            ExecutionType executionType;
-            if (instruction == Instruction.CALL)
-            {
-                executionType = ExecutionType.Call;
-            }
-            else if (instruction == Instruction.DELEGATECALL)
-            {
-                executionType = ExecutionType.DelegateCall;
-            }
-            else if (instruction == Instruction.STATICCALL)
-            {
-                executionType = ExecutionType.StaticCall;
-            }
-            else if (instruction == Instruction.CALLCODE)
-            {
-                executionType = ExecutionType.CallCode;
-            }
-            else
-            {
-                throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}");
-            }
-
-            return executionType;
+            // If tracing is enabled, complete the trace for the current instruction.
+            if (TTracingInst.IsActive)
+                EndInstructionTrace(gasAvailable);
+            UpdateCurrentState(programCounter, gasAvailable, stack.Head);
         }
-
-        internal readonly ref struct CallResult
+        else
         {
-            public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
-            public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
-            public static CallResult OutOfGasException => new(EvmExceptionType.OutOfGas);
-            public static CallResult AccessViolationException => new(EvmExceptionType.AccessViolation);
-            public static CallResult InvalidJumpDestination => new(EvmExceptionType.InvalidJumpDestination);
-            public static CallResult InvalidInstructionException
-            {
-                get
-                {
-                    return new(EvmExceptionType.BadInstruction);
-                }
-            }
-
-            public static CallResult StaticCallViolationException => new(EvmExceptionType.StaticCallViolation);
-            public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
-            public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
-
-            public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
-            public static CallResult Empty => new(Array.Empty<byte>(), null);
-
-            public CallResult(EvmState stateToExecute)
-            {
-                StateToExecute = stateToExecute;
-                Output = Array.Empty<byte>();
-                PrecompileSuccess = null;
-                ShouldRevert = false;
-                ExceptionType = EvmExceptionType.None;
-            }
-
-            private CallResult(EvmExceptionType exceptionType)
-            {
-                StateToExecute = null;
-                Output = StatusCode.FailureBytes;
-                PrecompileSuccess = null;
-                ShouldRevert = false;
-                ExceptionType = exceptionType;
-            }
-
-            public CallResult(byte[] output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
-            {
-                StateToExecute = null;
-                Output = output;
-                PrecompileSuccess = precompileSuccess;
-                ShouldRevert = shouldRevert;
-                ExceptionType = exceptionType;
-            }
-
-            public EvmState? StateToExecute { get; }
-            public byte[] Output { get; }
-            public EvmExceptionType ExceptionType { get; }
-            public bool ShouldRevert { get; }
-            public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
-            public bool IsReturn => StateToExecute is null;
-            public bool IsException => ExceptionType != EvmExceptionType.None;
+            // For any other exception, jump to the failure handling routine.
+            goto ReturnFailure;
         }
+
+        // If the exception indicates a revert, handle it specifically.
+        if (exceptionType == EvmExceptionType.Revert)
+            goto Revert;
+        // If return data was produced, jump to the return data processing block.
+        if (ReturnData is not null)
+            goto DataReturn;
+
+        // If no return data is produced, return an empty call result.
+        return CallResult.Empty(codeInfo.Version);
+
+    DataReturn:
+#if DEBUG
+        // Allow debugging before processing the return data.
+        debugger?.TryWait(ref _currentState, ref programCounter, ref gasAvailable, ref stack.Head);
+#endif
+        // Process the return data based on its runtime type.
+        if (ReturnData is EvmState state)
+        {
+            return new CallResult(state);
+        }
+        else if (ReturnData is EofCodeInfo eofCodeInfo)
+        {
+            return new CallResult(eofCodeInfo, ReturnDataBuffer, null, codeInfo.Version);
+        }
+        // Fall back to returning a CallResult with a byte array as the return data.
+        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version);
+
+    Revert:
+        // Return a CallResult indicating a revert.
+        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true);
+
+    OutOfGas:
+        gasAvailable = 0;
+        // Set the exception type to OutOfGas if gas has been exhausted.
+        exceptionType = EvmExceptionType.OutOfGas;
+    ReturnFailure:
+        // Return a failure CallResult based on the remaining gas and the exception type.
+        return GetFailureReturn(gasAvailable, exceptionType);
+
+        // Converts the code section bytes into a read-only span of instructions.
+        // Lightest weight conversion as mostly just helpful when debugging to see what the opcodes are.
+        static ReadOnlySpan<Instruction> GetInstructions(ICodeInfo codeInfo)
+        {
+            ReadOnlySpan<byte> codeBytes = codeInfo.CodeSpan;
+            return MemoryMarshal.CreateReadOnlySpan(
+                ref Unsafe.As<byte, Instruction>(ref MemoryMarshal.GetReference(codeBytes)),
+                codeBytes.Length);
+        }
+
+        [DoesNotReturn]
+        static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
+    }
+
+    private CallResult GetFailureReturn(long gasAvailable, EvmExceptionType exceptionType)
+    {
+        if (_txTracer.IsTracingInstructions) EndInstructionTraceError(gasAvailable, exceptionType);
+
+        return exceptionType switch
+        {
+            EvmExceptionType.OutOfGas => CallResult.OutOfGasException,
+            EvmExceptionType.BadInstruction => CallResult.InvalidInstructionException,
+            EvmExceptionType.StaticCallViolation => CallResult.StaticCallViolationException,
+            EvmExceptionType.InvalidSubroutineEntry => CallResult.InvalidSubroutineEntry,
+            EvmExceptionType.InvalidSubroutineReturn => CallResult.InvalidSubroutineReturn,
+            EvmExceptionType.StackOverflow => CallResult.StackOverflowException,
+            EvmExceptionType.StackUnderflow => CallResult.StackUnderflowException,
+            EvmExceptionType.InvalidJumpDestination => CallResult.InvalidJumpDestination,
+            EvmExceptionType.AccessViolation => CallResult.AccessViolationException,
+            EvmExceptionType.AddressOutOfRange => CallResult.InvalidAddressRange,
+            _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
+        };
+    }
+
+    private void UpdateCurrentState(int pc, long gas, int stackHead)
+    {
+        EvmState state = EvmState;
+
+        state.ProgramCounter = pc;
+        state.GasAvailable = gas;
+        state.DataStackHead = stackHead;
+        state.FunctionIndex = SectionIndex;
+    }
+
+    private static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
+    {
+        long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
+        if (outOfGas) return false;
+        return memoryCost == 0L || UpdateGas(memoryCost, ref gasAvailable);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void StartInstructionTrace(Instruction instruction, long gasAvailable, int programCounter, in EvmStack stackValue)
+    {
+        EvmState vmState = EvmState;
+        int sectionIndex = SectionIndex;
+
+        bool isEofFrame = vmState.Env.CodeInfo.Version > 0;
+        _txTracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env,
+            isEofFrame ? sectionIndex : 0, isEofFrame ? vmState.ReturnStackHead + 1 : 0);
+        if (_txTracer.IsTracingMemory)
+        {
+            _txTracer.SetOperationMemory(vmState.Memory.GetTrace());
+            _txTracer.SetOperationMemorySize(vmState.Memory.Size);
+        }
+
+        if (_txTracer.IsTracingStack)
+        {
+            Memory<byte> stackMemory = AsAlignedMemory(vmState.DataStack, alignment: EvmStack.WordSize, size: StackPool.StackLength).Slice(0, stackValue.Head * EvmStack.WordSize);
+            _txTracer.SetOperationStack(new TraceStack(stackMemory));
+        }
+    }
+
+    private unsafe static int GetAlignmentOffset(byte[] array, uint alignment)
+    {
+        ArgumentNullException.ThrowIfNull(array);
+        ArgumentOutOfRangeException.ThrowIfNotEqual(BitOperations.IsPow2(alignment), true, nameof(alignment));
+
+        // The input array should be pinned and we are just using the Pointer to
+        // calculate alignment, not using data so not creating memory hole.
+        nuint address = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
+
+        uint mask = alignment - 1;
+        // address & mask is misalignment, so (–address) & mask is exactly the adjustment
+        uint adjustment = (uint)((-(nint)address) & mask);
+
+        return (int)adjustment;
+    }
+
+    private unsafe static Span<byte> AsAlignedSpan(byte[] array, uint alignment, int size)
+    {
+        int offset = GetAlignmentOffset(array, alignment);
+        return array.AsSpan(offset, size);
+    }
+
+    private unsafe static Memory<byte> AsAlignedMemory(byte[] array, uint alignment, int size)
+    {
+        int offset = GetAlignmentOffset(array, alignment);
+        return array.AsMemory(offset, size);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void EndInstructionTrace(long gasAvailable)
+    {
+        _txTracer.ReportOperationRemainingGas(gasAvailable);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void EndInstructionTraceError(long gasAvailable, EvmExceptionType evmExceptionType)
+    {
+        _txTracer.ReportOperationRemainingGas(gasAvailable);
+        _txTracer.ReportOperationError(evmExceptionType);
     }
 }

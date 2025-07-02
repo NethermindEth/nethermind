@@ -19,7 +19,7 @@ namespace Ethereum.Blockchain.Test
         public void Can_load_access_lists()
         {
             const string lists =
-                "{\"accessLists\": [[{address: \"0x0001020304050607080900010203040506070809\", storageKeys: [\"0x00\", \"0x01\"]}]]}";
+                "{\"accessLists\": [[{\"address\": \"0x0001020304050607080900010203040506070809\", \"storageKeys\": [\"0x00\", \"0x01\"]}]]}";
 
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
             TransactionJson txJson = serializer.Deserialize<TransactionJson>(lists);

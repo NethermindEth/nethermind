@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
+using Nethermind.Core.Buffers;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -23,13 +22,14 @@ public abstract class PatriciaTrie<T> : PatriciaTree
     /// <c>true</c> to maintain an in-memory database for proof computation;
     /// otherwise, <c>false</c>.
     /// </param>
-    public PatriciaTrie(IEnumerable<T>? list, bool canBuildProof)
-        : base(canBuildProof ? new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance)
+    protected PatriciaTrie(ReadOnlySpan<T> list, bool canBuildProof, ICappedArrayPool? bufferPool = null)
+        : base(canBuildProof ? new MemDb() : NullDb.Instance, EmptyTreeHash, false, NullLogManager.Instance, bufferPool: bufferPool)
     {
         CanBuildProof = canBuildProof;
 
-        if (list?.Any() ?? false)
+        if (list.Length > 0)
         {
+            // ReSharper disable once VirtualMemberCallInConstructor
             Initialize(list);
             UpdateRootHash();
         }
@@ -48,12 +48,12 @@ public abstract class PatriciaTrie<T> : PatriciaTree
 
         var proofCollector = new ProofCollector(Rlp.Encode(index).Bytes);
 
-        Accept(proofCollector, RootHash, new() { ExpectAccounts = false });
+        Accept(proofCollector, RootHash, new());
 
         return proofCollector.BuildResult();
     }
 
-    protected abstract void Initialize(IEnumerable<T> list);
+    protected abstract void Initialize(ReadOnlySpan<T> list);
 
     protected virtual bool CanBuildProof { get; }
 }

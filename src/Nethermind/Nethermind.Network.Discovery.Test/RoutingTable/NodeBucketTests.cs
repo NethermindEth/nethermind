@@ -15,9 +15,9 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
     [TestFixture]
     public class NodeBucketTests
     {
-        private Node _node = new(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000);
-        private Node _node2 = new(TestItem.PublicKeyB, IPAddress.Broadcast.ToString(), 3000);
-        private Node _node3 = new(TestItem.PublicKeyC, IPAddress.Broadcast.ToString(), 3000);
+        private readonly Node _node = new(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000);
+        private readonly Node _node2 = new(TestItem.PublicKeyB, IPAddress.Broadcast.ToString(), 3000);
+        private readonly Node _node3 = new(TestItem.PublicKeyC, IPAddress.Broadcast.ToString(), 3000);
 
         [Test]
         public void Bonded_count_is_tracked()
@@ -107,7 +107,38 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
                 IPAddress.Broadcast.ToString(),
                 30002);
 
-            Assert.Throws<InvalidOperationException>(() => nodeBucket.ReplaceNode(nonExisting, node));
+            Assert.DoesNotThrow(() => nodeBucket.ReplaceNode(nonExisting, node));
+        }
+
+        [Test]
+        public void When_addingToFullBucket_then_randomlyDropEntry()
+        {
+            NodeBucket nodeBucket = new(1, 16, dropFullBucketProbability: .5f);
+            for (int i = 0; i < 16; i++)
+            {
+                Node node = new(
+                    TestItem.PublicKeys[i],
+                    IPAddress.Broadcast.ToString(),
+                    30000);
+
+                nodeBucket.AddNode(node);
+            }
+
+            int dropCount = 0;
+            for (int i = 0; i < 100; i++)
+            {
+                Node node = new(
+                    TestItem.PublicKeys[i + 16],
+                    IPAddress.Broadcast.ToString(),
+                    30000);
+
+                if (nodeBucket.AddNode(node).ResultType == NodeAddResultType.Dropped)
+                {
+                    dropCount++;
+                }
+            }
+
+            dropCount.Should().BeInRange(25, 75);
         }
 
         private static void AddNodes(NodeBucket nodeBucket, int count)

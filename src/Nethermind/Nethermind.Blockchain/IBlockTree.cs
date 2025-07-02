@@ -8,8 +8,8 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {
@@ -45,12 +45,7 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Lowest header added in reverse fast sync insert
         /// </summary>
-        BlockHeader? LowestInsertedHeader { get; }
-
-        /// <summary>
-        /// Lowest body added in reverse fast sync insert
-        /// </summary>
-        long? LowestInsertedBodyNumber { get; set; }
+        BlockHeader? LowestInsertedHeader { get; set; }
 
         /// <summary>
         /// Lowest header number added in reverse beacon sync insert. Used to determine if BeaconHeaderSync is completed.
@@ -73,16 +68,22 @@ namespace Nethermind.Blockchain
         AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None);
 
         /// <summary>
+        /// Inserts a disconnected batched block header (without body)
+        /// </summary>
+        /// <param name="headers">Header batch to add</param>
+        /// <param name="headerOptions"></param>
+        /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
+        void BulkInsertHeader(IReadOnlyList<BlockHeader> headers, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None);
+
+        /// <summary>
         /// Inserts a disconnected block body (not for processing).
         /// </summary>
         /// <param name="block">Block to add</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
         AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
-            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None);
+            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None);
 
-        void Insert(IEnumerable<Block> blocks);
-
-        void UpdateHeadBlock(Keccak blockHash);
+        void UpdateHeadBlock(Hash256 blockHash);
 
         /// <summary>
         /// Suggests block for inclusion in the block tree.
@@ -113,7 +114,7 @@ namespace Nethermind.Blockchain
         /// <param name="number">Number of the block to check (needed for faster lookup)</param>
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if known, otherwise <value>False</value></returns>
-        bool IsKnownBlock(long number, Keccak blockHash);
+        bool IsKnownBlock(long number, Hash256 blockHash);
 
         /// <summary>
         /// Checks if beacon block was inserted and the block RLP is in the DB
@@ -121,7 +122,7 @@ namespace Nethermind.Blockchain
         /// <param name="number">Number of the block to check (needed for faster lookup)</param>
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if known, otherwise <value>False</value></returns>
-        bool IsKnownBeaconBlock(long number, Keccak blockHash);
+        bool IsKnownBeaconBlock(long number, Hash256 blockHash);
 
         /// <summary>
         /// Checks if the state changes of the block can be found in the state tree.
@@ -129,7 +130,7 @@ namespace Nethermind.Blockchain
         /// <param name="number">Number of the block to check (needed for faster lookup)</param>
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if processed, otherwise <value>False</value></returns>
-        bool WasProcessed(long number, Keccak blockHash);
+        bool WasProcessed(long number, Hash256 blockHash);
 
         /// <summary>
         /// Marks all <paramref name="blocks"/> as processed, changes chain head to the last of them and updates all the chain levels./>
@@ -145,33 +146,55 @@ namespace Nethermind.Blockchain
 
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
 
-        (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Keccak blockHash);
+        (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Hash256 blockHash);
 
         ChainLevelInfo? FindLevel(long number);
 
         BlockInfo FindCanonicalBlockInfo(long blockNumber);
 
-        Keccak FindHash(long blockNumber);
+        Hash256 FindHash(long blockNumber);
 
-        BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
-
-        BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth);
+        IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
         void DeleteInvalidBlock(Block invalidBlock);
 
-        void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash);
-
-        void LoadLowestInsertedBeaconHeader();
+        void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
+
+        /// <summary>
+        /// A block is marked as canon
+        /// </summary>
         event EventHandler<BlockReplacementEventArgs> BlockAddedToMain;
+
+        /// <summary>
+        /// A block is now set as head
+        /// </summary>
         event EventHandler<BlockEventArgs> NewHeadBlock;
 
-        int DeleteChainSlice(in long startNumber, long? endNumber = null);
+        /// <summary>
+        /// A branch is now set as canon. This is different from `BlockAddedToMain` as it is fired only once for the
+        /// the whole branch.
+        /// </summary>
+        event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain;
+
+        int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false);
 
         bool IsBetterThanHead(BlockHeader? header);
 
         void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
+
+        void RecalculateTreeLevels();
+
+        /// <summary>
+        /// Sync pivot is mainly concerned with old blocks and receipts.
+        /// After sync pivot, blocks and headers should be continuous.
+        /// Sync pivot should be guaranteed to be a finalized block, code should not need to be concerned of consensus
+        /// for blocks before sync pivot.
+        /// Before sync pivot, there is no guarantee that blocks and receipts are available or continuous.
+        /// </summary>
+        (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
+        bool IsProcessingBlock { get; set; }
     }
 }

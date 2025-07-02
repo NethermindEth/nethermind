@@ -3,20 +3,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
 public interface IChainLevelHelper
 {
     BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0);
-
-    bool TrySetNextBlocks(int maxCount, BlockDownloadContext context);
 }
 
 public class ChainLevelHelper : IChainLevelHelper
@@ -98,6 +96,12 @@ public class ChainLevelHelper : IChainLevelHelper
                 }
             }
 
+            if (headers.Count > 0 && headers[^1].Hash != newHeader.ParentHash)
+            {
+                if (_logger.IsDebug) _logger.Debug($"ChainLevelHelper - header {startingPoint} is not canonical descendent of header before it. Hash: {newHeader.Hash}, Expected parent: {newHeader.ParentHash}, Actual parent: {headers[^1].ParentHash}. Could be a concurrent reorg.");
+                break;
+            }
+
             if (beaconMainChainBlock.IsBeaconInfo)
             {
                 newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty; // This is suppose to be removed, but I forgot to remove it before testing, so we only tested with this line in. Need to remove this back....
@@ -138,34 +142,10 @@ public class ChainLevelHelper : IChainLevelHelper
         }
         else
         {
-            headers.RemoveRange(toTake, headers.Count - toTake);
+            CollectionsMarshal.SetCount(headers, toTake);
         }
 
         return headers.ToArray();
-    }
-
-    public bool TrySetNextBlocks(int maxCount, BlockDownloadContext context)
-    {
-        if (context.Blocks.Length == 0) return false;
-
-        BlockInfo? beaconMainChainBlockInfo = GetBeaconMainChainBlockInfo(context.Blocks[0].Number);
-        if (beaconMainChainBlockInfo?.IsBeaconHeader == true && beaconMainChainBlockInfo.IsBeaconBody == false) return false;
-
-        int offset = 0;
-        while (offset != context.NonEmptyBlockHashes.Count)
-        {
-            IReadOnlyList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, maxCount);
-            for (int i = 0; i < hashesToRequest.Count; i++)
-            {
-                Block? block = _blockTree.FindBlock(hashesToRequest[i], BlockTreeLookupOptions.None);
-                if (block is null) return false;
-                BlockBody blockBody = new(block.Transactions, block.Uncles, block?.Withdrawals);
-                context.SetBody(i + offset, blockBody);
-            }
-
-            offset += hashesToRequest.Count;
-        }
-        return true;
     }
 
     /// <summary>
@@ -192,7 +172,7 @@ public class ChainLevelHelper : IChainLevelHelper
             return startingPoint;
         }
 
-        Keccak currentHash = beaconMainChainBlock.BlockHash;
+        Hash256 currentHash = beaconMainChainBlock.BlockHash;
         // in normal situation we will have one iteration of this loop, in some cases a few. Thanks to that we don't need to add extra pointer to manage forward syncing
         do
         {

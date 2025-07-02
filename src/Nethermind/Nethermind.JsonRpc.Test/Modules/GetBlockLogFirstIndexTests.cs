@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.JsonRpc.Modules;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -71,7 +69,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             int sum = receipts.GetBlockLogFirstIndex(index);
 
-            Assert.AreEqual(sum, 4);
+            Assert.That(sum, Is.EqualTo(4));
         }
     }
 }

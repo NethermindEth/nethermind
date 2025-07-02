@@ -15,7 +15,7 @@ public class EnrTreeCrawler
     }
     public IAsyncEnumerable<string> SearchTree(string domain)
     {
-        if (domain.ToLower().StartsWith("enrtree://"))
+        if (domain.StartsWith("enrtree://", StringComparison.OrdinalIgnoreCase))
         {
             domain = domain[10..];
             // Note: we have no verification of a DNS list signer!
@@ -50,9 +50,8 @@ public class EnrTreeCrawler
 
     private async IAsyncEnumerable<string> SearchNode(IDnsClient client, string query, SearchContext searchContext)
     {
-        if (!searchContext.VisitedRefs.Contains(query))
+        if (searchContext.VisitedRefs.Add(query))
         {
-            searchContext.VisitedRefs.Add(query);
             IEnumerable<string> lookupResult = await client.Lookup(query);
             foreach (string node in lookupResult)
             {

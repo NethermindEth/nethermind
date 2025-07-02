@@ -1,9 +1,7 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
     <Nullable>annotations</Nullable>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,6 +16,7 @@
 
   <ItemGroup>
     <PackageReference Include="Nito.Collections.Deque" />
+    <PackageReference Include="BouncyCastle.Cryptography" Aliases="BouncyCastle"/>
   </ItemGroup>
 
   <ItemGroup>

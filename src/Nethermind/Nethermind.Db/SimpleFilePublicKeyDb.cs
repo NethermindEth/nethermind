@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -12,6 +11,7 @@ using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
@@ -21,9 +21,10 @@ namespace Nethermind.Db
     {
         public const string DbFileName = "SimpleFileDb.db";
 
-        private ILogger _logger;
+        private readonly ILogger _logger;
         private bool _hasPendingChanges;
         private ConcurrentDictionary<byte[], byte[]> _cache;
+        private ConcurrentDictionary<byte[], byte[]>.AlternateLookup<ReadOnlySpan<byte>> _cacheSpan;
 
         public string DbPath { get; }
         public string Name { get; }
@@ -35,8 +36,8 @@ namespace Nethermind.Db
 
         public SimpleFilePublicKeyDb(string name, string dbDirectoryPath, ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            if (dbDirectoryPath is null) throw new ArgumentNullException(nameof(dbDirectoryPath));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            ArgumentNullException.ThrowIfNull(dbDirectoryPath);
             Name = name ?? throw new ArgumentNullException(nameof(name));
             DbPath = Path.Combine(dbDirectoryPath, DbFileName);
             Description = $"{Name}|{DbPath}";
@@ -49,47 +50,74 @@ namespace Nethermind.Db
             LoadData();
         }
 
-        public byte[] this[byte[] key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
-            get => _cache[key];
-            set
+            get => Get(key, ReadFlags.None);
+            set => Set(key, value, WriteFlags.None);
+        }
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return _cacheSpan[key];
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (value is null)
             {
-                if (value is null)
+                if (_cacheSpan.TryRemove(key, out _))
                 {
-                    _cache.TryRemove(key, out _);
+                    _hasPendingChanges = true;
                 }
-                else
+                return;
+            }
+
+            bool setValue = true;
+            if (_cacheSpan.TryGetValue(key, out var existingValue))
+            {
+                if (!Bytes.AreEqual(existingValue, value))
                 {
-                    _cache.AddOrUpdate(key, newValue => Add(value), (x, oldValue) => Update(oldValue, value));
+                    setValue = false;
                 }
+            }
+
+            if (setValue)
+            {
+                _cacheSpan[key] = value;
+                _hasPendingChanges = true;
             }
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out var value) ? value : null)).ToArray();
 
-        public void Remove(byte[] key)
+        public void Remove(ReadOnlySpan<byte> key)
         {
-            _hasPendingChanges = true;
-            _cache.TryRemove(key, out _);
+            if (_cacheSpan.TryRemove(key, out _))
+            {
+                _hasPendingChanges = true;
+            }
         }
 
-        public bool KeyExists(byte[] key)
+        public bool KeyExists(ReadOnlySpan<byte> key)
         {
-            return _cache.ContainsKey(key);
+            return _cacheSpan.ContainsKey(key);
         }
 
-        public IDb Innermost => this;
-        public void Flush() { }
+        public void Flush(bool onlyWal = false) { }
+
         public void Clear()
         {
             File.Delete(DbPath);
+            _cache.Clear();
         }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _cache;
 
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _cache.Keys;
+
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Values;
 
-        public IBatch StartBatch()
+        public IWriteBatch StartWriteBatch()
         {
             return this.LikeABatch(CommitBatch);
         }
@@ -109,15 +137,25 @@ namespace Nethermind.Db
             if (_logger.IsDebug) _logger.Debug($"Saving data in {DbPath} | backup stored in {backup.BackupPath}");
             try
             {
-                using StreamWriter streamWriter = new(DbPath);
-                foreach ((byte[] key, byte[] value) in snapshot)
+                using StreamWriter fileWriter = new(DbPath);
+                StringBuilder lineBuilder = new(400); // longest found in practice was 320, adding some headroom
+                using StringWriter lineWriter = new(lineBuilder);
+                foreach ((byte[] key, byte[]? value) in snapshot)
                 {
+                    lineBuilder.Clear();
+
                     if (value is not null)
                     {
-                        key.StreamHex(streamWriter);
-                        streamWriter.Write(',');
-                        value.StreamHex(streamWriter);
-                        streamWriter.WriteLine();
+                        key.StreamHex(lineWriter);
+                        lineWriter.Write(',');
+                        value.StreamHex(lineWriter);
+                        lineWriter.WriteLine();
+                        lineWriter.Flush();
+
+                        foreach (ReadOnlyMemory<char> chunk in lineBuilder.GetChunks())
+                        {
+                            fileWriter.Write(chunk.Span);
+                        }
                     }
                 }
             }
@@ -137,11 +175,11 @@ namespace Nethermind.Db
             public Backup(string dbPath, ILogger logger)
             {
                 _dbPath = dbPath;
-                _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+                _logger = logger;
 
                 try
                 {
-                    BackupPath = $"{_dbPath}_{Guid.NewGuid().ToString()}";
+                    BackupPath = $"{_dbPath}_{Guid.NewGuid()}";
 
                     if (File.Exists(_dbPath))
                     {
@@ -182,6 +220,7 @@ namespace Nethermind.Db
             const int maxLineLength = 2048;
 
             _cache = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
+            _cacheSpan = _cache.GetAlternateLookup<ReadOnlySpan<byte>>();
 
             if (!File.Exists(DbPath))
             {
@@ -190,7 +229,7 @@ namespace Nethermind.Db
 
             using SafeFileHandle fileHandle = File.OpenHandle(DbPath, FileMode.OpenOrCreate);
 
-            byte[] rentedBuffer = ArrayPool<byte>.Shared.Rent(maxLineLength);
+            using var handle = ArrayPoolDisposableReturn.Rent(maxLineLength, out byte[] rentedBuffer);
             int read = RandomAccess.Read(fileHandle, rentedBuffer, 0);
 
             long offset = 0L;
@@ -252,10 +291,9 @@ namespace Nethermind.Db
                 read = RandomAccess.Read(fileHandle, rentedBuffer.AsSpan(bytes.Length), offset);
             }
 
-            ArrayPool<byte>.Shared.Return(rentedBuffer);
             if (bytes.Length > 0)
             {
-                ThrowInvalidDataException();
+                if (_logger.IsWarn) _logger.Warn($"Malformed {Name}. Ignoring...");
             }
 
             void RecordError(Span<byte> data)
@@ -263,13 +301,8 @@ namespace Nethermind.Db
                 if (_logger.IsError)
                 {
                     string line = Encoding.UTF8.GetString(data);
-                    _logger.Error($"Error when loading data from {Name} - expected two items separated by a comma and got '{line}')");
+                    if (_logger.IsError) _logger.Error($"Error when loading data from {Name} - expected two items separated by a comma and got '{line}')");
                 }
-            }
-
-            static void ThrowInvalidDataException()
-            {
-                throw new InvalidDataException("Malformed data");
             }
         }
 
@@ -291,7 +324,6 @@ namespace Nethermind.Db
 
         public void Dispose()
         {
-            GC.SuppressFinalize(this);
         }
     }
 }

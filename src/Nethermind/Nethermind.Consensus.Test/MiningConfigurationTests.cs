@@ -18,7 +18,7 @@ public class MiningConfigurationTests
         string testValue = "Test 123";
         blocksConfig.ExtraData = testValue;
         MigrateConfigs.MigrateBlocksConfig(blocksConfig, miningConfig.BlocksConfig);
-        Assert.AreEqual(miningConfig.BlocksConfig.ExtraData, blocksConfig.ExtraData);
+        Assert.That(blocksConfig.ExtraData, Is.EqualTo(miningConfig.BlocksConfig.ExtraData));
 
         //Change init order
         IMiningConfig miningConfig2 = new MiningConfig();
@@ -27,7 +27,7 @@ public class MiningConfigurationTests
         string testValue2 = "Test 321";
         blocksConfig2.ExtraData = testValue2;
         MigrateConfigs.MigrateBlocksConfig(blocksConfig2, miningConfig2.BlocksConfig);
-        Assert.AreEqual(miningConfig2.BlocksConfig.ExtraData, blocksConfig2.ExtraData);
+        Assert.That(blocksConfig2.ExtraData, Is.EqualTo(miningConfig2.BlocksConfig.ExtraData));
 
     }
     [Test]
@@ -38,7 +38,7 @@ public class MiningConfigurationTests
         string testValue = "Test 123";
         miningConfig.ExtraData = testValue;
         MigrateConfigs.MigrateBlocksConfig(blocksConfig, miningConfig.BlocksConfig);
-        Assert.AreEqual(miningConfig.BlocksConfig.ExtraData, blocksConfig.ExtraData);
+        Assert.That(blocksConfig.ExtraData, Is.EqualTo(miningConfig.BlocksConfig.ExtraData));
 
         //Change init order
         IMiningConfig miningConfig2 = new MiningConfig();
@@ -47,7 +47,7 @@ public class MiningConfigurationTests
         string testValue2 = "Test 321";
         miningConfig2.ExtraData = testValue2;
         MigrateConfigs.MigrateBlocksConfig(blocksConfig2, miningConfig2.BlocksConfig);
-        Assert.AreEqual(miningConfig2.BlocksConfig.ExtraData, blocksConfig2.ExtraData);
+        Assert.That(blocksConfig2.ExtraData, Is.EqualTo(miningConfig2.BlocksConfig.ExtraData));
     }
 
     [Test]

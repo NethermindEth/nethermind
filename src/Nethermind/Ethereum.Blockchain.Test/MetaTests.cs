@@ -21,7 +21,11 @@ namespace Ethereum.Blockchain.Test
             "runtimes",
             "ref",
             "TestFiles",
-            "Blockhash"
+            "Blockhash",
+            "stEIP2537", // ToDo Remove this after updating tests
+            "Data",
+            "Log",
+            "TestResults"
         };
 
         [Test]
@@ -34,9 +38,9 @@ namespace Ethereum.Blockchain.Test
             List<string> missingCategories = new List<string>();
             foreach (string directory in directories)
             {
-                string expectedTypeName = ExpectedTypeName(directory);
+                string expectedTypeName = ExpectedTypeName(directory).Replace("-", "");
                 Type type = types.SingleOrDefault(t => string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase));
-                if (type == null && !excludesDirectories.Contains(directory))
+                if (type is null && !excludesDirectories.Contains(directory))
                 {
                     if (new DirectoryInfo(directory).GetFiles().Any(f => f.Name.Contains(".resources.")))
                     {
@@ -52,7 +56,7 @@ namespace Ethereum.Blockchain.Test
                 Console.WriteLine($"{missing} category is missing");
             }
 
-            Assert.AreEqual(0, missingCategories.Count);
+            Assert.That(missingCategories.Count, Is.EqualTo(0));
         }
 
         private static string ExpectedTypeName(string directory)

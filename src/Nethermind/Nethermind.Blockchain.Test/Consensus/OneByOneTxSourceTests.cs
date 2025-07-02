@@ -13,14 +13,15 @@ namespace Nethermind.Blockchain.Test.Consensus
     [TestFixture]
     public class OneByOneTxSourceTests
     {
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void Can_serve_one_by_one()
         {
             ITxSource source = Substitute.For<ITxSource>();
-            source.GetTransactions(null, 0).Returns(new Transaction[5]);
+            BlockHeader blockHeader = new();
+            source.GetTransactions(blockHeader, 0).Returns(new Transaction[5]);
 
             ITxSource oneByOne = source.ServeTxsOneByOne();
-            oneByOne.GetTransactions(null, 0).Count().Should().Be(1);
+            oneByOne.GetTransactions(blockHeader, 0).Count().Should().Be(1);
 
         }
     }

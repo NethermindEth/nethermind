@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Contracts
             protected Transaction GenerateTransaction(CallInfo callInfo) =>
                 _contract.GenerateTransaction<SystemTransaction>(callInfo.ContractAddress, callInfo.FunctionName, callInfo.Sender, DefaultConstantContractGasLimit, callInfo.ParentHeader, callInfo.Arguments);
 
-            protected byte[] CallCore(CallInfo callInfo, IReadOnlyTransactionProcessor readOnlyTransactionProcessor, Transaction transaction) =>
+            protected byte[] CallCore(CallInfo callInfo, ITransactionProcessor readOnlyTransactionProcessor, Transaction transaction) =>
                 _contract.CallCore(readOnlyTransactionProcessor, callInfo.ParentHeader, callInfo.FunctionName, transaction, true);
 
             protected object[] DecodeReturnData(string functionName, byte[] data) => _contract.DecodeReturnData(functionName, data);
@@ -81,21 +81,21 @@ namespace Nethermind.Blockchain.Contracts
 
             public override object[] Call(CallInfo callInfo)
             {
-                Keccak GetState(BlockHeader parentHeader) => parentHeader?.StateRoot ?? Keccak.EmptyTreeHash;
+                static Hash256 GetState(BlockHeader parentHeader) => parentHeader?.StateRoot ?? Keccak.EmptyTreeHash;
 
                 lock (_readOnlyTxProcessorSource)
                 {
-                    using var readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(GetState(callInfo.ParentHeader));
-                    return CallRaw(callInfo, readOnlyTransactionProcessor);
+                    using var scope = _readOnlyTxProcessorSource.Build(GetState(callInfo.ParentHeader));
+                    return CallRaw(callInfo, scope);
                 }
             }
 
-            protected virtual object[] CallRaw(CallInfo callInfo, IReadOnlyTransactionProcessor readOnlyTransactionProcessor)
+            protected virtual object[] CallRaw(CallInfo callInfo, IReadOnlyTxProcessingScope scope)
             {
                 var transaction = GenerateTransaction(callInfo);
-                if (_contract.ContractAddress is not null && readOnlyTransactionProcessor.IsContractDeployed(_contract.ContractAddress))
+                if (_contract.ContractAddress is not null && scope.WorldState.IsContract(_contract.ContractAddress))
                 {
-                    var result = CallCore(callInfo, readOnlyTransactionProcessor, transaction);
+                    var result = CallCore(callInfo, scope.TransactionProcessor, transaction);
                     return callInfo.Result = _contract.DecodeReturnData(callInfo.FunctionName, result);
                 }
                 else if (callInfo.MissingContractResult is not null)

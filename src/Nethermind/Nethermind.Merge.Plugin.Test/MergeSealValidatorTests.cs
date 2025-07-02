@@ -12,9 +12,9 @@ public class MergeSealValidatorTests
 {
     private class Context
     {
-        private BlockHeader _blockHeader = Build.A.BlockHeader.TestObject;
-        private IPoSSwitcher _poSSwitcher = Substitute.For<IPoSSwitcher>();
-        private ISealValidator _baseValidator = Substitute.For<ISealValidator>();
+        private readonly BlockHeader _blockHeader = Build.A.BlockHeader.TestObject;
+        private readonly IPoSSwitcher _poSSwitcher = Substitute.For<IPoSSwitcher>();
+        private readonly ISealValidator _baseValidator = Substitute.For<ISealValidator>();
 
         public Context WhenHeaderIsTerminalBlock()
         {

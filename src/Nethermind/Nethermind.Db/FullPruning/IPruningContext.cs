@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using Nethermind.Core;
 
 namespace Nethermind.Db.FullPruning
@@ -10,7 +9,7 @@ namespace Nethermind.Db.FullPruning
     /// <summary>
     /// Context of Full pruning.
     /// </summary>
-    public interface IPruningContext : IKeyValueStore, IDisposable
+    public interface IPruningContext : IKeyValueStoreWithBatching, IDisposable
     {
         /// <summary>
         /// Commits pruning, marking the end of cloning state to new DB.
@@ -21,10 +20,5 @@ namespace Nethermind.Db.FullPruning
         /// Marks that pruning is starting.
         /// </summary>
         void MarkStart();
-
-        /// <summary>
-        /// Allows cancelling pruning
-        /// </summary>
-        CancellationTokenSource CancellationTokenSource { get; }
     }
 }

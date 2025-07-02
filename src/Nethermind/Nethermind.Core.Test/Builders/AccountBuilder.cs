@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public AccountBuilder WithStorageRoot(Keccak storageRoot)
+        public AccountBuilder WithStorageRoot(Hash256 storageRoot)
         {
             TestObjectInternal = TestObjectInternal.WithChangedStorageRoot(storageRoot);
             return this;

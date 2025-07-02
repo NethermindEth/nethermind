@@ -4,20 +4,21 @@
 using System;
 using Nethermind.Blockchain.Find;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain
 {
     /// <summary>
-    /// Watches state persistence in <see cref="ITrieStore"/> with <see cref="ITrieStore.ReorgBoundaryReached"/> and saves it in <see cref="IBlockFinder.BestPersistedState"/>.
+    /// Watches state persistence in <see cref="IWorldStateManager"/> with <see cref="IWorldStateManager.ReorgBoundaryReached"/> and saves it in <see cref="IBlockFinder.BestPersistedState"/>.
     /// </summary>
     public class TrieStoreBoundaryWatcher : IDisposable
     {
-        private readonly ITrieStore _trieStore;
+        private readonly IWorldStateManager _trieStore;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
-        public TrieStoreBoundaryWatcher(ITrieStore trieStore, IBlockTree blockTree, ILogManager logManager)
+        public TrieStoreBoundaryWatcher(IWorldStateManager trieStore, IBlockTree blockTree, ILogManager logManager)
         {
             _trieStore = trieStore;
             _blockTree = blockTree;

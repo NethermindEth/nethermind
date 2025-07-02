@@ -3,15 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
@@ -28,6 +26,8 @@ namespace Nethermind.Consensus.AuRa.Validators
         private AuRaParameters.Validator _currentValidatorPrototype;
         private long _lastProcessedBlock = 0;
 
+        public bool SupportsBlobs => false;
+
         public MultiValidator(
             AuRaParameters.Validator validator,
             IAuRaValidatorFactory validatorFactory,
@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             ILogManager logManager,
             bool forSealing = false)
         {
-            if (validator is null) throw new ArgumentNullException(nameof(validator));
+            ArgumentNullException.ThrowIfNull(validator);
             if (validator.ValidatorType != AuRaParameters.ValidatorType.Multi) throw new ArgumentException("Wrong validator type.", nameof(validator));
             _validatorFactory = validatorFactory ?? throw new ArgumentNullException(nameof(validatorFactory));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -223,7 +223,10 @@ namespace Nethermind.Consensus.AuRa.Validators
             _currentValidator.GetReportingValidator().TryReportSkipped(header, parent);
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => _currentValidator is ITxSource txSource ? txSource.GetTransactions(parent, gasLimit) : Enumerable.Empty<Transaction>();
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource) =>
+            _currentValidator is ITxSource txSource
+                ? txSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource)
+                : [];
 
         public override string ToString() => $"{nameof(MultiValidator)} [ {(_currentValidator is ITxSource txSource ? txSource.ToString() : string.Empty)} ]";
 

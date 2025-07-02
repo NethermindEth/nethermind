@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System.Collections.Generic;
-using System.Collections.Immutable;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
@@ -30,12 +32,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
-            IEnumerable<Address> addressesAccessed = tracer.AccessList.Data.Keys;
+            IEnumerable<Address> addressesAccessed = tracer.AccessList!.Select(static tuples => tuples.Address);
             IEnumerable<Address> expected = new[] {
                 SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, TestItem.AddressC
             };
 
-            Assert.IsNotEmpty(addressesAccessed);
             addressesAccessed.Should().BeEquivalentTo(expected);
         }
 
@@ -50,13 +51,64 @@ namespace Nethermind.Evm.Test.Tracing
 
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
-            IReadOnlyDictionary<Address, IReadOnlySet<UInt256>> accessedData = tracer.AccessList.Data;
+            tracer.AccessList!.Should().BeEquivalentTo(
+                new[]
+                {
+                    (SenderRecipientAndMiner.Default.Sender, System.Array.Empty<UInt256>()),
+                    (SenderRecipientAndMiner.Default.Recipient, new UInt256[] { 105 })
+                });
+        }
 
-            Assert.IsNotEmpty(accessedData);
-            accessedData.Should().BeEquivalentTo(
-                new Dictionary<Address, IReadOnlySet<UInt256>>{
-                    {SenderRecipientAndMiner.Default.Sender, ImmutableHashSet<UInt256>.Empty},
-                    {SenderRecipientAndMiner.Default.Recipient, new HashSet<UInt256>{105}}});
+        public static IEnumerable OptimizedAddressCases
+        {
+            get
+            {
+                yield return new TestCaseData(
+                    new Address[] { TestItem.AddressA, TestItem.AddressB },
+                    System.Array.Empty<Address>());
+                yield return new TestCaseData(
+                    new Address[] { TestItem.AddressB },
+                    new[] { TestItem.AddressA });
+                yield return new TestCaseData(
+                    new Address[] { TestItem.AddressA },
+                    new[] { TestItem.AddressB });
+            }
+        }
+
+        [TestCaseSource(nameof(OptimizedAddressCases))]
+        public void ReportAccess_AddressIsSetToOptmizedWithNoStorageCells_OnlyAddressesNotOptimizedIsInTheAccesslist(IEnumerable<Address> optimized, IEnumerable<Address> expected)
+        {
+            JournalSet<Address> accessedAddresses = [TestItem.AddressA, TestItem.AddressB];
+            JournalSet<StorageCell> accessedStorageCells = [];
+            AccessTxTracer sut = new(optimized.ToArray());
+
+            sut.ReportAccess(accessedAddresses, accessedStorageCells);
+
+            Assert.That(sut.AccessList.Select(static a => a.Address).ToArray(), Is.EquivalentTo(expected));
+        }
+
+        [Test]
+        public void ReportAccess_AddressAIsSetToOptmizedAndHasStorageCell_AddressAAndBIsInTheAccesslist()
+        {
+            JournalSet<Address> accessedAddresses = [TestItem.AddressA, TestItem.AddressB];
+            JournalSet<StorageCell> accessedStorageCells = [new StorageCell(TestItem.AddressA, 0)];
+            AccessTxTracer sut = new(TestItem.AddressA);
+
+            sut.ReportAccess(accessedAddresses, accessedStorageCells);
+
+            Assert.That(sut.AccessList.Select(static x => x.Address).ToArray(), Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+        }
+
+        [Test]
+        public void ReportAccess_AddressAIsSetToOptmizedAndHasStorageCell_AccesslistHasCorrectStorageCell()
+        {
+            JournalSet<Address> accessedAddresses = [TestItem.AddressA, TestItem.AddressB];
+            JournalSet<StorageCell> accessedStorageCells = [new StorageCell(TestItem.AddressA, 1)];
+            AccessTxTracer sut = new(TestItem.AddressA);
+
+            sut.ReportAccess(accessedAddresses, accessedStorageCells);
+
+            Assert.That(sut.AccessList.Select(static x => x.StorageKeys), Has.Exactly(1).Contains(new UInt256(1)));
         }
 
         protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);
@@ -65,7 +117,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
             AccessTxTracer tracer = new();
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
             return (tracer, block, transaction);
         }
     }

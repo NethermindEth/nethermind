@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
-using Nethermind.Consensus.AuRa;
 using Nethermind.Core.Collections;
 using NUnit.Framework;
 
@@ -12,7 +11,7 @@ namespace Nethermind.AuRa.Test
 {
     public class ListExtensionsTests
     {
-        private readonly List<int> _list = Enumerable.Range(5, 10).Select(i => i * 2).ToList();
+        private readonly List<int> _list = Enumerable.Range(5, 10).Select(static i => i * 2).ToList();
 
         [TestCase(2)]
         [TestCase(10)]
@@ -24,7 +23,7 @@ namespace Nethermind.AuRa.Test
         public void BinarySearchTest(int searchFor)
         {
             IList<int> iList = _list;
-            iList.BinarySearch(searchFor, (a, b) => a.CompareTo(b)).Should().Be(_list.BinarySearch(searchFor));
+            iList.BinarySearch(searchFor, static (a, b) => a.CompareTo(b)).Should().Be(_list.BinarySearch(searchFor));
         }
     }
 }

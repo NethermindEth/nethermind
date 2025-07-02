@@ -2,32 +2,58 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+
 using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
+    using System.Buffers;
+    using System.Runtime.CompilerServices;
+    using System.Text.Json;
+    using System.Text.Json.Serialization;
+
     public class Bytes32Converter : JsonConverter<byte[]>
     {
-        public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
+        [SkipLocalsInit]
+        public override byte[] Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
         {
-            writer.WriteValue(string.Concat("0x", value.ToHexString(false).PadLeft(64, '0')));
-        }
-
-        public override byte[] ReadJson(
-            JsonReader reader,
-            Type objectType,
-            byte[] existingValue,
-            bool hasExistingValue,
-            JsonSerializer serializer)
-        {
-            string s = (string)reader.Value;
-            if (s is null)
+            ReadOnlySpan<byte> hex = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+            if (hex.StartsWith("0x"u8))
             {
-                return null;
+                hex = hex[2..];
             }
 
-            return Bytes.FromHexString(s);
+            if (hex.Length > 64)
+            {
+                throw new JsonException();
+            }
+
+            if (hex.Length < 64)
+            {
+                Span<byte> hex32 = stackalloc byte[64];
+                hex32.Fill((byte)'0');
+                hex.CopyTo(hex32[(64 - hex.Length)..]);
+                return Bytes.FromUtf8HexString(hex32);
+            }
+
+            return Bytes.FromUtf8HexString(hex);
+        }
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            byte[] bytes,
+            JsonSerializerOptions options)
+        {
+            Span<byte> data = (bytes is null || bytes.Length < 32) ? stackalloc byte[32] : bytes;
+            if (bytes is not null && bytes.Length < 32)
+            {
+                bytes.AsSpan().CopyTo(data[(32 - bytes.Length)..]);
+            }
+
+            ByteArrayConverter.Convert(writer, data, skipLeadingZeros: false);
         }
     }
 }

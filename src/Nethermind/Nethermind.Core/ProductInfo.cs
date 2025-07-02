@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace Nethermind.Core;
 
@@ -12,31 +14,66 @@ public static class ProductInfo
 {
     static ProductInfo()
     {
-        var assembly = Assembly.GetEntryAssembly();
-        var infoAttr = assembly?.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
-        var metadataAttrs = assembly?.GetCustomAttributes<AssemblyMetadataAttribute>();
-        var productAttr = assembly?.GetCustomAttribute<AssemblyProductAttribute>();
-        var commit = metadataAttrs?.FirstOrDefault(a => a.Key.Equals("Commit", StringComparison.Ordinal))?.Value;
-        var timestamp = metadataAttrs?.FirstOrDefault(a => a.Key.Equals("BuildTimestamp", StringComparison.Ordinal))?.Value;
+        var assembly = Assembly.GetEntryAssembly()!;
+        var metadataAttrs = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()!;
+        var productAttr = assembly.GetCustomAttribute<AssemblyProductAttribute>()!;
+        var versionAttr = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!;
+        var timestamp = metadataAttrs
+            ?.FirstOrDefault(static a => a.Key.Equals("BuildTimestamp", StringComparison.Ordinal))
+            ?.Value;
 
         BuildTimestamp = long.TryParse(timestamp, out var t)
             ? DateTimeOffset.FromUnixTimeSeconds(t)
             : DateTimeOffset.MinValue;
-        Commit = commit ?? string.Empty;
         Name = productAttr?.Product ?? "Nethermind";
         OS = Platform.GetPlatformName();
         OSArchitecture = RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant();
         Runtime = RuntimeInformation.FrameworkDescription;
-        Version = infoAttr?.InformationalVersion ?? string.Empty;
+        Version = versionAttr.InformationalVersion;
 
-        ClientId = $"{Name}/v{Version}/{OS.ToLowerInvariant()}-{OSArchitecture}/dotnet{Runtime[5..]}";
+        var index = Version.IndexOf('+', StringComparison.Ordinal);
+
+        if (index != -1)
+        {
+            Commit = Version[(index + 1)..];
+            Version = Version[..Math.Min(index + 9, Version.Length - 1)];
+        }
+
+        ClientIdParts = new()
+        {
+            { "name", Name },
+            { "version", $"v{Version}" },
+            { "os", $"{OS.ToLowerInvariant()}-{OSArchitecture}" },
+            { "runtime", $"dotnet{Runtime[5..]}" }
+        };
+
+        ClientId = FormatClientId(DefaultPublicClientIdFormat);
+        PublicClientId = ClientId;
     }
 
     public static DateTimeOffset BuildTimestamp { get; }
 
+    private static string FormatClientId(string formatString)
+    {
+        if (string.IsNullOrEmpty(formatString))
+        {
+            return string.Empty;
+        }
+
+        StringBuilder formattedClientId = new(formatString);
+        foreach (var placeholder in ClientIdParts)
+        {
+            formattedClientId.Replace($"{{{placeholder.Key}}}", placeholder.Value);
+        }
+
+        return formattedClientId.ToString();
+    }
+
     public static string ClientId { get; }
 
-    public static string Commit { get; }
+    public static string ClientCode { get; } = "NM";
+
+    public static string Commit { get; set; } = string.Empty;
 
     public static string Name { get; }
 
@@ -47,4 +84,21 @@ public static class ProductInfo
     public static string Runtime { get; }
 
     public static string Version { get; }
+
+    public static string Network { get; set; } = string.Empty;
+
+    public static string Instance { get; set; } = string.Empty;
+
+    public static string SyncType { get; set; } = string.Empty;
+
+    public static string PruningMode { get; set; } = string.Empty;
+
+    private static Dictionary<string, string> ClientIdParts { get; }
+
+    public static string PublicClientId { get; private set; }
+
+    public const string DefaultPublicClientIdFormat = "{name}/{version}/{os}/{runtime}";
+
+    public static void InitializePublicClientId(string formatString) =>
+        PublicClientId = FormatClientId(formatString);
 }

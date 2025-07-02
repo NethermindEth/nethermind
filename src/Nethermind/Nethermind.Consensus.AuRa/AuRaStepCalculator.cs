@@ -89,7 +89,7 @@ namespace Nethermind.Consensus.AuRa
                 throw new ArgumentException("Authority Round step 0 duration is undefined.");
             }
 
-            if (stepDurations.Any(s => s.Value == 0))
+            if (stepDurations.Any(static s => s.Value == 0))
             {
                 throw new ArgumentException("Authority Round step duration cannot be 0.");
             }
@@ -106,7 +106,7 @@ namespace Nethermind.Consensus.AuRa
             }
         }
 
-        private IList<StepDurationInfo> CreateStepDurations(IDictionary<long, long> stepDurations)
+        private static IList<StepDurationInfo> CreateStepDurations(IDictionary<long, long> stepDurations)
         {
             StepDurationInfo[] result = new StepDurationInfo[stepDurations.Count];
             KeyValuePair<long, long> firstStep = stepDurations.First();

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -15,13 +15,13 @@ namespace Nethermind.Logging
     /// Instead we use LimboLogs that returns a logger that always causes the log message to be created and so we can
     /// detect somethingThatIsNull.ToString() throwing an error.
     /// </summary>
-    public class LimboNoErrorLogger : ILogger
+    public class LimboNoErrorLogger : InterfaceLogger
     {
         private static LimboNoErrorLogger _instance;
 
-        public static LimboNoErrorLogger Instance
+        public static ILogger Instance
         {
-            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new LimboNoErrorLogger()); }
+            get { return new(LazyInitializer.EnsureInitialized(ref _instance, static () => new LimboNoErrorLogger())); }
         }
 
         public void Info(string text)
@@ -42,8 +42,8 @@ namespace Nethermind.Logging
 
         public void Error(string text, Exception ex = null)
         {
-            Console.WriteLine(text);
-            Console.WriteLine(ex);
+            Console.Error.WriteLine(text);
+            Console.Error.WriteLine(ex);
             throw new Exception(text, ex);
         }
 

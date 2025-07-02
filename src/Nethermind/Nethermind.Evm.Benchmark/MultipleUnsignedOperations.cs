@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
@@ -27,11 +28,9 @@ public class MultipleUnsignedOperations
     private ExecutionEnvironment _environment;
     private IVirtualMachine _virtualMachine;
     private readonly BlockHeader _header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.MuirGlacierBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
-    private readonly IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
+    private readonly IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
     private EvmState _evmState;
-    private StateProvider _stateProvider;
-    private StorageProvider _storageProvider;
-    private WorldState _worldState;
+    private IWorldState _stateProvider;
 
     private readonly byte[] _bytecode = Prepare.EvmCode
         .PushData(2)
@@ -70,45 +69,42 @@ public class MultipleUnsignedOperations
     [GlobalSetup]
     public void GlobalSetup()
     {
-        TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
-        IKeyValueStore codeDb = new MemDb();
-
-        _stateProvider = new StateProvider(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
         _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
         _stateProvider.Commit(_spec);
 
-        _storageProvider = new StorageProvider(trieStore, _stateProvider, new OneLoggerLogManager(NullLogger.Instance));
-
-        _worldState = new WorldState(_stateProvider, _storageProvider);
         Console.WriteLine(MuirGlacier.Instance);
+        CodeInfoRepository codeInfoRepository = new();
         _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
+        _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
+        _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
 
         _environment = new ExecutionEnvironment
-        {
-            ExecutingAccount = Address.Zero,
-            CodeSource = Address.Zero,
-            Caller = Address.Zero,
-            CodeInfo = new CodeInfo(_bytecode.Concat(_bytecode).Concat(_bytecode).Concat(_bytecode).ToArray()),
-            Value = 0,
-            TransferValue = 0,
-            TxExecutionContext = new TxExecutionContext(_header, Address.Zero, 0, null)
-        };
+        (
+            executingAccount: Address.Zero,
+            codeSource: Address.Zero,
+            caller: Address.Zero,
+            codeInfo: new CodeInfo(_bytecode.Concat(_bytecode).Concat(_bytecode).Concat(_bytecode).ToArray()),
+            callDepth: 0,
+            value: 0,
+            transferValue: 0,
+            inputData: default
+        );
 
-        _evmState = new EvmState(100_000_000L, _environment, ExecutionType.Transaction, true, _worldState.TakeSnapshot(), false);
+        _evmState = EvmState.RentTopLevel(100_000_000L, ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
     }
 
     [Benchmark]
     public void ExecuteCode()
     {
-        _virtualMachine.Run(_evmState, _worldState, _txTracer);
+        _virtualMachine.ExecuteTransaction<OffFlag>(_evmState, _stateProvider, _txTracer);
         _stateProvider.Reset();
-        _storageProvider.Reset();
     }
 
     [Benchmark(Baseline = true)]
     public void No_machine_running()
     {
         _stateProvider.Reset();
-        _storageProvider.Reset();
     }
 }

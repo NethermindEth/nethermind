@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -24,49 +25,40 @@ namespace Nethermind.Init.Steps.Migrations
     public class ReceiptFixMigration : IDatabaseMigration
     {
         private readonly IApiWithNetwork _api;
-        private Task? _fixTask;
-        private CancellationTokenSource? _cancellationTokenSource;
 
         public ReceiptFixMigration(IApiWithNetwork api)
         {
             _api = api;
         }
 
-        public async ValueTask DisposeAsync()
-        {
-            _cancellationTokenSource?.Cancel();
-            await (_fixTask ?? Task.CompletedTask);
-        }
-
-        public void Run()
+        public async Task Run(CancellationToken cancellationToken)
         {
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             ILogger logger = _api.LogManager.GetClassLogger();
             if (syncConfig.FixReceipts && _api.BlockTree is not null)
             {
-                _cancellationTokenSource = new CancellationTokenSource();
-                CancellationToken cancellationToken = _cancellationTokenSource.Token;
-
-                MissingReceiptsFixVisitor visitor = new MissingReceiptsFixVisitor(
-                    syncConfig.PivotNumberParsed,
+                MissingReceiptsFixVisitor visitor = new(
+                    syncConfig.AncientReceiptsBarrierCalc,
                     _api.BlockTree.Head?.Number - 2 ?? 0,
                     _api.ReceiptStorage!,
                     _api.LogManager,
                     _api.SyncPeerPool!,
                     _api.BlockTree,
-                    cancellationToken);
+                    cancellationToken
+                );
 
-                _fixTask = _api.BlockTree.Accept(visitor, cancellationToken).ContinueWith(t =>
+                try
                 {
-                    if (t.IsFaulted)
-                    {
-                        if (logger.IsError) logger.Error("Fixing receipts in DB failed.", t.Exception);
-                    }
-                    else if (t.IsCanceled)
-                    {
-                        if (logger.IsWarn) logger.Warn("Fixing receipts in DB canceled.");
-                    }
-                });
+                    await _api.BlockTree.Accept(visitor, cancellationToken);
+                }
+                catch (InvalidOperationException)
+                {
+                    if (logger.IsWarn) logger.Warn("Fixing receipts in DB canceled.");
+                }
+                catch (Exception e)
+                {
+                    if (logger.IsError) logger.Error("Fixing receipts in DB failed.", e);
+                }
             }
         }
 
@@ -109,10 +101,11 @@ namespace Nethermind.Init.Steps.Migrations
 
             protected override async Task OnBlockWithoutReceipts(Block block, int transactionsLength, int txReceiptsLength)
             {
-                if (_logger.IsInfo) _logger.Info($"Missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength} but got {txReceiptsLength}.");
+                if (_logger.IsInfo)
+                    _logger.Info($"Missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength} but got {txReceiptsLength}.");
 
                 await Policy.HandleResult<bool>(downloaded => !downloaded)
-                    .WaitAndRetryAsync(5, i => _delay)
+                    .WaitAndRetryAsync(5, _ => _delay)
                     .ExecuteAsync(async () => await DownloadReceiptsForBlock(block));
             }
 
@@ -130,8 +123,8 @@ namespace Nethermind.Init.Steps.Migrations
                 {
                     try
                     {
-                        TxReceipt[][]? receipts = await currentSyncPeer.GetReceipts(new List<Keccak> { block.Hash }, _cancellationToken);
-                        TxReceipt[]? txReceipts = receipts?.FirstOrDefault();
+                        using IOwnedReadOnlyList<TxReceipt[]?> receipts = await currentSyncPeer.GetReceipts(new List<Hash256> { block.Hash }, _cancellationToken);
+                        TxReceipt[]? txReceipts = receipts.FirstOrDefault();
                         if (txReceipts is not null)
                         {
                             _receiptStorage.Insert(block, txReceipts);

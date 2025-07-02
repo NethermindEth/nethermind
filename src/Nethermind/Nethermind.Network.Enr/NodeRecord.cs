@@ -7,7 +7,6 @@ using DotNetty.Codecs.Base64;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
@@ -21,7 +20,7 @@ public class NodeRecord
 
     private string? _enrString;
 
-    private Keccak? _contentHash;
+    private Hash256? _contentHash;
 
     private SortedDictionary<string, EnrContentEntry> Entries { get; } = new();
 
@@ -67,7 +66,7 @@ public class NodeRecord
     /// <summary>
     /// Hash of the content, i.e. Keccak([seq, k, v, ...]) as defined in https://eips.ethereum.org/EIPS/eip-778
     /// </summary>
-    public Keccak ContentHash
+    public Hash256 ContentHash
     {
         get
         {
@@ -75,7 +74,7 @@ public class NodeRecord
         }
     }
 
-    private Keccak CalculateContentHash()
+    private Hash256 CalculateContentHash()
     {
         KeccakRlpStream rlpStream = new();
         EncodeContent(rlpStream);
@@ -186,7 +185,7 @@ public class NodeRecord
         int contentLength = GetContentLengthWithoutSignature();
         rlpStream.StartSequence(contentLength);
         rlpStream.Encode(EnrSequence);
-        foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(e => e.Key))
+        foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(static e => e.Key))
         {
             contentEntry.Encode(rlpStream);
         }
@@ -202,7 +201,7 @@ public class NodeRecord
         int totalLength = Rlp.LengthOfSequence(contentLength);
         RlpStream rlpStream = new(totalLength);
         Encode(rlpStream);
-        return rlpStream.Data!.ToHexString();
+        return rlpStream.Data.AsSpan().ToHexString();
     }
 
     /// <summary>
@@ -217,7 +216,7 @@ public class NodeRecord
         rlpStream.StartSequence(contentLength);
         rlpStream.Encode(Signature!.Bytes);
         rlpStream.Encode(EnrSequence); // a different sequence here (not RLP sequence)
-        foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(e => e.Key))
+        foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(static e => e.Key))
         {
             contentEntry.Encode(rlpStream);
         }

@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -14,10 +12,9 @@ namespace Nethermind.Crypto
     {
         private readonly KeccakHash _keccakHash;
 
-        public Keccak GetHash()
-        {
-            return new Keccak(_keccakHash.Hash);
-        }
+        public Hash256 GetHash() => new Hash256(_keccakHash.GenerateValueHash());
+
+        public ValueHash256 GetValueHash() => _keccakHash.GenerateValueHash();
 
         public KeccakRlpStream()
         {
@@ -25,14 +22,9 @@ namespace Nethermind.Crypto
             _keccakHash = keccakHash;
         }
 
-        public override void Write(Span<byte> bytesToWrite)
+        public override void Write(ReadOnlySpan<byte> bytesToWrite)
         {
             _keccakHash.Update(bytesToWrite);
-        }
-
-        public override void Write(IReadOnlyList<byte> bytesToWrite)
-        {
-            _keccakHash.Update(bytesToWrite.ToArray());
         }
 
         public override void WriteByte(byte byteToWrite)

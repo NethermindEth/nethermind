@@ -17,15 +17,18 @@ public class BlockHeader
     internal BlockHeader() { }
 
     public BlockHeader(
-        Keccak parentHash,
-        Keccak unclesHash,
+        Hash256 parentHash,
+        Hash256 unclesHash,
         Address beneficiary,
         in UInt256 difficulty,
         long number,
         long gasLimit,
         ulong timestamp,
         byte[] extraData,
-        UInt256? excessDataGas = null)
+        ulong? blobGasUsed = null,
+        ulong? excessBlobGas = null,
+        Hash256? parentBeaconBlockRoot = null,
+        Hash256? requestsHash = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -35,41 +38,46 @@ public class BlockHeader
         GasLimit = gasLimit;
         Timestamp = timestamp;
         ExtraData = extraData;
-        ExcessDataGas = excessDataGas;
+        ParentBeaconBlockRoot = parentBeaconBlockRoot;
+        RequestsHash = requestsHash;
+        BlobGasUsed = blobGasUsed;
+        ExcessBlobGas = excessBlobGas;
     }
 
     public WeakReference<BlockHeader>? MaybeParent { get; set; }
     public bool IsGenesis => Number == 0L;
-    public Keccak? ParentHash { get; set; }
-    public Keccak? UnclesHash { get; set; }
+    public Hash256? ParentHash { get; set; }
+    public Hash256? UnclesHash { get; set; }
     public Address? Author { get; set; }
     public Address? Beneficiary { get; set; }
     public Address? GasBeneficiary => Author ?? Beneficiary;
-    public Keccak? StateRoot { get; set; }
-    public Keccak? TxRoot { get; set; }
-    public Keccak? ReceiptsRoot { get; set; }
+    public Hash256? StateRoot { get; set; }
+    public Hash256? TxRoot { get; set; }
+    public Hash256? ReceiptsRoot { get; set; }
     public Bloom? Bloom { get; set; }
-    public UInt256 Difficulty { get; set; }
+    public UInt256 Difficulty;
     public long Number { get; set; }
     public long GasUsed { get; set; }
     public long GasLimit { get; set; }
     public ulong Timestamp { get; set; }
     public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
-    public byte[] ExtraData { get; set; } = Array.Empty<byte>();
-    public Keccak? MixHash { get; set; }
-    public Keccak? Random => MixHash;
+    public byte[] ExtraData { get; set; } = [];
+    public Hash256? MixHash { get; set; }
+    public Hash256? Random => MixHash;
     public ulong Nonce { get; set; }
-    public Keccak? Hash { get; set; }
+    public Hash256? Hash { get; set; }
     public UInt256? TotalDifficulty { get; set; }
     public byte[]? AuRaSignature { get; set; }
     public long? AuRaStep { get; set; }
-    public UInt256 BaseFeePerGas { get; set; }
-    public Keccak? WithdrawalsRoot { get; set; }
-    public UInt256? ExcessDataGas { get; set; }
-
+    public UInt256 BaseFeePerGas;
+    public Hash256? WithdrawalsRoot { get; set; }
+    public Hash256? ParentBeaconBlockRoot { get; set; }
+    public Hash256? RequestsHash { get; set; }
+    public ulong? BlobGasUsed { get; set; }
+    public ulong? ExcessBlobGas { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
-        || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
-        || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
+                           || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
+                           || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
 
     public bool HasTransactions => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash);
 
@@ -99,12 +107,21 @@ public class BlockHeader
         {
             builder.AppendLine($"{indent}WithdrawalsRoot: {WithdrawalsRoot}");
         }
-        if (ExcessDataGas is not null)
+        if (ParentBeaconBlockRoot is not null)
         {
-            builder.AppendLine($"{indent}ExcessDataGas: {ExcessDataGas}");
+            builder.AppendLine($"{indent}ParentBeaconBlockRoot: {ParentBeaconBlockRoot}");
+        }
+        if (BlobGasUsed is not null || ExcessBlobGas is not null)
+        {
+            builder.AppendLine($"{indent}BlobGasUsed: {BlobGasUsed}");
+            builder.AppendLine($"{indent}ExcessBlobGas: {ExcessBlobGas}");
         }
         builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
         builder.AppendLine($"{indent}TotalDifficulty: {TotalDifficulty}");
+        if (RequestsHash is not null)
+        {
+            builder.AppendLine($"{indent}RequestsHash: {RequestsHash}");
+        }
 
         return builder.ToString();
     }

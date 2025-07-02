@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Logging;
 
@@ -13,15 +14,13 @@ public class TestErrorLogManager : ILogManager
 
     public IReadOnlyCollection<Error> Errors => _errors;
 
-    public ILogger GetClassLogger(Type type) => GetClassLogger();
-
     public ILogger GetClassLogger<T>() => GetClassLogger();
 
-    public ILogger GetClassLogger() => new TestErrorLogger(_errors);
+    public ILogger GetClassLogger([CallerFilePath] string filePath = "") => new(new TestErrorLogger(_errors));
 
     public ILogger GetLogger(string loggerName) => GetClassLogger();
 
-    public class TestErrorLogger : ILogger
+    public class TestErrorLogger : InterfaceLogger
     {
         private readonly ConcurrentQueue<Error> _errors;
 

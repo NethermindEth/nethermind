@@ -10,11 +10,6 @@ namespace Nethermind.Abi
     {
         public static readonly AbiBool Instance = new();
 
-        static AbiBool()
-        {
-            RegisterMapping<bool>(Instance);
-        }
-
         private AbiBool() : base(8)
         {
         }

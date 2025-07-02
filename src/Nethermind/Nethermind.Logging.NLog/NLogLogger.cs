@@ -2,15 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
-using System.Linq;
-using System.Runtime.CompilerServices;
 using NLog;
-using NLog.Targets;
 
 namespace Nethermind.Logging.NLog
 {
-    public class NLogLogger : ILogger
+    public class NLogLogger : InterfaceLogger
     {
         public bool IsError { get; }
         public bool IsWarn { get; }
@@ -20,7 +16,7 @@ namespace Nethermind.Logging.NLog
 
         public string Name { get; }
 
-        private readonly Logger _logger;
+        private readonly global::NLog.Logger _logger;
 
         public NLogLogger(Type type) : this(GetTypeName(type.FullName))
         {
@@ -45,27 +41,32 @@ namespace Nethermind.Logging.NLog
 
         public void Info(string text)
         {
-            _logger.Info(text);
+            if (IsInfo)
+                _logger.Info(text);
         }
 
         public void Warn(string text)
         {
-            _logger.Warn(text);
+            if (IsWarn)
+                _logger.Warn(text);
         }
 
         public void Debug(string text)
         {
-            _logger.Debug(text);
+            if (IsDebug)
+                _logger.Debug(text);
         }
 
         public void Trace(string text)
         {
-            _logger.Trace(text);
+            if (IsTrace)
+                _logger.Trace(text);
         }
 
         public void Error(string text, Exception ex = null)
         {
-            _logger.Error(ex, text);
+            if (IsError)
+                _logger.Error(ex, text);
         }
     }
 }

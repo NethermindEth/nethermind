@@ -1,166 +1,160 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
+using FluentAssertions;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Specs;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
-using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
-using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
-using NSubstitute;
-using NUnit.Framework;
-using System.Security;
-using Nethermind.Core.Extensions;
-using Nethermind.JsonRpc.Test.Modules;
-using System.Threading.Tasks;
-using System.Threading;
-using FluentAssertions;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.State;
+using Nethermind.TxPool;
+using NSubstitute;
+using NUnit.Framework;
+using System;
+using System.Collections.Generic;
+using System.Security;
+using System.Threading;
+using System.Threading.Tasks;
 
-namespace Nethermind.Blockchain.Test
+namespace Nethermind.Blockchain.Test;
+
+public class BlockProcessorTests
 {
-    [TestFixture]
-    public class BlockProcessorTests
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Prepared_block_contains_author_field()
     {
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Prepared_block_contains_author_field()
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        BlockProcessor processor = new BlockProcessor(HoleskySpecProvider.Instance,
+            TestBlockValidator.AlwaysValid,
+            NoBlockRewards.Instance,
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            stateProvider,
+            NullReceiptStorage.Instance,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashStore>(),
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor));
+
+        BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
+        Block block = Build.A.Block.WithHeader(header).TestObject;
+        Block[] processedBlocks = processor.Process(
+            Keccak.EmptyTreeHash,
+            new List<Block> { block },
+            ProcessingOptions.None,
+            NullBlockTracer.Instance);
+        Assert.That(processedBlocks.Length, Is.EqualTo(1), "length");
+        Assert.That(processedBlocks[0].Author, Is.EqualTo(block.Author), "author");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Recovers_state_on_cancel()
+    {
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        BlockProcessor processor = new BlockProcessor(
+            HoleskySpecProvider.Instance,
+            TestBlockValidator.AlwaysValid,
+            new RewardCalculator(MainnetSpecProvider.Instance),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            stateProvider,
+            NullReceiptStorage.Instance,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashStore>(),
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor));
+
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
+        Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
+        Assert.Throws<OperationCanceledException>(() => processor.Process(
+            Keccak.EmptyTreeHash,
+            new List<Block> { block },
+            ProcessingOptions.None,
+            AlwaysCancelBlockTracer.Instance));
+
+        Assert.Throws<OperationCanceledException>(() => processor.Process(
+            Keccak.EmptyTreeHash,
+            new List<Block> { block },
+            ProcessingOptions.None,
+            AlwaysCancelBlockTracer.Instance));
+    }
+
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(20)]
+    [TestCase(63)]
+    [TestCase(64)]
+    [TestCase(65)]
+    [TestCase(127)]
+    [TestCase(128)]
+    [TestCase(129)]
+    [TestCase(130)]
+    [TestCase(1000)]
+    [TestCase(2000)]
+    public async Task Process_long_running_branch(int blocksAmount)
+    {
+        Address address = TestItem.Addresses[0];
+        TestSingleReleaseSpecProvider spec = new TestSingleReleaseSpecProvider(ConstantinopleFix.Instance);
+        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(spec);
+        testRpc.TestWallet.UnlockAccount(address, new SecureString());
+        await testRpc.AddFunds(address, 1.Ether());
+        await testRpc.AddBlock();
+        SemaphoreSlim suggestedBlockResetEvent = new SemaphoreSlim(0);
+        testRpc.BlockTree.NewHeadBlock += (_, _) =>
         {
-            IDb stateDb = new MemDb();
-            IDb codeDb = new MemDb();
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
-            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-            BlockProcessor processor = new(
-                RinkebySpecProvider.Instance,
-                TestBlockValidator.AlwaysValid,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-                stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
-                NullReceiptStorage.Instance,
-                NullWitnessCollector.Instance,
-                LimboLogs.Instance);
+            suggestedBlockResetEvent.Release(1);
+        };
 
-            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
-            Block block = Build.A.Block.WithHeader(header).TestObject;
-            Block[] processedBlocks = processor.Process(
-                Keccak.EmptyTreeHash,
-                new List<Block> { block },
-                ProcessingOptions.None,
-                NullBlockTracer.Instance);
-            Assert.AreEqual(1, processedBlocks.Length, "length");
-            Assert.AreEqual(block.Author, processedBlocks[0].Author, "author");
-        }
+        int branchLength = blocksAmount + (int)testRpc.BlockTree.BestKnownNumber + 1;
+        ((BlockTree)testRpc.BlockTree).AddBranch(branchLength, (int)testRpc.BlockTree.BestKnownNumber);
+        (await suggestedBlockResetEvent.WaitAsync(TestBlockchain.DefaultTimeout * 10)).Should().BeTrue();
+        Assert.That((int)testRpc.BlockTree.BestKnownNumber, Is.EqualTo(branchLength - 1));
+    }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Can_store_a_witness()
-        {
-            IDb stateDb = new MemDb();
-            IDb codeDb = new MemDb();
-            var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
 
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
-            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-            IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
-            BlockProcessor processor = new(
-                RinkebySpecProvider.Instance,
-                TestBlockValidator.AlwaysValid,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-                stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
-                NullReceiptStorage.Instance,
-                witnessCollector,
-                LimboLogs.Instance);
+    [Test]
+    public void BlockProductionTransactionPicker_validates_block_length_using_proper_tx_form()
+    {
+        IReleaseSpec spec = Osaka.Instance;
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
 
-            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
-            Block block = Build.A.Block.WithHeader(header).TestObject;
-            _ = processor.Process(
-                Keccak.EmptyTreeHash,
-                new List<Block> { block },
-                ProcessingOptions.None,
-                NullBlockTracer.Instance);
+        Transaction transactionWithNetworkForm = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(1, true, spec)
+            .SignedAndResolved()
+            .TestObject;
 
-            witnessCollector.Received(1).Persist(block.Hash);
-        }
+        BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, transactionWithNetworkForm.GetLength(true) / 1.KiB() - 1);
+        BlockToProduce newBlock = new(Build.A.BlockHeader.WithExcessBlobGas(0).TestObject);
+        WorldStateStab stateProvider = new();
 
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Recovers_state_on_cancel()
-        {
-            IDb stateDb = new MemDb();
-            IDb codeDb = new MemDb();
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
-            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-            BlockProcessor processor = new(
-                RinkebySpecProvider.Instance,
-                TestBlockValidator.AlwaysValid,
-                new RewardCalculator(MainnetSpecProvider.Instance),
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-                stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
-                NullReceiptStorage.Instance,
-                NullWitnessCollector.Instance,
-                LimboLogs.Instance);
+        Transaction? addedTransaction = null;
+        txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;
 
-            BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
-            Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
-            Assert.Throws<OperationCanceledException>(() => processor.Process(
-                Keccak.EmptyTreeHash,
-                new List<Block> { block },
-                ProcessingOptions.None,
-                AlwaysCancelBlockTracer.Instance));
+        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), stateProvider);
 
-            Assert.Throws<OperationCanceledException>(() => processor.Process(
-                Keccak.EmptyTreeHash,
-                new List<Block> { block },
-                ProcessingOptions.None,
-                AlwaysCancelBlockTracer.Instance));
-        }
-
-        [Timeout(Timeout.MaxTestTime)]
-        [TestCase(20)]
-        [TestCase(63)]
-        [TestCase(64)]
-        [TestCase(65)]
-        [TestCase(127)]
-        [TestCase(128)]
-        [TestCase(129)]
-        [TestCase(130)]
-        [TestCase(1000)]
-        [TestCase(2000)]
-        public async Task Process_long_running_branch(int blocksAmount)
-        {
-            var address = TestItem.Addresses[0];
-            var spec = new TestSingleReleaseSpecProvider(ConstantinopleFix.Instance);
-            var testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-                .Build(spec);
-            testRpc.TestWallet.UnlockAccount(address, new SecureString());
-            await testRpc.AddFunds(address, 1.Ether());
-            await testRpc.AddBlock();
-            var suggestedBlockResetEvent = new SemaphoreSlim(0);
-            testRpc.BlockTree.NewHeadBlock += (s, e) =>
-            {
-                suggestedBlockResetEvent.Release(1);
-            };
-
-            var branchLength = blocksAmount + (int)testRpc.BlockTree.BestKnownNumber + 1;
-            ((BlockTree)testRpc.BlockTree).AddBranch(branchLength, (int)testRpc.BlockTree.BestKnownNumber);
-            (await suggestedBlockResetEvent.WaitAsync(TestBlockchain.DefaultTimeout * 10)).Should().BeTrue();
-            Assert.AreEqual(branchLength - 1, (int)testRpc.BlockTree.BestKnownNumber);
-        }
+        Assert.That(addedTransaction, Is.EqualTo(transactionWithNetworkForm));
     }
 }

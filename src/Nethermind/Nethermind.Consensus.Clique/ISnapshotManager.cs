@@ -9,7 +9,7 @@ namespace Nethermind.Consensus.Clique
     public interface ISnapshotManager
     {
         ulong GetLastSignersCount();
-        Snapshot GetOrCreateSnapshot(long number, Keccak hash);
+        Snapshot GetOrCreateSnapshot(long number, Hash256 hash);
         Address GetBlockSealer(BlockHeader header);
         bool IsValidVote(Snapshot snapshot, Address address, bool authorize);
         bool IsInTurn(Snapshot snapshot, long number, Address signer);

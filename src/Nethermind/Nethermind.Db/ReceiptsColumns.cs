@@ -5,6 +5,7 @@ namespace Nethermind.Db
 {
     public enum ReceiptsColumns
     {
+        Default,
         Transactions,
         Blocks
     }

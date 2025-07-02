@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
@@ -26,8 +25,6 @@ public class PostMergeBlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
         _minBlocksAhead = minBlocksAhead;
         _beaconPivot = beaconPivot;
     }
-
-    public bool CanBeReplaced => true;
 
     public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager,
         IBlockTree blockTree)

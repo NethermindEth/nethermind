@@ -1,0 +1,35 @@
+name: Build tools
+
+on:
+  merge_group:
+    types: [checks_requested]
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [release]
+        project:
+          - DocGen/DocGen.slnx
+          - Evm/Evm.slnx
+          - HiveCompare/HiveCompare.slnx
+          - HiveConsensusWorkflowGenerator/HiveConsensusWorkflowGenerator.slnx
+          - Nethermind.Tools.Kute/Nethermind.Tools.Kute.slnx
+          # - SchemaGenerator/SchemaGenerator.slnx
+          - SendBlobs/SendBlobs.slnx
+          - TxParser/TxParser.slnx
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+      - name: Build ${{ matrix.project }}
+        working-directory: tools
+        run: dotnet build ./${{ matrix.project }} -c ${{ matrix.config }}

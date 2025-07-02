@@ -6,8 +6,10 @@ using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -25,19 +27,19 @@ namespace Nethermind.AuRa.Test.Contract
     {
         private Block _block;
         private readonly Address _contractAddress = Address.FromNumber(long.MaxValue);
-        private IReadOnlyTransactionProcessor _transactionProcessor;
+        private ITransactionProcessor _transactionProcessor;
         private IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
-        private IStateProvider _stateProvider;
+        private IWorldState _stateProvider;
 
         [SetUp]
         public void SetUp()
         {
             _block = new Block(Build.A.BlockHeader.TestObject, new BlockBody());
-            _transactionProcessor = Substitute.For<IReadOnlyTransactionProcessor>();
-            _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-            _readOnlyTxProcessorSource.Build(TestItem.KeccakA).Returns(_transactionProcessor);
-            _stateProvider = Substitute.For<IStateProvider>();
+            _transactionProcessor = Substitute.For<ITransactionProcessor>();
+            _stateProvider = Substitute.For<IWorldState>();
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
+            _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
+            _readOnlyTxProcessorSource.Build(TestItem.KeccakA).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider, Keccak.EmptyTreeHash));
         }
 
         [Test]
@@ -61,7 +63,7 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 Value = 0,
                 Data = new byte[] { 0x75, 0x28, 0x62, 0x11 },
-                Hash = new Keccak("0x0652461cead47b6e1436fc631debe06bde8bcdd2dad3b9d21df5cf092078c6d3"),
+                Hash = new Hash256("0x0652461cead47b6e1436fc631debe06bde8bcdd2dad3b9d21df5cf092078c6d3"),
                 To = _contractAddress,
                 SenderAddress = Address.SystemUser,
                 GasLimit = Blockchain.Contracts.CallableContract.UnlimitedGas,
@@ -81,14 +83,14 @@ namespace Nethermind.AuRa.Test.Contract
             contract.FinalizeChange(_block.Header);
 
             _transactionProcessor.Received().Execute(
-                Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), _block.Header, Arg.Any<ITxTracer>());
+                Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), Arg.Is<BlockHeader>(header => header.Equals(_block.Header)), Arg.Any<ITxTracer>());
         }
 
-        private static bool IsEquivalentTo(object expected, object item)
+        private static bool IsEquivalentTo(Transaction expected, Transaction item)
         {
             try
             {
-                item.Should().BeEquivalentTo(expected);
+                item.EqualToTransaction(expected);
                 return true;
             }
             catch

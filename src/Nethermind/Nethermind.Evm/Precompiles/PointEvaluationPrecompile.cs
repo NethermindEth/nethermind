@@ -4,31 +4,34 @@
 using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Precompiles;
 
-public class PointEvaluationPrecompile : IPrecompile
+public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
 {
-    public static readonly IPrecompile Instance = new PointEvaluationPrecompile();
+    public static readonly PointEvaluationPrecompile Instance = new();
 
-    private static readonly ReadOnlyMemory<byte> PointEvaluationSuccessfulResponse =
-                                                    BitConverter.GetBytes((long)KzgPolynomialCommitments.FieldElementsPerBlob)
-                                            .Concat(KzgPolynomialCommitments.BlsModulus.ToLittleEndian())
-                                            .ToArray();
+    private static readonly byte[] PointEvaluationSuccessfulResponse =
+        ((UInt256)Ckzg.FieldElementsPerBlob).ToBigEndian()
+        .Concat(KzgPolynomialCommitments.BlsModulus.ToBigEndian())
+        .ToArray();
 
-    public Address Address { get; } = Address.FromNumber(0x14);
+    public static Address Address { get; } = Address.FromNumber(0x0a);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 50000L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool IsValid(in ReadOnlyMemory<byte> inputData)
+        static bool IsValid(ReadOnlyMemory<byte> inputData)
         {
             if (inputData.Length != 192)
             {
@@ -43,7 +46,7 @@ public class PointEvaluationPrecompile : IPrecompile
             ReadOnlySpan<byte> proof = inputDataSpan[144..192];
             Span<byte> hash = stackalloc byte[32];
 
-            return KzgPolynomialCommitments.TryComputeCommitmentV1(commitment, hash)
+            return KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, hash)
                    && hash.SequenceEqual(versionedHash)
                    && KzgPolynomialCommitments.VerifyProof(commitment, z, y, proof);
         }
@@ -51,6 +54,6 @@ public class PointEvaluationPrecompile : IPrecompile
         Metrics.PointEvaluationPrecompile++;
         return IsValid(inputData)
             ? (PointEvaluationSuccessfulResponse, true)
-            : (ReadOnlyMemory<byte>.Empty, false);
+            : IPrecompile.Failure;
     }
 }

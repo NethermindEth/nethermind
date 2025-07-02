@@ -11,45 +11,52 @@ using Nethermind.Int256;
 namespace Nethermind.Serialization.Ssz;
 
 /// <summary>
-/// https://github.com/ethereum/eth2.0-specs/blob/dev/specs/simple-serialize.md#simpleserialize-ssz
+/// https://github.com/ethereum/consensus-specs/blob/dev/ssz/simple-serialize.md
 /// </summary>
 public static partial class Ssz
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Encode(Span<byte> span, byte[] value, ref int offset)
+    public static void Encode(Span<byte> span, byte[] value, ref int offset)
     {
         Encode(span.Slice(offset, value.Length), value);
         offset += value.Length;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Encode(Span<byte> span, int value, ref int offset)
+    public static void Encode(Span<byte> span, int value, ref int offset)
     {
         BinaryPrimitives.WriteInt32LittleEndian(span.Slice(offset, sizeof(int)), value);
         offset += sizeof(int);
     }
 
-    private static void Encode(Span<byte> span, uint value, ref int offset)
+    public static void Encode(Span<byte> span, uint value, ref int offset)
     {
         BinaryPrimitives.WriteUInt32LittleEndian(span.Slice(offset, sizeof(uint)), value);
         offset += sizeof(uint);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Encode(Span<byte> span, ulong value, ref int offset)
+    public static void Encode(Span<byte> span, ulong value, ref int offset)
     {
         Encode(span.Slice(offset, sizeof(ulong)), value);
         offset += sizeof(ulong);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Encode(Span<byte> span, bool value, ref int offset)
+    public static void Encode(Span<byte> span, UInt256 value, ref int offset)
+    {
+        Encode(span.Slice(offset, 32), value);
+        offset += 32;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Encode(Span<byte> span, bool value, ref int offset)
     {
         Encode(span.Slice(offset, 1), value);
         offset++;
     }
 
-    private static bool DecodeBool(Span<byte> span, ref int offset)
+    public static bool DecodeBool(Span<byte> span, ref int offset)
     {
         return span[offset++] == 1;
     }
@@ -57,6 +64,11 @@ public static partial class Ssz
     public static void Encode(Span<byte> span, byte value)
     {
         span[0] = value;
+    }
+
+    public static void Encode(Span<byte> span, byte value, ref int offset)
+    {
+        span[offset++] = value;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -84,9 +96,15 @@ public static partial class Ssz
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Encode(Span<byte> span, long value)
+    {
+        BinaryPrimitives.WriteInt64LittleEndian(span, value);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Encode(Span<byte> span, UInt128 value)
     {
-        BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(0, 8), (ulong)(value & ulong.MaxValue));
+        BinaryPrimitives.WriteUInt64LittleEndian(span[..8], (ulong)(value & ulong.MaxValue));
         BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(8, 8), (ulong)(value >> 64));
     }
 
@@ -182,7 +200,7 @@ public static partial class Ssz
         MemoryMarshal.Cast<ushort, byte>(value).CopyTo(span);
     }
 
-    private static void Encode(Span<byte> span, Span<byte> value, ref int offset, ref int dynamicOffset)
+    public static void Encode(Span<byte> span, Span<byte> value, ref int offset, ref int dynamicOffset)
     {
         BinaryPrimitives.WriteInt32LittleEndian(span.Slice(offset, VarOffsetSize), dynamicOffset);
         offset += VarOffsetSize;
@@ -193,7 +211,7 @@ public static partial class Ssz
     public static void Encode(Span<byte> span, ReadOnlySpan<byte> value)
     {
         const int typeSize = 1;
-        if (span.Length != value.Length * typeSize)
+        if (span.Length < value.Length * typeSize)
         {
             ThrowTargetLength<byte[]>(span.Length, value.Length);
         }
@@ -208,15 +226,22 @@ public static partial class Ssz
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte DecodeByte(Span<byte> span)
+    public static byte DecodeByte(ReadOnlySpan<byte> span)
     {
         const int expectedLength = 1;
         if (span.Length != expectedLength)
         {
-            throw new InvalidDataException($"{nameof(DecodeByte)} expects input of length {expectedLength} and received {span.Length}");
+            throw new InvalidDataException(
+                $"{nameof(DecodeByte)} expects input of length {expectedLength} and received {span.Length}");
         }
 
         return span[0];
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte DecodeByte(ReadOnlySpan<byte> span, ref int offset)
+    {
+        return span[offset++];
     }
 
     public static ushort DecodeUShort(Span<byte> span)
@@ -224,7 +249,8 @@ public static partial class Ssz
         const int expectedLength = 2;
         if (span.Length != expectedLength)
         {
-            throw new InvalidDataException($"{nameof(DecodeUShort)} expects input of length {expectedLength} and received {span.Length}");
+            throw new InvalidDataException(
+                $"{nameof(DecodeUShort)} expects input of length {expectedLength} and received {span.Length}");
         }
 
         return BinaryPrimitives.ReadUInt16LittleEndian(span);
@@ -236,7 +262,8 @@ public static partial class Ssz
         const int expectedLength = 4;
         if (span.Length != expectedLength)
         {
-            throw new InvalidDataException($"{nameof(DecodeUInt)} expects input of length {expectedLength} and received {span.Length}");
+            throw new InvalidDataException(
+                $"{nameof(DecodeUInt)} expects input of length {expectedLength} and received {span.Length}");
         }
 
         return BinaryPrimitives.ReadUInt32LittleEndian(span);
@@ -248,14 +275,15 @@ public static partial class Ssz
         const int expectedLength = 8;
         if (span.Length != expectedLength)
         {
-            throw new InvalidDataException($"{nameof(DecodeULong)} expects input of length {expectedLength} and received {span.Length}");
+            throw new InvalidDataException(
+                $"{nameof(DecodeULong)} expects input of length {expectedLength} and received {span.Length}");
         }
 
         return BinaryPrimitives.ReadUInt64LittleEndian(span);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong DecodeULong(ReadOnlySpan<byte> span, ref int offset)
+    public static ulong DecodeULong(ReadOnlySpan<byte> span, ref int offset)
     {
         ulong result = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset, sizeof(ulong)));
         offset += sizeof(ulong);
@@ -267,24 +295,32 @@ public static partial class Ssz
         const int expectedLength = 16;
         if (span.Length != expectedLength)
         {
-            throw new InvalidDataException($"{nameof(DecodeUInt128)} expects input of length {expectedLength} and received {span.Length}");
+            throw new InvalidDataException(
+                $"{nameof(DecodeUInt128)} expects input of length {expectedLength} and received {span.Length}");
         }
 
-        ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(0, 8));
+        ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span[..8]);
         ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
-
         return new UInt128(s0, s1);
     }
 
-    public static UInt256 DecodeUInt256(Span<byte> span)
+    public static UInt256 DecodeUInt256(ReadOnlySpan<byte> span)
     {
         const int expectedLength = 32;
         if (span.Length != expectedLength)
         {
-            throw new InvalidDataException($"{nameof(DecodeUInt256)} expects input of length {expectedLength} and received {span.Length}");
+            throw new InvalidDataException(
+                $"{nameof(DecodeUInt256)} expects input of length {expectedLength} and received {span.Length}");
         }
 
         return new UInt256(span);
+    }
+
+    public static UInt256 DecodeUInt256(ReadOnlySpan<byte> span, ref int offset)
+    {
+        UInt256 result = new(span.Slice(offset, 32));
+        offset += 32;
+        return result;
     }
 
     public static UInt256[] DecodeUInts256(Span<byte> span)
@@ -292,7 +328,8 @@ public static partial class Ssz
         const int typeSize = 32;
         if (span.Length % typeSize != 0)
         {
-            throw new InvalidDataException($"{nameof(DecodeUInts256)} expects input in multiples of {typeSize} and received {span.Length}");
+            throw new InvalidDataException(
+                $"{nameof(DecodeUInts256)} expects input in multiples of {typeSize} and received {span.Length}");
         }
 
         UInt256[] result = new UInt256[span.Length / typeSize];
@@ -304,12 +341,26 @@ public static partial class Ssz
         return result;
     }
 
+    public static byte[][] DecodeBytesArrays(ReadOnlySpan<byte> span, int itemsCount, int itemLength, ref int offset)
+    {
+        byte[][] result = new byte[itemsCount][];
+
+        for (int i = 0; i < itemsCount; i++)
+        {
+            result[i] = span.Slice(offset, itemLength).ToArray();
+            offset += itemLength;
+        }
+
+        return result;
+    }
+
     public static UInt128[] DecodeUInts128(Span<byte> span)
     {
         const int typeSize = 16;
         if (span.Length % typeSize != 0)
         {
-            throw new InvalidDataException($"{nameof(DecodeUInts128)} expects input in multiples of {typeSize} and received {span.Length}");
+            throw new InvalidDataException(
+                $"{nameof(DecodeUInts128)} expects input in multiples of {typeSize} and received {span.Length}");
         }
 
         UInt128[] result = new UInt128[span.Length / typeSize];
@@ -326,7 +377,8 @@ public static partial class Ssz
         const int typeSize = 8;
         if (span.Length % typeSize != 0)
         {
-            throw new InvalidDataException($"{nameof(DecodeULongs)} expects input in multiples of {typeSize} and received {span.Length}");
+            throw new InvalidDataException(
+                $"{nameof(DecodeULongs)} expects input in multiples of {typeSize} and received {span.Length}");
         }
 
         return MemoryMarshal.Cast<byte, ulong>(span);
@@ -337,7 +389,8 @@ public static partial class Ssz
         const int typeSize = 4;
         if (span.Length % typeSize != 0)
         {
-            throw new InvalidDataException($"{nameof(DecodeUInts)} expects input in multiples of {typeSize} and received {span.Length}");
+            throw new InvalidDataException(
+                $"{nameof(DecodeUInts)} expects input in multiples of {typeSize} and received {span.Length}");
         }
 
         return MemoryMarshal.Cast<byte, uint>(span);
@@ -348,7 +401,8 @@ public static partial class Ssz
         const int typeSize = 2;
         if (span.Length % typeSize != 0)
         {
-            throw new InvalidDataException($"{nameof(DecodeUShorts)} expects input in multiples of {typeSize} and received {span.Length}");
+            throw new InvalidDataException(
+                $"{nameof(DecodeUShorts)} expects input in multiples of {typeSize} and received {span.Length}");
         }
 
         return MemoryMarshal.Cast<byte, ushort>(span);
@@ -360,23 +414,26 @@ public static partial class Ssz
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ThrowTargetLength<T>(int targetLength, int expectedLength)
+    public static void ThrowTargetLength<T>(int targetLength, int expectedLength)
     {
         Type type = typeof(T);
-        throw new InvalidDataException($"Invalid target length in SSZ encoding of {type.Name}. Target length is {targetLength} and expected length is {expectedLength}.");
+        throw new InvalidDataException(
+            $"Invalid target length in SSZ encoding of {type.Name}. Target length is {targetLength} and expected length is {expectedLength}.");
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ThrowSourceLength<T>(int sourceLength, int expectedLength)
+    public static void ThrowSourceLength<T>(int sourceLength, int expectedLength)
     {
         Type type = typeof(T);
-        throw new InvalidDataException($"Invalid source length in SSZ decoding of {type.Name}. Source length is {sourceLength} and expected length is {expectedLength}.");
+        throw new InvalidDataException(
+            $"Invalid source length in SSZ decoding of {type.Name}. Source length is {sourceLength} and expected length is {expectedLength}.");
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ThrowInvalidSourceArrayLength<T>(int sourceLength, int expectedItemLength)
+    public static void ThrowInvalidSourceArrayLength<T>(int sourceLength, int expectedItemLength)
     {
         Type type = typeof(T);
-        throw new InvalidDataException($"Invalid source length in SSZ decoding of {type.Name}. Source length is {sourceLength} and expected length is a multiple of {expectedItemLength}.");
+        throw new InvalidDataException(
+            $"Invalid source length in SSZ decoding of {type.Name}. Source length is {sourceLength} and expected length is a multiple of {expectedItemLength}.");
     }
 }

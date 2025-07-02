@@ -7,20 +7,23 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.ServiceStopper;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Timer = System.Timers.Timer;
 
 namespace Nethermind.Network
 {
     public class PeerPool : IPeerPool
     {
-        private Timer _peerPersistenceTimer;
+        private PeriodicTimer _peerPersistenceTimer;
         private Task? _storageCommitTask;
 
         private readonly INodeSource _nodeSource;
@@ -28,12 +31,13 @@ namespace Nethermind.Network
         private readonly INetworkStorage _peerStorage;
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
+        private readonly ITrustedNodesManager _trustedNodesManager;
 
-        public ConcurrentDictionary<PublicKey, Peer> ActivePeers { get; } = new();
-        public ConcurrentDictionary<PublicKey, Peer> Peers { get; } = new();
-        private readonly ConcurrentDictionary<PublicKey, Peer> _staticPeers = new();
+        public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
+        public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
+        private readonly ConcurrentDictionary<PublicKeyAsKey, Peer> _staticPeers = new();
 
-        public IEnumerable<Peer> NonStaticPeers => Peers.Values.Where(p => !p.Node.IsStatic);
+        public IEnumerable<Peer> NonStaticPeers => Peers.Values.Where(static p => !p.Node.IsStatic);
         public IEnumerable<Peer> StaticPeers => _staticPeers.Values;
 
         public int PeerCount => Peers.Count;
@@ -42,15 +46,17 @@ namespace Nethermind.Network
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
 
-        Func<PublicKey, (Node Node, ConcurrentDictionary<PublicKey, Peer> Statics), Peer> _createNewNodePeer;
-        Func<PublicKey, (NetworkNode Node, ConcurrentDictionary<PublicKey, Peer> Statics), Peer> _createNewNetworkNodePeer;
+        readonly Func<PublicKeyAsKey, (Node Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics), Peer> _createNewNodePeer;
+        readonly Func<PublicKeyAsKey, (NetworkNode Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics), Peer> _createNewNetworkNodePeer;
 
         public PeerPool(
             INodeSource nodeSource,
             INodeStatsManager nodeStatsManager,
-            INetworkStorage peerStorage,
+            [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
             INetworkConfig networkConfig,
-            ILogManager logManager)
+            ILogManager logManager,
+            ITrustedNodesManager trustedNodesManager)
+
         {
             _nodeSource = nodeSource ?? throw new ArgumentNullException(nameof(nodeSource));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
@@ -58,24 +64,18 @@ namespace Nethermind.Network
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _peerStorage.StartBatch();
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
 
             // Early explicit closure
             _createNewNodePeer = CreateNew;
             _createNewNetworkNodePeer = CreateNew;
 
-            _nodeSource.NodeAdded += NodeSourceOnNodeAdded;
             _nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;
         }
 
         private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e)
         {
             TryRemove(e.Node.Id, out _);
-        }
-
-        private void NodeSourceOnNodeAdded(object? sender, NodeEventArgs e)
-        {
-            // _logger.Error($"Adding a node from source {sender}: {e.Node}");
-            GetOrAdd(e.Node);
         }
 
         public Peer GetOrAdd(Node node)
@@ -88,14 +88,14 @@ namespace Nethermind.Network
             return Peers.GetOrAdd(node.NodeId, valueFactory: _createNewNetworkNodePeer, (node, _staticPeers));
         }
 
-        private Peer CreateNew(PublicKey key, (Node Node, ConcurrentDictionary<PublicKey, Peer> Statics) arg)
+        private Peer CreateNew(PublicKeyAsKey key, (Node Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
         {
             if (arg.Node.IsBootnode || arg.Node.IsStatic)
             {
                 if (_logger.IsDebug) _logger.Debug(
                     $"Adding a {(arg.Node.IsBootnode ? "bootnode" : "stored")} candidate peer {arg.Node:s}");
             }
-            Peer peer = new(arg.Node);
+            Peer peer = new(arg.Node, _stats.GetOrAdd(arg.Node));
             if (arg.Node.IsStatic)
             {
                 arg.Statics.TryAdd(arg.Node.Id, peer);
@@ -105,9 +105,11 @@ namespace Nethermind.Network
             return peer;
         }
 
-        private Peer CreateNew(PublicKey key, (NetworkNode Node, ConcurrentDictionary<PublicKey, Peer> Statics) arg)
+        private Peer CreateNew(PublicKeyAsKey key, (NetworkNode Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
         {
-            Peer peer = new(new(arg.Node));
+            Node node = new(arg.Node) { IsTrusted = _trustedNodesManager.IsTrusted(arg.Node.Enode) };
+
+            Peer peer = new(node, _stats.GetOrAdd(node));
 
             PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             return peer;
@@ -123,8 +125,8 @@ namespace Nethermind.Network
             if (Peers.TryRemove(id, out peer))
             {
                 _staticPeers.TryRemove(id, out _);
-                peer.InSession?.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local, "admin_removePeer");
-                peer.OutSession?.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local, "admin_removePeer");
+                peer.InSession?.MarkDisconnected(DisconnectReason.PeerRemoved, DisconnectType.Local, "admin_removePeer");
+                peer.OutSession?.MarkDisconnected(DisconnectReason.PeerRemoved, DisconnectType.Local, "admin_removePeer");
                 peer.InSession = null;
                 peer.OutSession = null;
                 PeerRemoved?.Invoke(this, new PeerEventArgs(peer));
@@ -175,63 +177,34 @@ namespace Nethermind.Network
         {
             if (_logger.IsDebug) _logger.Debug("Starting peer persistence timer");
 
-            _peerPersistenceTimer = new Timer(_networkConfig.PeersPersistenceInterval)
-            {
-                AutoReset = false
-            };
+            _peerPersistenceTimer = new PeriodicTimer(TimeSpan.FromMilliseconds(_networkConfig.PeersPersistenceInterval));
 
-            _peerPersistenceTimer.Elapsed += (sender, e) =>
+            _storageCommitTask = RunPeerCommit();
+        }
+
+        private async Task RunPeerCommit()
+        {
+            var token = _cancellationTokenSource.Token;
+            while (!token.IsCancellationRequested
+                && await _peerPersistenceTimer.WaitForNextTickAsync(token))
             {
                 try
                 {
-                    _peerPersistenceTimer.Enabled = false;
-                    RunPeerCommit();
-                }
-                catch (Exception exception)
-                {
-                    if (_logger.IsDebug) _logger.Error("Peer persistence timer failed", exception);
-                }
-                finally
-                {
-                    _peerPersistenceTimer.Enabled = true;
-                }
-            };
+                    UpdateReputationAndMaxPeersCount();
 
-            _peerPersistenceTimer.Start();
-        }
+                    if (!_peerStorage.AnyPendingChange())
+                    {
+                        if (_logger.IsTrace) _logger.Trace("No changes in peer storage, skipping commit.");
+                        return;
+                    }
 
-        private void RunPeerCommit()
-        {
-            try
-            {
-                UpdateReputationAndMaxPeersCount();
-
-                if (!_peerStorage.AnyPendingChange())
-                {
-                    if (_logger.IsTrace) _logger.Trace("No changes in peer storage, skipping commit.");
-                    return;
-                }
-
-                _storageCommitTask = Task.Run(() =>
-                {
                     _peerStorage.Commit();
                     _peerStorage.StartBatch();
-                });
-
-
-                Task task = _storageCommitTask.ContinueWith(x =>
+                }
+                catch (Exception ex)
                 {
-                    if (x.IsFaulted && _logger.IsError)
-                    {
-                        _logger.Error($"Error during peer storage commit: {x.Exception}");
-                    }
-                });
-                task.Wait();
-                _storageCommitTask = null;
-            }
-            catch (Exception ex)
-            {
-                _logger.Error($"Error during peer storage commit: {ex}");
+                    _logger.Error($"Error during peer storage commit: {ex}");
+                }
             }
         }
 
@@ -285,7 +258,7 @@ namespace Nethermind.Network
             try
             {
                 if (_logger.IsDebug) _logger.Debug("Stopping peer timers");
-                _peerPersistenceTimer?.Stop();
+
                 _peerPersistenceTimer?.Dispose();
             }
             catch (Exception e)
@@ -296,13 +269,24 @@ namespace Nethermind.Network
 
         public void Start()
         {
-            List<Node> initialNodes = _nodeSource.LoadInitialList();
-            foreach (Node initialNode in initialNodes)
-            {
-                GetOrAdd(initialNode);
-            }
-
+            _ = FeedFromNodeSource();
             StartPeerPersistenceTimer();
+        }
+
+        private async Task FeedFromNodeSource()
+        {
+            CancellationToken token = _cancellationTokenSource.Token;
+
+            await foreach (Node node in _nodeSource.DiscoverNodes(token))
+            {
+                while (PeerCount >= _networkConfig.MaxCandidatePeerCount && ActivePeerCount >= _networkConfig.MaxActivePeers)
+                {
+                    if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
+                    await Task.Delay(1000, token);
+                }
+
+                GetOrAdd(node);
+            }
         }
 
         public async Task StopAsync()
@@ -316,7 +300,7 @@ namespace Nethermind.Network
             {
                 storageCloseTask = _storageCommitTask.ContinueWith(x =>
                 {
-                    if (x.IsFaulted)
+                    if (x.IsFailedButNotCanceled())
                     {
                         if (_logger.IsError) _logger.Error("Error during peer persistence stop.", x.Exception);
                     }
@@ -326,5 +310,7 @@ namespace Nethermind.Network
             await storageCloseTask;
             if (_logger.IsInfo) _logger.Info("Peer Pool shutdown complete.. please wait for all components to close");
         }
+
+        string IStoppableService.Description => "peer pool";
     }
 }

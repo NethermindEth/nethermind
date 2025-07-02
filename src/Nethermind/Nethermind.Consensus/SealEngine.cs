@@ -23,7 +23,7 @@ namespace Nethermind.Consensus
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken) =>
             _sealer.SealBlock(block, cancellationToken);
 
-        public bool CanSeal(long blockNumber, Keccak parentHash) =>
+        public bool CanSeal(long blockNumber, Hash256 parentHash) =>
             _sealer.CanSeal(blockNumber, parentHash);
 
         public Address Address => _sealer.Address;

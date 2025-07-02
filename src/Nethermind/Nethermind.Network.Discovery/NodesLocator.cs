@@ -3,9 +3,10 @@
 
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -21,6 +22,8 @@ public class NodesLocator : INodesLocator
     private readonly IDiscoveryConfig _discoveryConfig;
     private Node? _masterNode;
 
+    public bool ShouldThrottle { get; set; }
+
     public NodesLocator(INodeTable? nodeTable, IDiscoveryManager? discoveryManager, IDiscoveryConfig? discoveryConfig, ILogManager? logManager)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -34,9 +37,9 @@ public class NodesLocator : INodesLocator
         _masterNode = masterNode;
     }
 
-    public async Task LocateNodesAsync(CancellationToken cancellationToken)
+    public Task LocateNodesAsync(CancellationToken cancellationToken)
     {
-        await LocateNodesAsync(null, cancellationToken);
+        return LocateNodesAsync(null, cancellationToken);
     }
 
     public async Task LocateNodesAsync(byte[]? searchedNodeId, CancellationToken cancellationToken)
@@ -46,7 +49,7 @@ public class NodesLocator : INodesLocator
             throw new InvalidOperationException("Master node has not been initialized");
         }
 
-        ISet<Keccak> alreadyTriedNodes = new HashSet<Keccak>();
+        ISet<Hash256> alreadyTriedNodes = new HashSet<Hash256>();
 
         if (_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId is not null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
         int nodesCountBeforeDiscovery = NodesCountBeforeDiscovery;
@@ -54,22 +57,44 @@ public class NodesLocator : INodesLocator
         Node[] tryCandidates = new Node[_discoveryConfig.BucketSize]; // max bucket size here
         for (int i = 0; i < _discoveryConfig.MaxDiscoveryRounds; i++)
         {
+            if (ShouldThrottle) await Task.Delay(TimeSpan.FromSeconds(1));
             Array.Clear(tryCandidates, 0, tryCandidates.Length);
             int candidatesCount;
 
             int attemptsCount = 0;
             while (true)
             {
-                //if searched node is not specified master node is used
-                IEnumerable<Node> closestNodes = searchedNodeId is not null ? _nodeTable.GetClosestNodes(searchedNodeId) : _nodeTable.GetClosestNodes();
-
                 candidatesCount = 0;
-                foreach (Node closestNode in closestNodes.Where(node => !alreadyTriedNodes.Contains(node.IdHash)))
+                if (searchedNodeId is not null)
                 {
-                    tryCandidates[candidatesCount++] = closestNode;
-                    if (candidatesCount > tryCandidates.Length - 1)
+                    foreach (Node closestNode in _nodeTable.GetClosestNodes(searchedNodeId))
                     {
-                        break;
+                        if (alreadyTriedNodes.Contains(closestNode.IdHash))
+                        {
+                            continue;
+                        }
+
+                        tryCandidates[candidatesCount++] = closestNode;
+                        if (candidatesCount > tryCandidates.Length - 1)
+                        {
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    foreach (Node closestNode in _nodeTable.GetClosestNodes())
+                    {
+                        if (alreadyTriedNodes.Contains(closestNode.IdHash))
+                        {
+                            continue;
+                        }
+
+                        tryCandidates[candidatesCount++] = closestNode;
+                        if (candidatesCount > tryCandidates.Length - 1)
+                        {
+                            break;
+                        }
                     }
                 }
 
@@ -105,8 +130,8 @@ public class NodesLocator : INodesLocator
                 int count = failRequestCount > 0 ? failRequestCount : _discoveryConfig.Concurrency;
                 IEnumerable<Node> nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count);
 
-                IEnumerable<Task<Result>> sendFindNodeTasks = SendFindNodes(searchedNodeId, nodesToSend, alreadyTriedNodes);
-                Result?[] results = await Task.WhenAll(sendFindNodeTasks);
+                using ArrayPoolList<Task<Result>> sendFindNodeTasks = SendFindNodes(searchedNodeId, nodesToSend, alreadyTriedNodes).ToPooledList(count);
+                Result[] results = await Task.WhenAll<Result>(sendFindNodeTasks.AsSpan());
 
                 if (results.Length == 0)
                 {
@@ -135,7 +160,14 @@ public class NodesLocator : INodesLocator
                 }
             }
         }
-        int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
+
+        int nodesCountAfterDiscovery = 0;
+        var buckets = _nodeTable.Buckets;
+        for (int i = 0; i < buckets.Length; i++)
+        {
+            nodesCountAfterDiscovery += buckets[i].BondedItemsCount;
+        }
+
         if (_logger.IsDebug) _logger.Debug($"Finished discovery cycle, tried contacting {alreadyTriedNodes.Count} nodes. All nodes count before the process: {nodesCountBeforeDiscovery}, after the process: {nodesCountAfterDiscovery}");
 
         if (_logger.IsTrace)
@@ -147,9 +179,9 @@ public class NodesLocator : INodesLocator
     private IEnumerable<Task<Result>> SendFindNodes(
         byte[]? searchedNodeId,
         IEnumerable<Node?> nodesToSend,
-        ISet<Keccak> alreadyTriedNodes)
+        ISet<Hash256> alreadyTriedNodes)
     {
-        foreach (Node? node in nodesToSend.Where(n => n is not null))
+        foreach (Node? node in nodesToSend.Where(static n => n is not null))
         {
             alreadyTriedNodes.Add(node!.IdHash);
             yield return SendFindNode(node, searchedNodeId);
@@ -173,7 +205,7 @@ public class NodesLocator : INodesLocator
 
     private void LogNodeTable()
     {
-        IEnumerable<NodeBucket> nonEmptyBuckets = _nodeTable.Buckets.Where(x => x.BondedItems.Any());
+        IEnumerable<NodeBucket> nonEmptyBuckets = _nodeTable.Buckets.Where(static x => x.AnyBondedItems());
         StringBuilder sb = new();
 
         int length = 0;
@@ -202,7 +234,10 @@ public class NodesLocator : INodesLocator
         {
             INodeLifecycleManager? nodeManager = _discoveryManager.GetNodeLifecycleManager(destinationNode);
 
-            nodeManager?.SendFindNode(searchedNodeId ?? _masterNode!.Id.Bytes);
+            if (nodeManager is not null)
+            {
+                await nodeManager.SendFindNode(searchedNodeId ?? _masterNode!.Id.Bytes);
+            }
 
             return await _discoveryManager.WasMessageReceived(destinationNode.IdHash, MsgType.Neighbors, _discoveryConfig.SendNodeTimeout)
                 ? Result.Success

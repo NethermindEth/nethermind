@@ -17,11 +17,11 @@ namespace Nethermind.Core.Test.Json
         [TestCase(new byte[] { 0, 0, 1 })]
         [TestCase(new byte[] { 0, 0, 1, 0 })]
         [TestCase(new byte[] { 0, 0, 1, 0, 0 })]
-        public void ValueWithAndWithoutLeadingZeros_are_equal(byte[] values)
+        public void ValueWithAndWithoutLeadingZeros_are_equal(byte[]? values)
         {
             TestConverter(
                 values,
-                (before, after) => Bytes.AreEqual(before.WithoutLeadingZeros(), after.WithoutLeadingZeros()),
+                static (before, after) => Bytes.AreEqual(before.WithoutLeadingZeros(), after.WithoutLeadingZeros()),
                 new Bytes32Converter());
         }
     }

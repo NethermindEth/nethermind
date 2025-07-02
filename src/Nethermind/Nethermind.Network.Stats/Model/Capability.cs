@@ -18,7 +18,7 @@ namespace Nethermind.Stats.Model
 
         public bool Equals(Capability other)
         {
-            if (ReferenceEquals(null, other))
+            if (other is null)
             {
                 return false;
             }
@@ -33,7 +33,7 @@ namespace Nethermind.Stats.Model
 
         public override bool Equals(object obj)
         {
-            if (ReferenceEquals(null, obj))
+            if (obj is null)
             {
                 return false;
             }

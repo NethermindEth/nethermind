@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
             return new[] { new BlockReward(block.Beneficiary, blockReward.Reward) };
         }
 
-        private IList<BlockRewardInfo> CreateBlockRewards(IDictionary<long, UInt256>? blockRewards)
+        private static IList<BlockRewardInfo> CreateBlockRewards(IDictionary<long, UInt256>? blockRewards)
         {
             List<BlockRewardInfo> blockRewardInfos = new();
             if (blockRewards?.Count > 0)

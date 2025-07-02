@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
@@ -23,7 +25,7 @@ namespace Nethermind.Db.Test
             retrievedBytes.Should().BeEquivalentTo(bytes);
         }
 
-        private byte[] _sampleValue = { 1, 2, 3 };
+        private readonly byte[] _sampleValue = { 1, 2, 3 };
 
         [Test]
         public void Can_create_with_delays()
@@ -31,7 +33,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new(10, 10);
             memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
             memDb.Get(TestItem.KeccakA);
-            KeyValuePair<byte[], byte[]>[] some = memDb[new[] { TestItem.KeccakA.Bytes }];
+            _ = memDb[new[] { TestItem.KeccakA.BytesToArray() }];
         }
 
         [Test]
@@ -55,7 +57,7 @@ namespace Nethermind.Db.Test
         public void Can_use_batches_without_issues()
         {
             MemDb memDb = new();
-            using (memDb.StartBatch())
+            using (memDb.StartWriteBatch())
             {
                 memDb.Set(TestItem.KeccakA, _sampleValue);
             }
@@ -107,7 +109,7 @@ namespace Nethermind.Db.Test
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
-            KeyValuePair<byte[], byte[]>[] result = memDb[new[] { TestItem.KeccakB.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes }];
+            KeyValuePair<byte[], byte[]>[] result = memDb[new[] { TestItem.KeccakB.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() }];
             result.Should().HaveCount(3);
             result[0].Value.Should().NotBeNull();
             result[1].Value.Should().NotBeNull();
@@ -144,6 +146,29 @@ namespace Nethermind.Db.Test
         {
             MemDb memDb = new();
             memDb.Flush();
+        }
+
+        [Test]
+        public void Can_get_all_ordered()
+        {
+            MemDb memDb = new();
+
+            memDb.Set(TestItem.KeccakE, _sampleValue);
+            memDb.Set(TestItem.KeccakC, _sampleValue);
+            memDb.Set(TestItem.KeccakA, _sampleValue);
+            memDb.Set(TestItem.KeccakB, _sampleValue);
+            memDb.Set(TestItem.KeccakD, _sampleValue);
+
+            var orderedItems = memDb.GetAll(true);
+
+            orderedItems.Should().HaveCount(5);
+
+            byte[][] keys = [.. orderedItems.Select(kvp => kvp.Key)];
+            for (int i = 0; i < keys.Length - 1; i++)
+            {
+                Bytes.BytesComparer.Compare(keys[i], keys[i + 1]).Should().BeLessThan(0,
+                    $"Keys should be in ascending order at position {i}");
+            }
         }
     }
 }

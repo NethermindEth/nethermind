@@ -3,8 +3,6 @@
 
 using System.Linq;
 using DotNetty.Buffers;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -18,10 +16,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             NettyRlpStream rlpStream = GetRlpStreamAndStartSequence(byteBuffer, message);
 
             rlpStream.Encode(message.RequestId);
-            rlpStream.Encode(message.StoragetRange.RootHash);
-            rlpStream.Encode(message.StoragetRange.Accounts.Select(a => a.Path).ToArray()); // TODO: optimize this
-            rlpStream.Encode(message.StoragetRange.StartingHash);
-            rlpStream.Encode(message.StoragetRange.LimitHash);
+            rlpStream.Encode(message.StorageRange.RootHash);
+            rlpStream.Encode(message.StorageRange.Accounts.Select(static a => a.Path).ToArray()); // TODO: optimize this
+            rlpStream.Encode(message.StorageRange.StartingHash);
+            rlpStream.Encode(message.StorageRange.LimitHash);
             rlpStream.Encode(message.ResponseBytes);
         }
 
@@ -32,11 +30,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             message.RequestId = rlpStream.DecodeLong();
 
-            message.StoragetRange = new();
-            message.StoragetRange.RootHash = rlpStream.DecodeKeccak();
-            message.StoragetRange.Accounts = rlpStream.DecodeArray(DecodePathWithRlpData);
-            message.StoragetRange.StartingHash = rlpStream.DecodeKeccak();
-            message.StoragetRange.LimitHash = rlpStream.DecodeKeccak();
+            message.StorageRange = new();
+            message.StorageRange.RootHash = rlpStream.DecodeKeccak();
+            message.StorageRange.Accounts = rlpStream.DecodeArrayPoolList(DecodePathWithRlpData);
+            message.StorageRange.StartingHash = rlpStream.DecodeKeccak();
+            message.StorageRange.LimitHash = rlpStream.DecodeKeccak();
             message.ResponseBytes = rlpStream.DecodeLong();
 
             return message;
@@ -50,10 +48,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public override int GetLength(GetStorageRangeMessage message, out int contentLength)
         {
             contentLength = Rlp.LengthOf(message.RequestId);
-            contentLength += Rlp.LengthOf(message.StoragetRange.RootHash);
-            contentLength += Rlp.LengthOf(message.StoragetRange.Accounts.Select(a => a.Path).ToArray(), true); // TODO: optimize this
-            contentLength += Rlp.LengthOf(message.StoragetRange.StartingHash);
-            contentLength += Rlp.LengthOf(message.StoragetRange.LimitHash);
+            contentLength += Rlp.LengthOf(message.StorageRange.RootHash);
+            contentLength += Rlp.LengthOf(message.StorageRange.Accounts.Select(static a => a.Path).ToArray(), true); // TODO: optimize this
+            contentLength += Rlp.LengthOf(message.StorageRange.StartingHash);
+            contentLength += Rlp.LengthOf(message.StorageRange.LimitHash);
             contentLength += Rlp.LengthOf(message.ResponseBytes);
 
             return Rlp.LengthOfSequence(contentLength);

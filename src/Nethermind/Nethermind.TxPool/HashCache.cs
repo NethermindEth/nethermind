@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 
@@ -23,37 +22,33 @@ namespace Nethermind.TxPool
     {
         private const int SafeCapacity = 1024 * 16;
 
-        private readonly LruKeyCache<KeccakKey> _longTermCache = new(
-            MemoryAllowance.TxHashCacheSize,
-            Math.Min(SafeCapacity, MemoryAllowance.TxHashCacheSize),
-            "long term hash cache");
+        private readonly ClockKeyCache<ValueHash256> _longTermCache = new(
+            MemoryAllowance.TxHashCacheSize);
 
-        private readonly LruKeyCache<KeccakKey> _currentBlockCache = new(
-            SafeCapacity,
-            Math.Min(SafeCapacity, MemoryAllowance.TxHashCacheSize),
-            "current block hash cache");
+        private readonly ClockKeyCache<ValueHash256> _currentBlockCache = new(
+            SafeCapacity);
 
-        public bool Get(Keccak hash)
+        public bool Get(Hash256 hash)
         {
             return _currentBlockCache.Get(hash) || _longTermCache.Get(hash);
         }
 
-        public void SetLongTerm(Keccak hash)
+        public void SetLongTerm(Hash256 hash)
         {
             _longTermCache.Set(hash);
         }
 
-        public void SetForCurrentBlock(Keccak hash)
+        public void SetForCurrentBlock(Hash256 hash)
         {
             _currentBlockCache.Set(hash);
         }
 
-        public void DeleteFromLongTerm(Keccak hash)
+        public void DeleteFromLongTerm(Hash256 hash)
         {
             _longTermCache.Delete(hash);
         }
 
-        public void Delete(Keccak hash)
+        public void Delete(Hash256 hash)
         {
             _longTermCache.Delete(hash);
             _currentBlockCache.Delete(hash);

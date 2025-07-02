@@ -15,9 +15,7 @@ namespace Nethermind.JsonRpc.Modules
         public const string Erc20 = nameof(Erc20);
         public const string Eth = nameof(Eth);
         public const string Evm = nameof(Evm);
-        public const string Mev = nameof(Mev);
-        public const string NdmProvider = nameof(NdmProvider);
-        public const string NdmConsumer = nameof(NdmConsumer);
+        public const string Flashbots = nameof(Flashbots);
         public const string Net = nameof(Net);
         public const string Nft = nameof(Nft);
         public const string Parity = nameof(Parity);
@@ -27,13 +25,11 @@ namespace Nethermind.JsonRpc.Modules
         public const string Trace = nameof(Trace);
         public const string TxPool = nameof(TxPool);
         public const string Web3 = nameof(Web3);
-        public const string Baseline = nameof(Baseline);
         public const string Vault = nameof(Vault);
         public const string Deposit = nameof(Deposit);
         public const string Health = nameof(Health);
-        public const string Witness = nameof(Witness);
-        public const string AccountAbstraction = nameof(AccountAbstraction);
         public const string Rpc = nameof(Rpc);
+        public const string Rbuilder = nameof(Rbuilder);
 
         public static IEnumerable<string> AllBuiltInModules { get; } = new List<string>()
         {
@@ -45,9 +41,7 @@ namespace Nethermind.JsonRpc.Modules
             Erc20,
             Eth,
             Evm,
-            Mev,
-            NdmProvider,
-            NdmConsumer,
+            Flashbots,
             Net,
             Nft,
             Parity,
@@ -57,13 +51,11 @@ namespace Nethermind.JsonRpc.Modules
             Trace,
             TxPool,
             Web3,
-            Baseline,
             Vault,
             Deposit,
             Health,
-            Witness,
-            AccountAbstraction,
             Rpc,
+            Rbuilder,
         };
 
         public static IEnumerable<string> DefaultModules { get; } = new List<string>()

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -9,28 +10,39 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public abstract class HashesMessageSerializer<T> : IZeroInnerMessageSerializer<T> where T : HashesMessage
     {
-        protected Keccak[] DeserializeHashes(IByteBuffer byteBuffer)
+        protected Hash256[] DeserializeHashes(IByteBuffer byteBuffer)
         {
             NettyRlpStream nettyRlpStream = new(byteBuffer);
             return DeserializeHashes(nettyRlpStream);
         }
 
-        protected static Keccak[] DeserializeHashes(RlpStream rlpStream)
+        protected static Hash256[] DeserializeHashes(RlpStream rlpStream)
         {
-            Keccak[] hashes = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());
+            Hash256[] hashes = rlpStream.DecodeArray(static itemContext => itemContext.DecodeKeccak());
             return hashes;
+        }
+
+        protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer)
+        {
+            NettyRlpStream nettyRlpStream = new(byteBuffer);
+            return DeserializeHashesArrayPool(nettyRlpStream);
+        }
+
+        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(RlpStream rlpStream)
+        {
+            return rlpStream.DecodeArrayPoolList(static itemContext => itemContext.DecodeKeccak());
         }
 
         public void Serialize(IByteBuffer byteBuffer, T message)
         {
             int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length, true);
+            byteBuffer.EnsureWritable(length);
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
             rlpStream.StartSequence(contentLength);
-            for (int i = 0; i < message.Hashes.Count; i++)
+            foreach (Hash256 hash in message.Hashes.AsSpan())
             {
-                rlpStream.Encode(message.Hashes[i]);
+                rlpStream.Encode(hash);
             }
         }
 

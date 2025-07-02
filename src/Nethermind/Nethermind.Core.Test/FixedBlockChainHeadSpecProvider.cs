@@ -6,38 +6,34 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.Test
 {
-    public class FixedForkActivationChainHeadSpecProvider : IChainHeadSpecProvider
+    public class FixedForkActivationChainHeadSpecProvider(
+        ISpecProvider specProvider,
+        long fixedBlock = 10_000_000,
+        ulong? timestamp = null)
+        : IChainHeadSpecProvider
     {
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
-            _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
+            specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
         }
 
-        public ForkActivation? MergeBlockNumber => _specProvider.MergeBlockNumber;
-        public ulong TimestampFork => _specProvider.TimestampFork;
-        public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
-        private readonly ISpecProvider _specProvider;
-        private readonly long _fixedBlock;
-        private readonly ulong? _timestamp;
+        public ForkActivation? MergeBlockNumber => specProvider.MergeBlockNumber;
+        public ulong TimestampFork => specProvider.TimestampFork;
+        public UInt256? TerminalTotalDifficulty => specProvider.TerminalTotalDifficulty;
 
-        public FixedForkActivationChainHeadSpecProvider(ISpecProvider specProvider, long fixedBlock = 10_000_000, ulong? timestamp = null)
-        {
-            _specProvider = specProvider;
-            _fixedBlock = fixedBlock;
-            _timestamp = timestamp;
-        }
+        public IReleaseSpec GenesisSpec => specProvider.GenesisSpec;
 
-        public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
+        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => specProvider.GetSpec(forkActivation);
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
+        public long? DaoBlockNumber => specProvider.DaoBlockNumber;
 
-        public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
+        public ulong? BeaconChainGenesisTimestamp => specProvider.BeaconChainGenesisTimestamp;
 
-        public ulong NetworkId => _specProvider.NetworkId;
-        public ulong ChainId => _specProvider.ChainId;
+        public ulong NetworkId => specProvider.NetworkId;
+        public ulong ChainId => specProvider.ChainId;
 
-        public ForkActivation[] TransitionActivations => _specProvider.TransitionActivations;
+        public ForkActivation[] TransitionActivations => specProvider.TransitionActivations;
 
-        public IReleaseSpec GetCurrentHeadSpec() => GetSpec((_fixedBlock, _timestamp));
+        public IReleaseSpec GetCurrentHeadSpec() => specProvider.GetSpec((fixedBlock, timestamp));
     }
 }

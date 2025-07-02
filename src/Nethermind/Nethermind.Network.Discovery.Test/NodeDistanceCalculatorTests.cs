@@ -15,7 +15,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             NodeDistanceCalculator nodeDistanceCalculator = new(new DiscoveryConfig());
             int distance = nodeDistanceCalculator.CalculateDistance(new byte[] { 1, 2, 3 }, new byte[] { 1, 2, 3 });
-            Assert.AreEqual(232, distance);
+            Assert.That(distance, Is.EqualTo(232));
         }
 
         [Test]
@@ -23,7 +23,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             NodeDistanceCalculator nodeDistanceCalculator = new(new DiscoveryConfig());
             int distance = nodeDistanceCalculator.CalculateDistance(new byte[] { 1, 2 }, new byte[] { 1, 2, 3 });
-            Assert.AreEqual(240, distance);
+            Assert.That(distance, Is.EqualTo(240));
         }
 
         [Test]
@@ -31,7 +31,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             NodeDistanceCalculator nodeDistanceCalculator = new(new DiscoveryConfig());
             int distance = nodeDistanceCalculator.CalculateDistance(new byte[] { 1, 2, 3 }, new byte[] { 1, 2 });
-            Assert.AreEqual(240, distance);
+            Assert.That(distance, Is.EqualTo(240));
         }
     }
 }

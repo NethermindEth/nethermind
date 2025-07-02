@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 
 namespace Nethermind.Synchronization.FastBlocks
@@ -83,7 +82,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 return 8;
             }
 
-            return 408 + (transaction.Data?.Length ?? 0);
+            return 408 + (transaction.Data.Length);
         }
     }
 }

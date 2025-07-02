@@ -1,11 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -16,15 +16,13 @@ namespace Nethermind.Evm.Test
     [Parallelizable(ParallelScope.Self)]
     public class InvalidOpcodeTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
-
         private static readonly Instruction[] FrontierInstructions =
         {
             Instruction.STOP, Instruction.ADD, Instruction.MUL, Instruction.SUB, Instruction.DIV, Instruction.SDIV,
             Instruction.MOD, Instruction.SMOD, Instruction.ADDMOD, Instruction.MULMOD, Instruction.EXP,
             Instruction.SIGNEXTEND, Instruction.LT, Instruction.GT, Instruction.SLT, Instruction.SGT,
             Instruction.EQ, Instruction.ISZERO, Instruction.AND, Instruction.OR, Instruction.XOR, Instruction.NOT,
-            Instruction.BYTE, Instruction.SHA3, Instruction.ADDRESS, Instruction.BALANCE, Instruction.ORIGIN,
+            Instruction.BYTE, Instruction.KECCAK256, Instruction.ADDRESS, Instruction.BALANCE, Instruction.ORIGIN,
             Instruction.CALLER, Instruction.CALLVALUE, Instruction.CALLDATALOAD, Instruction.CALLDATASIZE,
             Instruction.CALLDATACOPY, Instruction.CODESIZE, Instruction.CODECOPY, Instruction.GASPRICE,
             Instruction.EXTCODESIZE, Instruction.EXTCODECOPY, Instruction.BLOCKHASH, Instruction.COINBASE,
@@ -73,19 +71,8 @@ namespace Nethermind.Evm.Test
             ConstantinopleFixInstructions.Union(
                 new[] { Instruction.SELFBALANCE, Instruction.CHAINID }).ToArray();
 
-        private static readonly Instruction[] BerlinInstructions =
-            IstanbulInstructions.Union(
-                // new[]
-                // {
-                //     Instruction.BEGINSUB,
-                //     Instruction.JUMPSUB,
-                //     Instruction.RETURNSUB
-                // }
-                new Instruction[] { }
-            ).ToArray();
-
         private static readonly Instruction[] LondonInstructions =
-            BerlinInstructions.Union(
+            IstanbulInstructions.Union(
                 new Instruction[]
                 {
                     Instruction.BASEFEE
@@ -106,11 +93,38 @@ namespace Nethermind.Evm.Test
                 {
                     Instruction.TSTORE,
                     Instruction.TLOAD,
-                    Instruction.DATAHASH,
+                    Instruction.MCOPY,
+                    Instruction.BLOBHASH,
+                    Instruction.BLOBBASEFEE
                 }
             ).ToArray();
 
-        private Dictionary<ForkActivation, Instruction[]> _validOpcodes
+        private static readonly Instruction[] OsakaInstructions =
+            CancunInstructions.Union(
+                new Instruction[]
+                {
+                    Instruction.RJUMP,
+                    Instruction.RJUMPI,
+                    Instruction.RJUMPV,
+                    Instruction.CALLF,
+                    Instruction.RETF,
+                    Instruction.JUMPF,
+                    Instruction.EOFCREATE,
+                    Instruction.RETURNCODE,
+                    Instruction.DATASIZE,
+                    Instruction.DATACOPY,
+                    Instruction.DATALOAD,
+                    Instruction.DATALOADN,
+                    Instruction.SWAPN,
+                    Instruction.DUPN,
+                    Instruction.EXCHANGE,
+                    Instruction.EXTCALL,
+                    Instruction.EXTDELEGATECALL,
+                    Instruction.EXTSTATICCALL,
+                }
+            ).ToArray();
+
+        private readonly Dictionary<ForkActivation, Instruction[]> _validOpcodes
             = new()
             {
                 {(ForkActivation)0, FrontierInstructions},
@@ -121,20 +135,22 @@ namespace Nethermind.Evm.Test
                 {(ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber, ConstantinopleFixInstructions},
                 {(ForkActivation)MainnetSpecProvider.IstanbulBlockNumber, IstanbulInstructions},
                 {(ForkActivation)MainnetSpecProvider.MuirGlacierBlockNumber, IstanbulInstructions},
-                {(ForkActivation)MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions},
+                {(ForkActivation)MainnetSpecProvider.BerlinBlockNumber, IstanbulInstructions},
                 {(ForkActivation)MainnetSpecProvider.LondonBlockNumber, LondonInstructions},
                 {MainnetSpecProvider.ShanghaiActivation, ShanghaiInstructions},
                 {MainnetSpecProvider.CancunActivation, CancunInstructions},
-                {(long.MaxValue, ulong.MaxValue), CancunInstructions}
+                {MainnetSpecProvider.PragueActivation, CancunInstructions},
+                {MainnetSpecProvider.OsakaActivation, OsakaInstructions},
+                {(long.MaxValue, ulong.MaxValue), OsakaInstructions}
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
 
-        private ILogManager _logManager;
+        private ILogManager _logManager = LimboLogs.Instance;
 
         protected override ILogManager GetLogManager()
         {
-            _logManager ??= new OneLoggerLogManager(new NUnitLogger(LogLevel.Trace));
+            _logManager ??= new TestLogManager(LogLevel.Trace);
             return _logManager;
         }
 
@@ -148,9 +164,9 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.MuirGlacierBlockNumber)]
         [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
         [TestCase(MainnetSpecProvider.LondonBlockNumber)]
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp)]
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp)]
-        [TestCase(long.MaxValue, ulong.MaxValue)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 2, MainnetSpecProvider.CancunBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 3, MainnetSpecProvider.PragueBlockTimestamp)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {
             ILogger logger = _logManager.GetClassLogger();
@@ -163,7 +179,7 @@ namespace Nethermind.Evm.Test
                     .Done;
 
                 bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains((Instruction)i);
-                TestAllTracerWithOutput result = Execute(blockNumber, 1_000_000, code, timestamp: timestamp ?? 0);
+                TestAllTracerWithOutput result = Execute((blockNumber, timestamp ?? 0), 1_000_000, code);
 
                 if (isValidOpcode)
                 {

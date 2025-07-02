@@ -3,11 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
-
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -20,14 +17,13 @@ namespace Nethermind.Network
 {
     public class NetworkStorage : INetworkStorage
     {
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
         private readonly IFullDb _fullDb;
         private readonly ILogger _logger;
-        private readonly List<NetworkNode> _nodesList = new();
-        private readonly HashSet<PublicKey> _nodePublicKeys = new();
+        private readonly Dictionary<PublicKey, NetworkNode> _nodesDict = new();
         private long _updateCounter;
         private long _removeCounter;
-        private NetworkNode[] _nodes;
+        private NetworkNode[]? _nodes;
 
         public NetworkStorage(IFullDb? fullDb, ILogManager? logManager)
         {
@@ -40,86 +36,96 @@ namespace Nethermind.Network
         public NetworkNode[] GetPersistedNodes()
         {
             NetworkNode[] nodes = _nodes;
-            return nodes is not null ? nodes : GenerateNodes();
+            return nodes ?? GenerateNodes();
         }
 
         private NetworkNode[] GenerateNodes()
         {
-            NetworkNode[] nodes = Volatile.Read(ref _nodes);
             lock (_lock)
             {
-                if (_nodes != nodes)
+                NetworkNode[]? nodes = _nodes;
+                if (nodes is not null)
                 {
                     // Already updated
-                    return _nodes;
+                    return nodes;
                 }
 
-                _nodePublicKeys.Clear();
-                _nodesList.Clear();
-                foreach (byte[]? nodeRlp in _fullDb.Values)
+                if (_nodesDict.Count == 0)
                 {
-                    if (nodeRlp is null)
-                    {
-                        continue;
-                    }
-
-                    try
-                    {
-                        NetworkNode node = GetNode(nodeRlp);
-                        _nodesList.Add(node);
-                        _nodePublicKeys.Add(node.NodeId);
-                    }
-                    catch (Exception e)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
-                    }
+                    LoadFromDb();
                 }
 
-                nodes = _nodes = _nodesList.ToArray();
+                return _nodesDict.Count == 0 ? [] : CopyDictToArray();
             }
+        }
 
-            return nodes;
+        private NetworkNode[] CopyDictToArray()
+        {
+            NetworkNode[] nodes = new NetworkNode[_nodesDict.Count];
+            _nodesDict.Values.CopyTo(nodes, 0);
+            return (_nodes = nodes);
+        }
+
+        private void LoadFromDb()
+        {
+            foreach (byte[]? nodeRlp in _fullDb.Values)
+            {
+                if (nodeRlp is null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    NetworkNode node = GetNode(nodeRlp);
+                    _nodesDict[node.NodeId] = node;
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
+                }
+            }
         }
 
         public void UpdateNode(NetworkNode node)
         {
             lock (_lock)
             {
-                (_currentBatch ?? (IKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
-                _updateCounter++;
+                UpdateNodeImpl(node);
+            }
+        }
 
-                if (!_nodePublicKeys.Contains(node.NodeId))
-                {
-                    _nodePublicKeys.Add(node.NodeId);
-                    _nodesList.Add(node);
-                    // New node, generate the cache
-                    _nodes = _nodesList.ToArray();
-                }
-                else
-                {
-                    Span<NetworkNode> span = CollectionsMarshal.AsSpan(_nodesList);
-                    for (int i = 0; i < span.Length; i++)
-                    {
-                        if (node.NodeId == span[i].NodeId)
-                        {
-                            span[i] = node;
-                        }
-                    }
-                }
+        private void UpdateNodeImpl(NetworkNode node)
+        {
+            (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
+            _updateCounter++;
+
+            if (!_nodesDict.ContainsKey(node.NodeId))
+            {
+                _nodesDict[node.NodeId] = node;
+                // New node, clear the cache
+                _nodes = null;
+            }
+            else
+            {
+                _nodesDict[node.NodeId] = node;
             }
         }
 
         public void UpdateNodes(IEnumerable<NetworkNode> nodes)
         {
-            foreach (NetworkNode node in nodes)
+            lock (_lock)
             {
-                UpdateNode(node);
+                foreach (NetworkNode node in nodes)
+                {
+                    UpdateNodeImpl(node);
+                }
             }
         }
 
         public void RemoveNode(PublicKey nodeId)
         {
-            (_currentBatch ?? (IKeyValueStore)_fullDb)[nodeId.Bytes] = null;
+            (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[nodeId.Bytes] = null;
             _removeCounter++;
 
             RemoveLocal(nodeId);
@@ -129,26 +135,19 @@ namespace Nethermind.Network
         {
             lock (_lock)
             {
-                Span<NetworkNode> span = CollectionsMarshal.AsSpan(_nodesList);
-                for (int i = 0; i < span.Length; i++)
+                if (_nodesDict.Remove(nodeId))
                 {
-                    if (nodeId == span[i].NodeId)
-                    {
-                        _nodesList.RemoveAt(i);
-                        _nodePublicKeys.Remove(nodeId);
-                        // Node removed, generate the cache
-                        _nodes = _nodesList.ToArray();
-                        return;
-                    }
+                    // Clear the cache
+                    _nodes = null;
                 }
             }
         }
 
-        private IBatch? _currentBatch;
+        private IWriteBatch? _currentBatch;
 
         public void StartBatch()
         {
-            _currentBatch = _fullDb.StartBatch();
+            _currentBatch = _fullDb.StartWriteBatch();
             _updateCounter = 0;
             _removeCounter = 0;
         }

@@ -4,26 +4,27 @@
 using System;
 using System.IO;
 using System.IO.Abstractions;
+using System.Threading;
 using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc
 {
     internal class Recorder
     {
-        private string _recorderBaseFilePath;
+        private readonly string _recorderBaseFilePath;
         private readonly IFileSystem _fileSystem;
         private readonly ILogger _logger;
         private int _recorderFileCounter;
         private string _currentRecorderFilePath;
         private int _currentRecorderFileLength;
         private bool _isEnabled = true;
-        private object _recorderSync = new();
+        private readonly Lock _recorderSync = new();
 
         public Recorder(string basePath, IFileSystem fileSystem, ILogger logger)
         {
             _recorderBaseFilePath = basePath ?? throw new ArgumentNullException(nameof(basePath));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
             CreateNewRecorderFile();
         }
 

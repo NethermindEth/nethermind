@@ -1,11 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections;
 using NUnit.Framework;
 using System.Collections.Generic;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -15,13 +12,10 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
-using Nethermind.Wallet;
 using NSubstitute;
 
 namespace Nethermind.AuRa.Test
@@ -41,7 +35,7 @@ namespace Nethermind.AuRa.Test
         {
             _blockTree = Substitute.For<IBlockTree>();
             _headStep = 10;
-            _blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithHash(Keccak.Compute("hash")).WithAura(_headStep, Array.Empty<byte>()).TestObject).TestObject);
+            _blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithHash(Keccak.Compute("hash")).WithAura(_headStep, []).TestObject).TestObject);
 
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
             _validatorStore = Substitute.For<IValidatorStore>();
@@ -65,7 +59,7 @@ namespace Nethermind.AuRa.Test
         public bool can_seal(long auRaStep, bool validSealer)
         {
             _auRaStepCalculator.CurrentStep.Returns(auRaStep);
-            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), _address, auRaStep).Returns(validSealer);
+            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), _address, auRaStep, out _).Returns(validSealer);
             return _auRaSealer.CanSeal(10, _blockTree.Head.Hash);
         }
 
@@ -73,12 +67,12 @@ namespace Nethermind.AuRa.Test
         public async Task seal_can_recover_address()
         {
             _auRaStepCalculator.CurrentStep.Returns(11);
-            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), _address, 11).Returns(true);
+            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), _address, 11, out _).Returns(true);
             Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithBeneficiary(_address).WithAura(11, null).TestObject).TestObject;
 
             block = await _auRaSealer.SealBlock(block, CancellationToken.None);
 
-            EthereumEcdsa ecdsa = new(BlockchainIds.Morden, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(BlockchainIds.Morden);
             Signature signature = new(block.Header.AuRaSignature);
             signature.V += Signature.VOffset;
             Address? recoveredAddress = ecdsa.RecoverAddress(signature, block.Header.CalculateHash(RlpBehaviors.ForSealing));

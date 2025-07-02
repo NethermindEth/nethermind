@@ -4,8 +4,10 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 
 namespace Nethermind.Evm
 {
@@ -19,22 +21,29 @@ namespace Nethermind.Evm
             stream.Encode(deployingAddress);
             stream.Encode(nonce);
 
-            ValueKeccak contractAddressKeccak = ValueKeccak.Compute(stream.Data.AsSpan());
+            ValueHash256 contractAddressKeccak = ValueKeccak.Compute(stream.Data.AsSpan());
 
             return new Address(in contractAddressKeccak);
         }
-
-        public static Address From(Address deployingAddress, Span<byte> salt, Span<byte> initCode)
+        public static Address From(Address deployingAddress, ReadOnlySpan<byte> salt, ReadOnlySpan<byte> initCode)
         {
-            // sha3(0xff ++ msg.sender ++ salt ++ sha3(init_code)))
-            Span<byte> bytes = new byte[1 + Address.ByteLength + 32 + salt.Length];
+            // sha3(0xff ++ msg.sender ++ salt ++ sha3(init_code) ++ sha3(aux_data))
+            Span<byte> bytes = new byte[1 + Address.Size + Keccak.Size + salt.Length];
             bytes[0] = 0xff;
-            deployingAddress.Bytes.CopyTo(bytes.Slice(1, 20));
-            salt.CopyTo(bytes.Slice(21, salt.Length));
-            ValueKeccak.Compute(initCode).BytesAsSpan.CopyTo(bytes.Slice(21 + salt.Length, 32));
+            deployingAddress.Bytes.CopyTo(bytes.Slice(1, Address.Size));
+            salt.CopyTo(bytes.Slice(1 + Address.Size, salt.Length));
+            ValueKeccak.Compute(initCode).BytesAsSpan.CopyTo(bytes.Slice(1 + Address.Size + salt.Length, Keccak.Size));
 
-            ValueKeccak contractAddressKeccak = ValueKeccak.Compute(bytes);
+            ValueHash256 contractAddressKeccak = ValueKeccak.Compute(bytes);
             return new Address(in contractAddressKeccak);
+        }
+
+        // See https://eips.ethereum.org/EIPS/eip-7610
+        public static bool IsNonZeroAccount(this Address contractAddress, IReleaseSpec spec, ICodeInfoRepository codeInfoRepository, IWorldState state)
+        {
+            return codeInfoRepository.GetCachedCodeInfo(state, contractAddress, spec).CodeSpan.Length != 0 ||
+                   state.GetNonce(contractAddress) != 0 ||
+                   state.GetStorageRoot(contractAddress) != Keccak.EmptyTreeHash;
         }
     }
 }

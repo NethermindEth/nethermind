@@ -9,14 +9,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Rewards
 {
-    public class RewardCalculator : IRewardCalculator, IRewardCalculatorSource
+    public class RewardCalculator(ISpecProvider? specProvider) : IRewardCalculator, IRewardCalculatorSource
     {
-        private readonly ISpecProvider _specProvider;
-
-        public RewardCalculator(ISpecProvider? specProvider)
-        {
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        }
+        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
 
         private UInt256 GetBlockReward(Block block)
         {
@@ -28,7 +23,7 @@ namespace Nethermind.Consensus.Rewards
         {
             if (block.IsGenesis)
             {
-                return Array.Empty<BlockReward>();
+                return [];
             }
 
             UInt256 blockReward = GetBlockReward(block);
@@ -47,7 +42,7 @@ namespace Nethermind.Consensus.Rewards
             return rewards;
         }
 
-        private UInt256 GetUncleReward(UInt256 blockReward, BlockHeader blockHeader, BlockHeader uncle)
+        private static UInt256 GetUncleReward(UInt256 blockReward, BlockHeader blockHeader, BlockHeader uncle)
         {
             return blockReward - ((uint)(blockHeader.Number - uncle.Number) * blockReward >> 3);
         }

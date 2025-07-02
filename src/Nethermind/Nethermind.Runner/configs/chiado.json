@@ -1,0 +1,60 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "MemoryHint": 768000000,
+    "ChainSpecPath": "chainspec/chiado.json",
+    "BaseDbPath": "nethermind_db/chiado",
+    "LogFileName": "chiado.log"
+  },
+  "TxPool": {
+    "Size": 1024
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Port": 8545,
+    "EnginePort": 8551
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "PivotNumber": 16480000,
+    "PivotHash": "0x9ca8ff43521c262efa8056b917b3c7a7e8ccea12c41eb65ac5b8fa2fe841b567",
+    "PivotTotalDifficulty": "231708131825107706987652208063906496124457284",
+    "FastSyncCatchUpHeightDelta": 10000000000,
+    "UseGethLimitsInFastBlocks": false
+  },
+  "Blocks": {
+    "SecondsPerSlot": 5,
+    "BlockProductionTimeoutMs": 3000,
+    "TargetBlockGasLimit": 17000000,
+    "GasToken": "XDAI"
+  },
+  "Aura": {
+    "TxPriorityContractAddress": "0x4100000000000000000000000000000000000000",
+    "ForceSealing": true
+  },
+  "Shutter": {
+    "SequencerContractAddress": "0x2aD8E2feB0ED5b2EC8e700edB725f120576994ed",
+    "ValidatorRegistryContractAddress": "0xa9289A3Dd14FEBe10611119bE81E5d35eAaC3084",
+    "KeyBroadcastContractAddress": "0x9D31865BEffcE842FBd36CDA587aDDA8bef804B7",
+    "KeyperSetManagerContractAddress": "0xC4DE9FAf4ec882b33dA0162CBE628B0D8205D0c0",
+    "BootnodeP2PAddresses": [
+      "/ip4/167.99.177.227/tcp/23005/p2p/12D3KooWSdm5guPBdn8DSaBphVBzUUgPLg9sZLnazEUrcbtLy254",
+      "/ip4/159.89.15.119/tcp/23005/p2p/12D3KooWPP6bp2PJQR8rUvG1SD4qNH4WFrKve6DMgWThyKxwNbbH"
+    ],
+    "InstanceID": "102000"
+  },
+  "EthStats": {
+    "Name": "Nethermind Chiado"
+  },
+  "Metrics": {
+    "NodeName": "Nethermind Chiado"
+  },
+  "Bloom": {
+    "IndexLevelBucketSizes": [
+      16,
+      16,
+      16
+    ]
+  }
+}

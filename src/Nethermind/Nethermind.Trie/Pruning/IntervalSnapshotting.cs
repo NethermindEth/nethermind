@@ -3,18 +3,10 @@
 
 namespace Nethermind.Trie.Pruning
 {
-    public class ConstantInterval : IPersistenceStrategy
+    public class ConstantInterval(long snapshotInterval) : IPersistenceStrategy
     {
-        private readonly long _snapshotInterval;
+        public bool ShouldPersist(long blockNumber) => blockNumber % snapshotInterval == 0;
 
-        public ConstantInterval(long snapshotInterval)
-        {
-            _snapshotInterval = snapshotInterval;
-        }
-
-        public bool ShouldPersist(long blockNumber)
-        {
-            return blockNumber % _snapshotInterval == 0;
-        }
+        public bool IsFullPruning => false;
     }
 }

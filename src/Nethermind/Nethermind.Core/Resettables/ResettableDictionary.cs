@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Resettables
 {
@@ -96,6 +97,11 @@ namespace Nethermind.Core.Resettables
 #pragma warning restore 8601
         }
 
+        public ref TValue? GetValueRefOrAddDefault(TKey key, out bool exists)
+        {
+            return ref CollectionsMarshal.GetValueRefOrAddDefault(_wrapped, key, out exists);
+        }
+
         public TValue this[TKey key]
         {
             get => _wrapped[key];
@@ -105,10 +111,16 @@ namespace Nethermind.Core.Resettables
         public ICollection<TKey> Keys => _wrapped.Keys;
         public ICollection<TValue> Values => _wrapped.Values;
 
-        public void Reset()
+        public void Reset(bool resizeCollections = true)
         {
             if (_wrapped.Count == 0)
             {
+                return;
+            }
+
+            if (!resizeCollections)
+            {
+                _wrapped.Clear();
                 return;
             }
 

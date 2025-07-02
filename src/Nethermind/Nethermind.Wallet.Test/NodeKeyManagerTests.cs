@@ -35,7 +35,7 @@ namespace Nethermind.Wallet.Test
             test.KeyStoreConfig.EnodeAccount = TestItem.AddressA.ToString();
             test.PasswordProvider.GetPassword(TestItem.AddressA).Returns("p1".Secure());
             test.KeyStore.GetProtectedKey(TestItem.AddressA, Arg.Any<SecureString>()).Returns(
-                c => ((SecureString)c[1]).Unsecure() == "p1"
+                static c => ((SecureString)c[1]).Unsecure() == "p1"
                     ? (new ProtectedPrivateKey(TestItem.PrivateKeyA, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())), Result.Success)
                     : ((ProtectedPrivateKey)null, Result.Fail("nope")));
             test.NodeKeyManager.LoadNodeKey().Unprotect().Should().Be(TestItem.PrivateKeyA);
@@ -86,7 +86,7 @@ namespace Nethermind.Wallet.Test
             test.KeyStoreConfig.BlockAuthorAccount = TestItem.AddressA.ToString();
             test.PasswordProvider.GetPassword(TestItem.AddressA).Returns("p1".Secure());
             test.KeyStore.GetProtectedKey(TestItem.AddressA, Arg.Any<SecureString>()).Returns(
-                c => ((SecureString)c[1]).Unsecure() == "p1"
+                static c => ((SecureString)c[1]).Unsecure() == "p1"
                     ? (new ProtectedPrivateKey(TestItem.PrivateKeyA, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())), Result.Success)
                     : ((ProtectedPrivateKey)null, Result.Fail("nope")));
             test.NodeKeyManager.LoadSignerKey().Unprotect().Should().Be(TestItem.PrivateKeyA);

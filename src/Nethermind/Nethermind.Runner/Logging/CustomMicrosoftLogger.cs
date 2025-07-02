@@ -10,7 +10,7 @@ namespace Nethermind.Runner.Logging
     {
         private readonly Nethermind.Logging.ILogger _logger;
 
-        public CustomMicrosoftLogger(Nethermind.Logging.ILogger logger)
+        public CustomMicrosoftLogger(in Nethermind.Logging.ILogger logger)
         {
             _logger = logger;
         }
@@ -22,10 +22,7 @@ namespace Nethermind.Runner.Logging
                 return;
             }
 
-            if (formatter is null)
-            {
-                throw new ArgumentNullException(nameof(formatter));
-            }
+            ArgumentNullException.ThrowIfNull(formatter);
 
             var message = formatter(state, exception);
             switch (logLevel)
@@ -61,22 +58,15 @@ namespace Nethermind.Runner.Logging
 
         private bool IsLevelEnabled(LogLevel logLevel)
         {
-            switch (logLevel)
+            return logLevel switch
             {
-                case LogLevel.Error:
-                case LogLevel.Critical:
-                    return _logger.IsError;
-                case LogLevel.Information:
-                    return _logger.IsInfo;
-                case LogLevel.Warning:
-                    return _logger.IsWarn;
-                case LogLevel.Debug:
-                    return _logger.IsDebug;
-                case LogLevel.Trace:
-                    return _logger.IsTrace;
-                default:
-                    return false;
-            }
+                LogLevel.Error or LogLevel.Critical => _logger.IsError,
+                LogLevel.Information => _logger.IsInfo,
+                LogLevel.Warning => _logger.IsWarn,
+                LogLevel.Debug => _logger.IsDebug,
+                LogLevel.Trace => _logger.IsTrace,
+                _ => false,
+            };
         }
 
         private class NullScope : IDisposable

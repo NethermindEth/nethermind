@@ -3,13 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
     public class ThreadSafeContractDataStoreCollectionDecorator<T> : IDictionaryContractDataStoreCollection<T>
     {
         private readonly IContractDataStoreCollection<T> _inner;
-        private readonly object _lock = new object();
+        private readonly Lock _lock = new Lock();
 
         public ThreadSafeContractDataStoreCollectionDecorator(IContractDataStoreCollection<T> inner)
         {
@@ -51,7 +52,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         public bool TryGetValue(T key, out T value)
         {
             // ReSharper disable once InconsistentlySynchronizedField
-            if (!(_inner is IDictionaryContractDataStoreCollection<T> dictionaryContractDataStoreCollection))
+            if (_inner is not IDictionaryContractDataStoreCollection<T> dictionaryContractDataStoreCollection)
             {
                 throw new InvalidOperationException("Inner collection is not dictionary based.");
             }

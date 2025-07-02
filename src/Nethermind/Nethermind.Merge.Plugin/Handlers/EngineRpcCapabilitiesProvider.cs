@@ -11,7 +11,7 @@ namespace Nethermind.HealthChecks;
 
 public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
 {
-    private static readonly ConcurrentDictionary<string, bool> _capabilities = new();
+    private readonly ConcurrentDictionary<string, (bool Enabled, bool WarnIfMissing)> _capabilities = new();
 
     private readonly ISpecProvider _specProvider;
 
@@ -19,26 +19,40 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
     {
         _specProvider = specProvider;
     }
-    public IReadOnlyDictionary<string, bool> GetEngineCapabilities()
+    public IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> GetEngineCapabilities()
     {
         if (_capabilities.IsEmpty)
         {
             IReleaseSpec spec = _specProvider.GetFinalSpec();
 
-            #region The Merge
-            _capabilities[nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = true;
-            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1)] = true;
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV1)] = true;
-            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV1)] = true;
-            #endregion
+            // The Merge
+            _capabilities[nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = (true, false);
+            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1)] = (true, false);
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV1)] = (true, false);
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV1)] = (true, false);
+            _capabilities[nameof(IEngineRpcModule.engine_getClientVersionV1)] = (true, false);
 
-            #region Shanghai
-            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)] = spec.WithdrawalsEnabled;
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1)] = false;
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)] = false;
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV2)] = spec.WithdrawalsEnabled;
-            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV2)] = spec.WithdrawalsEnabled;
-            #endregion
+            // Shanghai
+            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2)] = (spec.WithdrawalsEnabled, false);
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1)] = (spec.WithdrawalsEnabled, false);
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)] = (spec.WithdrawalsEnabled, false);
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV2)] = (spec.WithdrawalsEnabled, false);
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV2)] = (spec.WithdrawalsEnabled, false);
+
+            // Cancun
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV3)] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3)] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV3)] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_getBlobsV1)] = (spec.IsEip4844Enabled, false);
+
+            // Prague
+            var v4 = spec.RequestsEnabled | spec.IsOpIsthmusEnabled;
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (v4, v4);
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (v4, v4);
+
+            // Osaka
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV5)] = (spec.IsEip7594Enabled, spec.IsEip7594Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_getBlobsV2)] = (spec.IsEip7594Enabled, false);
         }
 
         return _capabilities;

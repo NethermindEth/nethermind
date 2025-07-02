@@ -10,94 +10,95 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Proofs
+namespace Nethermind.Blockchain.Test.Proofs;
+
+[TestFixture(true)]
+[TestFixture(false)]
+public class TxTrieTests
 {
-    [TestFixture(true)]
-    [TestFixture(false)]
-    public class TxTrieTests
+    private readonly IReleaseSpec _releaseSpec;
+
+    public TxTrieTests(bool useEip2718)
     {
-        private readonly IReleaseSpec _releaseSpec;
+        _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
+    }
 
-        public TxTrieTests(bool useEip2718)
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_calculate_root()
+    {
+        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        Hash256 rootHash = TxTrie.CalculateRoot(block.Transactions);
+
+        if (_releaseSpec == Berlin.Instance)
         {
-            _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
+            Assert.That(rootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
         }
-
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Can_calculate_root()
+        else
         {
-            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new(block.Transactions);
+            Assert.That(rootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
+        }
+    }
 
-            if (_releaseSpec == Berlin.Instance)
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_collect_proof_trie_case_1()
+    {
+        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        using var pool = new TrackingCappedArrayPool();
+        TxTrie txTrie = new(block.Transactions, true, pool);
+        byte[][] proof = txTrie.BuildProof(0);
+
+        txTrie.UpdateRootHash();
+        VerifyProof(proof, txTrie.RootHash);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_collect_proof_with_trie_case_2()
+    {
+        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
+        using var pool = new TrackingCappedArrayPool();
+        TxTrie txTrie = new(block.Transactions, true, pool);
+        byte[][] proof = txTrie.BuildProof(0);
+        Assert.That(proof.Length, Is.EqualTo(2));
+
+        txTrie.UpdateRootHash();
+        VerifyProof(proof, txTrie.RootHash);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Can_collect_proof_with_trie_case_3_modified()
+    {
+        Block block = Build.A.Block.WithTransactions(Enumerable.Repeat(Build.A.Transaction.TestObject, 1000).ToArray()).TestObject;
+        using var pool = new TrackingCappedArrayPool();
+        TxTrie txTrie = new(block.Transactions, true, pool);
+
+        txTrie.UpdateRootHash();
+        for (int i = 0; i < 1000; i++)
+        {
+            byte[][] proof = txTrie.BuildProof(i);
+            VerifyProof(proof, txTrie.RootHash);
+        }
+    }
+
+    private static void VerifyProof(byte[][] proof, Hash256 txRoot)
+    {
+        for (int i = proof.Length; i > 0; i--)
+        {
+            Hash256 proofHash = Keccak.Compute(proof[i - 1]);
+            if (i > 1)
             {
-                Assert.AreEqual("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5",
-                    txTrie.RootHash.ToString());
+                if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))
+                {
+                    throw new InvalidDataException();
+                }
             }
             else
             {
-                Assert.AreEqual("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5",
-                    txTrie.RootHash.ToString());
-            }
-        }
-
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Can_collect_proof_trie_case_1()
-        {
-            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new(block.Transactions, true);
-            byte[][] proof = txTrie.BuildProof(0);
-
-            txTrie.UpdateRootHash();
-            VerifyProof(proof, txTrie.RootHash);
-        }
-
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Can_collect_proof_with_trie_case_2()
-        {
-            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new(block.Transactions, true);
-            byte[][] proof = txTrie.BuildProof(0);
-            Assert.AreEqual(2, proof.Length);
-
-            txTrie.UpdateRootHash();
-            VerifyProof(proof, txTrie.RootHash);
-        }
-
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Can_collect_proof_with_trie_case_3_modified()
-        {
-            Block block = Build.A.Block.WithTransactions(Enumerable.Repeat(Build.A.Transaction.TestObject, 1000).ToArray()).TestObject;
-            TxTrie txTrie = new(block.Transactions, true);
-
-            txTrie.UpdateRootHash();
-            for (int i = 0; i < 1000; i++)
-            {
-                byte[][] proof = txTrie.BuildProof(i);
-                VerifyProof(proof, txTrie.RootHash);
-            }
-        }
-
-        private static void VerifyProof(byte[][] proof, Keccak txRoot)
-        {
-            for (int i = proof.Length; i > 0; i--)
-            {
-                Keccak proofHash = Keccak.Compute(proof[i - 1]);
-                if (i > 1)
+                if (proofHash != txRoot)
                 {
-                    if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))
-                    {
-                        throw new InvalidDataException();
-                    }
-                }
-                else
-                {
-                    if (proofHash != txRoot)
-                    {
-                        throw new InvalidDataException();
-                    }
+                    throw new InvalidDataException();
                 }
             }
         }

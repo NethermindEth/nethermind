@@ -2,49 +2,67 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Threading;
+using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
+
+using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing
 {
     public partial class BlockProcessor
     {
-        public class BlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
+        public class BlockValidationTransactionsExecutor(
+            ITransactionProcessorAdapter transactionProcessor,
+            IWorldState stateProvider)
+            : IValidationTransactionExecutor
         {
-            private readonly ITransactionProcessorAdapter _transactionProcessor;
-            private readonly IStateProvider _stateProvider;
-
-            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
-                : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
-            {
-            }
-
-            public BlockValidationTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IStateProvider stateProvider)
-            {
-                _transactionProcessor = transactionProcessor;
-                _stateProvider = stateProvider;
-            }
-
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
-            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+            private IReleaseSpec _spec;
+            public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             {
+                _spec = blockExecutionContext.Spec;
+                transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+            }
+
+            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+            {
+                Metrics.ResetBlockStats();
+
+                EnhanceBlockExecutionContext(block, _spec);
+
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
+                    block.TransactionProcessed = i;
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                 }
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
-            private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+            protected virtual void EnhanceBlockExecutionContext(Block block, IReleaseSpec spec) { }
+
+            protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
-                _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
+                TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
+                if (!result) ThrowInvalidBlockException(result, block.Header, currentTx, index);
                 TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+            }
+
+            [DoesNotReturn, StackTraceHidden]
+            private void ThrowInvalidBlockException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
+            {
+                throw new InvalidBlockException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.Error}");
             }
         }
     }

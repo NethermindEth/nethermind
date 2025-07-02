@@ -4,60 +4,59 @@
 using System;
 using NUnit.Framework;
 
-namespace Nethermind.Db.Test
+namespace Nethermind.Db.Test;
+
+[Parallelizable(ParallelScope.All)]
+public class DbProviderTests
 {
-    [Parallelizable(ParallelScope.All)]
-    public class DbProviderTests
+    [Test]
+    public void DbProvider_CanRegisterMemDb()
     {
-        [Test]
-        public void DbProvider_CanRegisterMemDb()
+        MemDbFactory memDbFactory = new MemDbFactory();
+        using (DbProvider dbProvider = new DbProvider())
+        {
+            IDb memDb = memDbFactory.CreateDb(new DbSettings("MemDb", "MemDb"));
+            dbProvider.RegisterDb("MemDb", memDb);
+            IDb db = dbProvider.GetDb<IDb>("MemDb");
+            Assert.That(db, Is.EqualTo(memDb));
+        }
+    }
+
+    [Test]
+    public void DbProvider_CanRegisterColumnsDb()
+    {
+        using (DbProvider dbProvider = new DbProvider())
         {
             MemDbFactory memDbFactory = new MemDbFactory();
-            using (DbProvider dbProvider = new DbProvider(DbModeHint.Mem))
-            {
-                IDb memDb = memDbFactory.CreateDb("MemDb");
-                dbProvider.RegisterDb("MemDb", memDb);
-                IDb db = dbProvider.GetDb<IDb>("MemDb");
-                Assert.AreEqual(memDb, db);
-            }
+            IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
+            dbProvider.RegisterColumnDb("ColumnsDb", memSnapshotableDb);
+            IColumnsDb<ReceiptsColumns> columnsDb = dbProvider.GetColumnDb<ReceiptsColumns>("ColumnsDb");
+            Assert.That(columnsDb, Is.EqualTo(memSnapshotableDb));
+            Assert.That(memSnapshotableDb is IColumnsDb<ReceiptsColumns>, Is.True);
         }
+    }
 
-        [Test]
-        public void DbProvider_CanRegisterColumnsDb()
+    [Test]
+    public void DbProvider_ThrowExceptionOnRegisteringTheSameDb()
+    {
+        using (DbProvider dbProvider = new DbProvider())
         {
-            using (DbProvider dbProvider = new DbProvider(DbModeHint.Mem))
-            {
-                MemDbFactory memDbFactory = new MemDbFactory();
-                IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
-                dbProvider.RegisterDb("ColumnsDb", memSnapshotableDb);
-                IColumnsDb<ReceiptsColumns> columnsDb = dbProvider.GetDb<IColumnsDb<ReceiptsColumns>>("ColumnsDb");
-                Assert.AreEqual(memSnapshotableDb, columnsDb);
-                Assert.IsTrue(memSnapshotableDb is IColumnsDb<ReceiptsColumns>);
-            }
+            MemDbFactory memDbFactory = new MemDbFactory();
+            IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
+            dbProvider.RegisterColumnDb("ColumnsDb", memSnapshotableDb);
+            Assert.Throws<ArgumentException>(() => dbProvider.RegisterColumnDb("columnsdb", new MemColumnsDb<ReceiptsColumns>()));
         }
+    }
 
-        [Test]
-        public void DbProvider_ThrowExceptionOnRegisteringTheSameDb()
+    [Test]
+    public void DbProvider_ThrowExceptionOnGettingNotRegisteredDb()
+    {
+        using (DbProvider dbProvider = new DbProvider())
         {
-            using (DbProvider dbProvider = new DbProvider(DbModeHint.Mem))
-            {
-                MemDbFactory memDbFactory = new MemDbFactory();
-                IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
-                dbProvider.RegisterDb("ColumnsDb", memSnapshotableDb);
-                Assert.Throws<ArgumentException>(() => dbProvider.RegisterDb("columnsdb", new MemDb()));
-            }
-        }
-
-        [Test]
-        public void DbProvider_ThrowExceptionOnGettingNotRegisteredDb()
-        {
-            using (DbProvider dbProvider = new DbProvider(DbModeHint.Mem))
-            {
-                MemDbFactory memDbFactory = new MemDbFactory();
-                IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
-                dbProvider.RegisterDb("ColumnsDb", memSnapshotableDb);
-                Assert.Throws<ArgumentException>(() => dbProvider.GetDb<IColumnsDb<ReceiptsColumns>>("differentdb"));
-            }
+            MemDbFactory memDbFactory = new MemDbFactory();
+            IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
+            dbProvider.RegisterColumnDb("ColumnsDb", memSnapshotableDb);
+            Assert.Throws<ArgumentException>(() => dbProvider.GetColumnDb<ReceiptsColumns>("differentdb"));
         }
     }
 }
