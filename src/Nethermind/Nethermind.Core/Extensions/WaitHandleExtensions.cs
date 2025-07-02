@@ -26,7 +26,7 @@ namespace Nethermind.Core.Extensions
                     static state =>
                     {
                         var arg = ((TaskCompletionSource<bool> tcs, CancellationToken ct))state!;
-                        arg.tcs.SetCanceled(arg.ct);
+                        arg.tcs.TrySetCanceled(arg.ct);
                     },
                     (tcs, cancellationToken));
 
