@@ -1115,8 +1115,8 @@ internal static class OpcodeEmitters
     {
         method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 0);
         envLoader.LoadTxContext(method, locals, true);
-        method.LoadField(GetFieldInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.Origin)));
-        method.Call(Word.SetAddress);
+        method.LoadFieldAddress(GetFieldInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.Origin)));
+        method.Call(Word.SetKeccakByRef);
     }
 
     internal static void EmitCallValueInstruction<TDelegateType>(
