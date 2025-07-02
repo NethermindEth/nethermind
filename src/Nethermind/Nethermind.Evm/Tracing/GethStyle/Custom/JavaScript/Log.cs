@@ -38,7 +38,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript
             public Instruction Value { get; }
             public Opcode(Instruction value) => Value = value;
             public int toNumber() => (int)Value;
-            public string? toString() => Value.GetName();
+            public string? toString() => EofInstructionExtensions.GetName(Value);
             public bool isPush() => Value is >= Instruction.PUSH0 and <= Instruction.PUSH32;
         }
 

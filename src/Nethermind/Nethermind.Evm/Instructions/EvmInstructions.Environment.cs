@@ -14,7 +14,7 @@ using static Nethermind.Evm.VirtualMachine;
 namespace Nethermind.Evm;
 using Int256;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Defines an environment introspection operation that returns a byte span.

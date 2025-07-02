@@ -27,6 +27,7 @@ public abstract class GethLikeTxTracer : TxTracer
     public sealed override bool IsTracingOpLevelStorage { get; protected set; }
     public sealed override bool IsTracingMemory { get; protected set; }
     public override bool IsTracingInstructions => true;
+    public override bool IsTracingIlEvmCalls => true;
     public sealed override bool IsTracingStack { get; protected set; }
     protected bool IsTracingFullMemory { get; }
 
@@ -77,12 +78,25 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
         CurrentTraceEntry = CreateTraceEntry(opcode);
         CurrentTraceEntry.Depth = env.GetGethTraceDepth();
         CurrentTraceEntry.Gas = gas;
-        CurrentTraceEntry.Opcode = opcode.GetName();
+        CurrentTraceEntry.Opcode = EofInstructionExtensions.GetName(opcode);
         CurrentTraceEntry.ProgramCounter = pc;
         // skip codeSection
         // skip functionDepth
         _gasCostAlreadySetForCurrentOp = false;
     }
+
+    public override void ReportIlEvmChunkExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+    {
+        if (CurrentTraceEntry is not null)
+            AddTraceEntry(CurrentTraceEntry);
+
+        CurrentTraceEntry = new();
+        CurrentTraceEntry.Gas = gas;
+        CurrentTraceEntry.ProgramCounter = pc;
+        CurrentTraceEntry.SegmentID = segmentID;
+        CurrentTraceEntry.Depth = env.GetGethTraceDepth();
+    }
+
 
     public override void ReportOperationError(EvmExceptionType error) => CurrentTraceEntry.Error = GetErrorDescription(error);
 
