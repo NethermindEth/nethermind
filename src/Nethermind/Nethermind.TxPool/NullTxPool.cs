@@ -40,6 +40,8 @@ namespace Nethermind.TxPool
 
         public void RemovePeer(PublicKey nodeId) { }
 
+        public bool ContainsTx(Hash256 hash) => false;
+
         public bool ContainsTx(Hash256 hash, TxType txType) => false;
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Accepted;
