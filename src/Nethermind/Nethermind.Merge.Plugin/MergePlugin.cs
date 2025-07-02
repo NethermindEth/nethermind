@@ -35,7 +35,9 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
@@ -52,7 +54,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
     private IBlockCacheService _blockCacheService = null!;
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
-    private PayloadPreparationService? _payloadPreparationService = null;
 
     protected ManualBlockFinalizationManager _blockFinalizationManager = null!;
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
@@ -263,31 +264,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             ArgumentNullException.ThrowIfNull(_api.StateReader);
             ArgumentNullException.ThrowIfNull(_api.EngineRequestsTracker);
 
-            // Single block shouldn't take a full slot to run
-            // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
-            double maxSingleImprovementTimePerSlot = _blocksConfig.SecondsPerSlot * _blocksConfig.SingleBlockImprovementOfSlot;
-            IBlockImprovementContextFactory CreateBlockImprovementContextFactory()
-            {
-                if (string.IsNullOrEmpty(mergeConfig.BuilderRelayUrl))
-                {
-                    return new BlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot));
-                }
-
-                DefaultHttpClient httpClient = new(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager, retryDelayMilliseconds: 100);
-                IBoostRelay boostRelay = new BoostRelay(httpClient, mergeConfig.BuilderRelayUrl);
-                return new BoostBlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot), boostRelay, _api.StateReader);
-            }
-
-            IBlockImprovementContextFactory improvementContextFactory = _api.BlockImprovementContextFactory ??= CreateBlockImprovementContextFactory();
-
-            PayloadPreparationService payloadPreparationService = new(
-                _api.BlockProducer!,
-                improvementContextFactory,
-                _api.TimerFactory,
-                _api.LogManager,
-                TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
-            _payloadPreparationService = payloadPreparationService;
-
+            IPayloadPreparationService payloadPreparationService = _api.Context.Resolve<IPayloadPreparationService>();
             _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
             IBeaconSyncStrategy beaconSyncStrategy = _api.Context.Resolve<IBeaconSyncStrategy>();
@@ -296,6 +273,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
             IBeaconPivot beaconPivot = _api.Context.Resolve<IBeaconPivot>();
 
             NewPayloadHandler newPayloadHandler = new(
+                    payloadPreparationService,
                     _api.BlockValidator,
                     _api.BlockTree,
                     _poSSwitcher,
@@ -305,15 +283,9 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     _api.BlockProcessingQueue,
                     _invalidChainTracker,
                     beaconSync,
-                    _api.LogManager,
-                    TimeSpan.FromSeconds(mergeConfig.NewPayloadTimeout),
-                    _api.Config<IReceiptConfig>().StoreReceipts);
-
-            bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
-            if (simulateBlockProduction)
-            {
-                newPayloadHandler.NewPayloadForParentReceived += payloadPreparationService.CancelBlockProductionForParent;
-            }
+                    mergeConfig,
+                    _api.Config<IReceiptConfig>(),
+                    _api.LogManager);
 
             IEngineRpcModule engineRpcModule = new EngineRpcModule(
                 new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -335,8 +307,8 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                     peerRefresher,
                     _api.SpecProvider,
                     _api.SyncPeerPool!,
-                    _api.LogManager,
-                    simulateBlockProduction),
+                    mergeConfig,
+                    _api.LogManager),
                 new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
                 new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
@@ -364,7 +336,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
     public ValueTask DisposeAsync()
     {
-        _payloadPreparationService?.Dispose();
         return ValueTask.CompletedTask;
     }
 
@@ -428,6 +399,31 @@ public class BaseMergePluginModule : Module
             .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
 
             .AddDecorator<IHealthHintService, MergeHealthHintService>()
+
+            // Engine rpc related
+            .AddSingleton<IBlockImprovementContextFactory>(CreateBlockImprovementContextFactory)
+            .AddSingleton<IPayloadPreparationService, PayloadPreparationService>()
             ;
+    }
+
+    IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IComponentContext ctx)
+    {
+        IMergeConfig mergeConfig = ctx.Resolve<IMergeConfig>();
+        IBlocksConfig blocksConfig = ctx.Resolve<IBlocksConfig>();
+        IBlockProducer blockProducer = ctx.Resolve<IBlockProducer>();
+
+        double maxSingleImprovementTimePerSlot = blocksConfig.SecondsPerSlot * blocksConfig.SingleBlockImprovementOfSlot;
+        if (string.IsNullOrEmpty(mergeConfig.BuilderRelayUrl))
+        {
+            return new BlockImprovementContextFactory(blockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot));
+        }
+
+        ILogManager logManager = ctx.Resolve<ILogManager>();
+        IStateReader stateReader = ctx.Resolve<IStateReader>();
+        IJsonSerializer jsonSerializer = ctx.Resolve<IJsonSerializer>();
+
+        DefaultHttpClient httpClient = new(new HttpClient(), jsonSerializer, logManager, retryDelayMilliseconds: 100);
+        IBoostRelay boostRelay = new BoostRelay(httpClient, mergeConfig.BuilderRelayUrl);
+        return new BoostBlockImprovementContextFactory(blockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot), boostRelay, stateReader);
     }
 }
