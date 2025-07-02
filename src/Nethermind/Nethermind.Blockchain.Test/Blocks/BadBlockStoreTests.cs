@@ -17,38 +17,34 @@ public class BadBlockStoreTests
     [Test]
     public void Test_CanInsert()
     {
-        BadBlockStore badBlockStore = new BadBlockStore(new TestMemDb(), 10);
+        BadBlockStore badBlockStore = new(new TestMemDb(), 10);
 
-        List<Block> toAdd = new()
-        {
+        List<Block> toAdd =
+        [
             Build.A.Block.WithNumber(1).TestObject,
             Build.A.Block.WithNumber(2).TestObject,
             Build.A.Block.WithNumber(3).TestObject,
-        };
+        ];
 
         foreach (Block block in toAdd)
         {
             badBlockStore.Insert(block);
         }
 
-        badBlockStore.GetAll().Select(block =>
-        {
-            block.EncodedSize = null;
-            return block;
-        }).Should().BeEquivalentTo(toAdd);
+        badBlockStore.GetAll().Should().BeEquivalentTo(toAdd, options => options.Excluding(b => b.EncodedSize));
     }
 
     [Test]
     public void Test_LimitStoredBlock()
     {
-        BadBlockStore badBlockStore = new BadBlockStore(new TestMemDb(), 2);
+        BadBlockStore badBlockStore = new(new TestMemDb(), 2);
 
-        List<Block> toAdd = new()
-        {
+        List<Block> toAdd =
+        [
             Build.A.Block.WithNumber(1).TestObject,
             Build.A.Block.WithNumber(2).TestObject,
             Build.A.Block.WithNumber(3).TestObject,
-        };
+        ];
 
         foreach (Block block in toAdd)
         {
