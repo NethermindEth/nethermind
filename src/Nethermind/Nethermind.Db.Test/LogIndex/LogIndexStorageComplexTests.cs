@@ -32,15 +32,19 @@ namespace Nethermind.Db.Test.LogIndex
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class LogIndexStorageComplexTests(LogIndexStorageComplexTests.TestData testData)
     {
-        public static readonly TestFixtureData[] TestCases = new[]
-        {
-            (batchCount: 10, blocksPerBatch: 100, isExplicit: false),
-            (batchCount: 5, blocksPerBatch: 200, isExplicit: false),
-            (batchCount: 100, blocksPerBatch: 100, isExplicit: true),
-            (batchCount: 100, blocksPerBatch: 200, isExplicit: true)
-        }.Select(x => new TestFixtureData(new TestData(new Random(42), x.batchCount, x.blocksPerBatch))
-        { RunState = x.isExplicit ? RunState.Explicit : RunState.Runnable }
-        ).ToArray();
+        // (batchCount: 10, blocksPerBatch: 100, isExplicit: false, extendedGetRanges = false),
+        // (batchCount: 5, blocksPerBatch: 200, isExplicit: false),
+        // (batchCount: 100, blocksPerBatch: 100, isExplicit: true),
+        // (batchCount: 100, blocksPerBatch: 200, isExplicit: true)
+
+        public static readonly TestFixtureData[] TestCases =
+        [
+            new(new TestData(10, 100)),
+            new(new TestData(5, 200)),
+            new(new TestData(10, 100) { ExtendedGetRanges = true }) { RunState = RunState.Explicit },
+            new(new TestData(100, 100)) { RunState = RunState.Explicit },
+            new(new TestData(100, 200)) { RunState = RunState.Explicit }
+        ];
 
         private ILogger _logger;
         private string _dbPath = null!;
@@ -128,11 +132,10 @@ namespace Nethermind.Db.Test.LogIndex
 
         [Combinatorial]
         public async Task BackwardsSet_Set_Get_Test(
-            [Values(100, 200, int.MaxValue)] int compactionDistance,
-            [Values(1, 8, 16)] byte ioParallelism
+            [Values(100, 200, int.MaxValue)] int compactionDistance
         )
         {
-            var logIndexStorage = CreateLogIndexStorage(compactionDistance, ioParallelism);
+            var logIndexStorage = CreateLogIndexStorage(compactionDistance);
 
             var half = testData.Batches.Length / 2;
             await SetReceiptsAsync(logIndexStorage, Reverse(testData.Batches.Take(half)), isBackwardsSync: true);
@@ -280,7 +283,7 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData, excludedBlocks: allReorgBlocks, addedBlocks: allAddedBlocks);
         }
 
-        [Ignore("Not supported, but probably is not needed.")]
+        [Ignore("Not supported, but is probably not needed.")]
         [Combinatorial]
         public async Task Set_ConsecutiveReorgsLast_Get_Test(
             [Values(new[] { 2, 1 }, new[] { 1, 2 })] int[] reorgDepths,
@@ -416,7 +419,7 @@ namespace Nethermind.Db.Test.LogIndex
             await TestContext.Out.WriteLineAsync(
                 $"""
                  x{count} {nameof(LogIndexStorage.SetReceiptsAsync)}({length}) in {Stopwatch.GetElapsedTime(timestamp)}:
-                 {'\t'}{totalStats}
+                 {totalStats}
                  {'\t'}DB size: {LogIndexMigration.GetFolderSize(Path.Combine(_dbPath, DbNames.LogIndex))}
 
                  """
@@ -466,11 +469,16 @@ namespace Nethermind.Db.Test.LogIndex
                 if (maxBlock < testData.Batches[^1][^1].BlockNumber)
                     expectedNums = expectedNums.TakeWhile(b => b <= maxBlock);
 
-                Assert.That(
-                    logIndexStorage.GetBlockNumbersFor(address, 0, int.MaxValue),
-                    Is.EqualTo(expectedNums),
-                    $"Address: {address}"
-                );
+                expectedNums = expectedNums.ToArray();
+
+                foreach (var (from, to) in testData.Ranges)
+                {
+                    Assert.That(
+                        logIndexStorage.GetBlockNumbersFor(address, from, to),
+                        Is.EqualTo(expectedNums.SkipWhile(i => i < from).TakeWhile(i => i <= to)),
+                        $"Address: {address}, from {from} to {to}"
+                    );
+                }
             }
 
             foreach (var (topic, nums) in testData.TopicMap)
@@ -494,11 +502,16 @@ namespace Nethermind.Db.Test.LogIndex
                 if (maxBlock < testData.Batches[^1][^1].BlockNumber)
                     expectedNums = expectedNums.TakeWhile(b => b <= maxBlock);
 
-                Assert.That(
-                    logIndexStorage.GetBlockNumbersFor(topic, 0, int.MaxValue),
-                    Is.EqualTo(expectedNums),
-                    $"Topic: {topic}"
-                );
+                expectedNums = expectedNums.ToArray();
+
+                foreach (var (from, to) in testData.Ranges)
+                {
+                    Assert.That(
+                        logIndexStorage.GetBlockNumbersFor(topic, from, to),
+                        Is.EqualTo(expectedNums.SkipWhile(i => i < from).TakeWhile(i => i <= to)),
+                        $"Topic: {topic}, {from} - {to}"
+                    );
+                }
             }
         }
 
@@ -574,20 +587,31 @@ namespace Nethermind.Db.Test.LogIndex
         {
             private readonly int _batchCount;
             private readonly int _blocksPerBatch;
+            private readonly int _startNum;
 
             // To avoid generating all the data just to display test cases
             private readonly Lazy<BlockReceipts[][]> _batches;
             public BlockReceipts[][] Batches => _batches.Value;
 
-            public Dictionary<Address, HashSet<int>> AddressMap = new();
-            public Dictionary<Hash256, HashSet<int>> TopicMap = new();
+            private readonly Lazy<IEnumerable<(int from, int to)>> _ranges;
+            public IEnumerable<(int from, int to)> Ranges => _ranges.Value;
+
+            public IReadOnlyDictionary<Address, HashSet<int>> AddressMap { get; private set; } = new Dictionary<Address, HashSet<int>>();
+            public IReadOnlyDictionary<Hash256, HashSet<int>> TopicMap { get; private set; } = new Dictionary<Hash256, HashSet<int>>();
+
+            public bool ExtendedGetRanges { get; init; }
 
             public TestData(Random random, int batchCount, int blocksPerBatch, int startNum = 0)
             {
                 _batchCount = batchCount;
                 _blocksPerBatch = blocksPerBatch;
+                _startNum = startNum;
+
                 _batches = new(() => GenerateBatches(random, batchCount, blocksPerBatch, startNum));
+                _ranges = new(() => ExtendedGetRanges ? GenerateExtendedRanges() : GenerateSimpleRanges());
             }
+
+            public TestData(int batchCount, int blocksPerBatch, int startNum = 0) : this(new(42), batchCount, blocksPerBatch, startNum) { }
 
             private BlockReceipts[][] GenerateBatches(Random random, int batchCount, int blocksPerBatch, int startNum = 0)
             {
@@ -674,7 +698,38 @@ namespace Nethermind.Db.Test.LogIndex
                 return receipts.ToArray();
             }
 
-            public override string ToString() => $"{_batchCount} * {_blocksPerBatch} blocks";
+            private static HashSet<(int from, int to)> GenerateSimpleRanges(int min, int max)
+            {
+                var quarter = (max - min) / 4;
+                return [(0, int.MaxValue), (min, max), (min + quarter, max - quarter)];
+            }
+
+            private static HashSet<(int from, int to)> GenerateExtendedRanges(int min, int max)
+            {
+                var ranges = new HashSet<(int, int)>();
+
+                var edges = new[] { min - 1, min, min + 1, max - 1, max + 1 };
+                ranges.AddRange(edges.Zip(edges));
+
+                const int step = 100;
+                for (var i = min; i <= max; i += step)
+                {
+                    var middles = new[] { i - step, i - 1, i, i + 1, i + step };
+                    ranges.AddRange(middles.Zip(middles));
+                }
+
+                return ranges;
+            }
+
+            private HashSet<(int from, int to)> GenerateSimpleRanges() => GenerateSimpleRanges(
+                _startNum, _startNum + _batchCount * _blocksPerBatch - 1
+            );
+
+            private HashSet<(int from, int to)> GenerateExtendedRanges() => GenerateExtendedRanges(
+                _startNum, _startNum + _batchCount * _blocksPerBatch - 1
+            );
+
+            public override string ToString() => $"{_batchCount} * {_blocksPerBatch} blocks (ex-ranges: {ExtendedGetRanges})";
         }
     }
 }

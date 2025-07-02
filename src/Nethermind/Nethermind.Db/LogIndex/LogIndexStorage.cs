@@ -241,56 +241,63 @@ namespace Nethermind.Db
 
         private IEnumerable<int> GetBlockNumbersFor(IDb db, byte[] keyPrefix, int from, int to)
         {
-            var timestamp = Stopwatch.GetTimestamp();
-
             static bool IsInKeyBounds(IIterator<byte[], byte[]> iterator, byte[] key)
             {
                 return iterator.Valid() && iterator.Key().AsSpan()[..key.Length].SequenceEqual(key);
             }
 
-            using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
-
-            var dbKeyLength = keyPrefix.Length + BlockNumSize;
-            var dbKeyBuffer = _arrayPool.Rent(dbKeyLength);
-            Span<byte> dbKey = dbKeyBuffer.AsSpan(..dbKeyLength);
-
-            // Find the last index for the given key, starting at or before `from`
-            CreateDbKey(keyPrefix, from, dbKey);
-            iterator.SeekForPrev(dbKey);
-
-            // Otherwise, find the first index for the given key
-            // TODO: achieve in a single seek?
-            if (!IsInKeyBounds(iterator, keyPrefix))
-            {
-                iterator.SeekToFirst();
-                iterator.Seek(keyPrefix);
-            }
+            var timestamp = Stopwatch.GetTimestamp();
+            byte[] dbKeyBuffer = null;
 
             try
             {
+                // Adjust parameters to avoid composing invalid lookup keys
+                if (from < 0) from = 0;
+                if (to < from) yield break;
+
+                var dbKeyLength = keyPrefix.Length + BlockNumSize;
+                dbKeyBuffer = _arrayPool.Rent(dbKeyLength);
+                Span<byte> dbKey = dbKeyBuffer.AsSpan(..dbKeyLength);
+
+                using IIterator<byte[], byte[]> iterator = db.GetIterator(true);
+
+                // Find the last index for the given key, starting at or before `from`
+                CreateDbKey(keyPrefix, from, dbKey);
+                iterator.SeekForPrev(dbKey);
+
+                // Otherwise, find the first index for the given key
+                // TODO: achieve in a single seek?
+                if (!IsInKeyBounds(iterator, keyPrefix))
+                {
+                    iterator.SeekToFirst();
+                    iterator.Seek(keyPrefix);
+                }
+
                 while (IsInKeyBounds(iterator, keyPrefix))
                 {
                     var value = iterator.Value();
 
-                    foreach (var block in EnumerateBlockNumbers(value, from, to))
-                        yield return block;
+                    foreach (var block in EnumerateBlockNumbers(value, from))
+                    {
+                        if (block > to)
+                            yield break;
 
-                    if (value.Length > 0 && GetValLastBlockNum(value) >= to)
-                        break;
+                        yield return block;
+                    }
 
                     iterator.Next();
                 }
             }
             finally
             {
-                _arrayPool.Return(dbKeyBuffer);
+                if (dbKeyBuffer != null) _arrayPool.Return(dbKeyBuffer);
 
                 // TODO: log in Debug
-                _logger.Info($"GetBlockNumbersFor({Convert.ToHexString(keyPrefix)}, {from}, {to}) in {Stopwatch.GetElapsedTime(timestamp)}");
+                if (_logger.IsTrace) _logger.Trace($"GetBlockNumbersFor({Convert.ToHexString(keyPrefix)}, {from}, {to}) in {Stopwatch.GetElapsedTime(timestamp)}");
             }
         }
 
-        private static IEnumerable<int> EnumerateBlockNumbers(byte[]? data, int from, int to)
+        private static IEnumerable<int> EnumerateBlockNumbers(byte[]? data, int from)
         {
             if (data == null)
                 yield break;
@@ -308,13 +315,7 @@ namespace Nethermind.Db
             }
 
             for (int i = startIndex; i < blockNums.Length; i++)
-            {
-                int block = blockNums[i];
-                if (block > to)
-                    yield break;
-
-                yield return block;
-            }
+                yield return blockNums[i];
         }
 
         private const bool IncludeTopicIndex = false;
