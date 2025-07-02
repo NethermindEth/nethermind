@@ -77,7 +77,6 @@ public partial class BlockProcessor(
         if (suggestedBlocks.Count == 0) return [];
 
         BlockHeader? previousBranchStateRoot = baseBlock;
-        // newBranchStateRoot => baseBlock
         InitBranch(baseBlock);
 
         Block suggestedBlock = suggestedBlocks[0];
@@ -89,7 +88,7 @@ public partial class BlockProcessor(
 
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
-        BlockHeader? preBlockStateRoot = baseBlock;
+        BlockHeader? preBlockBaseBlock = baseBlock;
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
@@ -109,7 +108,7 @@ public partial class BlockProcessor(
                 // and started prewarming at method entry, so don't start it again
                 if (prewarmCancellation is null)
                 {
-                    (prewarmCancellation, preWarmTask) = PreWarmTransactions(suggestedBlock, preBlockStateRoot, spec);
+                    (prewarmCancellation, preWarmTask) = PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec);
                 }
 
                 if (blocksCount > 64 && i % 8 == 0)
@@ -166,7 +165,7 @@ public partial class BlockProcessor(
                     InitBranch(suggestedBlock.Header, false);
                 }
 
-                preBlockStateRoot = processedBlock.Header;
+                preBlockBaseBlock = processedBlock.Header;
                 // Make sure the prewarm task is finished before we reset the state
                 preWarmTask?.GetAwaiter().GetResult();
                 preWarmTask = null;
@@ -196,13 +195,13 @@ public partial class BlockProcessor(
         }
     }
 
-    private (CancellationTokenSource prewarmCancellation, Task preWarmTask) PreWarmTransactions(Block suggestedBlock, BlockHeader baseBlock, IReleaseSpec spec)
+    private (CancellationTokenSource prewarmCancellation, Task preWarmTask) PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec)
     {
         if (preWarmer is null || suggestedBlock.Transactions.Length < 3) return (null, null);
 
         CancellationTokenSource prewarmCancellation = new();
         Task preWarmTask = preWarmer.PreWarmCaches(suggestedBlock,
-            baseBlock,
+            preBlockBaseBlock,
             spec,
             prewarmCancellation.Token,
             beaconBlockRootHandler);
