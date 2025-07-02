@@ -58,7 +58,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         _traceEntry.Pc = pc + env.CodeInfo.PcOffset();
         _traceEntry.Section = codeSection;
         _traceEntry.Operation = (byte)opcode;
-        _traceEntry.OperationName = opcode.GetName();
+        _traceEntry.OperationName = opcode.GetName(spec: null);
         _traceEntry.Gas = gas;
         _traceEntry.Depth = env.GetGethTraceDepth();
         _traceEntry.FunctionDepth = functionDepth;
