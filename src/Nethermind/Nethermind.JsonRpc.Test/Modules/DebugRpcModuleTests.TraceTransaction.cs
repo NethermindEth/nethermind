@@ -65,12 +65,13 @@ public partial class DebugRpcModuleTests
         await context.Blockchain.AddBlock(transaction);
 
         var blockHash = context.Blockchain.BlockTree.Head!.Hash;
+        string headStr = context.Blockchain.BlockTree.Head?.Header.ToString(BlockHeader.Format.Short)!;
         var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", blockHash, 0, options);
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(response).RootElement,
             JsonDocument.Parse(expected).RootElement),
-            response);
+            response + " head is " + headStr);
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -83,12 +84,13 @@ public partial class DebugRpcModuleTests
         await context.Blockchain.AddBlock(transaction);
 
         var blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
+        string headStr = context.Blockchain.BlockTree.Head?.Header.ToString(BlockHeader.Format.Short)!;
         var response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByHash", blockRlp, transaction.Hash, options);
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(response).RootElement,
             JsonDocument.Parse(expected).RootElement),
-            response);
+            response + " head is " + headStr);
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]

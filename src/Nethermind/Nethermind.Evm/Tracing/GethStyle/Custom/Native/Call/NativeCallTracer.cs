@@ -33,7 +33,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
     private EvmExceptionType? _error;
     private long _remainingGas;
-    private bool _resultBuilt = false;
 
     public NativeCallTracer(
         Transaction? tx,
@@ -66,15 +65,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         result.TxHash = _txHash;
         result.CustomTracerResult = new GethLikeCustomTrace { Value = firstCallFrame };
 
-        _resultBuilt = true;
-
         return result;
     }
 
     public override void Dispose()
     {
         base.Dispose();
-        for (int i = _resultBuilt ? 1 : 0; i < _callStack.Count; i++)
+        for (int i = 0; i < _callStack.Count; i++)
         {
             _callStack[i].Dispose();
         }
