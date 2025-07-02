@@ -18,7 +18,7 @@ public class ReadOnlyTxProcessingScopeTests
         ReadOnlyTxProcessingScope env = new ReadOnlyTxProcessingScope(
             Substitute.For<ITransactionProcessor>(),
             Substitute.For<IWorldState>(),
-            new Reactive.AnonymousDisposable(() => {})
+            new Reactive.AnonymousDisposable(() => { })
         );
 
         env.Dispose();
