@@ -16,7 +16,8 @@ public class ReadOnlyTxProcessingScope(
     public void Dispose()
     {
         worldStateCloser.Dispose();
-        worldState.Reset(); // TODO: Double check if this is still needed
+        worldState.Reset();
+        worldState.SetBaseBlock(null);
     }
 
     public ITransactionProcessor TransactionProcessor => transactionProcessor;
