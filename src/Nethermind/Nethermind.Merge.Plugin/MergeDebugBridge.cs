@@ -72,7 +72,11 @@ namespace Nethermind.Merge.Plugin
 
             // Generate a new payload based on the block, use versioned ExecutionPayload based on spec
             IReleaseSpec spec = _specProvider.GetSpec(block.Header);
-            var executionPayload = ExecutionPayload.Create(block);
+
+            ExecutionPayload executionPayload = spec.IsEip4844Enabled
+                ? ExecutionPayloadV3.Create(block)
+                : ExecutionPayload.Create(block);
+
             string engineEndpointVersion = executionPayload.GetExecutionPayloadVersion() switch
             {
                 4 => "engine_newPayloadV4",
