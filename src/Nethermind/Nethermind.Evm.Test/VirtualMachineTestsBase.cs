@@ -132,6 +132,15 @@ public abstract class VirtualMachineTestsBase
         return tracer;
     }
 
+
+    protected T Execute<T>(ForkActivation activation, Transaction tx, T tracer, long gasLimit = 100000)
+        where T : ITxTracer
+    {
+        (Block block, _) = PrepareTx(activation, gasLimit, null);
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        return tracer;
+    }
+
     protected TestAllTracerWithOutput Execute(ForkActivation activation, Transaction tx, long gasLimit = 100000)
     {
         (Block block, _) = PrepareTx(activation, gasLimit, null);
