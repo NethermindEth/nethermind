@@ -426,7 +426,8 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 _api.BadBlocksStore!,
                 _api.BlockProducer!);
 
-            var debugModule = new MergeDebugRpc(_api.LogManager, debugBridge, _jsonRpcConfig, _api.SpecProvider!);
+            var debugModule = new MergeDebugRpcModule(_api.LogManager, debugBridge, _jsonRpcConfig, _api.SpecProvider!);
+            RegisterDebugRpcModule(debugModule);
         }
 
         return Task.CompletedTask;
@@ -437,7 +438,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
     }
-    protected virtual void RegisterDebugRpcModule(IMergeDebugModule debugRpcModule)
+    protected virtual void RegisterDebugRpcModule(IMergeDebugRpcModule debugRpcModule)
     {
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         _api.RpcModuleProvider.RegisterSingle(debugRpcModule);

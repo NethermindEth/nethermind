@@ -17,7 +17,7 @@ using System.Threading.Tasks;
 namespace Nethermind.Merge.Plugin;
 
 [RpcModule(ModuleType.Debug)]
-public interface IMergeDebugModule : IRpcModule
+public interface IMergeDebugRpcModule : IRpcModule
 {
     [JsonRpcMethod(Description = "Return a valid ExecutionPayload from a Block")]
     ResultWrapper<ExecutionPayloadForRpc> debug_generateNewPayload(BlockParameter blockParameter);

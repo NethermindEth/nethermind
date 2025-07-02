@@ -20,10 +20,10 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Merge.Plugin
 {
-    public class MergeDebugRpc : DebugRpcModule, IMergeDebugModule
+    public class MergeDebugRpcModule : DebugRpcModule, IMergeDebugRpcModule
     {
         private readonly IMergeDebugBridge _mergeDebugBridge;
-        public MergeDebugRpc(ILogManager logManager, IMergeDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider) :
+        public MergeDebugRpcModule(ILogManager logManager, IMergeDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider) :
             base(logManager, (DebugBridge)debugBridge, jsonRpcConfig, specProvider)
         {
             _mergeDebugBridge = debugBridge ?? throw new ArgumentNullException(nameof(debugBridge));
