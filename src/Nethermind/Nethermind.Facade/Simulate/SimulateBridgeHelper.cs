@@ -212,13 +212,13 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         for (int index = 0; index < transactions.Length; index++)
         {
             Transaction transaction = transactions[index];
-            BlockProcessor.AddingTxEventArgs? args = env.BlockTransactionPicker.CanAddTransaction(block, transaction, testedTxs, stateProvider);
+            //BlockProcessor.AddingTxEventArgs? args = env.BlockTransactionPicker.CanAddTransaction(block, transaction, testedTxs, stateProvider);
 
-            if (args.Action is BlockProcessor.TxAction.Stop or BlockProcessor.TxAction.Skip && payload.Validation)
-            {
-                error = $"invalid transaction index: {index} at block number: {callHeader.Number}, Reason: {args.Reason}";
-                return false;
-            }
+            //if (args.Action is BlockProcessor.TxAction.Stop or BlockProcessor.TxAction.Skip && payload.Validation)
+            //{
+            //    error = $"invalid transaction index: {index} at block number: {callHeader.Number}, Reason: {args.Reason}";
+            //    return false;
+            //}
 
             stateProvider.IncrementNonce(transaction.SenderAddress!);
             testedTxs.Add(transaction);
