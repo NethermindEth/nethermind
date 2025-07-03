@@ -71,7 +71,6 @@ namespace Nethermind.Api
             return Context.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
         }
 
-        public IAbiEncoder AbiEncoder => Context.Resolve<IAbiEncoder>();
         public IBlobTxStorage? BlobTxStorage { get; set; }
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
@@ -135,7 +134,6 @@ namespace Nethermind.Api
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
-        public IRpcCapabilitiesProvider RpcCapabilitiesProvider => Context.Resolve<IRpcCapabilitiesProvider>();
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
         public IBlockFinalizationManager? FinalizationManager { get; set; }
 
