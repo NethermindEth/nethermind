@@ -366,7 +366,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     {
         Metrics.JsonRpcRequests++;
         long startTime = Stopwatch.GetTimestamp();
-        TraceRequest(request);
+        _logger.Info($"JSON RPC Request Received v2: {request}");
         JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(request, context);
         JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
         bool isSuccess = localErrorResponse is null;
@@ -448,13 +448,6 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
             _logger.Trace($"Sending JSON RPC response: {json}");
         }
-    }
-
-    private void TraceRequest(JsonRpcRequest request)
-    {
-        string json = JsonSerializer.Serialize(request, EthereumJsonSerializer.JsonOptionsIndented);
-        _logger.Info($"JSON RPC Request Received: {json}");
-        _logger.Info($"JSON RPC Request Received v2: {request}");
     }
 
     private void TraceResult(JsonRpcErrorResponse response)
