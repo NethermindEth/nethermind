@@ -302,7 +302,8 @@ public partial class EngineModuleTests
             await rpc.engine_newPayloadV1(getPayloadResult.ExecutionPayload);
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
 
-        UInt256 finalBalance = chain.StateReader.GetBalance(getPayloadResult.ExecutionPayload.StateRoot, feeRecipient);
+        BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(getPayloadResult.ExecutionPayload.BlockHash);
+        UInt256 finalBalance = chain.StateReader.GetBalance(payloadBlock, feeRecipient);
 
         (finalBalance - startingBalance).Should().Be(getPayloadResult.BlockValue);
     }
@@ -674,7 +675,7 @@ public partial class EngineModuleTests
         foreach ((Address Account, UInt256 BalanceIncrease) accountIncrease in input.ExpectedAccountIncrease)
         {
             UInt256 initialBalance =
-                chain.StateReader.GetBalance(chain.BlockTree.Head!.StateRoot!, accountIncrease.Account);
+                chain.StateReader.GetBalance(chain.BlockTree.Head!.Header, accountIncrease.Account);
             initialBalances.Add(initialBalance);
         }
 
@@ -701,7 +702,7 @@ public partial class EngineModuleTests
         {
             (Address Account, UInt256 BalanceIncrease) accountIncrease = input.ExpectedAccountIncrease[index];
             UInt256 currentBalance =
-                chain.StateReader.GetBalance(chain.BlockTree.Head!.StateRoot!, accountIncrease.Account);
+                chain.StateReader.GetBalance(chain.BlockTree.Head!.Header!, accountIncrease.Account);
             currentBalance.Should().Be(accountIncrease.BalanceIncrease + initialBalances[index]);
         }
     }

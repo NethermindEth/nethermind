@@ -28,16 +28,16 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<IC
         ISpecProvider specProvider
     ) : Module, IOverridableEnv
     {
-        public IDisposable Build(Hash256 stateRoot)
-        {
-            Reset();
-            overridableScope.WorldState.StateRoot = stateRoot;
-            return new Scope(this);
-        }
+        private IDisposable? _worldScopeCloser;
 
         public IDisposable BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
         {
-            IDisposable scope = Build(header.StateRoot ?? throw new ArgumentException($"Block {header.Hash} state root is null", nameof(header)));
+            if (_worldScopeCloser is not null) throw new InvalidOperationException("Previous overridable world scope was not closed");
+
+            Reset();
+            _worldScopeCloser = overridableScope.BeginScope(header);
+            IDisposable scope = new Scope(this);
+
             if (stateOverride is not null)
             {
                 overridableScope.WorldState.ApplyStateOverrides(codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
@@ -59,8 +59,9 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<IC
         {
             overridableScope.WorldState.Reset();
             codeInfoRepository.ResetOverrides();
-            overridableScope.ResetOverrides();
-            overridableScope.WorldState.StateRoot = Keccak.EmptyTreeHash;
+
+            _worldScopeCloser?.Dispose();
+            _worldScopeCloser = null;
         }
 
         protected override void Load(ContainerBuilder builder) =>
