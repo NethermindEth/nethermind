@@ -31,8 +31,8 @@ public sealed record FuzzerOptions
             PublisherCount = p.GetValue(FuzzerCliOptions.PublisherCount),
             SubscriberCount = p.GetValue(FuzzerCliOptions.SubscriberCount),
             PublisherDelay = TimeSpan.FromMilliseconds(p.GetValue(FuzzerCliOptions.PublisherDelay)),
-            Timeout = TimeSpan.FromMilliseconds(p.GetValue(FuzzerCliOptions.Timeout)),
-            Runs = p.GetValue(FuzzerCliOptions.Runs)
+            Timeout = TimeSpan.FromMilliseconds(p.GetValue(FuzzerCliOptions.RunTimeout)),
+            Runs = p.GetValue(FuzzerCliOptions.RunCount)
         };
     }
 }
@@ -75,13 +75,13 @@ public static class FuzzerCliOptions
         DefaultValueFactory = (_) => 1 // 1000 microseconds
     }.Validated(Validators.Positive);
 
-    public static readonly Option<int> Timeout = new Option<int>("--run-timeout")
+    public static readonly Option<int> RunTimeout = new Option<int>("--run-timeout")
     {
         Description = "Timeout for each run (milliseconds)",
         DefaultValueFactory = (_) => 60_000 // 1 minute
     }.Validated(Validators.Positive);
 
-    public static readonly Option<int> Runs = new Option<int>("--run-count")
+    public static readonly Option<int> RunCount = new Option<int>("--run-count")
     {
         Description = "Number of times to repeat each run",
         DefaultValueFactory = (_) => 1
@@ -106,8 +106,8 @@ public static class Program
             FuzzerCliOptions.PublisherCount,
             FuzzerCliOptions.SubscriberCount,
             FuzzerCliOptions.PublisherDelay,
-            FuzzerCliOptions.Timeout,
-            FuzzerCliOptions.Runs,
+            FuzzerCliOptions.RunTimeout,
+            FuzzerCliOptions.RunCount,
             FuzzerCliOptions.Logging
         };
 
