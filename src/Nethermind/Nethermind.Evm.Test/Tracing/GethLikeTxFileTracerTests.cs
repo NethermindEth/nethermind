@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using FluentAssertions;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
