@@ -252,7 +252,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             foreach (KeyValuePair<AddressAsKey, StorageTree> kvp in _storages)
             {
-                if (!_toUpdateRoots.ContainsKey(kvp.Key))
+                if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
                 {
                     // Wasn't updated don't recalculate
                     continue;
@@ -281,7 +281,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 static (i, state) =>
             {
                 ref var kvp = ref state.storages.GetRef(i);
-                if (!state.toUpdateRoots.ContainsKey(kvp.Key))
+                if (!state.toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
                 {
                     // Wasn't updated don't recalculate
                     return state;
