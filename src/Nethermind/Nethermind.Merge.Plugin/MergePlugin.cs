@@ -308,9 +308,35 @@ public class BaseMergePluginModule : Module
             .AddDecorator<IHealthHintService, MergeHealthHintService>()
 
             // Engine rpc related
-            .AddSingleton<IBlockImprovementContextFactory>(CreateBlockImprovementContextFactory)
-            .AddSingleton<IPayloadPreparationService, PayloadPreparationService>()
-            .AddModule(new MergeRpcModule())
+            .RegisterSingletonJsonRpcModule<IEngineRpcModule, EngineRpcModule>()
+                .AddSingleton<IPayloadPreparationService, PayloadPreparationService>()
+                    .AddSingleton<IBlockImprovementContextFactory>(CreateBlockImprovementContextFactory)
+
+                .AddSingleton<IAsyncHandler<byte[], ExecutionPayload?>, GetPayloadV1Handler>()
+                .AddSingleton<IAsyncHandler<byte[], GetPayloadV2Result?>, GetPayloadV2Handler>()
+                .AddSingleton<IAsyncHandler<byte[], GetPayloadV3Result?>, GetPayloadV3Handler>()
+                .AddSingleton<IAsyncHandler<byte[], GetPayloadV4Result?>, GetPayloadV4Handler>()
+                .AddSingleton<IAsyncHandler<byte[], GetPayloadV5Result?>, GetPayloadV5Handler>()
+                .AddSingleton<IAsyncHandler<ExecutionPayload, PayloadStatusV1>, NewPayloadHandler>()
+                .AddSingleton<IForkchoiceUpdatedHandler, ForkchoiceUpdatedHandler>()
+                .AddSingleton<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>, GetPayloadBodiesByHashV1Handler>()
+                .AddSingleton<IGetPayloadBodiesByRangeV1Handler, GetPayloadBodiesByRangeV1Handler>()
+                .AddSingleton<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>, ExchangeTransitionConfigurationV1Handler>()
+                .AddSingleton<IHandler<IEnumerable<string>, IEnumerable<string>>, ExchangeCapabilitiesHandler>()
+                    .AddSingleton<IRpcCapabilitiesProvider, EngineRpcCapabilitiesProvider>()
+                .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>, GetBlobsHandler>()
+                .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?>, GetBlobsHandlerV2>()
+
+                .AddSingleton<NoSyncGcRegionStrategy>()
+                .AddSingleton<GCKeeper>((ctx) =>
+                {
+                    IInitConfig initConfig = ctx.Resolve<IInitConfig>();
+                    return new GCKeeper(
+                        initConfig.DisableGcOnNewPayload
+                            ? NoGCStrategy.Instance
+                            : ctx.Resolve<NoSyncGcRegionStrategy>(),
+                        ctx.Resolve<ILogManager>());
+                })
             ;
     }
 
@@ -333,40 +359,5 @@ public class BaseMergePluginModule : Module
         DefaultHttpClient httpClient = new(new HttpClient(), jsonSerializer, logManager, retryDelayMilliseconds: 100);
         IBoostRelay boostRelay = new BoostRelay(httpClient, mergeConfig.BuilderRelayUrl);
         return new BoostBlockImprovementContextFactory(blockProducer!, TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot), boostRelay, stateReader);
-    }
-}
-
-public class MergeRpcModule : Module
-{
-    protected override void Load(ContainerBuilder builder)
-    {
-        builder
-            .AddSingleton<IAsyncHandler<byte[], ExecutionPayload?>, GetPayloadV1Handler>()
-            .AddSingleton<IAsyncHandler<byte[], GetPayloadV2Result?>, GetPayloadV2Handler>()
-            .AddSingleton<IAsyncHandler<byte[], GetPayloadV3Result?>, GetPayloadV3Handler>()
-            .AddSingleton<IAsyncHandler<byte[], GetPayloadV4Result?>, GetPayloadV4Handler>()
-            .AddSingleton<IAsyncHandler<byte[], GetPayloadV5Result?>, GetPayloadV5Handler>()
-            .AddSingleton<IAsyncHandler<ExecutionPayload, PayloadStatusV1>, NewPayloadHandler>()
-            .AddSingleton<IForkchoiceUpdatedHandler, ForkchoiceUpdatedHandler>()
-            .AddSingleton<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>, GetPayloadBodiesByHashV1Handler>()
-            .AddSingleton<IGetPayloadBodiesByRangeV1Handler, GetPayloadBodiesByRangeV1Handler>()
-            .AddSingleton<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>, ExchangeTransitionConfigurationV1Handler>()
-            .AddSingleton<IHandler<IEnumerable<string>, IEnumerable<string>>, ExchangeCapabilitiesHandler>()
-            .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>, GetBlobsHandler>()
-            .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV2>?>, GetBlobsHandlerV2>()
-
-            .AddSingleton<IRpcCapabilitiesProvider, EngineRpcCapabilitiesProvider>()
-            .AddSingleton<NoSyncGcRegionStrategy>()
-            .AddSingleton<GCKeeper>((ctx) =>
-            {
-                IInitConfig initConfig = ctx.Resolve<IInitConfig>();
-                return new GCKeeper(
-                    initConfig.DisableGcOnNewPayload
-                        ? NoGCStrategy.Instance
-                        : ctx.Resolve<NoSyncGcRegionStrategy>(),
-                    ctx.Resolve<ILogManager>());
-            })
-            .RegisterSingletonJsonRpcModule<IEngineRpcModule, EngineRpcModule>()
-            ;
     }
 }
