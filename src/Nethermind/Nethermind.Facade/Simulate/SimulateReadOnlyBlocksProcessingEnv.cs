@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -33,27 +34,37 @@ public class SimulateRequestState
 }
 
 public class SimulateBlockValidationTransactionsExecutor(
-    ITransactionProcessorAdapter transactionProcessor,
-    IWorldState stateProvider,
+    IBlockProcessor.IBlockTransactionsExecutor baseTransactionExecutor,
     SimulateRequestState simulateState)
-    : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
+    : IBlockProcessor.IBlockTransactionsExecutor
 {
-    protected override void EnhanceBlockExecutionContext(Block block, IReleaseSpec spec)
+    private IReleaseSpec _spec;
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
-        if (simulateState.BlobBaseFeeOverride is not null)
-        {
-            SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec, simulateState.BlobBaseFeeOverride.Value));
-        }
+        _spec = blockExecutionContext.Spec;
+        baseTransactionExecutor.SetBlockExecutionContext(in blockExecutionContext);
     }
 
-    protected override void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+    public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,
+        CancellationToken token = default)
     {
         if (!simulateState.BlobBaseFeeOverride.HasValue)
         {
             processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce | ProcessingOptions.NoValidation;
         }
 
-        base.ProcessTransaction(block, currentTx, index, receiptsTracer, processingOptions);
+        if (simulateState.BlobBaseFeeOverride is not null)
+        {
+            SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec, simulateState.BlobBaseFeeOverride.Value));
+        }
+
+        return baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);
+    }
+
+    public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
+    {
+        add => baseTransactionExecutor.TransactionProcessed += value;
+        remove => baseTransactionExecutor.TransactionProcessed -= value;
     }
 }
 
@@ -137,7 +148,10 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
             _blockValidator,
             NoBlockRewards.Instance,
             new SimulateBlockValidationTransactionsExecutor(
-                new SimulateTransactionProcessorAdapter(_transactionProcessor, simulateState), StateProvider, simulateState),
+                new BlockValidationTransactionsExecutor(
+                    new SimulateTransactionProcessorAdapter(_transactionProcessor, simulateState),
+                    StateProvider
+                ), simulateState),
             StateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(_transactionProcessor, StateProvider),
