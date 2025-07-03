@@ -105,7 +105,6 @@ public class MergePluginTests
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(api));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
         Assert.DoesNotThrow(() => _plugin.InitBlockProducer(_consensusPlugin!));
-        Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
         Assert.DoesNotThrowAsync(async () => await _plugin.DisposeAsync());
     }
 
@@ -122,7 +121,6 @@ public class MergePluginTests
         Assert.That(api.GossipPolicy.CanGossipBlocks, Is.True);
         _plugin.InitBlockProducer(_consensusPlugin!);
         Assert.That(api.BlockProducer, Is.InstanceOf<MergeBlockProducer>());
-        await _plugin.InitRpcModules();
         await _plugin.DisposeAsync();
     }
 
@@ -184,7 +182,7 @@ public class MergePluginTests
 
     [TestCase(true, true, true)]
     [TestCase(true, false, false)]
-    [TestCase(false, true, true)]
+    [TestCase(false, true, false)]
     public async Task InitThrowExceptionIfBodiesAndReceiptIsDisabled(bool downloadBody, bool downloadReceipt, bool shouldPass)
     {
         ISyncConfig syncConfig = new SyncConfig()
@@ -204,11 +202,6 @@ public class MergePluginTests
         else
         {
             await invocation.Should().ThrowAsync<InvalidConfigurationException>();
-        }
-
-        if (!downloadBody && downloadReceipt)
-        {
-            syncConfig.DownloadBodiesInFastSync.Should().BeTrue(); // Modified by Synchronizer
         }
     }
 }
