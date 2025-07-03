@@ -97,76 +97,6 @@ public abstract partial class BaseEngineModuleTests
     protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider)
         => await CreateBaseBlockchain().Build(specProvider);
 
-    protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain)
-    {
-        /*
-        EngineRpcCapabilitiesProvider capabilitiesProvider = new(chain.SpecProvider);
-        return new EngineRpcModule(
-            new GetPayloadV1Handler(
-                chain.PayloadPreparationService!,
-                chain.SpecProvider!,
-                chain.LogManager),
-            new GetPayloadV2Handler(
-                chain.PayloadPreparationService!,
-                chain.SpecProvider!,
-                chain.LogManager),
-            new GetPayloadV3Handler(
-                chain.PayloadPreparationService!,
-                chain.SpecProvider!,
-                chain.LogManager),
-            new GetPayloadV4Handler(
-                chain.PayloadPreparationService!,
-                chain.SpecProvider!,
-                chain.LogManager),
-            new GetPayloadV5Handler(
-                chain.PayloadPreparationService!,
-                chain.SpecProvider!,
-                chain.LogManager),
-            new NewPayloadHandler(
-                chain.PayloadPreparationService,
-                new InvalidBlockInterceptor(chain.BlockValidator, invalidChainTracker, LimboLogs.Instance),
-                chain.BlockTree,
-                chain.PoSSwitcher,
-                chain.BeaconSync,
-                chain.BeaconPivot,
-                blockCacheService,
-                chain.BlockProcessingQueue,
-                invalidChainTracker,
-                chain.BeaconSync,
-                chain.Container.Resolve<IMergeConfig>(),
-                chain.Container.Resolve<IReceiptConfig>(),
-                chain.LogManager,
-                newPayloadCacheSize),
-            new ForkchoiceUpdatedHandler(
-                chain.BlockTree,
-                chain.BlockFinalizationManager,
-                chain.PoSSwitcher,
-                chain.PayloadPreparationService!,
-                chain.BlockProcessingQueue,
-                blockCacheService,
-                invalidChainTracker,
-                chain.BeaconSync,
-                chain.BeaconPivot,
-                peerRefresher,
-                chain.SpecProvider,
-                chain.SyncPeerPool,
-                chain.Container.Resolve<IMergeConfig>(),
-                chain.LogManager),
-            new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
-            new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
-            new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
-            new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
-            new GetBlobsHandler(chain.TxPool),
-            new GetBlobsHandlerV2(chain.TxPool),
-            Substitute.For<IEngineRequestsTracker>(),
-            chain.SpecProvider,
-            new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
-            chain.LogManager);
-            */
-
-        return chain.Container.Resolve<IEngineRpcModule>();
-    }
-
     protected async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV1(IEngineRpcModule rpc,
         MergeTestBlockchain chain,
         int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null,
@@ -259,6 +189,9 @@ public abstract partial class BaseEngineModuleTests
 
         public ISyncPeerPool SyncPeerPool => Container.Resolve<ISyncPeerPool>();
 
+        public Lazy<IEngineRpcModule> _lazyEngineRpcModule = null!;
+        public IEngineRpcModule EngineRpcModule => _lazyEngineRpcModule.Value;
+
         protected int _blockProcessingThrottle = 0;
 
         public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
@@ -290,9 +223,8 @@ public abstract partial class BaseEngineModuleTests
             return base.CreateConfigs().Concat([MergeConfig, SyncConfig.Default]);
         }
 
-        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
-        {
-            builder = base.ConfigureContainer(builder, configProvider)
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
+            base.ConfigureContainer(builder, configProvider)
                 .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
                 .AddModule(new TestMergeModule(configProvider))
                 .AddDecorator<IBlockImprovementContextFactory>((ctx, factory) =>
@@ -318,10 +250,6 @@ public abstract partial class BaseEngineModuleTests
                 .AddSingleton<ISyncModeSelector>(new StaticSelector(SyncMode.All))
                 .AddSingleton<IPeerRefresher>(Substitute.For<IPeerRefresher>())
                 .Intercept<IInitConfig>((initConfig) => initConfig.DisableGcOnNewPayload = true);
-            ;
-
-            return builder;
-        }
 
         protected override IBlockProducer CreateTestBlockProducer()
         {
@@ -367,17 +295,10 @@ public abstract partial class BaseEngineModuleTests
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
             TestBlockchain bc = await base.Build(configurer);
-            var synchronizationConfig = Container.Resolve<ISyncConfig>();
-
-            /*
-            BlockTree.SyncPivot = (
-                LongConverter.FromString(synchronizationConfig.PivotNumber),
-                synchronizationConfig.PivotHash is null ? Keccak.Zero : new Hash256(Bytes.FromHexString(synchronizationConfig.PivotHash))
-            );
-            */
             InvalidChainTracker.InvalidChainTracker invalidChainTracker = Container.Resolve<InvalidChainTracker.InvalidChainTracker>();
             invalidChainTracker.SetupBlockchainProcessorInterceptor(BlockchainProcessor);
             BeaconSync.AllowBeaconHeaderSync();
+            _lazyEngineRpcModule = bc.Container.Resolve<Lazy<IEngineRpcModule>>();
             return bc;
         }
 

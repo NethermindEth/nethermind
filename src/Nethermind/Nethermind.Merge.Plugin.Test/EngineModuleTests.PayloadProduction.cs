@@ -46,7 +46,7 @@ public partial class EngineModuleTests
     public async Task getPayloadV1_should_allow_asking_multiple_times_by_same_payload_id()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
 
         Hash256 startingHead = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(startingHead, Keccak.Zero, startingHead);
@@ -72,7 +72,7 @@ public partial class EngineModuleTests
             static ctx => new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>(), TimeSpan.FromSeconds(1)),
             timePerSlot, mergeConfig);
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
@@ -94,7 +94,7 @@ public partial class EngineModuleTests
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         uint count = 3;
         int value = 10;
@@ -189,7 +189,7 @@ public partial class EngineModuleTests
                 return factory;
             }));
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
         string payloadId = (await rpc.engine_forkchoiceUpdatedV1(
@@ -220,7 +220,7 @@ public partial class EngineModuleTests
     public async Task getPayloadV1_return_correct_block_values_for_empty_block()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Hash256? random = TestItem.KeccakF;
         ulong timestamp = chain.BlockTree.Head!.Timestamp + 5;
@@ -245,7 +245,7 @@ public partial class EngineModuleTests
     public async Task getPayloadV1_should_return_error_if_there_was_no_corresponding_prepare_call()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
@@ -273,7 +273,7 @@ public partial class EngineModuleTests
         payloadPreparationService.GetPayload(Arg.Any<string>(), Arg.Any<bool>()).Returns(improvementContext);
         using MergeTestBlockchain chain = await CreateBlockchain(null, null, payloadPreparationService);
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", payload.ToHexString(true));
         Assert.That(chain.JsonSerializer.Serialize(new
         {
@@ -311,7 +311,7 @@ public partial class EngineModuleTests
     public async Task getPayload_should_serialize_unknown_payload_response_properly()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         byte[] payloadId = Bytes.FromHexString("0x1111111111111111");
 
         string parameters = payloadId.ToHexString(true);
@@ -339,7 +339,7 @@ public partial class EngineModuleTests
 
         StoringBlockImprovementContextFactory improvementContextFactory = chain.StoringBlockImprovementContextFactory!;
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
@@ -381,7 +381,7 @@ public partial class EngineModuleTests
             ctx => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>()!, TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot))),
             timePerSlot, delay: delay);
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Task improvementWaitTask = chain.WaitForImprovedBlock();
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
@@ -440,7 +440,7 @@ public partial class EngineModuleTests
         });
         ;
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         chain.AddTransactions(tx1);
 
@@ -478,7 +478,7 @@ public partial class EngineModuleTests
             timePerSlot, delay: delay);
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.BlockImprovementContextFactory;
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Task blockImprovement = chain.WaitForImprovedBlock();
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
@@ -516,7 +516,7 @@ public partial class EngineModuleTests
             .AddSingleton(ConfigurePayloadPreparationService(timePerSlot, delay))
         );
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
 
         // creating chain with 30 blocks
         Task blockImprovementWait = chain.WaitForImprovedBlock();
@@ -596,7 +596,7 @@ public partial class EngineModuleTests
             (ctx) => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>()!, TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot))),
             timePerSlot, delay: delay);
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 blockX = chain.BlockTree.HeadHash;
         chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
 
@@ -662,7 +662,7 @@ public partial class EngineModuleTests
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 blockX = chain.BlockTree.HeadHash;
         await rpc.engine_forkchoiceUpdatedV1(
             new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
@@ -686,7 +686,7 @@ public partial class EngineModuleTests
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(Shanghai.Instance));
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 blockX = chain.BlockTree.HeadHash;
         await rpc.engine_forkchoiceUpdatedV2(
             new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
