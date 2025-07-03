@@ -42,7 +42,8 @@ public class ParityLikeTxTracer : TxTracer
         {
             TransactionHash = tx?.Hash,
             TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx),
-            BlockNumber = block.Number, BlockHash = block.Hash!
+            BlockNumber = block.Number,
+            BlockHash = block.Hash!
         };
 
         if ((_parityTraceTypes & ParityTraceTypes.StateDiff) != 0)
