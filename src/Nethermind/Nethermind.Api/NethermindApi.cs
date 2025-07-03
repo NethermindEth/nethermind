@@ -89,8 +89,6 @@ namespace Nethermind.Api
         public IEnode? Enode { get; set; }
         public IEthereumEcdsa EthereumEcdsa => Context.Resolve<IEthereumEcdsa>();
         public IFileSystem FileSystem { get; set; } = new FileSystem();
-        public IUnclesValidator? UnclesValidator => Context.Resolve<IUnclesValidator>();
-        public IHeaderValidator? HeaderValidator => Context.Resolve<IHeaderValidator>();
         public IEngineRequestsTracker EngineRequestsTracker => Context.Resolve<IEngineRequestsTracker>();
 
         public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =

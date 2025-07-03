@@ -208,7 +208,6 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         if (MergeEnabled)
         {
             ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-            ArgumentNullException.ThrowIfNull(_api.UnclesValidator);
             ArgumentNullException.ThrowIfNull(_api.ProtocolsManager);
             if (_api.BlockProductionPolicy is null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
 

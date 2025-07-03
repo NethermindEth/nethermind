@@ -36,11 +36,6 @@ namespace Nethermind.Api
 
         IEnode? Enode { get; set; }
 
-        [SkipServiceCollection]
-        IUnclesValidator? UnclesValidator { get; }
-
-        [SkipServiceCollection]
-        IHeaderValidator? HeaderValidator { get; }
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         IRewardCalculatorSource RewardCalculatorSource { get; }
         ISealer Sealer { get; }
