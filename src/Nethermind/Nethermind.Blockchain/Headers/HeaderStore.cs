@@ -99,23 +99,23 @@ public class HeaderStore : IHeaderStore
 
     public long? GetBlockNumber(Hash256 blockHash)
     {
-        long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
+        long? blockNumber = GetBlockNumberThroughCache(blockHash);
         if (blockNumber is not null) return blockNumber.Value;
 
         // Probably still hash based
         return Get(blockHash)?.Number;
     }
 
-    private long? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
+    private long? GetBlockNumberThroughCache(Hash256 blockHash)
     {
         if (_numberCache.TryGet(blockHash, out long value))
         {
             return value;
         }
-        return GetBlockNumberFromBlockNumberDbSlow(blockHash);
+        return GetBlockNumberFromBlockNumberDb(blockHash);
     }
 
-    private long? GetBlockNumberFromBlockNumberDbSlow(Hash256 blockHash)
+    private long? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
     {
         Span<byte> numberSpan = _blockNumberDb.GetSpan(blockHash);
         if (numberSpan.IsNullOrEmpty()) return null;
