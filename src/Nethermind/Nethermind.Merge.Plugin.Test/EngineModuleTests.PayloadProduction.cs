@@ -125,7 +125,8 @@ public partial class EngineModuleTests
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
 
         UInt256 totalValue = ((int)(count * value)).GWei();
-        chain.StateReader.GetBalance(getPayloadResult.StateRoot, recipient).Should().Be(totalValue);
+        BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(getPayloadResult.BlockHash);
+        chain.StateReader.GetBalance(payloadBlock, recipient).Should().Be(totalValue);
     }
 
     public static IEnumerable WaitTestCases

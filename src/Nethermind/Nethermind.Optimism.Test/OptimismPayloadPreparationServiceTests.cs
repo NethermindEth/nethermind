@@ -55,7 +55,7 @@ public class OptimismPayloadPreparationServiceTests
         specProvider.GetSpec(parent).Returns(releaseSpec);
 
         var stateProvider = Substitute.For<IWorldState>();
-        stateProvider.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
+        stateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
 
         var block = Build.A.Block
             .WithExtraData([])

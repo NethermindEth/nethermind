@@ -56,7 +56,7 @@ public interface IWorldStateManager
 
 public interface IOverridableWorldScope
 {
+    IDisposable BeginScope(BlockHeader? header);
     IVisitingWorldState WorldState { get; }
     IStateReader GlobalStateReader { get; }
-    void ResetOverrides();
 }

@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         public override IProofRpcModule Create()
         {
             // Note: No overridable world scope here. So there aren't any risk of leaking KV store.
-            IReadOnlyTxProcessingScope txProcessingEnv = readOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
+            IReadOnlyTxProcessingScope txProcessingEnv = readOnlyTxProcessingEnvFactory.Create().Build(null);
 
             ILifetimeScope tracerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             {

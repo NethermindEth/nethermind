@@ -56,7 +56,7 @@ public class TraceRpcModuleTests
                 {
                     transactions.Add(Core.Test.Builders.Build.A.Transaction
                         .WithTo(Address.Zero)
-                        .WithNonce(Blockchain.StateReader.GetNonce(stateRoot, TestItem.AddressB) + (UInt256)j)
+                        .WithNonce(Blockchain.StateReader.GetNonce(Blockchain.BlockTree.Head.Header, TestItem.AddressB) + (UInt256)j)
                         .SignedAndResolved(Blockchain.EthereumEcdsa, TestItem.PrivateKeyB).TestObject);
                 }
                 await Blockchain.AddBlockMayMissTx(transactions.ToArray());

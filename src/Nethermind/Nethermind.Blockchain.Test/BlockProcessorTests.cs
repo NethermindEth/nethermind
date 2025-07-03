@@ -60,7 +60,7 @@ public class BlockProcessorTests
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
         Block[] processedBlocks = processor.Process(
-            Keccak.EmptyTreeHash,
+            null,
             new List<Block> { block },
             ProcessingOptions.None,
             NullBlockTracer.Instance);
@@ -90,13 +90,13 @@ public class BlockProcessorTests
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
         Assert.Throws<OperationCanceledException>(() => processor.Process(
-            Keccak.EmptyTreeHash,
+            null,
             new List<Block> { block },
             ProcessingOptions.None,
             AlwaysCancelBlockTracer.Instance));
 
         Assert.Throws<OperationCanceledException>(() => processor.Process(
-            Keccak.EmptyTreeHash,
+            null,
             new List<Block> { block },
             ProcessingOptions.None,
             AlwaysCancelBlockTracer.Instance));
