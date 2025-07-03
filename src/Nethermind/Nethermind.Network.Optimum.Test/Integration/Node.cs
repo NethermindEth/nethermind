@@ -56,7 +56,7 @@ public class Node
     [Test]
     public async Task PublishAndSubscribeToTopic()
     {
-        using var grpcChannel = GrpcChannel.ForAddress(_grpcEndpoint, Configuration.DefaultGrpcChannelOptions);
+        using var grpcChannel = GrpcChannel.ForAddress(_grpcEndpoint, Options.DefaultGrpcChannelOptions);
 
         var client = new GrpcOptimumNodeClient(grpcChannel);
         var topic = Guid.NewGuid().ToString();
@@ -97,7 +97,7 @@ public class Node
     // - At the HTTP2 level (0x1, PROTOCOL_ERROR)
     public async Task PublishAndSubscribeToTopic_MultipleSubscribers()
     {
-        using var grpcChannel = GrpcChannel.ForAddress(_grpcEndpoint, Configuration.DefaultGrpcChannelOptions);
+        using var grpcChannel = GrpcChannel.ForAddress(_grpcEndpoint, Options.DefaultGrpcChannelOptions);
 
         var client = new GrpcOptimumNodeClient(grpcChannel);
         var topic = Guid.NewGuid().ToString();

@@ -17,7 +17,7 @@ public class Gateway
     public async Task SubscribeToTopic()
     {
         using var httpClient = new HttpClient() { BaseAddress = new Uri("http://localhost:8081") };
-        using var grpcChannel = GrpcChannel.ForAddress(new Uri("http://localhost:50051"), Configuration.DefaultGrpcChannelOptions);
+        using var grpcChannel = GrpcChannel.ForAddress(new Uri("http://localhost:50051"), Options.DefaultGrpcChannelOptions);
 
         var client = new GrpcOptimumGatewayClient(
             clientId: "nethermind-optimum-test-client",

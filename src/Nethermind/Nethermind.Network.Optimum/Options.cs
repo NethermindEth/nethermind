@@ -6,9 +6,9 @@ using System.Net.Http;
 using Grpc.Core;
 using Grpc.Net.Client;
 
-namespace Nethermind.Network.Optimum.Test.Integration;
+namespace Nethermind.Network.Optimum;
 
-public static class Configuration
+public static class Options
 {
     // NOTE: These are sane defaults to use across all gRPC channels.
     public static readonly GrpcChannelOptions DefaultGrpcChannelOptions = new GrpcChannelOptions
