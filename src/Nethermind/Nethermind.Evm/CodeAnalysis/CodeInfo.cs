@@ -75,6 +75,6 @@ public sealed class CodeInfo(ReadOnlyMemory<byte> code, ValueHash256? codeHash =
         if (Interlocked.Increment(ref _callCount) != vmConfig.IlEvmAnalysisThreshold)
             return;
 
-        IlAnalyzer.Enqueue(this, vmConfig, logger);
+        //IlAnalyzer.Enqueue(this, vmConfig, logger);
     }
 }
