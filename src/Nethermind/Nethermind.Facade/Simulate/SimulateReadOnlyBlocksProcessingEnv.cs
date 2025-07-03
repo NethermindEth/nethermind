@@ -21,6 +21,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.BlockProcessor;
 
