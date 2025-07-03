@@ -156,16 +156,6 @@ namespace Nethermind.Init.Steps
 
             if (historyConfig.Enabled)
             {
-                // HistoryPruner historyPruner = new(
-                //     _api.BlockTree!,
-                //     _api.ReceiptStorage!,
-                //     _api.SpecProvider!,
-                //     historyConfig,
-                //     (long)blocksConfig.SecondsPerSlot,
-                //     _api.LogManager);
-                // historyPruner.CheckConfig();
-                // setApi.HistoryPruner = historyPruner;
-
                 blockchainProcessor.ProcessingQueueEmpty += _api.HistoryPruner!.OnBlockProcessorQueueEmpty;
             }
 

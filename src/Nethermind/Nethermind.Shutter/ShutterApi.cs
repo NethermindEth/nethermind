@@ -21,7 +21,6 @@ using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
-using Nethermind.Evm.State;
 
 namespace Nethermind.Shutter;
 

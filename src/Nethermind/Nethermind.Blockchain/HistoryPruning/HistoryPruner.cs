@@ -16,29 +16,47 @@ using Nethermind.State.Repositories;
 
 namespace Nethermind.Blockchain.HistoryPruning;
 
-public class HistoryPruner(
-    IBlockTree blockTree,
-    IReceiptStorage receiptStorage,
-    ISpecProvider specProvider,
-    IBlockStore blockStore,
-    IChainLevelInfoRepository chainLevelInfoRepository,
-    IHistoryConfig historyConfig,
-    long secondsPerSlot,
-    ILogManager logManager) : IHistoryPruner
+public class HistoryPruner : IHistoryPruner
 {
     private Task? _pruneHistoryTask;
     private readonly Lock _pruneLock = new();
     private ulong _lastPrunedTimestamp;
-    private readonly ISpecProvider _specProvider = specProvider;
-    private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly IBlockTree _blockTree = blockTree;
-    private readonly IReceiptStorage _receiptStorage = receiptStorage;
-    private readonly IBlockStore _blockStore = blockStore;
-    private readonly IChainLevelInfoRepository _chainLevelInfoRepository = chainLevelInfoRepository;
-    private readonly IHistoryConfig _historyConfig = historyConfig;
-    private readonly bool _enabled = historyConfig.Enabled;
-    private readonly long _epochLength = secondsPerSlot * 32;
-    private readonly long _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
+    private readonly ISpecProvider _specProvider;
+    private readonly ILogger _logger;
+    private readonly IBlockTree _blockTree ;
+    private readonly IReceiptStorage _receiptStorage;
+    private readonly IBlockStore _blockStore;
+    private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
+    private readonly IHistoryConfig _historyConfig;
+    private readonly bool _enabled;
+    private readonly long _epochLength;
+    private readonly long _minHistoryRetentionEpochs;
+
+    public class HistoryPrunerException(string message, Exception? innerException = null) : Exception(message, innerException);
+
+    public HistoryPruner(
+        IBlockTree blockTree,
+        IReceiptStorage receiptStorage,
+        ISpecProvider specProvider,
+        IBlockStore blockStore,
+        IChainLevelInfoRepository chainLevelInfoRepository,
+        IHistoryConfig historyConfig,
+        long secondsPerSlot,
+        ILogManager logManager)
+    {
+        _specProvider = specProvider;
+        _logger = logManager.GetClassLogger();
+        _blockTree = blockTree;
+        _receiptStorage = receiptStorage;
+        _blockStore = blockStore;
+        _chainLevelInfoRepository = chainLevelInfoRepository;
+        _historyConfig = historyConfig;
+        _enabled = historyConfig.Enabled;
+        _epochLength = secondsPerSlot * 32;
+        _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
+
+        CheckConfig();
+    }
 
     public void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
     {
@@ -64,15 +82,13 @@ public class HistoryPruner(
         await _pruneHistoryTask;
     }
 
-    public bool CheckConfig()
+    private void CheckConfig()
     {
         if (_historyConfig.HistoryRetentionEpochs is not null &&
             _historyConfig.HistoryRetentionEpochs < _minHistoryRetentionEpochs)
         {
-            _logger.Error($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
-            return false;
+            throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
         }
-        return true;
     }
 
     private bool ShouldPruneHistory()

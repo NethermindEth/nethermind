@@ -46,12 +46,8 @@ using Nethermind.Blockchain.HistoryPruning;
 
 namespace Nethermind.Api
 {
-    public class NethermindApi : INethermindApi
+    public class NethermindApi(NethermindApi.Dependencies dependencies) : INethermindApi
     {
-        public NethermindApi(Dependencies dependencies)
-        {
-            _dependencies = dependencies;
-        }
 
         // A simple class to prevent having to modify subclass of NethermindApi many time
         public record Dependencies(
@@ -65,7 +61,7 @@ namespace Nethermind.Api
             ILifetimeScope Context
         );
 
-        private Dependencies _dependencies;
+        private Dependencies _dependencies = dependencies;
 
         public IBlockchainBridge CreateBlockchainBridge()
         {

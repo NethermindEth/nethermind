@@ -128,10 +128,7 @@ namespace Nethermind.Init.Steps
                     historyConfig,
                     (long)blocksConfig.SecondsPerSlot,
                     logManager);
-                historyPruner.CheckConfig();
                 _set.HistoryPruner = historyPruner;
-
-                // blockchainProcessor.ProcessingQueueEmpty += historyPruner.OnBlockProcessorQueueEmpty;
             }
 
             return Task.CompletedTask;

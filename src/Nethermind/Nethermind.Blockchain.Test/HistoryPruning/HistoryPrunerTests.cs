@@ -144,7 +144,6 @@ public class HistoryPrunerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(historyPruner.CheckConfig());
             Assert.That(testBlockchain.BlockTree.FindBlock(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block should still exist");
             Assert.That(testBlockchain.BlockTree.FindHeader(0, BlockTreeLookupOptions.None), Is.Not.Null, "Genesis block header should still exist");
             Assert.That(testBlockchain.BlockTree.FindCanonicalBlockInfo(0), Is.Not.Null, "Genesis block info should still exist");
@@ -223,7 +222,6 @@ public class HistoryPrunerTests
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(historyPruner.CheckConfig());
                 Assert.That(testBlockchain.BlockTree.FindBlock(i, BlockTreeLookupOptions.None), Is.Not.Null, $"Block {i} should still exist");
                 Assert.That(testBlockchain.BlockTree.FindHeader(i, BlockTreeLookupOptions.None), Is.Not.Null, $"Header {i} should still exist");
                 Assert.That(testBlockchain.BlockTree.FindCanonicalBlockInfo(i), Is.Not.Null, $"Block info {i} should still exist");
@@ -247,7 +245,7 @@ public class HistoryPrunerTests
             DropPreMerge = false
         };
 
-        HistoryPruner historyPruner = new(
+        Assert.DoesNotThrow(() => new HistoryPruner(
             Substitute.For<IBlockTree>(),
             Substitute.For<IReceiptStorage>(),
             Substitute.For<ISpecProvider>(),
@@ -255,9 +253,7 @@ public class HistoryPrunerTests
             Substitute.For<IChainLevelInfoRepository>(),
             validHistoryConfig,
             SecondsPerSlot,
-            LimboLogs.Instance);
-
-        Assert.That(historyPruner.CheckConfig());
+            LimboLogs.Instance));
     }
 
     [Test]
@@ -269,7 +265,7 @@ public class HistoryPrunerTests
             DropPreMerge = false
         };
 
-        HistoryPruner historyPruner = new(
+        Assert.Throws<HistoryPruner.HistoryPrunerException>(() => new HistoryPruner(
             Substitute.For<IBlockTree>(),
             Substitute.For<IReceiptStorage>(),
             Substitute.For<ISpecProvider>(),
@@ -277,9 +273,7 @@ public class HistoryPrunerTests
             Substitute.For<IChainLevelInfoRepository>(),
             invalidHistoryConfig,
             SecondsPerSlot,
-            LimboLogs.Instance);
-
-        Assert.That(!historyPruner.CheckConfig());
+            LimboLogs.Instance));
     }
 
     // [Test, MaxTime(Timeout.MaxTestTime)]
