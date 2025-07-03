@@ -60,6 +60,7 @@ public class TestBlockchain : IDisposable
     public ITxPool TxPool => _fromContainer.TxPool;
     public IWorldStateManager WorldStateManager => _fromContainer.WorldStateManager;
     public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => _fromContainer.ReadOnlyTxProcessingEnvFactory;
+    public IShareableTxProcessorSource ShareableTxProcessorSource => _fromContainer.ShareableTxProcessorSource;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
@@ -160,6 +161,7 @@ public class TestBlockchain : IDisposable
         Lazy<PoWTestBlockchainUtil> PoWTestBlockchainUtil,
         ManualTimestamper ManualTimestamper,
         IManualBlockProductionTrigger BlockProductionTrigger,
+        IShareableTxProcessorSource ShareableTxProcessorSource,
         ISealer Sealer
     )
     {

@@ -54,6 +54,7 @@ public class BlockProcessingModule : Module
             .AddScoped<BlockProcessor.IBlockProductionTransactionPicker, ISpecProvider, IBlocksConfig>((specProvider, blocksConfig) =>
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
             .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
+            .AddSingleton<IShareableTxProcessorSource, ShareableTxProcessingSource>()
 
             .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()
             .AddScopedOpenGeneric(typeof(IOverridableEnv<>), typeof(DisposableScopeOverridableEnv<>))

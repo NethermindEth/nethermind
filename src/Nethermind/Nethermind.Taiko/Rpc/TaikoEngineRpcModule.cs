@@ -53,7 +53,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
+        IShareableTxProcessorSource txProcessorSource,
         IRlpStreamDecoder<Transaction> txDecoder,
         IL1OriginStore l1OriginStore) :
             EngineRpcModule(getPayloadHandlerV1,
@@ -137,8 +137,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             return ResultWrapper<PreBuiltTxList[]?>.Success([]);
         }
 
-        IReadOnlyTxProcessorSource readonlyTxProcessingEnv = readOnlyTxProcessingEnvFactory.Create();
-        using IReadOnlyTxProcessingScope scope = readonlyTxProcessingEnv.Build(head.StateRoot);
+        using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(head);
 
         return ResultWrapper<PreBuiltTxList[]?>.Success(ProcessTransactions(scope.TransactionProcessor, scope.WorldState, new BlockHeader(
                 head.Hash!,
