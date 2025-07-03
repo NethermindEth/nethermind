@@ -14,6 +14,9 @@ using System.Threading.Tasks;
 namespace Nethermind.Evm.Config;
 public class VMConfig : IVMConfig
 {
+
+    const string WETH = "0xd0a06b12ac47863b5c7be4185c2deaad1c61557033f56c7d4ea74429cbb25e23";
+
     public bool IsILEvmEnabled { get; set; } = false;
     public ILMode IlEvmEnabledMode { get; set; } = ILMode.NO_ILVM;
     public int IlEvmAnalysisThreshold { get; set; } = 32;
@@ -25,5 +28,6 @@ public class VMConfig : IVMConfig
     public float IlEvmAnalysisCoreUsage { get; set; } = 0.0f;
     public int? IlEvmBytecodeMaxLength { get; set; } = null;
     public int IlEvmBytecodeMinLength { get; set; } = 16;
-    public string[] IlEvmAllowedContracts { get; set; } = Array.Empty<string>();
+    public string[] IlEvmAllowedContracts { get; set; } = [WETH];
+
 }
