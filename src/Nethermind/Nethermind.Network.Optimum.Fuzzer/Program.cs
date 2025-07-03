@@ -87,7 +87,7 @@ public static class FuzzerCliOptions
         DefaultValueFactory = (_) => 1
     }.Validated(Validators.Positive);
 
-    public static readonly Option<LogLevel> Logging = new Option<LogLevel>("--logging")
+    public static readonly Option<LogLevel> Logging = new Option<LogLevel>("--log")
     {
         Description = "Log level",
         DefaultValueFactory = (_) => LogLevel.Information
