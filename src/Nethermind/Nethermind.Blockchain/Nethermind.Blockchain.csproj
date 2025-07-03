@@ -18,4 +18,11 @@
   <ItemGroup>
     <PackageReference Include="Polly" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="Data\JSTracers\*.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </None>
+  </ItemGroup>
 </Project>

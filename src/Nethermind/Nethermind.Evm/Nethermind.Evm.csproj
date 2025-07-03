@@ -21,11 +21,4 @@
     <PackageReference Include="Nethermind.Crypto.SecP256r1" />
     <PackageReference Include="Nethermind.GmpBindings" />
   </ItemGroup>
-  <ItemGroup>
-    <None Update="Data\JSTracers\*.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
-    </None>
-  </ItemGroup>
 </Project>
