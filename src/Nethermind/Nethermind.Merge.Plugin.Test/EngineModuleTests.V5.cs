@@ -42,7 +42,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
+            NewPayloadTimeoutMs = 1000
         });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
@@ -71,7 +71,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
+            NewPayloadTimeoutMs = 1000
         });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
@@ -86,7 +86,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
+            NewPayloadTimeoutMs = 1000
         });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
@@ -114,7 +114,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
+            NewPayloadTimeoutMs = 1000
         });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
@@ -140,7 +140,7 @@ public partial class EngineModuleTests
 
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
+            NewPayloadTimeoutMs = 1000
         });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
 

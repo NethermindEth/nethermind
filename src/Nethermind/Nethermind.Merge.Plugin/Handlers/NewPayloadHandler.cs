@@ -80,7 +80,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _mergeSyncController = mergeSyncController;
         _logger = logManager.GetClassLogger();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
-        _timeout = TimeSpan.FromSeconds(mergeConfig.NewPayloadTimeout);
+        _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadTimeoutMs);
         if (cacheSize > 0)
             _latestBlocks = new(cacheSize, 0, "LatestBlocks");
         _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
