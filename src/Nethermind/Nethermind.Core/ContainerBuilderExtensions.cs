@@ -338,6 +338,15 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder Intercept<T>(this ContainerBuilder builder, Action<T> interceptor) where T : class
+    {
+        return builder.AddDecorator<T>((ctx, service) =>
+        {
+            interceptor(service);
+            return service;
+        });
+    }
+
     /// <summary>
     /// A convenient way of creating a service whose member can be configured indipendent of other instance of the same
     /// type (assuming the type is of lifetime scope). This is useful for same type with multiple configuration

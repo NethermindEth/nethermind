@@ -71,7 +71,6 @@ namespace Nethermind.Api
             return Context.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
         }
 
-        public IAbiEncoder AbiEncoder => Context.Resolve<IAbiEncoder>();
         public IBlobTxStorage? BlobTxStorage { get; set; }
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
@@ -90,8 +89,6 @@ namespace Nethermind.Api
         public IEnode? Enode { get; set; }
         public IEthereumEcdsa EthereumEcdsa => Context.Resolve<IEthereumEcdsa>();
         public IFileSystem FileSystem { get; set; } = new FileSystem();
-        public IUnclesValidator? UnclesValidator => Context.Resolve<IUnclesValidator>();
-        public IHeaderValidator? HeaderValidator => Context.Resolve<IHeaderValidator>();
         public IEngineRequestsTracker EngineRequestsTracker => Context.Resolve<IEngineRequestsTracker>();
 
         public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
@@ -135,7 +132,6 @@ namespace Nethermind.Api
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
-        public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
         public IBlockFinalizationManager? FinalizationManager { get; set; }
 
@@ -143,7 +139,7 @@ namespace Nethermind.Api
         public IGasPriceOracle GasPriceOracle => Context.Resolve<IGasPriceOracle>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
-        public CensorshipDetector CensorshipDetector { get; set; } = null!;
+        public ICensorshipDetector CensorshipDetector { get; set; } = new NoopCensorshipDetector();
         public IWallet? Wallet { get; set; }
         public IBadBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }

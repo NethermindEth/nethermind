@@ -67,6 +67,9 @@ public interface IMergeConfig : IConfig
     [ConfigItem(Description = "The timeout, in seconds, for the `engine_newPayload` method.", DefaultValue = "7", HiddenFromDocs = true)]
     public double NewPayloadTimeout { get; }
 
+    [ConfigItem(Description = "Cache NewPayload valid or invalid results", DefaultValue = "50", HiddenFromDocs = true)]
+    public int NewPayloadCacheSize { get; }
+
     [ConfigItem(Description = "[TECHNICAL] Simulate block production for every possible slot. Just for stress-testing purposes.", DefaultValue = "false", HiddenFromDocs = true)]
     bool SimulateBlockProduction { get; set; }
 }
