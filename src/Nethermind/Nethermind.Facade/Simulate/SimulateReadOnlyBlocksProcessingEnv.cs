@@ -48,7 +48,7 @@ public class SimulateBlockValidationTransactionsExecutor(
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,
         CancellationToken token = default)
     {
-        if (!simulateState.BlobBaseFeeOverride.HasValue)
+        if (!simulateState.Validate)
         {
             processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce | ProcessingOptions.NoValidation;
         }
