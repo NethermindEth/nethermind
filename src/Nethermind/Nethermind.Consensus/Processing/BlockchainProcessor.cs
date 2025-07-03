@@ -22,6 +22,7 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
 

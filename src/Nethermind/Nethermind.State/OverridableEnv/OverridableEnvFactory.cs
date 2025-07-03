@@ -7,9 +7,10 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.State;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
 
-namespace Nethermind.Evm.OverridableEnv;
+namespace Nethermind.State.OverridableEnv;
 
 public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<ICodeInfoRepository> codeInfoRepositoryFunc, ISpecProvider specProvider) : IOverridableEnvFactory
 {
@@ -64,7 +65,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, Func<IC
 
         protected override void Load(ContainerBuilder builder) =>
             builder
-                .AddScoped<IWorldState>(overridableScope.WorldState)
+                .AddScoped<IVisitingWorldState>(overridableScope.WorldState).AddScoped<IWorldState>(overridableScope.WorldState)
                 .AddScoped<IStateReader>(overridableScope.GlobalStateReader)
                 .AddScoped<IOverridableEnv>(this)
                 .AddScoped<ICodeInfoRepository>(codeInfoRepository);

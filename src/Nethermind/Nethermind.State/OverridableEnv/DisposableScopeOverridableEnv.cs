@@ -5,8 +5,9 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 
-namespace Nethermind.Evm.OverridableEnv;
+namespace Nethermind.State.OverridableEnv;
 
 /// <summary>
 /// A utility that provide `IOverridableEnv<T>`

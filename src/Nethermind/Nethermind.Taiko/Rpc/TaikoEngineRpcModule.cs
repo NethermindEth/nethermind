@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.IO;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -28,8 +29,8 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.TxPool;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Taiko.Rpc;
 

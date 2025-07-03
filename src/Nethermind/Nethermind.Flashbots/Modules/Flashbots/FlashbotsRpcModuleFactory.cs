@@ -10,11 +10,11 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Flashbots.Handlers;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Flashbots.Modules.Flashbots
 {

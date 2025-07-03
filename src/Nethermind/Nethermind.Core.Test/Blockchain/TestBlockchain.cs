@@ -40,6 +40,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
