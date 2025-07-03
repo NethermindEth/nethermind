@@ -1,6 +1,3 @@
 [submodule "src/tests"]
 	path = src/tests
 	url = https://github.com/ethereum/tests.git
-[submodule "src/bench_precompiles"]
-	path = src/bench_precompiles
-	url = https://github.com/shamatar/bench_precompiles.git
