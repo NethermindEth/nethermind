@@ -62,11 +62,8 @@ public class TxPoolContentListsTests
         IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
         scope.TransactionProcessor.Returns(transactionProcessor);
 
-        IReadOnlyTxProcessorSource txProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        txProcessorSource.Build(Arg.Any<Hash256>()).Returns(scope);
-
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
-        readOnlyTxProcessingEnvFactory.Create().Returns(txProcessorSource);
+        IShareableTxProcessorSource shareableTxProcessor = Substitute.For<IShareableTxProcessorSource>();
+        shareableTxProcessor.Build(Arg.Any<BlockHeader?>()).Returns(scope);
 
         TaikoEngineRpcModule taikoAuthRpcModule = new(
             Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
@@ -88,7 +85,7 @@ public class TxPoolContentListsTests
             Substitute.For<ILogManager>(),
             txPool,
             blockFinder,
-            readOnlyTxProcessingEnvFactory,
+            shareableTxProcessor,
             TxDecoder.Instance,
             Substitute.For<IL1OriginStore>()
         );
