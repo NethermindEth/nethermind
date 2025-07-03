@@ -70,9 +70,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
         IReadOnlyDbProvider readOnlyDbProvider,
         IBlockTree blockTree,
         ISpecProvider specProvider,
-        ISimulateTransactionProcessorFactory transactionProcessorFactory,
-        ILogManager? logManager = null,
-        bool validate = false)
+        ILogManager? logManager = null)
     {
         SpecProvider = specProvider;
         DbProvider = readOnlyDbProvider;
@@ -83,7 +81,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
         SimulateBlockhashProvider blockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager), BlockTree);
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
         SimulateVirtualMachine virtualMachine = new SimulateVirtualMachine(new VirtualMachine(blockhashProvider, specProvider, logManager));
-        _transactionProcessor = transactionProcessorFactory.CreateTransactionProcessor(SpecProvider, StateProvider, virtualMachine, CodeInfoRepository, _logManager, validate);
+        _transactionProcessor = new TransactionProcessor(SpecProvider, StateProvider, virtualMachine, CodeInfoRepository, _logManager);
         _blockValidator = CreateValidator();
         BlockTransactionPicker = new BlockProductionTransactionPicker(specProvider, ignoreEip3607: true);
     }
@@ -115,12 +113,25 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
         return new SimulateBlockValidatorProxy(blockValidator);
     }
 
-    public IBlockProcessor GetProcessor(bool validate, UInt256? blobBaseFeeOverride) =>
-        new BlockProcessor(
+    public IBlockProcessor GetProcessor(bool validate, UInt256? blobBaseFeeOverride)
+    {
+        ITransactionProcessorAdapter adapter;
+        if (validate)
+        {
+            adapter = new ExecuteTransactionProcessorAdapter(_transactionProcessor);
+        }
+        else
+        {
+            adapter = new TraceTransactionProcessorAdapter(_transactionProcessor);
+        }
+
+        return new BlockProcessor(
             SpecProvider,
             _blockValidator,
             NoBlockRewards.Instance,
-            new SimulateBlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(_transactionProcessor), StateProvider, validate, blobBaseFeeOverride),
+            new SimulateBlockValidationTransactionsExecutor(
+                adapter, StateProvider, validate,
+                blobBaseFeeOverride),
             StateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(_transactionProcessor, StateProvider),
@@ -129,4 +140,5 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
             new WithdrawalProcessor(StateProvider, _logManager),
             new ExecutionRequestsProcessor(_transactionProcessor)
         );
+    }
 }

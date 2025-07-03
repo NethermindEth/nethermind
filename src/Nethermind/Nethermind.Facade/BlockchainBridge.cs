@@ -168,7 +168,7 @@ namespace Nethermind.Facade
 
         public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, CancellationToken cancellationToken)
         {
-            SimulateReadOnlyBlocksProcessingEnv env = _simulateProcessingEnvFactory.Create(payload.Validation);
+            SimulateReadOnlyBlocksProcessingEnv env = _simulateProcessingEnvFactory.Create();
             IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, _specProvider, header);
             return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, cancellationToken);
         }
