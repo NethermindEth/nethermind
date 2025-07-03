@@ -47,22 +47,22 @@ public class BackgroundTaskSchedulerTests
 
         int counter = 0;
 
-        ManualResetEvent waitSignal = new ManualResetEvent(false);
+        SemaphoreSlim waitSignal = new SemaphoreSlim(0);
         scheduler.ScheduleTask(1, async (_, token) =>
         {
             counter++;
-            await waitSignal.WaitOneAsync(token);
+            await waitSignal.WaitAsync(token);
             counter--;
         });
         scheduler.ScheduleTask(1, async (_, token) =>
         {
             counter++;
-            await waitSignal.WaitOneAsync(token);
+            await waitSignal.WaitAsync(token);
             counter--;
         });
 
         Assert.That(() => counter, Is.EqualTo(2).After(5000, 1));
-        waitSignal.Set();
+        waitSignal.Release(2);
     }
 
     [Test]
@@ -111,7 +111,7 @@ public class BackgroundTaskSchedulerTests
         executionCount.Should().Be(0);
 
         _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
-        Assert.That(() => executionCount, Is.EqualTo(5).After(10, 1));
+        Assert.That(() => executionCount, Is.EqualTo(5).After(50, 1));
     }
 
     [Test]

@@ -19,6 +19,7 @@ using Nethermind.Evm;
 using System.Collections;
 using System.Linq;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Consensus.Processing;
@@ -67,7 +68,7 @@ public class TxPoolContentListsTests
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         readOnlyTxProcessingEnvFactory.Create().Returns(txProcessorSource);
 
-        TaikoEngineRpcModule taikoRpcModule = new(
+        TaikoEngineRpcModule taikoAuthRpcModule = new(
             Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
             Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
             Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
@@ -88,10 +89,11 @@ public class TxPoolContentListsTests
             txPool,
             blockFinder,
             readOnlyTxProcessingEnvFactory,
-            TxDecoder.Instance
+            TxDecoder.Instance,
+            Substitute.For<IL1OriginStore>()
         );
 
-        ResultWrapper<PreBuiltTxList[]?> result = taikoRpcModule.taikoAuth_txPoolContent(
+        ResultWrapper<PreBuiltTxList[]?> result = taikoAuthRpcModule.taikoAuth_txPoolContent(
             Address.Zero,
             7,
             blockGasLimit,

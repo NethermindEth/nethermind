@@ -15,27 +15,30 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
+using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.BlockProcessor;
 
 namespace Nethermind.Facade.Simulate;
 
 public class SimulateBlockValidationTransactionsExecutor(
-    ITransactionProcessor transactionProcessor,
+    ITransactionProcessorAdapter transactionProcessor,
     IWorldState stateProvider,
     bool validate,
     UInt256? blobBaseFeeOverride)
     : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
 {
-    protected override void EnhanceBlockExecutionContext(Block block)
+    protected override void EnhanceBlockExecutionContext(Block block, IReleaseSpec spec)
     {
         if (blobBaseFeeOverride is not null)
         {
-            SetBlockExecutionContext(new BlockExecutionContext(block.Header, blobBaseFeeOverride.Value));
+            SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec, blobBaseFeeOverride.Value));
         }
     }
 
@@ -117,7 +120,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
             SpecProvider,
             _blockValidator,
             NoBlockRewards.Instance,
-            new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, StateProvider, validate, blobBaseFeeOverride),
+            new SimulateBlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(_transactionProcessor), StateProvider, validate, blobBaseFeeOverride),
             StateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(_transactionProcessor, StateProvider),

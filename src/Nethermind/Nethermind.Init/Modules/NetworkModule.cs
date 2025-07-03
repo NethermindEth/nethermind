@@ -33,6 +33,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
         builder
             .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
             .AddSingleton<IIPResolver, IPResolver>()
+            .AddSingleton<IForkInfo, ForkInfo>()
 
             // Rlpxhost
             .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()

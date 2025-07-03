@@ -39,26 +39,20 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
     public bool Enabled => shutterConfig.Enabled && mergeConfig.Enabled && chainSpec.SealEngineType is SealEngineType.AuRa;
     public int Priority => PluginPriorities.Shutter;
 
-    private INethermindApi? _api;
-    private ShutterApi ShutterApi => _api!.Context.Resolve<ShutterApi>();
     private ILogger _logger;
 
     public class ShutterLoadingException(string message, Exception? innerException = null) : Exception(message, innerException);
 
     public Task Init(INethermindApi nethermindApi)
     {
-        _api = nethermindApi;
-        _logger = _api.LogManager.GetClassLogger();
+        _logger = nethermindApi.LogManager.GetClassLogger();
         if (_logger.IsInfo) _logger.Info($"Initializing Shutter plugin.");
         return Task.CompletedTask;
     }
 
     public Task InitRpcModules()
     {
-        if (_api!.BlockProducer is null) throw new ArgumentNullException(nameof(_api.BlockProducer));
-
         if (_logger.IsInfo) _logger.Info("Initializing Shutter block improvement.");
-        _api.BlockImprovementContextFactory = ShutterApi.GetBlockImprovementContextFactory(_api.BlockProducer);
         return Task.CompletedTask;
     }
 
@@ -70,11 +64,6 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    public IEnumerable<StepInfo> GetSteps()
-    {
-        yield return typeof(RunShutterP2P);
-    }
-
     public IModule? Module => new ShutterPluginModule();
 }
 
@@ -83,9 +72,12 @@ public class ShutterPluginModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
+            .AddStep(typeof(RunShutterP2P)) // Where it start the p2p
+
             .AddSingleton(CreateShutterApi)
             .Bind<IShutterApi, ShutterApi>()
             .AddDecorator<IBlockProducerTxSourceFactory, ShutterAdditionalBlockProductionTxSource>()
+            .AddSingleton<IBlockImprovementContextFactory, ShutterApi, IBlockProducer>((api, blockProducer) => api.GetBlockImprovementContextFactory(blockProducer))
             ;
     }
 

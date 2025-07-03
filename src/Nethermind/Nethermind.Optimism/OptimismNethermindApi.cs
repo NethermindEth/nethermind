@@ -17,5 +17,4 @@ public class OptimismNethermindApi : NethermindApi
 
     public ICostHelper L1CostHelper { get; }
     public IOptimismSpecHelper SpecHelper { get; }
-    public IOptimismEthRpcModule? OptimismEthRpcModule { get; set; }
 }

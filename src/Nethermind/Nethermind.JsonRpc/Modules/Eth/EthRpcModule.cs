@@ -12,7 +12,6 @@ using DotNetty.Buffers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -32,7 +31,6 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
@@ -108,9 +106,9 @@ public partial class EthRpcModule(
         return ResultWrapper<Address>.Success(Address.Zero);
     }
 
-    public ResultWrapper<UInt256?> eth_gasPrice()
+    public async Task<ResultWrapper<UInt256?>> eth_gasPrice()
     {
-        return ResultWrapper<UInt256?>.Success(_gasPriceOracle.GetGasPriceEstimate());
+        return ResultWrapper<UInt256?>.Success(await _gasPriceOracle.GetGasPriceEstimate());
     }
 
     public ResultWrapper<UInt256?> eth_blobBaseFee()

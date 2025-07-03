@@ -1,22 +1,26 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.IO;
 using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Evm;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -25,11 +29,8 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.TxPool;
-using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Processing;
-using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -53,7 +54,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ITxPool txPool,
         IBlockFinder blockFinder,
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
-        IRlpStreamDecoder<Transaction> txDecoder) :
+        IRlpStreamDecoder<Transaction> txDecoder,
+        IL1OriginStore l1OriginStore) :
             EngineRpcModule(getPayloadHandlerV1,
                 getPayloadHandlerV2,
                 getPayloadHandlerV3,
@@ -118,7 +120,15 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         IEnumerable<Transaction> allTxs = pendingTxs.SelectMany(txs => txs.Value).Where(tx => !tx.SupportsBlobs && tx.CanPayBaseFee(baseFee));
 
-        Transaction[] txQueue = [.. minTip is 0 ? allTxs : allTxs.Where(tx => tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas) && premiumPerGas >= minTip)];
+        IEnumerable<Transaction> filteredTx =
+            allTxs.Where(tx => (tx.Supports1559 ? tx.MaxFeePerGas : tx.GasPrice) >= baseFee);
+
+        if (minTip is not 0)
+        {
+            filteredTx = filteredTx.Where(tx => tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas) && premiumPerGas >= minTip);
+        }
+
+        Transaction[] txQueue = filteredTx.ToArray();
 
         BlockHeader? head = blockFinder.Head?.Header;
 
@@ -219,19 +229,17 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                         while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
                         continue;
                     }
-                    else
+
+                    CommitAndDisposeBatch(batch);
+
+                    if (maxBatchCount == Batches.Count)
                     {
-                        CommitAndDisposeBatch(batch);
-
-                        if (maxBatchCount == Batches.Count)
-                        {
-                            return [.. Batches];
-                        }
-
-                        batch = new(maxBytesPerTxList, txSource.Length - i, txDecoder);
-
-                        continue;
+                        return [.. Batches];
                     }
+
+                    batch = new(maxBytesPerTxList, txSource.Length - i, txDecoder);
+
+                    continue;
                 }
 
                 i++;
@@ -330,5 +338,17 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         {
             Transactions.Dispose();
         }
+    }
+
+    public ResultWrapper<UInt256> taikoAuth_setHeadL1Origin(UInt256 blockId)
+    {
+        l1OriginStore.WriteHeadL1Origin(blockId);
+        return ResultWrapper<UInt256>.Success(blockId);
+    }
+
+    public ResultWrapper<L1Origin> taikoAuth_updateL1Origin(L1Origin l1Origin)
+    {
+        l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
+        return ResultWrapper<L1Origin>.Success(l1Origin);
     }
 }

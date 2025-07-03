@@ -1,69 +1,63 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
     public class ProofModuleFactory(
-        IWorldStateManager worldStateManager,
-        IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
-        IBlockTree blockTree,
-        IBlockPreprocessorStep recoveryStep,
-        IReceiptFinder receiptFinder,
-        ISpecProvider specProvider,
-        ILogManager logManager)
-        : ModuleFactoryBase<IProofRpcModule>
+        ILifetimeScope rootLifetimeScope,
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory
+    ) : ModuleFactoryBase<IProofRpcModule>
     {
-        private readonly IBlockPreprocessorStep _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-        private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-        protected readonly ISpecProvider SpecProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        protected readonly ILogManager LogManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        protected readonly IReadOnlyBlockTree BlockTree = blockTree.AsReadOnly();
-        protected readonly IWorldStateManager WorldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
-
-        protected virtual IBlockProcessor.IBlockTransactionsExecutor CreateRpcBlockTransactionsExecutor(IReadOnlyTxProcessingScope scope)
-        {
-            return new RpcBlockTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
-        }
 
         public override IProofRpcModule Create()
         {
-            IReadOnlyTxProcessorSource txProcessingEnv = txProcessingEnvFactory.Create();
+            // Note: No overridable world scope here. So there aren't any risk of leaking KV store.
+            IReadOnlyTxProcessingScope txProcessingEnv = readOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
 
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+            ILifetimeScope tracerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
+            {
+                builder
 
-            IBlockProcessor.IBlockTransactionsExecutor traceExecutor = CreateRpcBlockTransactionsExecutor(scope);
+                    // Standard read only chain setting
+                    .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
+                    .AddScoped<ITransactionProcessorAdapter, TraceTransactionProcessorAdapter>()
+                    .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+                    .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+                    .AddScoped<IBlockValidator>(Always.Valid) // Why?
 
-            ReadOnlyChainProcessingEnv chainProcessingEnv = new(
-                scope,
-                Always.Valid,
-                _recoveryStep,
-                NoBlockRewards.Instance,
-                new InMemoryReceiptStorage(),
-                SpecProvider,
-                BlockTree,
-                WorldStateManager.GlobalStateReader,
-                LogManager,
-                traceExecutor);
+                    // Specific for proof rpc
+                    .AddScoped<IReceiptStorage>(new InMemoryReceiptStorage()) // Umm.... not `NullReceiptStorage`?
+                    .AddScoped<IRewardCalculator>(NoBlockRewards.Instance)
+                    .AddScoped<IVisitingWorldState>(txProcessingEnv.WorldState).AddScoped<IWorldState>(txProcessingEnv.WorldState)
 
-            Tracer tracer = new(
-                scope,
-                chainProcessingEnv.ChainProcessor,
-                chainProcessingEnv.ChainProcessor);
+                    .AddScoped<ITracer, Tracer>()
+                    ;
+            });
 
-            return new ProofRpcModule(tracer, BlockTree, _receiptFinder, SpecProvider, LogManager);
+            // The tracer need a in memory receipts while the proof RPC does not.
+            // Eh, its a good idea to separate what need block processing and what does not anyway.
+            ILifetimeScope proofRpcScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
+            {
+                builder.AddSingleton<ITracer>(tracerScope.Resolve<ITracer>());
+            });
+
+            proofRpcScope.Disposer.AddInstanceForAsyncDisposal(tracerScope);
+            rootLifetimeScope.Disposer.AddInstanceForDisposal(proofRpcScope);
+
+            return proofRpcScope.Resolve<IProofRpcModule>();
         }
     }
 }

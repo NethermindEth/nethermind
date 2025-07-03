@@ -5,31 +5,32 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
+using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
-using Nethermind.Core.Cpu;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Collections;
+using Nethermind.State;
 using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;
 
-public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFactory, IWorldState worldStateToWarmup, ISpecProvider specProvider, int concurrency, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
+public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFactory, IWorldState worldStateToWarmup, int concurrency, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
 {
-    private int _concurrencyLevel = (concurrency == 0 ? RuntimeInformation.PhysicalCoreCount - 1 : concurrency);
+    private int _concurrencyLevel = (concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency);
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, worldStateToWarmup), Environment.ProcessorCount * 2);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
 
-    public BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFactory, IWorldState worldStateToWarmup, ISpecProvider specProvider, IBlocksConfig blocksConfig, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : this(envFactory, worldStateToWarmup, specProvider, blocksConfig.PreWarmStateConcurrency, logManager, preBlockCaches)
+    public BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFactory, IWorldState worldStateToWarmup, IBlocksConfig blocksConfig, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : this(envFactory, worldStateToWarmup, blocksConfig.PreWarmStateConcurrency, logManager, preBlockCaches)
     {
     }
 
@@ -51,7 +52,7 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
                 var addressWarmer = new AddressWarmer(parallelOptions, suggestedBlock, parentStateRoot, spec, systemAccessLists, this);
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
                 // Do not pass cancellation token to the task, we don't want exceptions to be thrown in main processing thread
-                return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot, parallelOptions, addressWarmer, cancellationToken));
+                return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot, spec, parallelOptions, addressWarmer, cancellationToken));
             }
         }
 
@@ -70,7 +71,7 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
         return cachesCleared;
     }
 
-    private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
+    private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
         try
         {
@@ -78,7 +79,6 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
 
             if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
 
-            IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
             WarmupTransactions(parallelOptions, spec, suggestedBlock, parentStateRoot);
             WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parentStateRoot);
 
@@ -251,7 +251,11 @@ public sealed class BlockCachePreWarmer(IReadOnlyTxProcessingEnvFactory envFacto
 
         private void WarmupAddresses(ParallelOptions parallelOptions, Block block)
         {
-            if (parallelOptions.CancellationToken.IsCancellationRequested) return;
+            if (parallelOptions.CancellationToken.IsCancellationRequested)
+            {
+                SystemTxAccessLists.Dispose();
+                return;
+            }
 
             ObjectPool<IReadOnlyTxProcessorSource> envPool = PreWarmer._envPool;
             try

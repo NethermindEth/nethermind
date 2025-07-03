@@ -1258,8 +1258,7 @@ namespace Nethermind.Serialization.Rlp
 
             return DecodeLargerByteArraySpan(prefix);
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedValue(int buffer0)
             {
                 throw new RlpException($"Unexpected byte value {buffer0}");
@@ -1290,22 +1289,19 @@ namespace Nethermind.Serialization.Rlp
             ThrowUnexpectedPrefix(prefix);
             return default;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedPrefix(int prefix)
             {
                 throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedLength(int length)
             {
                 throw new RlpException($"Expected length greater or equal 56 and was {length}");
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
+            [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedLengthOfLength()
             {
                 throw new RlpException("Expected length of length less or equal 4");

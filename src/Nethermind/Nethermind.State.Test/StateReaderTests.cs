@@ -14,6 +14,7 @@ using Nethermind.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -208,6 +209,8 @@ namespace Nethermind.Store.Test
             /* Now we are testing scenario where the storage is being changed by the block processor.
                To do that we create some different storage / state access stack that represents the processor.
                It is a different stack of objects than the one that is used by the blockchain bridge. */
+            // Note: There is only one global IWorldState and IStateReader now. With pruning trie store, the data is
+            // not written to db immediately.
 
             byte[] newValue = new byte[] { 1, 2, 3, 4, 5 };
 
@@ -221,7 +224,7 @@ namespace Nethermind.Store.Test
             /* At this stage the DB should have the storage value updated to 5.
                We will try to retrieve the value by taking the state root from the processor.*/
 
-            retrieved = reader.GetStorage(processorStateProvider.StateRoot, storageCell.Address, storageCell.Index).ToArray();
+            retrieved = reader.GetStorage(state.StateRoot, storageCell.Address, storageCell.Index).ToArray();
             retrieved.Should().BeEquivalentTo(newValue);
 
             /* If it failed then it means that the blockchain bridge cached the previous call value */

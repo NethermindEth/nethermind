@@ -42,6 +42,7 @@ public enum Instruction : byte
     SHL = 0x1b, // EIP-145
     SHR = 0x1c, // EIP-145
     SAR = 0x1d, // EIP-145
+    CLZ = 0x1e, // EIP-7939
 
     KECCAK256 = 0x20,
 
@@ -328,8 +329,7 @@ public static class InstructionExtensions
         }
     }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static (ushort InputCount, ushort OutputCount, ushort immediates) ThrowNotImplemented(Instruction instruction)
         => throw new NotImplementedException($"opcode {instruction} not implemented yet");
 

@@ -16,7 +16,7 @@ from urllib.request import urlopen
 from zipfile import ZipFile
 
 SUPERCHAIN_REPOSITORY = "https://github.com/ethereum-optimism/superchain-registry/archive/refs/heads/main.zip"
-IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet"]
+IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet", "rehearsal-0-bn-0", "rehearsal-0-bn-1", "celo", "radius_testnet"]
 IGNORED_L1S = ["sepolia-dev-0"]
 
 
@@ -211,7 +211,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "eip4844TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "ecotone_time"]))),
             "eip5656TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "ecotone_time"]))),
             "eip6780TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "ecotone_time"]))),
-            "rip7212TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "fjord_time"]))),
+            "eip7951TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "fjord_time"]))),
             "opGraniteTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "granite_time"]))),
             "opHoloceneTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "holocene_time"]))),
             "opIsthmusTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
@@ -343,10 +343,10 @@ def main(tmp_dir, output_dir):
     for chain in chainList["chains"]:
         [l1, chainName] = chain["identifier"].split("/")
         if chainName in IGNORED_CHAINS or l1 in IGNORED_L1S:
-            logging.info(f"Ignoring `{l1}-{chainName}`")
+            logging.info(f"Ignoring `{chainName}-{l1}`")
             continue
 
-        logging.debug(f"Processing `{l1}-{chainName}`")
+        logging.debug(f"Processing `{chainName}-{l1}`")
         superchain_path = path.join(tmp_dir, "superchain-registry-main", "superchain", "configs", l1, "superchain.toml")
         config_path = path.join(tmp_dir, "superchain-registry-main", "superchain", "configs", l1, f"{chainName}.toml")
         genesis_path = path.join(

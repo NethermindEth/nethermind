@@ -6,13 +6,13 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
+using Nethermind.State;
 using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Tracing
 {
     public class Tracer(
-        IReadOnlyTxProcessingScope scope,
+        IVisitingWorldState worldState,
         IBlockchainProcessor traceProcessor,
         IBlockchainProcessor executeProcessor,
         ProcessingOptions executeOptions = ProcessingOptions.Trace,
@@ -24,16 +24,9 @@ namespace Nethermind.Consensus.Tracing
             /* We force process since we want to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
 
-            try
-            {
-                blockTracer.StartNewBlockTrace(block);
-                processor.Process(block, options, blockTracer);
-                blockTracer.EndBlockTrace();
-            }
-            finally
-            {
-                scope.Reset();
-            }
+            blockTracer.StartNewBlockTrace(block);
+            processor.Process(block, options, blockTracer);
+            blockTracer.EndBlockTrace();
         }
 
         public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, traceProcessor, traceOptions);
@@ -45,7 +38,7 @@ namespace Nethermind.Consensus.Tracing
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(stateRoot);
 
-            scope.WorldState.Accept(visitor, stateRoot);
+            worldState.Accept(visitor, stateRoot);
         }
     }
 }

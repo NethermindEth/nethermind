@@ -4,10 +4,10 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -41,8 +41,8 @@ public class SimulateTransactionProcessorFactory : ISimulateTransactionProcessor
     public ITransactionProcessor CreateTransactionProcessor(
         ISpecProvider specProvider,
         IWorldState stateProvider,
-        SimulateVirtualMachine virtualMachine,
-        OverridableCodeInfoRepository codeInfoRepository,
+        IVirtualMachine virtualMachine,
+        ICodeInfoRepository codeInfoRepository,
         ILogManager? logManager,
         bool validate)
     {

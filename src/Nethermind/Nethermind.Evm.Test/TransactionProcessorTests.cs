@@ -20,12 +20,13 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using Nethermind.Config;
 using System.Collections.Generic;
 using Nethermind.Core.Test;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 
@@ -549,7 +550,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
-        IReleaseSpec releaseSpec = MuirGlacier.Instance;
+        IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
         IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
         GethLikeTxMemoryTracer gethTracer = new(tx, GethTraceOptions.Default);
@@ -591,7 +592,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(byteCode).WithGasLimit(gasLimit).WithNonce(1).TestObject;
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
-        IReleaseSpec releaseSpec = Berlin.Instance;
+        IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
         IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
         var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);

@@ -5,7 +5,7 @@ using System;
 using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 

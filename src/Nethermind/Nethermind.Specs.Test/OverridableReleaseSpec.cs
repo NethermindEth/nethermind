@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -19,6 +19,8 @@ namespace Nethermind.Specs.Test
         public long MaximumExtraDataSize => spec.MaximumExtraDataSize;
 
         public long MaxCodeSize => spec.MaxCodeSize;
+
+        public long MaxInitCodeSize => spec.MaxInitCodeSize;
 
         public long MinGasLimit => spec.MinGasLimit;
 
@@ -111,7 +113,7 @@ namespace Nethermind.Specs.Test
 
         public bool IsEip3541Enabled => spec.IsEip3541Enabled;
         public bool IsEip4844Enabled => spec.IsEip4844Enabled;
-        public bool IsRip7212Enabled => spec.IsRip7212Enabled;
+        public bool IsEip7951Enabled => spec.IsEip7951Enabled;
         public bool IsOpGraniteEnabled => spec.IsOpGraniteEnabled;
         public bool IsOpHoloceneEnabled => spec.IsOpHoloceneEnabled;
         public bool IsOpIsthmusEnabled => spec.IsOpIsthmusEnabled;
@@ -120,6 +122,9 @@ namespace Nethermind.Specs.Test
         public bool IsEip7918Enabled => spec.IsEip7918Enabled;
 
         public bool IsEip7883Enabled => spec.IsEip7883Enabled;
+
+        public bool IsEip7934Enabled => spec.IsEip7934Enabled;
+        public int Eip7934MaxRlpBlockSize => spec.Eip7934MaxRlpBlockSize;
 
         public bool IsEip3607Enabled { get; set; } = spec.IsEip3607Enabled;
 
@@ -155,6 +160,7 @@ namespace Nethermind.Specs.Test
 
         public ulong TargetBlobCount => spec.TargetBlobCount;
         public ulong MaxBlobCount => spec.MaxBlobCount;
+        public ulong MaxBlobsPerTx => spec.MaxBlobsPerTx;
         public UInt256 BlobBaseFeeUpdateFraction => spec.BlobBaseFeeUpdateFraction;
         public bool IsEip1153Enabled => spec.IsEip1153Enabled;
         public bool IsEip3651Enabled => spec.IsEip3651Enabled;
@@ -188,5 +194,7 @@ namespace Nethermind.Specs.Test
 
         Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
         Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
+        public bool IsEip7939Enabled => spec.IsEip7939Enabled;
+        public bool IsEip7907Enabled => spec.IsEip7907Enabled;
     }
 }

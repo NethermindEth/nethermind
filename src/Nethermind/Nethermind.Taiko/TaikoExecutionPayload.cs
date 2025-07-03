@@ -60,7 +60,7 @@ public class TaikoExecutionPayload : ExecutionPayload
                 WithdrawalsRoot = WithdrawalsHash,
             };
 
-            return new BlockDecodingResult(new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), null));
+            return new BlockDecodingResult(new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>()));
         }
         return base.TryGetBlock(totalDifficulty);
     }

@@ -27,8 +27,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using System;
@@ -39,6 +38,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.State;
 
 namespace Nethermind.Clique.Test;
 
@@ -151,7 +151,7 @@ public class CliqueBlockProducerTests
                 testnetSpecProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
@@ -187,7 +187,7 @@ public class CliqueBlockProducerTests
                 testnetSpecProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, testnetSpecProvider, _logManager),
+                new BlockProcessor.BlockProductionTransactionsExecutor(new BuildUpTransactionProcessorAdapter(minerTransactionProcessor), minerStateProvider, new BlockProcessor.BlockProductionTransactionPicker(testnetSpecProvider, BlocksConfig.DefaultMaxTxKilobytes), _logManager),
                 minerStateProvider,
                 NullReceiptStorage.Instance,
                 new BeaconBlockRootHandler(minerTransactionProcessor, minerStateProvider),

@@ -5,6 +5,7 @@ using System;
 using NonBlocking;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -63,6 +64,9 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
+            => Insert(block, txReceipts, null, ensureCanonical, writeFlags, lastBlockNumber);
+
+        public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, long? lastBlockNumber = null)
         {
             _receipts[block.Hash] = txReceipts;
             if (ensureCanonical)

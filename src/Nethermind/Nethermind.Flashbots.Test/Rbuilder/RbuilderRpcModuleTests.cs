@@ -17,6 +17,7 @@ using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using NUnit.Framework;
 using Bytes = Nethermind.Core.Extensions.Bytes;

@@ -11,8 +11,6 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -25,10 +23,11 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.JsonRpc;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -68,7 +67,7 @@ namespace Nethermind.Init.Steps
                 "- binary data -");
 
             IStateReader stateReader = setApi.StateReader!;
-            IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
+            IVisitingWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
             PreBlockCaches? preBlockCaches = (mainWorldState as IPreBlockCaches)?.Caches;
             CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
             IChainHeadInfoProvider chainHeadInfoProvider =
@@ -78,14 +77,10 @@ namespace Nethermind.Init.Steps
 
             ITxPool txPool = _api.TxPool = CreateTxPool(chainHeadInfoProvider);
 
-            ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.ReceiptStorage, _api.LogManager);
-            getApi.DisposeStack.Push(receiptCanonicalityMonitor);
-            _api.ReceiptMonitor = receiptCanonicalityMonitor;
-
             _api.BlockPreprocessor.AddFirst(
-                new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
+                new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
-            VirtualMachine.WarmUpEvmInstructions();
+            WarmupEvm();
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
@@ -99,12 +94,10 @@ namespace Nethermind.Init.Steps
             setApi.NonceManager = nonceManager;
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
 
-            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.ReadOnlyStateProvider, txPool);
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
                 ? new(
                     _api.ReadOnlyTxProcessingEnvFactory,
                     mainWorldState,
-                    _api.SpecProvider!,
                     blocksConfig,
                     _api.LogManager,
                     preBlockCaches)
@@ -129,21 +122,16 @@ namespace Nethermind.Init.Steps
 
             getApi.DisposeStack.Push(blockchainProcessor);
 
-            var mainProcessingContext = setApi.MainProcessingContext = new MainProcessingContext(
+            IMainProcessingContext mainProcessingContext = setApi.MainProcessingContext = new MainProcessingContext(
                 transactionProcessor,
                 mainBlockProcessor,
                 blockchainProcessor,
                 mainWorldState);
             _serviceStopper.AddStoppable(mainProcessingContext);
             setApi.BlockProcessingQueue = blockchainProcessor;
-
-            IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
-            IFilterStore filterStore = setApi.FilterStore = new FilterStore(getApi.TimerFactory, rpcConfig.FiltersTimeout);
-            setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
-            _api.DisposeStack.Push(filterStore);
 
-            BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
+            BackgroundTaskScheduler backgroundTaskScheduler = new(
                 mainBlockProcessor,
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
@@ -184,7 +172,14 @@ namespace Nethermind.Init.Steps
             return Task.CompletedTask;
         }
 
-        protected virtual ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
+        private void WarmupEvm()
+        {
+            IWorldState state = _api.WorldStateManager!.CreateResettableWorldState();
+            state.StateRoot = Keccak.EmptyTreeHash;
+            VirtualMachine.WarmUpEvmInstructions(state, new CodeInfoRepository());
+        }
+
+        protected virtual ITransactionProcessor CreateTransactionProcessor(ICodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
@@ -249,7 +244,7 @@ namespace Nethermind.Init.Steps
             return new BlockProcessor(_api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(transactionProcessor),
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
                 worldState,
                 _api.ReceiptStorage!,
                 new BeaconBlockRootHandler(transactionProcessor, worldState),

@@ -58,10 +58,8 @@ namespace Nethermind.Blockchain
         public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Hash256 blockHash) => _wrapped.GetInfo(number, blockHash);
         public bool CanAcceptNewBlocks { get; } = false;
 
-        public async Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
-        {
-            await _wrapped.Accept(blockTreeVisitor, cancellationToken);
-        }
+        public Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
+            => _wrapped.Accept(blockTreeVisitor, cancellationToken);
 
         public ChainLevelInfo FindLevel(long number) => _wrapped.FindLevel(number);
         public BlockInfo FindCanonicalBlockInfo(long blockNumber) => _wrapped.FindCanonicalBlockInfo(blockNumber);
@@ -205,6 +203,8 @@ namespace Nethermind.Blockchain
             {
             }
         }
+
+        public bool IsProcessingBlock { get => _wrapped.IsProcessingBlock; set { } }
 
         public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
 
