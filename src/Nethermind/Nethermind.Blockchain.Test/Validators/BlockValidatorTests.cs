@@ -19,21 +19,38 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class BlockValidatorTests
 {
-    private static readonly BlockValidator BlockValidator =
-        new BlockValidator(
+    private static BlockValidator _blockValidator;
+
+    [SetUp]
+    public void Setup()
+    {
+        IHeaderValidator headerValidator = Substitute.For<IHeaderValidator>();
+        headerValidator.Validate(Arg.Any<BlockHeader>()).Returns(true);
+        _blockValidator = new(
             Substitute.For<ITxValidator>(),
-            Substitute.For<IHeaderValidator>(),
+            headerValidator,
             Substitute.For<IUnclesValidator>(),
             Substitute.For<ISpecProvider>(),
             LimboLogs.Instance);
+    }
 
+
+    [Test]
+    public void Accepts_valid_block()
+    {
+        Block block = Build.A.Block.WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize).TestObject;
+        bool result = _blockValidator.ValidateSuggestedBlock(block);
+        Assert.That(result, Is.True);
+    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_more_uncles_than_allowed_returns_false()
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        ReleaseSpec releaseSpec = new();
-        releaseSpec.MaximumUncleCount = 0;
+        ReleaseSpec releaseSpec = new()
+        {
+            MaximumUncleCount = 0
+        };
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, releaseSpec));
 
         BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
@@ -54,7 +71,7 @@ public class BlockValidatorTests
 
 
         Assert.That(
-            BlockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
+            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
             Is.True);
     }
 
@@ -68,7 +85,7 @@ public class BlockValidatorTests
         block.Header.TxRoot = Keccak.OfAnEmptyString;
 
         Assert.That(
-            BlockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
+            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
             Is.False);
     }
 
@@ -83,7 +100,7 @@ public class BlockValidatorTests
         block.Header.UnclesHash = Keccak.OfAnEmptyString;
 
         Assert.That(
-            BlockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
+            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
             Is.False);
     }
 
@@ -97,7 +114,7 @@ public class BlockValidatorTests
         block.Header.WithdrawalsRoot = Keccak.OfAnEmptyString;
 
         Assert.That(
-            BlockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
+            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
             Is.False);
     }
 
@@ -124,12 +141,11 @@ public class BlockValidatorTests
         BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.TestObject;
-        string? error;
 
         sut.ValidateProcessedBlock(
             suggestedBlock,
             [],
-            processedBlock, out error);
+            processedBlock, out string? error);
 
         Assert.That(error, Is.Null);
     }
@@ -157,12 +173,11 @@ public class BlockValidatorTests
         BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block.WithStateRoot(Keccak.Zero).TestObject;
-        string? error;
 
         sut.ValidateProcessedBlock(
             suggestedBlock,
             [],
-            processedBlock, out error);
+            processedBlock, out string? error);
 
         Assert.That(error, Does.StartWith("InvalidStateRoot"));
     }
@@ -191,6 +206,11 @@ public class BlockValidatorTests
         .TestObject,
         new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
         "InsufficientMaxFeePerBlobGas");
+
+        yield return new TestCaseData(
+        Build.A.Block.WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize + 1).TestObject,
+        new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)),
+        "ExceededBlockSizeLimit");
     }
 
     [TestCaseSource(nameof(BadSuggestedBlocks))]
@@ -198,10 +218,8 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        string? error;
 
-        sut.ValidateSuggestedBlock(
-            suggestedBlock, out error);
+        sut.ValidateSuggestedBlock(suggestedBlock, out string? error);
 
         Assert.That(error, Does.StartWith(expectedError));
     }

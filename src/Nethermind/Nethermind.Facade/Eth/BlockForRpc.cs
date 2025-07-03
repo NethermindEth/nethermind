@@ -20,10 +20,7 @@ public class BlockForRpc
     private static readonly BlockDecoder _blockDecoder = new();
     private readonly bool _isAuRaBlock;
 
-    public BlockForRpc()
-    {
-
-    }
+    public BlockForRpc() { }
 
     [SkipLocalsInit]
     public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider, bool skipTxs = false)
@@ -76,7 +73,7 @@ public class BlockForRpc
         Size = _blockDecoder.GetLength(block, RlpBehaviors.None);
         StateRoot = block.StateRoot;
         Timestamp = block.Timestamp;
-        TotalDifficulty = block.TotalDifficulty ?? 0;
+        TotalDifficulty = block.Difficulty.IsZero ? null : block.TotalDifficulty ?? UInt256.Zero;
         if (!skipTxs)
         {
             Transactions = includeFullTransactionData
@@ -123,8 +120,10 @@ public class BlockForRpc
     public Hash256 StateRoot { get; set; }
     [JsonConverter(typeof(NullableRawLongConverter))]
     public long? Step { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public UInt256? TotalDifficulty { get; set; }
     public bool ShouldSerializeStep() => _isAuRaBlock;
-    public UInt256 TotalDifficulty { get; set; }
     public UInt256 Timestamp { get; set; }
 
     public UInt256? BaseFeePerGas { get; set; }

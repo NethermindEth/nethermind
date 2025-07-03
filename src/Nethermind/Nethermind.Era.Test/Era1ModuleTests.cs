@@ -19,7 +19,7 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework.Constraints;
 

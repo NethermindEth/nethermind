@@ -15,9 +15,9 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Tracing;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;

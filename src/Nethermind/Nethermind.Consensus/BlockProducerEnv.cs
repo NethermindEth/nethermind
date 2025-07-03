@@ -4,7 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus
 {

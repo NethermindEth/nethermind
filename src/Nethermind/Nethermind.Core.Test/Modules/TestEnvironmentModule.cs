@@ -16,6 +16,7 @@ using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Test;

@@ -3,7 +3,9 @@
 
 using System;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;

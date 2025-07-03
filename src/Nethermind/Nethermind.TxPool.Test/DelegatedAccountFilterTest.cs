@@ -11,7 +11,7 @@ using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
@@ -19,6 +19,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Core.Test;
+using Nethermind.State;
 
 namespace Nethermind.TxPool.Test;
 internal class DelegatedAccountFilterTest

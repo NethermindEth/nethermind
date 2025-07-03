@@ -4,6 +4,7 @@
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -17,7 +18,7 @@ public class ReadOnlyTxProcessingScopeTests
     {
         ReadOnlyTxProcessingScope env = new ReadOnlyTxProcessingScope(
             Substitute.For<ITransactionProcessor>(),
-            Substitute.For<IWorldState>(),
+            Substitute.For<IVisitingWorldState>(),
             TestItem.KeccakB
         );
 

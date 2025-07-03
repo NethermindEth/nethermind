@@ -4,6 +4,7 @@
 using System;
 using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Processing;
@@ -12,10 +13,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -29,14 +30,14 @@ namespace Nethermind.AuRa.Test.Contract
         private readonly Address _contractAddress = Address.FromNumber(long.MaxValue);
         private ITransactionProcessor _transactionProcessor;
         private IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
-        private IWorldState _stateProvider;
+        private IVisitingWorldState _stateProvider;
 
         [SetUp]
         public void SetUp()
         {
             _block = new Block(Build.A.BlockHeader.TestObject, new BlockBody());
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
-            _stateProvider = Substitute.For<IWorldState>();
+            _stateProvider = Substitute.For<IVisitingWorldState>();
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
             _readOnlyTxProcessorSource.Build(TestItem.KeccakA).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider, Keccak.EmptyTreeHash));

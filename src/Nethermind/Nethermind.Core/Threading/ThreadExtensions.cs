@@ -30,12 +30,11 @@ public static class ThreadExtensions
     }
 
     public static Disposable BoostPriority(this Thread thread)
-    {
-        return new Disposable(thread);
-    }
+        => new(thread);
+
+    public static Disposable SetHighestPriority(this Thread thread)
+        => new(thread, ThreadPriority.Highest);
 
     public static Disposable SetNormalPriority(this Thread thread)
-    {
-        return new Disposable(thread, ThreadPriority.Normal);
-    }
+        => new(thread, ThreadPriority.Normal);
 }

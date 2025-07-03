@@ -31,7 +31,8 @@ using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
 using Autofac;
 using Nethermind.Consensus;
-using Nethermind.Evm.OverridableEnv;
+using Nethermind.Evm.State;
+using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Facade
 {
@@ -252,10 +253,8 @@ namespace Nethermind.Facade
             transaction.SenderAddress ??= Address.SystemUser;
             Hash256 stateRoot = blockHeader.StateRoot!;
 
-            if (transaction.Nonce == 0)
-            {
-                transaction.Nonce = components.StateReader.GetNonce(stateRoot, transaction.SenderAddress);
-            }
+            //Ignore nonce on all CallAndRestore calls
+            transaction.Nonce = components.StateReader.GetNonce(stateRoot, transaction.SenderAddress);
 
             BlockHeader callHeader = treatBlockHeaderAsParentBlock
                 ? new(

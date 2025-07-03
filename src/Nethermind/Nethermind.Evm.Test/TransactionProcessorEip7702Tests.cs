@@ -12,7 +12,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Collections.Generic;
@@ -21,6 +21,7 @@ using System;
 using System.Linq;
 using Nethermind.Core.Test;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 

@@ -315,54 +315,97 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         FireProcessingQueueEmpty();
 
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
-        await foreach (BlockRef blockRef in _blockQueue.Reader.ReadAllAsync(CancellationToken))
+        while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
         {
+            using var handle = Thread.CurrentThread.SetHighestPriority();
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;
             try
             {
-                if (blockRef.IsInDb || blockRef.Block is null)
-                {
-                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
-                    throw new InvalidOperationException("Block processing expects only resolved blocks");
-                }
-
-                Block block = blockRef.Block;
-
-                if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
-                _stats.Start();
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
-
-                if (processedBlock is null)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
-                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
-                }
-                else
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
-                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success));
-                }
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Processing block failed. Block: {blockRef}, Exception: {exception}");
-                BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
+                ProcessBlocks();
             }
             finally
             {
                 IsProcessingBlock = false;
-                Interlocked.Decrement(ref _queueCount);
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Reader.Count} blocks waiting in the queue.");
+            if (_logger.IsTrace) Trace();
             FireProcessingQueueEmpty();
 
             GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);
         }
 
         if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void Trace() => _logger.Trace($"Now {_blockQueue.Reader.Count} blocks waiting in the queue.");
+    }
+
+    private void ProcessBlocks()
+    {
+        bool isTrace = _logger.IsTrace;
+        while (_blockQueue.Reader.TryRead(out BlockRef blockRef))
+        {
+            try
+            {
+                if (blockRef.IsInDb || blockRef.Block is null)
+                {
+                    ThrowIncorrectBlockReference(blockRef);
+                }
+
+                Block block = blockRef.Block;
+                if (isTrace) TraceProcessing(block);
+
+                _stats.Start();
+                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
+
+                if (processedBlock is null)
+                {
+                    NotifyFailedOrSkipped(blockRef, block, error);
+                }
+                else
+                {
+                    if (isTrace) TraceProcessed(block);
+                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success));
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                NotifyException(blockRef, exception);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _queueCount);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void NotifyException(BlockRef blockRef, Exception exception)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Processing block failed. Block: {blockRef}, Exception: {exception}");
+            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void NotifyFailedOrSkipped(BlockRef blockRef, Block block, string error)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
+            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
+        }
+
+        [DoesNotReturn]
+        void ThrowIncorrectBlockReference(BlockRef blockRef)
+        {
+            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
+            throw new InvalidOperationException("Block processing expects only resolved blocks");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceProcessing(Block block) => _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceProcessed(Block block) => _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
     }
 
     private void FireProcessingQueueEmpty()

@@ -5,7 +5,7 @@ using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
-using Nethermind.Evm.OverridableEnv;
+using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;

@@ -22,12 +22,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-
 using static Nethermind.Consensus.Processing.IBlockProcessor;
 
 using Metrics = Nethermind.Blockchain.Metrics;

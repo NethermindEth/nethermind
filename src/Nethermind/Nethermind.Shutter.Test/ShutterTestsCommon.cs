@@ -7,17 +7,16 @@ using System.IO.Abstractions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Shutter.Config;
 using Nethermind.Specs;
-using Nethermind.State;
 using NSubstitute;
 
 namespace Nethermind.Shutter.Test;
@@ -57,7 +56,7 @@ class ShutterTestsCommon
             AbiEncoder, blockTree, Ecdsa, logFinder, receiptStorage,
             LogManager, SpecProvider, timestamper ?? Substitute.For<ITimestamper>(),
             Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg,
-            Substitute.For<IReadOnlyTxProcessingEnvFactory>(), new(), rnd
+            Substitute.For<IShareableTxProcessorSource>(), new(), rnd
         );
     }
 
@@ -66,7 +65,7 @@ class ShutterTestsCommon
             eventSimulator ?? InitEventSimulator(rnd),
             AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
             chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper,
-            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg, chain.ReadOnlyTxProcessingEnvFactory, new(), rnd
+            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg, chain.ShareableTxProcessorSource, new(), rnd
         );
 
     public static ShutterEventSimulator InitEventSimulator(Random rnd)

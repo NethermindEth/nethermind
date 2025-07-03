@@ -23,7 +23,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 using NSubstitute;
 using NUnit.Framework;
@@ -31,12 +31,13 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Evm;
 using System.Text.Json;
 using Nethermind.Consensus.Processing;
+using Nethermind.State;
 
 namespace Nethermind.AuRa.Test.Validators;
 
 public class ContractBasedValidatorTests
 {
-    private IWorldState _stateProvider;
+    private IVisitingWorldState _stateProvider;
     private IAbiEncoder _abiEncoder;
     private ILogManager _logManager;
     private AuRaParameters.Validator _validator;
@@ -60,7 +61,7 @@ public class ContractBasedValidatorTests
     {
         _validatorStore = new ValidatorStore(new MemDb());
         _validSealerStrategy = new ValidSealerStrategy();
-        _stateProvider = Substitute.For<IWorldState>();
+        _stateProvider = Substitute.For<IVisitingWorldState>();
         _abiEncoder = Substitute.For<IAbiEncoder>();
         _logManager = LimboLogs.Instance;
         _blockTree = Substitute.For<IBlockTree>();

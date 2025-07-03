@@ -13,11 +13,11 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.TxPool;
 using Nethermind.Config;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {

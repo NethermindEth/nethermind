@@ -7,7 +7,8 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Evm.OverridableEnv;
+using Nethermind.Evm.State;
+using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
@@ -43,7 +44,7 @@ public class TraceModuleFactory(IOverridableEnvFactory overridableEnvFactory, IL
 
         ILifetimeScope tracerLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddModule(env)
-            .AddScoped<ITracer, IWorldState>((worldState) => new Tracer(
+            .AddScoped<ITracer, IVisitingWorldState>((worldState) => new Tracer(
                 worldState,
                 rpcProcessingScope.Resolve<IBlockchainProcessor>(),
                 validationProcessingScope.Resolve<IBlockchainProcessor>(),
