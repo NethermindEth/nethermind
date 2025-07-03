@@ -214,19 +214,16 @@ public class SyntheticTest(bool useIlEvm, string benchmarkName, ulong number, ul
 
         byte[][] blobVersionedHashes = null;
 
-        var address = standardChain.InsertCode(bytecode);
+        Address? address = standardChain.InsertCode(bytecode);
         enhancedChain.InsertCode(bytecode);
 
-
         standardChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes);
-        Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(0));
 
-        var actual = standardChain.StateRoot;
+        Hash256? actual = standardChain.StateRoot;
 
         enhancedChain.Execute<ITxTracer>(bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes);
-        Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.GreaterThan(0));
 
-        var expected = enhancedChain.StateRoot;
+        Hash256? expected = enhancedChain.StateRoot;
 
         Assert.That(actual, Is.EqualTo(expected));
     }

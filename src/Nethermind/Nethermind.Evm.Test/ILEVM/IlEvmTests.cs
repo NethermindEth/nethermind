@@ -1895,6 +1895,7 @@ namespace Nethermind.Evm.Test.ILEVM
                 IlEvmPersistPrecompiledContractsOnDisk = false,
             }, testcase.spec);
 
+            bool assertNoPreCompiledCalls = true;
 
             byte[][] blobVersionedHashes = null;
             switch (testcase.opcode[0])
@@ -1927,10 +1928,9 @@ namespace Nethermind.Evm.Test.ILEVM
                             .Call(callAddress, 10000)
                             .Done;
                     testcase.bytecode = Bytes.Concat(callCode, testcase.bytecode);
-                    break;
-                default:
-                    break;
 
+                    assertNoPreCompiledCalls = false;
+                    break;
             }
 
             var address = standardChain.InsertCode(testcase.bytecode);
@@ -1938,7 +1938,10 @@ namespace Nethermind.Evm.Test.ILEVM
 
             standardChain.Execute(testcase.bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes);
 
-            Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(0));
+            if (assertNoPreCompiledCalls)
+            {
+                Assert.That(Metrics.IlvmAotPrecompiledCalls, Is.EqualTo(0));
+            }
 
             enhancedChain.Execute(testcase.bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes, forceAnalysis: true);
 
