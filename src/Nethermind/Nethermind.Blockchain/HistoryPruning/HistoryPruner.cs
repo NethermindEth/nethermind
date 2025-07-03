@@ -23,7 +23,7 @@ public class HistoryPruner : IHistoryPruner
     private ulong _lastPrunedTimestamp;
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
-    private readonly IBlockTree _blockTree ;
+    private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IBlockStore _blockStore;
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
