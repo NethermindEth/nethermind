@@ -7,6 +7,11 @@
 
     <ItemGroup>
         <PackageReference Include="System.CommandLine" />
+        <PackageReference Include="Grpc.Net.Client" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Network.Optimum\Nethermind.Network.Optimum.csproj" />
     </ItemGroup>
 
 </Project>
