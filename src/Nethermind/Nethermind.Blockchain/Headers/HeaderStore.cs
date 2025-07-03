@@ -126,7 +126,9 @@ public class HeaderStore : IHeaderStore
                 throw new InvalidDataException($"Unexpected number span length: {numberSpan.Length}");
             }
 
-            return BinaryPrimitives.ReadInt64BigEndian(numberSpan);
+            long number = BinaryPrimitives.ReadInt64BigEndian(numberSpan);
+            _numberCache.Set(blockHash, number);
+            return number;
         }
         finally
         {
