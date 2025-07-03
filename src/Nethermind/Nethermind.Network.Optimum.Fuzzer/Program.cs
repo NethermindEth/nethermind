@@ -3,6 +3,8 @@
 
 using System;
 using System.CommandLine;
+using System.CommandLine.Parsing;
+using System.Numerics;
 using System.Threading.Tasks;
 
 namespace Nethermind.Network.Optimum.Fuzzer;
@@ -42,47 +44,47 @@ public static class FuzzerCliOptions
         Required = true,
     };
 
-    public static readonly Option<int> MessageSize = new("--message-size")
+    public static readonly Option<int> MessageSize = new Option<int>("--message-size")
     {
         Description = "The size (in bytes) of each message to send",
         DefaultValueFactory = (_) => 1024 // Default to 1kb
-    };
+    }.Validated(Validators.Positive);
 
-    public static readonly Option<int> MessageCount = new("--message-count")
+    public static readonly Option<int> MessageCount = new Option<int>("--message-count")
     {
         Description = "The number of messages to send per publisher",
         DefaultValueFactory = (_) => 100_000 // Default to 100_000 messages
-    };
+    }.Validated(Validators.Positive);
 
-    public static readonly Option<int> PublisherCount = new("--publisher-count")
+    public static readonly Option<int> PublisherCount = new Option<int>("--publisher-count")
     {
         Description = "The number of concurrent publishers",
         DefaultValueFactory = (_) => 1 // Default to 1 publisher
-    };
+    }.Validated(Validators.Positive);
 
-    public static readonly Option<int> SubscriberCount = new("--subscriber-count")
+    public static readonly Option<int> SubscriberCount = new Option<int>("--subscriber-count")
     {
         Description = "The number of concurrent subscribers",
         DefaultValueFactory = (_) => 1 // Default to 1 subscriber
-    };
+    }.Validated(Validators.Positive);
 
-    public static readonly Option<int> PublisherDelay = new("--publisher-timeout")
+    public static readonly Option<int> PublisherDelay = new Option<int>("--publisher-timeout")
     {
         Description = "Delay between publishing messages (milliseconds)",
         DefaultValueFactory = (_) => 1 // 1000 microseconds
-    };
+    }.Validated(Validators.Positive);
 
-    public static readonly Option<int> Timeout = new("--timeout")
+    public static readonly Option<int> Timeout = new Option<int>("--timeout")
     {
         Description = "Timeout for each run (milliseconds)",
         DefaultValueFactory = (_) => 60_000 // 1 minute
-    };
+    }.Validated(Validators.Positive);
 
-    public static readonly Option<int> Runs = new("--runs")
+    public static readonly Option<int> Runs = new Option<int>("--runs")
     {
         Description = "Number of times to repeat each run",
         DefaultValueFactory = (_) => 1
-    };
+    }.Validated(Validators.Positive);
 }
 
 public static class Program
@@ -110,5 +112,25 @@ public static class Program
 
         CommandLineConfiguration cli = new(rootCommand);
         return await cli.InvokeAsync(args);
+    }
+}
+
+public static class Extensions
+{
+    public static Option<T> Validated<T>(this Option<T> @this, Action<T, OptionResult> validator)
+    {
+        @this.Validators.Add(result => { validator(result.GetValue(@this)!, result); });
+        return @this;
+    }
+}
+
+public static class Validators
+{
+    public static void Positive<T>(T value, OptionResult result) where T : INumber<T>
+    {
+        if (value <= T.Zero)
+        {
+            result.AddError("Must be positive");
+        }
     }
 }
