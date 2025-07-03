@@ -4,14 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -21,9 +14,6 @@ using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.State;
-using static Nethermind.Consensus.Processing.BlockProcessor;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -79,86 +69,54 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 }
 
-public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
+/// <summary>
+/// This is an env for eth simulater. It is constructed by <see cref="SimulateReadOnlyBlocksProcessingEnvFactory"/>.
+/// It is not thread safe and is meant to be reused. <see cref="Begin"/> must be called and the returned
+/// <see cref="SimulateReadOnlyBlocksProcessingScope"/> must be disposed once done or there may be some memory leak.
+/// </summary>
+public class SimulateReadOnlyBlocksProcessingEnv(
+    IWorldState worldState,
+    ISpecProvider specProvider,
+    IBlockTree blockTree,
+    IOverridableCodeInfoRepository codeInfoRepository,
+    SimulateRequestState simulateState,
+    IBlockProcessor blockProcessor,
+    BlockTreeOverlay blockTreeOverlay,
+    IOverridableEnv overridableEnv,
+    IReadOnlyDbProvider readOnlyDbProvider
+)
 {
-    private IWorldState StateProvider { get; }
-    public IBlockTree BlockTree { get; }
-    public ISpecProvider SpecProvider { get; }
-    public SimulateRequestState SimulateRequestState { get; }
-    public IBlockProcessor BlockProcessor { get; }
-
-    private readonly IBlockValidator _blockValidator;
-    private readonly ILogManager? _logManager;
-    private readonly ITransactionProcessor _transactionProcessor;
-    public IWorldState WorldState => StateProvider;
-
-    public SimulateReadOnlyBlocksProcessingEnv(
-        IWorldState worldState,
-        IReadOnlyBlockTree baseBlockTree,
-        IReadOnlyDbProvider readOnlyDbProvider,
-        IBlockTree blockTree,
-        ISpecProvider specProvider,
-        ILogManager? logManager = null)
+    public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
     {
-        SpecProvider = specProvider;
-        DbProvider = readOnlyDbProvider;
-        _logManager = logManager;
-
-        BlockTree = new BlockTreeOverlay(baseBlockTree, blockTree);
-        StateProvider = worldState;
-        SimulateBlockhashProvider blockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager), BlockTree);
-        CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
-        SimulateVirtualMachine virtualMachine = new SimulateVirtualMachine(new VirtualMachine(blockhashProvider, specProvider, logManager));
-        _transactionProcessor = new TransactionProcessor(SpecProvider, StateProvider, virtualMachine, CodeInfoRepository, _logManager);
-        _blockValidator = CreateValidator();
-        SimulateRequestState = new SimulateRequestState();
-        BlockProcessor = GetProcessor(SimulateRequestState);
+        blockTreeOverlay.ResetMainChain();
+        IDisposable envDisposer = overridableEnv.BuildAndOverride(baseBlock, null);
+        return new SimulateReadOnlyBlocksProcessingScope(
+            worldState, specProvider, blockTree, codeInfoRepository, simulateState, blockProcessor, readOnlyDbProvider, envDisposer
+        );
     }
+}
 
-    private IReadOnlyDbProvider DbProvider { get; }
-    public OverridableCodeInfoRepository CodeInfoRepository { get; }
+public class SimulateReadOnlyBlocksProcessingScope(
+    IWorldState worldState,
+    ISpecProvider specProvider,
+    IBlockTree blockTree,
+    IOverridableCodeInfoRepository codeInfoRepository,
+    SimulateRequestState simulateState,
+    IBlockProcessor blockProcessor,
+    IReadOnlyDbProvider readOnlyDbProvider,
+    IDisposable overridableWorldStateCloser
+) : IDisposable
+{
+    public IWorldState WorldState => worldState;
+    public ISpecProvider SpecProvider => specProvider;
+    public IBlockTree BlockTree => blockTree;
+    public IOverridableCodeInfoRepository CodeInfoRepository => codeInfoRepository;
+    public SimulateRequestState SimulateRequestState => simulateState;
+    public IBlockProcessor BlockProcessor => blockProcessor;
 
     public void Dispose()
     {
-        DbProvider.Dispose();
-    }
-
-    private SimulateBlockValidatorProxy CreateValidator()
-    {
-        HeaderValidator headerValidator = new(
-            BlockTree,
-            Always.Valid,
-            SpecProvider,
-            _logManager);
-
-        BlockValidator blockValidator = new(
-            new TxValidator(SpecProvider!.ChainId),
-            headerValidator,
-            Always.Valid,
-            SpecProvider,
-            _logManager);
-
-        return new SimulateBlockValidatorProxy(blockValidator);
-    }
-
-    private IBlockProcessor GetProcessor(SimulateRequestState simulateState)
-    {
-        return new BlockProcessor(
-            SpecProvider,
-            _blockValidator,
-            NoBlockRewards.Instance,
-            new SimulateBlockValidationTransactionsExecutor(
-                new BlockValidationTransactionsExecutor(
-                    new SimulateTransactionProcessorAdapter(_transactionProcessor, simulateState),
-                    StateProvider
-                ), simulateState),
-            StateProvider,
-            NullReceiptStorage.Instance,
-            new BeaconBlockRootHandler(_transactionProcessor, StateProvider),
-            new BlockhashStore(SpecProvider, StateProvider),
-            _logManager,
-            new WithdrawalProcessor(StateProvider, _logManager),
-            new ExecutionRequestsProcessor(_transactionProcessor)
-        );
+        overridableWorldStateCloser.Dispose();
+        readOnlyDbProvider.Dispose(); // For blocktree. The read only db has a buffer that need to be cleared.
     }
 }
