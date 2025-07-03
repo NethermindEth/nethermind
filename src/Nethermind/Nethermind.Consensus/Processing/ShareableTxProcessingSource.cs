@@ -17,7 +17,7 @@ namespace Nethermind.Consensus.Processing;
 /// without having to track the corresponding source.
 /// </summary>
 /// <param name="envFactory"></param>
-public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFactory): IShareableTxProcessorSource
+public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFactory) : IShareableTxProcessorSource
 {
     ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new EnvPoolPolicy(envFactory));
 
@@ -28,7 +28,7 @@ public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFact
         return new ScopeWrapper(source, _envPool, scope);
     }
 
-    private class EnvPoolPolicy(IReadOnlyTxProcessingEnvFactory envFactory): IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    private class EnvPoolPolicy(IReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
         public IReadOnlyTxProcessorSource Create()
         {
