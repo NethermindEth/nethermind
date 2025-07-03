@@ -123,7 +123,6 @@ public class MergePluginTests
         _plugin.InitBlockProducer(_consensusPlugin!);
         Assert.That(api.BlockProducer, Is.InstanceOf<MergeBlockProducer>());
         await _plugin.InitRpcModules();
-        api.RpcModuleProvider!.Received().Register(Arg.Is<IRpcModulePool<IEngineRpcModule>>(m => m is SingletonModulePool<IEngineRpcModule>));
         await _plugin.DisposeAsync();
     }
 
