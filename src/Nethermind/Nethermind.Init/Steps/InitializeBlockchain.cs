@@ -3,6 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Runtime.Loader;
 using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,8 +29,11 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis.IL;
+using Nethermind.Evm.CodeAnalysis.IL.Delegates;
 using Nethermind.Evm.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc;
@@ -82,6 +88,8 @@ namespace Nethermind.Init.Steps
 
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
+
+            SetupAndLoadWhiteListedContracts(vmConfig);
 
             VirtualMachine.WarmUpEvmInstructions(vmConfig);
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState, vmConfig);
@@ -236,6 +244,84 @@ namespace Nethermind.Init.Steps
                 new WithdrawalProcessor(worldState, _api.LogManager),
                 new ExecutionRequestsProcessor(transactionProcessor),
                 preWarmer: preWarmer);
+        }
+
+        protected void SetupAndLoadWhiteListedContracts(IVMConfig? vmConfig)
+        {
+
+            var logger = _api.LogManager.GetLogger("ilevmLogger");
+            if (!vmConfig?.IsVmOptimizationEnabled ?? false) return;
+
+            if (vmConfig!.IlEvmAllowedContracts.Length > 0)
+            {
+                var codeHashes = vmConfig!.IlEvmAllowedContracts;
+                foreach (var hash in codeHashes)
+                {
+                    ValueHash256 codeHash = new ValueHash256(hash);
+                    AotContractsRepository.ReserveForWhitelisting(codeHash);
+                    logger.Info($"Whitelisting contract for compilation {codeHash}");
+                }
+            }
+
+            /*
+            IlAnalyzer.StartPrecompilerBackgroundThread(vmConfig!, _api.LogManager.GetClassLogger<AotContractsRepository>());
+
+            if (vmConfig?.IlEvmPrecompiledContractsPath is null) return;
+
+            string path = vmConfig!.IlEvmPrecompiledContractsPath;
+
+            if (_api.FileSystem.Directory.Exists(path))
+            {
+
+                string[] assemblies = _api.FileSystem.Directory.GetFiles(path, Precompiler.DllFileSuffix);
+                foreach (string assemblyName in assemblies)
+                {
+                    try
+                    {
+                        Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
+                        foreach (var type in assembly!.GetTypes())
+                        {
+
+
+                            var precompileAttr = type.GetCustomAttribute(typeof(NethermindPrecompileAttribute), false);
+                            if ((precompileAttr is null)) return;
+
+                          //  string[] identifierParts = type.Name.Split('_')
+                          //      ?? throw new InvalidOperationException($"Precompile type {type.Name} does not have a valid identifier format.");
+
+                          //  var hash = identifierParts[^1];
+
+                            ValueHash256 codeHash = new ValueHash256(assemblyName);
+
+                            var method = type.GetMethod(nameof(ILEmittedMethod), BindingFlags.Public | BindingFlags.Static );
+                            if (method is null) return;
+
+                            //var precompileEntrypointAttr = method!.GetCustomAttribute(typeof(NethermindPrecompileEntryPointAttribute), false);
+                            //if (precompileEntrypointAttr is null) return;
+
+                            ILEmittedMethod? precompiledContract = (ILEmittedMethod)Delegate.CreateDelegate(typeof(ILEmittedMethod), method!);
+                            AotContractsRepository.AddIledCode(codeHash, precompiledContract!);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        logger.Error($"Failed to load precompiled contract {assemblyName}", e);
+                    }
+                }
+
+            }
+            else if (!string.IsNullOrEmpty(path))
+            {
+                Directory.CreateDirectory(path);
+            }
+            else return;
+
+            if (vmConfig?.IlEvmPersistPrecompiledContractsOnDisk ?? false) return;
+
+
+            AppDomain.CurrentDomain.ProcessExit += async (_, _) => await IlAnalyzer.StopPrecompilerBackgroundThread(vmConfig!);
+            */
+
         }
     }
 }
