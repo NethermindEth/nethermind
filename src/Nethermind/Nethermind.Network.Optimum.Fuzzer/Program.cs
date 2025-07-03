@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.CommandLine;
 using System.Numerics;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace Nethermind.Network.Optimum.Fuzzer;
 
@@ -85,6 +86,12 @@ public static class FuzzerCliOptions
         Description = "Number of times to repeat each run",
         DefaultValueFactory = (_) => 1
     }.Validated(Validators.Positive);
+
+    public static readonly Option<LogLevel> Logging = new Option<LogLevel>("--logging")
+    {
+        Description = "Log level",
+        DefaultValueFactory = (_) => LogLevel.Information
+    };
 }
 
 public static class Program
@@ -100,13 +107,21 @@ public static class Program
             FuzzerCliOptions.SubscriberCount,
             FuzzerCliOptions.PublisherDelay,
             FuzzerCliOptions.Timeout,
-            FuzzerCliOptions.Runs
+            FuzzerCliOptions.Runs,
+            FuzzerCliOptions.Logging
         };
 
         rootCommand.SetAction(async (parseResult, token) =>
         {
             var fuzzerOptions = FuzzerOptions.FromParseResult(parseResult);
-            var app = new Application(fuzzerOptions);
+            using ILoggerFactory factory = LoggerFactory.Create(builder =>
+                builder
+                    .AddConsole()
+                    .SetMinimumLevel(parseResult.GetValue(FuzzerCliOptions.Logging))
+            );
+            ILogger logger = factory.CreateLogger<Application>();
+            var app = new Application(fuzzerOptions, logger);
+
             await app.RunAsync(token);
         });
 
