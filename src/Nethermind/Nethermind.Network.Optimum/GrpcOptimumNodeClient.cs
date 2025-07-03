@@ -11,7 +11,7 @@ using GetOptimum.Node.Proto;
 using Grpc.Core;
 using Grpc.Net.Client;
 
-namespace Nethermind.Network.Optimum.Test;
+namespace Nethermind.Network.Optimum;
 
 public interface ITopicSubscriber<out T>
 {
