@@ -48,6 +48,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using NonBlocking;
+using NSubstitute.ExceptionExtensions;
 using IContainer = Autofac.IContainer;
 
 namespace Nethermind.Synchronization.Test;
@@ -182,6 +183,28 @@ public partial class BlockDownloaderTests
             .Returns((c) => syncPeer.GetBlockHeaders(0, 200, 0, default));
 
         Func<Task> act = async () => await ctx.FastSyncUntilNoRequest(peerInfo);
+        await act.Should().NotThrowAsync();
+    }
+
+    [Test]
+    public async Task Catch_exception_from_forwardHeaderProvider()
+    {
+        IForwardHeaderProvider mockForwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
+        mockForwardHeaderProvider.GetBlockHeaders(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Throws(new Exception("test exception"));
+
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
+            {
+                FastSync = true
+            }),
+            configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
+
+        Context ctx = node.Resolve<Context>();
+        Func<Task<BlocksRequest?>> act = () => ctx.FastSyncFeedComponent.BlockDownloader.PrepareRequest(
+            DownloaderOptions.Insert,
+            0,
+            CancellationToken.None);
+
         await act.Should().NotThrowAsync();
     }
 
