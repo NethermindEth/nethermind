@@ -41,32 +41,32 @@ public static class FuzzerCliOptions
 {
     public static readonly Option<string> GrpcEndpoint = new("--address")
     {
-        Description = "The Optimum Node gRPC endpoint",
+        Description = "Optimum Node gRPC endpoint",
         Required = true,
     };
 
     public static readonly Option<int> MessageSize = new Option<int>("--message-size")
     {
-        Description = "The size (in bytes) of each message to send",
-        DefaultValueFactory = (_) => 100 // Default 100 to bytes
+        Description = "Size (in bytes) of each message to send",
+        DefaultValueFactory = (_) => 100 // 100 bytes
     }.Validated(Validators.Positive);
 
     public static readonly Option<int> MessageCount = new Option<int>("--message-count")
     {
-        Description = "The number of messages to send per publisher",
-        DefaultValueFactory = (_) => 100 // Default to 100 messages
+        Description = "Number of messages to send per publisher",
+        DefaultValueFactory = (_) => 100 // 100 messages
     }.Validated(Validators.Positive);
 
     public static readonly Option<int> PublisherCount = new Option<int>("--publisher-count")
     {
-        Description = "The number of concurrent publishers",
-        DefaultValueFactory = (_) => 1 // Default to 1 publisher
+        Description = "Number of concurrent publishers",
+        DefaultValueFactory = (_) => 1 // 1 publisher
     }.Validated(Validators.Positive);
 
     public static readonly Option<int> SubscriberCount = new Option<int>("--subscriber-count")
     {
-        Description = "The number of concurrent subscribers",
-        DefaultValueFactory = (_) => 1 // Default to 1 subscriber
+        Description = "Number of concurrent subscribers",
+        DefaultValueFactory = (_) => 1 // 1 subscriber
     }.Validated(Validators.Positive);
 
     public static readonly Option<int> PublisherDelay = new Option<int>("--publisher-delay")
@@ -83,13 +83,13 @@ public static class FuzzerCliOptions
 
     public static readonly Option<int> RunCount = new Option<int>("--run-count")
     {
-        Description = "Number of times to repeat each run",
-        DefaultValueFactory = (_) => 1
+        Description = "Number of total runs",
+        DefaultValueFactory = (_) => 1 // 1 run
     }.Validated(Validators.Positive);
 
     public static readonly Option<LogLevel> Logging = new Option<LogLevel>("--log")
     {
-        Description = "Log level",
+        Description = "Logging level",
         DefaultValueFactory = (_) => LogLevel.Information
     };
 }
