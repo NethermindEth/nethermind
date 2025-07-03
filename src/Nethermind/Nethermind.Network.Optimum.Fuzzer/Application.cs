@@ -12,7 +12,7 @@ namespace Nethermind.Network.Optimum.Fuzzer;
 
 public sealed class Application(FuzzerOptions options, ILogger logger)
 {
-    public async Task RunAsync(CancellationToken token)
+    public async Task RunAsync(CancellationToken topLevelToken)
     {
         var topic = Guid.NewGuid().ToString();
         logger.LogDebug("Using topic {Topic}", topic);
@@ -21,6 +21,33 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
         var random = new Random(seed);
         logger.LogDebug("Using seed {Seed}", seed);
 
+        for (var run = 1; run <= options.Runs; run++)
+        {
+            logger.LogInformation("Run {RunNumber}/{TotalRuns}", run, options.Runs);
+            using var cts = new CancellationTokenSource(options.Timeout);
+            using var registration = topLevelToken.Register(cts.Cancel);
+            try
+            {
+                await SingleRun(topic, random, cts.Token);
+            }
+            catch (OperationCanceledException) when (topLevelToken.IsCancellationRequested)
+            {
+                logger.LogInformation("Cancelled by user");
+                return;
+            }
+            catch (Exception) when (cts.Token.IsCancellationRequested)
+            {
+                logger.LogError("Run {RunNumber} timed out after {Timeout} ms", run, options.Timeout.TotalMilliseconds);
+            }
+            catch (Exception e)
+            {
+                logger.LogError(e, "Run {RunNumber} failed", run);
+            }
+        }
+    }
+
+    private async Task SingleRun(string topic, Random random, CancellationToken token)
+    {
         logger.LogDebug("Initializing {SubscriberCount} subscribers", options.SubscriberCount);
         Task<int>[] subscribers = Enumerable.Range(0, options.SubscriberCount)
             .Select(id => Task.Run(async () =>
