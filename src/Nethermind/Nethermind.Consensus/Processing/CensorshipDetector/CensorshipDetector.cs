@@ -23,7 +23,7 @@ public interface ICensorshipDetector
     bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash);
 }
 
-public class NoopCensorshipDetector: ICensorshipDetector
+public class NoopCensorshipDetector : ICensorshipDetector
 {
     public IEnumerable<BlockNumberHash> GetCensoredBlocks()
     {
