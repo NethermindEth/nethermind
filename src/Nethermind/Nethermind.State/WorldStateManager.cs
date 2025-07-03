@@ -93,12 +93,6 @@ public class WorldStateManager : IWorldStateManager
         return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
     }
 
-    public IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStoreWithBatching overlayCode)
-    {
-        OverlayTrieStore overlayTrieStore = new(overlayState, _readOnlyTrieStore);
-        return new WorldState(overlayTrieStore, overlayCode, _logManager);
-    }
-
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
     {
         return _blockingVerifyTrie?.VerifyTrie(stateAtBlock, cancellationToken) ?? true;

@@ -33,9 +33,7 @@ public interface IWorldStateManager
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-    // TODO: These two method can be combined
     IOverridableWorldScope CreateOverridableWorldScope();
-    IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStoreWithBatching overlayCode);
 
     void InitializeNetwork(IPathRecovery pathRecovery);
 
