@@ -97,7 +97,7 @@ public abstract partial class BaseEngineModuleTests
     protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider)
         => await CreateBaseBlockchain().Build(specProvider);
 
-    protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, int newPayloadCacheSize = 50)
+    protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain)
     {
         var synchronizationConfig = chain.Container.Resolve<ISyncConfig>();
 

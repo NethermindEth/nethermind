@@ -684,10 +684,11 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain? chain = await CreateBlockchain(mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeout = 0.1
+            NewPayloadTimeout = 0.1,
+            NewPayloadCacheSize = 0
         });
 
-        IEngineRpcModule? rpc = CreateEngineModule(chain, newPayloadCacheSize: 0);
+        IEngineRpcModule? rpc = CreateEngineModule(chain);
         Block? head = chain.BlockTree.Head!;
 
         Block? b4 = Build.A.Block
@@ -718,10 +719,11 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain? chain = await CreateBlockchain(mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeout = 0.1
+            NewPayloadTimeout = 0.1,
+            NewPayloadCacheSize = 10
         });
 
-        IEngineRpcModule? rpc = CreateEngineModule(chain, newPayloadCacheSize: 10);
+        IEngineRpcModule? rpc = CreateEngineModule(chain);
         Block? head = chain.BlockTree.Head!;
 
         // make sure AddressA has enough balance to send tx

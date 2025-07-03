@@ -65,8 +65,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         IMergeSyncController mergeSyncController,
         IMergeConfig mergeConfig,
         IReceiptConfig receiptConfig,
-        ILogManager logManager,
-        int cacheSize = 50)
+        ILogManager logManager)
     {
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -81,8 +80,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _logger = logManager.GetClassLogger();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromSeconds(mergeConfig.NewPayloadTimeout);
-        if (cacheSize > 0)
-            _latestBlocks = new(cacheSize, 0, "LatestBlocks");
+        if (mergeConfig.NewPayloadCacheSize > 0)
+            _latestBlocks = new(mergeConfig.NewPayloadCacheSize, 0, "LatestBlocks");
         _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
     }
 
