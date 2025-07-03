@@ -82,10 +82,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         if (MergeEnabled)
         {
             if (_api.DbProvider is null) throw new ArgumentException(nameof(_api.DbProvider));
-            if (_api.BlockTree is null) throw new ArgumentException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new ArgumentException(nameof(_api.SpecProvider));
-            if (_api.ChainSpec is null) throw new ArgumentException(nameof(_api.ChainSpec));
-            if (_api.SealValidator is null) throw new ArgumentException(nameof(_api.SealValidator));
 
             EnsureJsonRpcUrl();
             EnsureReceiptAvailable();
@@ -210,12 +207,10 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     {
         if (MergeEnabled)
         {
-            ArgumentNullException.ThrowIfNull(_api.BlockTree);
             ArgumentNullException.ThrowIfNull(_api.SpecProvider);
             ArgumentNullException.ThrowIfNull(_api.UnclesValidator);
             ArgumentNullException.ThrowIfNull(_api.ProtocolsManager);
             if (_api.BlockProductionPolicy is null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
-            if (_api.SealValidator is null) throw new ArgumentException(nameof(_api.SealValidator));
 
             _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
             _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
@@ -249,91 +244,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         return new MergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(), _api.FinalizationManager, _poSSwitcher);
     }
 
-    public Task InitRpcModules()
-    {
-        if (MergeEnabled)
-        {
-            ArgumentNullException.ThrowIfNull(_api.BlockTree);
-            ArgumentNullException.ThrowIfNull(_api.HeaderValidator);
-            ArgumentNullException.ThrowIfNull(_api.Sealer);
-            ArgumentNullException.ThrowIfNull(_api.BlockValidator);
-            ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
-            ArgumentNullException.ThrowIfNull(_api.TxPool);
-            ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-            ArgumentNullException.ThrowIfNull(_api.StateReader);
-            ArgumentNullException.ThrowIfNull(_api.EngineRequestsTracker);
-
-            /*
-            IPayloadPreparationService payloadPreparationService = _api.Context.Resolve<IPayloadPreparationService>();
-            _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
-
-            IBeaconSyncStrategy beaconSyncStrategy = _api.Context.Resolve<IBeaconSyncStrategy>();
-            IMergeSyncController beaconSync = _api.Context.Resolve<IMergeSyncController>();
-            IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
-            IBeaconPivot beaconPivot = _api.Context.Resolve<IBeaconPivot>();
-
-            NewPayloadHandler newPayloadHandler = new(
-                    payloadPreparationService,
-                    _api.BlockValidator,
-                    _api.BlockTree,
-                    _poSSwitcher,
-                    beaconSyncStrategy,
-                    beaconPivot,
-                    _blockCacheService,
-                    _api.BlockProcessingQueue,
-                    _invalidChainTracker,
-                    beaconSync,
-                    mergeConfig,
-                    _api.Config<IReceiptConfig>(),
-                    _api.LogManager);
-
-            IEngineRpcModule engineRpcModule = new EngineRpcModule(
-                new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-                new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-                new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-                new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-                new GetPayloadV5Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-                newPayloadHandler,
-                new ForkchoiceUpdatedHandler(
-                    _api.BlockTree,
-                    _blockFinalizationManager,
-                    _poSSwitcher,
-                    payloadPreparationService,
-                    _api.BlockProcessingQueue,
-                    _blockCacheService,
-                    _invalidChainTracker,
-                    beaconSync,
-                    beaconPivot,
-                    peerRefresher,
-                    _api.SpecProvider,
-                    _api.SyncPeerPool!,
-                    mergeConfig,
-                    _api.LogManager),
-                new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
-                new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
-                new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
-                new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
-                new GetBlobsHandler(_api.TxPool),
-                new GetBlobsHandlerV2(_api.TxPool),
-                _api.EngineRequestsTracker,
-                _api.SpecProvider,
-                new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, mergeConfig), _api.LogManager),
-                _api.LogManager);
-
-            RegisterEngineRpcModule(engineRpcModule);
-            _api.RpcModuleProvider!.RegisterSingle(_api.Context.Resolve<IEngineRpcModule>());
-            */
-
-            if (_logger.IsInfo) _logger.Info("Engine Module has been enabled");
-        }
-
-        return Task.CompletedTask;
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        return ValueTask.CompletedTask;
-    }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize { get => true; }
 
