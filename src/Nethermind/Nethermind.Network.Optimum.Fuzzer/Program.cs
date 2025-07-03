@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.CommandLine;
-using System.CommandLine.Parsing;
 using System.Numerics;
 using System.Threading.Tasks;
 
@@ -24,7 +24,7 @@ public sealed record FuzzerOptions
     {
         return new FuzzerOptions
         {
-            GrpcEndpoint = p.GetValue(FuzzerCliOptions.GrpcEndpoint)!,
+            GrpcEndpoint = new Uri(p.GetValue(FuzzerCliOptions.GrpcEndpoint)!),
             MessageSize = p.GetValue(FuzzerCliOptions.MessageSize),
             MessageCount = p.GetValue(FuzzerCliOptions.MessageCount),
             PublisherCount = p.GetValue(FuzzerCliOptions.PublisherCount),
@@ -38,7 +38,7 @@ public sealed record FuzzerOptions
 
 public static class FuzzerCliOptions
 {
-    public static readonly Option<Uri> GrpcEndpoint = new("--address")
+    public static readonly Option<string> GrpcEndpoint = new("--address")
     {
         Description = "The Optimum Node gRPC endpoint",
         Required = true,
@@ -117,20 +117,27 @@ public static class Program
 
 public static class Extensions
 {
-    public static Option<T> Validated<T>(this Option<T> @this, Action<T, OptionResult> validator)
+    public static Option<T> Validated<T>(this Option<T> @this, Func<T, IEnumerable<string>> validator)
     {
-        @this.Validators.Add(result => { validator(result.GetValue(@this)!, result); });
+        var name = @this.Name;
+        @this.Validators.Add(result =>
+        {
+            foreach (var error in validator(result.GetValue(@this)!))
+            {
+                result.AddError($"Option '{name}' {error}.");
+            }
+        });
         return @this;
     }
 }
 
 public static class Validators
 {
-    public static void Positive<T>(T value, OptionResult result) where T : INumber<T>
+    public static IEnumerable<string> Positive<T>(T value) where T : INumber<T>
     {
         if (value <= T.Zero)
         {
-            result.AddError("Must be positive");
+            yield return "must be positive";
         }
     }
 }
