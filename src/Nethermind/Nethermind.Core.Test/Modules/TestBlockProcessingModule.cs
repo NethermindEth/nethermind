@@ -15,6 +15,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
 
@@ -77,7 +78,7 @@ public class TestBlockProcessingModule : Module
         IReceiptConfig receiptConfig = ctx.Resolve<IReceiptConfig>();
         IInitConfig initConfig = ctx.Resolve<IInitConfig>();
         IBlocksConfig blocksConfig = ctx.Resolve<IBlocksConfig>();
-        IWorldState mainWorldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
+        var mainWorldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
         ICodeInfoRepository mainCodeInfoRepository =
             ctx.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
 
@@ -86,7 +87,7 @@ public class TestBlockProcessingModule : Module
             processingCtxBuilder
                 // These are main block processing specific
                 .AddScoped<ICodeInfoRepository>(mainCodeInfoRepository)
-                .AddScoped(mainWorldState)
+                .AddSingleton<IVisitingWorldState>(mainWorldState).AddSingleton<IWorldState>(mainWorldState)
                 .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 .AddScoped(new BlockchainProcessor.Options

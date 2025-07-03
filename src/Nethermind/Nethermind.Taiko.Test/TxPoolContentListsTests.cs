@@ -19,6 +19,7 @@ using Nethermind.Evm;
 using System.Collections;
 using System.Linq;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Consensus.Processing;

@@ -9,7 +9,6 @@ using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.JsonRpc;
@@ -21,6 +20,7 @@ using Nethermind.Crypto;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 
 namespace Nethermind.Optimism.Rpc;
 

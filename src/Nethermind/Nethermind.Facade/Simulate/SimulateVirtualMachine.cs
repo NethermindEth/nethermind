@@ -4,8 +4,8 @@
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.State;
 
 namespace Nethermind.Facade.Simulate;
 
