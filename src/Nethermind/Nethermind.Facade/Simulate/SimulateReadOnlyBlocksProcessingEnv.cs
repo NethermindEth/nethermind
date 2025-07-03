@@ -21,13 +21,16 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.BlockProcessor;
 
 namespace Nethermind.Facade.Simulate;
 
-public record SimulateRequestState(bool Validate, UInt256? BlobBaseFeeOverride);
+public class SimulateRequestState
+{
+    public bool Validate { get; set; }
+    public UInt256? BlobBaseFeeOverride { get; set; }
+}
 
 public class SimulateBlockValidationTransactionsExecutor(
     ITransactionProcessorAdapter transactionProcessor,
@@ -70,6 +73,8 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
     private IWorldState StateProvider { get; }
     public IBlockTree BlockTree { get; }
     public ISpecProvider SpecProvider { get; }
+    public SimulateRequestState SimulateRequestState { get; }
+    public IBlockProcessor BlockProcessor { get; }
 
     private readonly IBlockValidator _blockValidator;
     private readonly ILogManager? _logManager;
@@ -95,12 +100,12 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
         SimulateVirtualMachine virtualMachine = new SimulateVirtualMachine(new VirtualMachine(blockhashProvider, specProvider, logManager));
         _transactionProcessor = new TransactionProcessor(SpecProvider, StateProvider, virtualMachine, CodeInfoRepository, _logManager);
         _blockValidator = CreateValidator();
-        BlockTransactionPicker = new BlockProductionTransactionPicker(specProvider, ignoreEip3607: true);
+        SimulateRequestState = new SimulateRequestState();
+        BlockProcessor = GetProcessor(SimulateRequestState);
     }
 
     private IReadOnlyDbProvider DbProvider { get; }
     public OverridableCodeInfoRepository CodeInfoRepository { get; }
-    public BlockProductionTransactionPicker BlockTransactionPicker { get; }
 
     public void Dispose()
     {
@@ -125,9 +130,8 @@ public class SimulateReadOnlyBlocksProcessingEnv : IDisposable
         return new SimulateBlockValidatorProxy(blockValidator);
     }
 
-    public IBlockProcessor GetProcessor(bool validate, UInt256? blobBaseFeeOverride)
+    private IBlockProcessor GetProcessor(SimulateRequestState simulateState)
     {
-        var simulateState = new SimulateRequestState(validate, blobBaseFeeOverride);
         return new BlockProcessor(
             SpecProvider,
             _blockValidator,
