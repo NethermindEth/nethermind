@@ -99,15 +99,6 @@ public abstract partial class BaseEngineModuleTests
 
     protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain)
     {
-        var synchronizationConfig = chain.Container.Resolve<ISyncConfig>();
-
-        chain.BlockTree.SyncPivot = (
-            LongConverter.FromString(synchronizationConfig.PivotNumber),
-            synchronizationConfig.PivotHash is null ? Keccak.Zero : new Hash256(Bytes.FromHexString(synchronizationConfig.PivotHash))
-        );
-        InvalidChainTracker.InvalidChainTracker invalidChainTracker = chain.Container.Resolve<InvalidChainTracker.InvalidChainTracker>();
-        invalidChainTracker.SetupBlockchainProcessorInterceptor(chain.BlockchainProcessor);
-        chain.BeaconSync.AllowBeaconHeaderSync();
         /*
         EngineRpcCapabilitiesProvider capabilitiesProvider = new(chain.SpecProvider);
         return new EngineRpcModule(
@@ -326,6 +317,7 @@ public abstract partial class BaseEngineModuleTests
                 .AddSingleton<ISyncProgressResolver>(Substitute.For<ISyncProgressResolver>())
                 .AddSingleton<ISyncModeSelector>(new StaticSelector(SyncMode.All))
                 .AddSingleton<IPeerRefresher>(Substitute.For<IPeerRefresher>())
+                .Intercept<IInitConfig>((initConfig) => initConfig.DisableGcOnNewPayload = true);
             ;
 
             return builder;
@@ -370,6 +362,23 @@ public abstract partial class BaseEngineModuleTests
                 CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
+        }
+
+        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
+        {
+            TestBlockchain bc = await base.Build(configurer);
+            var synchronizationConfig = Container.Resolve<ISyncConfig>();
+
+            /*
+            BlockTree.SyncPivot = (
+                LongConverter.FromString(synchronizationConfig.PivotNumber),
+                synchronizationConfig.PivotHash is null ? Keccak.Zero : new Hash256(Bytes.FromHexString(synchronizationConfig.PivotHash))
+            );
+            */
+            InvalidChainTracker.InvalidChainTracker invalidChainTracker = Container.Resolve<InvalidChainTracker.InvalidChainTracker>();
+            invalidChainTracker.SetupBlockchainProcessorInterceptor(BlockchainProcessor);
+            BeaconSync.AllowBeaconHeaderSync();
+            return bc;
         }
 
         public IManualBlockFinalizationManager BlockFinalizationManager => Container.Resolve<IManualBlockFinalizationManager>();
