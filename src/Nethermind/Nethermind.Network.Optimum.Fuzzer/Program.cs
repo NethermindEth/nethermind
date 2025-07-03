@@ -19,7 +19,7 @@ public sealed record FuzzerOptions
     public required int SubscriberCount { get; init; }
     public required TimeSpan PublisherDelay { get; init; }
     public required TimeSpan Timeout { get; init; }
-    public required TimeSpan Runs { get; init; }
+    public required int Runs { get; init; }
 
     public static FuzzerOptions FromParseResult(ParseResult p)
     {
@@ -32,7 +32,7 @@ public sealed record FuzzerOptions
             SubscriberCount = p.GetValue(FuzzerCliOptions.SubscriberCount),
             PublisherDelay = TimeSpan.FromMilliseconds(p.GetValue(FuzzerCliOptions.PublisherDelay)),
             Timeout = TimeSpan.FromMilliseconds(p.GetValue(FuzzerCliOptions.Timeout)),
-            Runs = TimeSpan.FromMilliseconds(p.GetValue(FuzzerCliOptions.Runs))
+            Runs = p.GetValue(FuzzerCliOptions.Runs)
         };
     }
 }
@@ -48,13 +48,13 @@ public static class FuzzerCliOptions
     public static readonly Option<int> MessageSize = new Option<int>("--message-size")
     {
         Description = "The size (in bytes) of each message to send",
-        DefaultValueFactory = (_) => 1024 // Default to 1kb
+        DefaultValueFactory = (_) => 100 // Default 100 to bytes
     }.Validated(Validators.Positive);
 
     public static readonly Option<int> MessageCount = new Option<int>("--message-count")
     {
         Description = "The number of messages to send per publisher",
-        DefaultValueFactory = (_) => 100_000 // Default to 100_000 messages
+        DefaultValueFactory = (_) => 100 // Default to 100 messages
     }.Validated(Validators.Positive);
 
     public static readonly Option<int> PublisherCount = new Option<int>("--publisher-count")
@@ -69,19 +69,19 @@ public static class FuzzerCliOptions
         DefaultValueFactory = (_) => 1 // Default to 1 subscriber
     }.Validated(Validators.Positive);
 
-    public static readonly Option<int> PublisherDelay = new Option<int>("--publisher-timeout")
+    public static readonly Option<int> PublisherDelay = new Option<int>("--publisher-delay")
     {
         Description = "Delay between publishing messages (milliseconds)",
         DefaultValueFactory = (_) => 1 // 1000 microseconds
     }.Validated(Validators.Positive);
 
-    public static readonly Option<int> Timeout = new Option<int>("--timeout")
+    public static readonly Option<int> Timeout = new Option<int>("--run-timeout")
     {
         Description = "Timeout for each run (milliseconds)",
         DefaultValueFactory = (_) => 60_000 // 1 minute
     }.Validated(Validators.Positive);
 
-    public static readonly Option<int> Runs = new Option<int>("--runs")
+    public static readonly Option<int> Runs = new Option<int>("--run-count")
     {
         Description = "Number of times to repeat each run",
         DefaultValueFactory = (_) => 1
