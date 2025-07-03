@@ -19,12 +19,13 @@ public class HeaderStore : IHeaderStore
 {
     // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
     public const int CacheSize = 256 + 16;
+    public const int NumberCacheSize = CacheSize * 2;
 
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
     private readonly HeaderDecoder _headerDecoder = new();
-    private readonly ClockCache<ValueHash256, BlockHeader> _headerCache =
-        new(CacheSize);
+    private readonly ClockCache<Hash256AsKey, long> _numberCache = new(NumberCacheSize);
+    private readonly ClockCache<ValueHash256, BlockHeader> _headerCache = new(CacheSize);
 
     public HeaderStore([KeyFilter(DbNames.Headers)] IDb headerDb, [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb)
     {
@@ -52,6 +53,7 @@ public class HeaderStore : IHeaderStore
 
             header.Number.WriteBigEndian(blockNumberSpan);
             blockNumberWriteBatch.Set(header.Hash, blockNumberSpan);
+            _numberCache.Set(header.Hash, header.Number);
         }
     }
 
@@ -72,10 +74,16 @@ public class HeaderStore : IHeaderStore
         _headerCache.Set(header.Hash, header);
     }
 
+    public void Cache(Hash256 blockHash, long blockNumber)
+    {
+        _numberCache.Set(blockHash, blockNumber);
+    }
+
     public void Delete(Hash256 blockHash)
     {
         long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
         if (blockNumber is not null) _headerDb.Delete(blockNumber.Value, blockHash);
+        _numberCache.Delete(blockHash);
         _blockNumberDb.Delete(blockHash);
         _headerDb.Delete(blockHash);
         _headerCache.Delete(blockHash);
@@ -85,6 +93,7 @@ public class HeaderStore : IHeaderStore
     {
         Span<byte> blockNumberSpan = stackalloc byte[8];
         blockNumber.WriteBigEndian(blockNumberSpan);
+        _numberCache.Set(blockHash, blockNumber);
         _blockNumberDb.Set(blockHash, blockNumberSpan);
     }
 
@@ -98,6 +107,15 @@ public class HeaderStore : IHeaderStore
     }
 
     private long? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
+    {
+        if (_numberCache.TryGet(blockHash, out long value))
+        {
+            return value;
+        }
+        return GetBlockNumberFromBlockNumberDbSlow(blockHash);
+    }
+
+    private long? GetBlockNumberFromBlockNumberDbSlow(Hash256 blockHash)
     {
         Span<byte> numberSpan = _blockNumberDb.GetSpan(blockHash);
         if (numberSpan.IsNullOrEmpty()) return null;

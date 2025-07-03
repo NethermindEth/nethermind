@@ -186,6 +186,7 @@ namespace Nethermind.Blockchain
         void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
 
         void RecalculateTreeLevels();
+        void CacheBlockNumber(Hash256 hash, long number);
 
         /// <summary>
         /// Sync pivot is mainly concerned with old blocks and receipts.

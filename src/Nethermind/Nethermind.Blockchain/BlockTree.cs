@@ -1139,6 +1139,7 @@ namespace Nethermind.Blockchain
                     && ((Head?.Number ?? 0L).CompareTo(header.Number) > 0 // pick longer chain
                         || (Head?.Hash ?? Keccak.Zero).CompareTo(header.Hash) > 0))); // or have a deterministic order on hash
 
+        public void CacheBlockNumber(Hash256 hash, long number) => _headerStore.Cache(hash, number);
 
         /// <summary>
         /// Moves block to main chain.

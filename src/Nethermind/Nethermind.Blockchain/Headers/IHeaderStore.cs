@@ -14,6 +14,7 @@ public interface IHeaderStore
     void BulkInsert(IReadOnlyList<BlockHeader> headers);
     BlockHeader? Get(Hash256 blockHash, bool shouldCache, long? blockNumber = null);
     void Cache(BlockHeader header);
+    void Cache(Hash256 blockHash, long blockNumber);
     void Delete(Hash256 blockHash);
     void InsertBlockNumber(Hash256 blockHash, long blockNumber);
     long? GetBlockNumber(Hash256 blockHash);

@@ -225,6 +225,7 @@ public class BlockTreeOverlay : IBlockTree
     public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint) =>
         _overlayTree.UpdateBeaconMainChain(blockInfos, clearBeaconMainChainStartPoint);
 
+    public void CacheBlockNumber(Hash256 hash, long number) => _overlayTree.CacheBlockNumber(hash, number);
     public void RecalculateTreeLevels() => _overlayTree.RecalculateTreeLevels();
     public (long BlockNumber, Hash256 BlockHash) SyncPivot
     {

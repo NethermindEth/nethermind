@@ -480,6 +480,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (IsProcessingBlock ? 1 : 0), 0);
             Metrics.ProcessingQueueSize = blockQueueCount;
             _stats.UpdateStats(lastProcessed, processingBranch.Root, blockProcessingTimeInMicrosecs);
+
+            foreach (Block block in processedBlocks)
+            {
+                _blockTree.CacheBlockNumber(block.Hash, block.Header.Number);
+            }
         }
 
         bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);

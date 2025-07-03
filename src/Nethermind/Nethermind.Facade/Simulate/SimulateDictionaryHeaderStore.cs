@@ -55,6 +55,11 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         return header;
     }
 
+    public void Cache(Hash256 blockHash, long blockNumber)
+    {
+        _blockNumberDict[blockHash] = blockNumber;
+    }
+
     public void Cache(BlockHeader header)
     {
         Insert(header);
