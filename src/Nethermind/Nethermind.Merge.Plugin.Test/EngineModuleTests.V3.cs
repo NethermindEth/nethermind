@@ -519,7 +519,7 @@ public partial class EngineModuleTests
 
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeoutMs = 1000
+            NewPayloadBlockProcessingTimeout = 1000
         });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
@@ -542,7 +542,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeoutMs = 1000
+            NewPayloadBlockProcessingTimeout = 1000
         });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
@@ -571,7 +571,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeoutMs = 1000
+            NewPayloadBlockProcessingTimeout = 1000
         });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
@@ -586,7 +586,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeoutMs = 1000
+            NewPayloadBlockProcessingTimeout = 1000
         });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
@@ -611,7 +611,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeoutMs = 1000
+            NewPayloadBlockProcessingTimeout = 1000
         });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
@@ -637,7 +637,7 @@ public partial class EngineModuleTests
 
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeoutMs = 1000
+            NewPayloadBlockProcessingTimeout = 1000
         });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
 
@@ -689,7 +689,7 @@ public partial class EngineModuleTests
         // fork A
         MergeTestBlockchain chainA = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeoutMs = 1000
+            NewPayloadBlockProcessingTimeout = 1000
         });
         IEngineRpcModule rpcModuleA = CreateEngineModule(chainA);
         await rpcModuleA.engine_forkchoiceUpdatedV3(new(chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!), null);
@@ -697,7 +697,7 @@ public partial class EngineModuleTests
         // main fork B
         MergeTestBlockchain chainB = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeoutMs = 1000
+            NewPayloadBlockProcessingTimeout = 1000
         });
         IEngineRpcModule rpcModuleB = CreateEngineModule(chainB);
         await rpcModuleB.engine_forkchoiceUpdatedV3(new(chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!), null);
@@ -705,7 +705,7 @@ public partial class EngineModuleTests
         // syncing chain
         MergeTestBlockchain chainC = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeoutMs = 1000
+            NewPayloadBlockProcessingTimeout = 1000
         });
         IEngineRpcModule rpcModuleC = CreateEngineModule(chainC);
         await rpcModuleC.engine_forkchoiceUpdatedV3(new(chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!), null);
@@ -937,7 +937,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec, mergeConfig: new MergeConfig()
         {
-            NewPayloadTimeoutMs = 1000,
+            NewPayloadBlockProcessingTimeout = 1000,
         });
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         Transaction[] txs = [];

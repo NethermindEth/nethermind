@@ -31,7 +31,7 @@ namespace Nethermind.Merge.Plugin
 
         public int CollectionsPerDecommit { get; set; } = 25;
 
-        public int NewPayloadTimeoutMs { get; set; } = 7000;
+        public int NewPayloadBlockProcessingTimeout { get; set; } = 7000;
 
         public bool SimulateBlockProduction { get; set; } = false;
     }
