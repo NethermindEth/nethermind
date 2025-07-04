@@ -40,7 +40,7 @@ public class AuRaMergeBlockProducerEnvFactory(
 
     protected override ContainerBuilder ConfigureBuilder(ContainerBuilder builder) =>
         base.ConfigureBuilder(builder)
-            .AddScoped(CreateBlockProcessor);
+            .AddScoped<IBlockProcessor, ITransactionProcessor, IWorldState, IBlockProcessor.IBlockTransactionsExecutor, IExecutionRequestsProcessor>(CreateBlockProcessor);
 
     private IBlockProcessor CreateBlockProcessor(
         ITransactionProcessor txProcessor,
