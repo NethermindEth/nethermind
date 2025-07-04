@@ -25,4 +25,8 @@
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="InitializationSteps\" />
+  </ItemGroup>
+
 </Project>

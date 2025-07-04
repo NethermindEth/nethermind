@@ -169,17 +169,13 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         {
             _api = Container.Resolve<AuRaNethermindApi>();
 
-            IBlockProcessor processor = _api.Context.Resolve<IAuRaBlockProcessorFactory>().Create(
-                BlockValidator,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), state),
-                state,
-                ReceiptStorage,
-                new BeaconBlockRootHandler(TxProcessor, state),
-                TxProcessor,
-                MainExecutionRequestsProcessor,
-                null,
-                preWarmer: CreateBlockCachePreWarmer());
+            // Note: Different from production. No aura validator, no AuraValidationModifier
+            IBlockProcessor processor = Container.Resolve<ILifetimeScope>().BeginLifetimeScope((builder) => builder
+                    .AddScoped(state)
+                    .AddScoped(CreateBlockCachePreWarmer())
+                    .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
+                    .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>())
+                .Resolve<IBlockProcessor>();
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }

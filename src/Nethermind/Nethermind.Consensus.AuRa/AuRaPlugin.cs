@@ -18,6 +18,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Services;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -110,6 +111,10 @@ namespace Nethermind.Consensus.AuRa
                 .AddStep(typeof(LoadGenesisBlockAuRa))
 
                 // Block processing components
+                .AddSingleton<AuraValidationModifier>() // For rpc and block validation, this is added, but not for block production... for some reason
+                .AddScoped<IAuRaValidator, NullAuRaValidator>() // Note: for main block processor this is not the case
+                .AddScoped<IBlockProcessor, AuRaBlockProcessor>()
+
                 .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
                 .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()
                 .AddSingleton<IAuRaStepCalculator, AuRaChainSpecEngineParameters, ITimestamper, ILogManager>((param, timestamper, logManager)
@@ -120,9 +125,7 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<AuRaGasLimitOverrideFactory>()
 
                 // Rpcs
-                .AddScoped<AuRaRpcBlockProcessorFactory>()
                 .AddSingleton<IRpcModuleFactory<ITraceRpcModule>, AuRaTraceModuleFactory>()
-                .AddSingleton<IAuRaBlockProcessorFactory, AuRaBlockProcessorFactory>()
                 .AddSingleton<IRpcModuleFactory<IDebugRpcModule>, AuRaDebugModuleFactory>()
 
                 .AddSingleton<IHealthHintService, AuraHealthHintService>()

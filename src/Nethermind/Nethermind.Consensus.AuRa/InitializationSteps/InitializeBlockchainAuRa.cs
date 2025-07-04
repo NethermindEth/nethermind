@@ -4,8 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Data;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
@@ -14,7 +14,6 @@ using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -32,14 +31,17 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     private readonly AuRaNethermindApi _api;
     private INethermindApi NethermindApi => _api;
 
-    private readonly IAuRaBlockProcessorFactory _auRaBlockProcessorFactory;
+    private readonly ILifetimeScope _rootLifetimeScope;
+    private readonly AuraValidationModifier _validationModifier;
 
     public InitializeBlockchainAuRa(
         AuRaNethermindApi api,
-        IAuRaBlockProcessorFactory auRaBlockProcessorFactory) : base(api)
+        ILifetimeScope rootLifetimeScope,
+        AuraValidationModifier validationModifier) : base(api)
     {
         _api = api;
-        _auRaBlockProcessorFactory = auRaBlockProcessorFactory;
+        _rootLifetimeScope = rootLifetimeScope;
+        _validationModifier = validationModifier;
     }
 
     protected override async Task InitBlockchain()
@@ -59,21 +61,22 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         _api.FinalizationManager.SetMainBlockProcessor(_api.MainProcessingContext!.BlockProcessor!);
     }
 
-    protected override BlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
+    protected override IBlockProcessor CreateBlockProcessor(BlockCachePreWarmer? preWarmer, ITransactionProcessor transactionProcessor, IWorldState worldState)
     {
-        return _auRaBlockProcessorFactory.Create(
-            _api.BlockValidator!,
-            _api.RewardCalculatorSource!.Get(transactionProcessor),
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
-            worldState,
-            _api.ReceiptStorage!,
-            new BeaconBlockRootHandler(transactionProcessor!, worldState),
-            transactionProcessor,
-            new ExecutionRequestsProcessor(transactionProcessor),
-            CreateAuRaValidator(worldState, transactionProcessor),
-            preWarmer: preWarmer);
+        return _rootLifetimeScope.BeginLifetimeScope((builder) =>
+            {
+                builder
+                    .AddModule(_validationModifier)
+                    .AddScoped(worldState)
+                    .AddScoped(transactionProcessor)
+                    .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
+                    .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
+                    .AddScoped<IAuRaValidator>(CreateAuRaValidator(worldState, transactionProcessor));
+                if (preWarmer is not null)
+                    builder.AddScoped(preWarmer);
+            })
+            .Resolve<IBlockProcessor>();
     }
-
 
     protected IAuRaValidator CreateAuRaValidator(IWorldState worldState, ITransactionProcessor transactionProcessor)
     {
