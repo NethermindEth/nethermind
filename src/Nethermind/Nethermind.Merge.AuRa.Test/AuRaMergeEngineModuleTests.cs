@@ -169,10 +169,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         {
             _api = Container.Resolve<AuRaNethermindApi>();
 
-            // Note: Different from production. No aura validator, no AuraValidationModifier
+            // Note: Different from production. No aura validator,
             IBlockProcessor processor = Container.Resolve<ILifetimeScope>().BeginLifetimeScope((builder) => builder
                     .AddScoped(state)
                     .AddScoped(CreateBlockCachePreWarmer())
+                    .AddModule(Container.Resolve<AuraValidationModifier>())
                     .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
                     .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>())
                 .Resolve<IBlockProcessor>();
