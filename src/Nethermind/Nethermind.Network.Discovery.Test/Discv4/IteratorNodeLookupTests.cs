@@ -23,8 +23,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
     public class IteratorNodeLookupTests
     {
         private IRoutingTable<Node> _routingTable = null!;
-        private IKademliaDiscv4Adapter _discv4Adapter = null!;
-        private IteratorNodeLookup _lookup = null!;
+        private IteratorNodeLookup<PublicKey, Node> _lookup = null!;
+        private IKademliaMessageSender<PublicKey, Node> _msgSender = null!;
         private Node _currentNode = null!;
         private PublicKey _targetKey = null!;
 
@@ -36,16 +36,15 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             _routingTable = Substitute.For<IRoutingTable<Node>>();
             KademliaConfig<Node> kademliaConfig = new KademliaConfig<Node> { CurrentNodeId = _currentNode };
-            _discv4Adapter = Substitute.For<IKademliaDiscv4Adapter>();
+            _msgSender = Substitute.For<IKademliaMessageSender<PublicKey, Node>>();
             ILogManager logManager = Substitute.For<ILogManager>();
 
-            _lookup = new IteratorNodeLookup(_routingTable, kademliaConfig, _discv4Adapter, logManager);
-        }
-
-        [TearDown]
-        public async Task TearDown()
-        {
-            await _discv4Adapter.DisposeAsync();
+            _lookup = new IteratorNodeLookup<PublicKey, Node>(
+                _routingTable,
+                kademliaConfig,
+                _msgSender,
+                new PublicKeyKeyOperator(),
+                logManager);
         }
 
         [Test]
@@ -79,7 +78,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _routingTable.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>())
                 .Returns([initialNode]);
 
-            _discv4Adapter.FindNeighbours(initialNode, _targetKey, Arg.Any<CancellationToken>())
+            _msgSender.FindNeighbours(initialNode, _targetKey, Arg.Any<CancellationToken>())
                 .Returns([neighbourNode]);
 
             List<Node> result = await _lookup.Lookup(_targetKey, token).ToListAsync(token);
@@ -88,7 +87,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             result.Should().Contain(initialNode);
             result.Should().Contain(neighbourNode);
 
-            await _discv4Adapter.Received(1).FindNeighbours(
+            await _msgSender.Received(1).FindNeighbours(
                 Arg.Is<Node>(n => n == initialNode),
                 Arg.Is<PublicKey>(k => k == _targetKey),
                 Arg.Any<CancellationToken>());
@@ -106,7 +105,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             result.Should().HaveCount(1);
             result.Should().Contain(_currentNode);
 
-            await _discv4Adapter.DidNotReceive().FindNeighbours(
+            await _msgSender.DidNotReceive().FindNeighbours(
                 Arg.Any<Node>(),
                 Arg.Any<PublicKey>(),
                 Arg.Any<CancellationToken>());
@@ -121,7 +120,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _routingTable.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>())
                 .Returns([initialNode]);
 
-            _discv4Adapter.FindNeighbours(initialNode, _targetKey, Arg.Any<CancellationToken>())
+            _msgSender.FindNeighbours(initialNode, _targetKey, Arg.Any<CancellationToken>())
                 .Returns([]);
 
             List<Node> result = await _lookup.Lookup(_targetKey, token).ToListAsync(token);
@@ -129,7 +128,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             result.Should().HaveCount(1);
             result.Should().Contain(initialNode);
 
-            await _discv4Adapter.Received(1).FindNeighbours(
+            await _msgSender.Received(1).FindNeighbours(
                 Arg.Is<Node>(n => n == initialNode),
                 Arg.Is<PublicKey>(k => k == _targetKey),
                 Arg.Any<CancellationToken>());
@@ -144,7 +143,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _routingTable.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>())
                 .Returns(new[] { initialNode });
 
-            _discv4Adapter.FindNeighbours(initialNode, _targetKey, Arg.Any<CancellationToken>())
+            _msgSender.FindNeighbours(initialNode, _targetKey, Arg.Any<CancellationToken>())
                 .Returns(Task.FromException<Node[]>(new Exception("Test exception")));
 
             List<Node> result = await _lookup.Lookup(_targetKey, token).ToListAsync(token);
@@ -152,7 +151,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             result.Should().HaveCount(1);
             result.Should().Contain(initialNode);
 
-            await _discv4Adapter.Received(1).FindNeighbours(
+            await _msgSender.Received(1).FindNeighbours(
                 Arg.Is<Node>(n => n == initialNode),
                 Arg.Is<PublicKey>(k => k == _targetKey),
                 Arg.Any<CancellationToken>());
@@ -184,10 +183,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _routingTable.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>())
                 .Returns([initialNode]);
 
-            _discv4Adapter.FindNeighbours(initialNode, _targetKey, Arg.Any<CancellationToken>())
+            _msgSender.FindNeighbours(initialNode, _targetKey, Arg.Any<CancellationToken>())
                 .Returns([neighbourNode]);
 
-            _discv4Adapter.FindNeighbours(neighbourNode, _targetKey, Arg.Any<CancellationToken>())
+            _msgSender.FindNeighbours(neighbourNode, _targetKey, Arg.Any<CancellationToken>())
                 .Returns([initialNode]);
 
             List<Node> result = await _lookup.Lookup(_targetKey, token).ToListAsync();
@@ -196,12 +195,12 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             result.Should().Contain(initialNode);
             result.Should().Contain(neighbourNode);
 
-            await _discv4Adapter.Received(1).FindNeighbours(
+            await _msgSender.Received(1).FindNeighbours(
                 Arg.Is<Node>(n => n == initialNode),
                 Arg.Is<PublicKey>(k => k == _targetKey),
                 Arg.Any<CancellationToken>());
 
-            await _discv4Adapter.Received(1).FindNeighbours(
+            await _msgSender.Received(1).FindNeighbours(
                 Arg.Is<Node>(n => n == neighbourNode),
                 Arg.Is<PublicKey>(k => k == _targetKey),
                 Arg.Any<CancellationToken>());
@@ -217,10 +216,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _routingTable.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256?>())
                 .Returns([initialNode]);
 
-            _discv4Adapter.FindNeighbours(initialNode, _targetKey, Arg.Any<CancellationToken>())
+            _msgSender.FindNeighbours(initialNode, _targetKey, Arg.Any<CancellationToken>())
                 .Returns([neighbourNode]);
 
-            _discv4Adapter.FindNeighbours(neighbourNode, _targetKey, Arg.Any<CancellationToken>())
+            _msgSender.FindNeighbours(neighbourNode, _targetKey, Arg.Any<CancellationToken>())
                 .Returns([initialNode, neighbourNode]);
 
             List<Node> result = await _lookup.Lookup(_targetKey, token).ToListAsync();
