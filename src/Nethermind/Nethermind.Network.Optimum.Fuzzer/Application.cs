@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using GetOptimum.Node.Proto;
 using Grpc.Net.Client;
 using Microsoft.Extensions.Logging;
 
@@ -31,6 +32,12 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
                 var report = new RunReport(options.SubscriberCount, options.PublisherCount);
                 try
                 {
+                    if (options.TouchTopic)
+                    {
+                        logger.LogDebug("Touching topic {Topic}", topic);
+                        await TouchTopicAsync(topic, cts.Token);
+                    }
+
                     await SingleRun(report, topic, random, cts.Token);
                 }
                 catch (OperationCanceledException) when (topLevelToken.IsCancellationRequested)
@@ -134,5 +141,22 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
 
         await Task.WhenAll(subscribers);
         await Task.WhenAll(publishers);
+    }
+
+    /// <remarks>
+    /// Intended to be used to ensure the topic exists before running the fuzzer.
+    /// A workaround that helps to avoid issues in the Optimum node due to concurrent topic creation.
+    /// </remarks>
+    private async Task TouchTopicAsync(string topic, CancellationToken token)
+    {
+        using var grpcChannel = GrpcChannel.ForAddress(options.GrpcEndpoint, Options.DefaultGrpcChannelOptions);
+        var client = new CommandStream.CommandStreamClient(grpcChannel);
+        using var commands = client.ListenCommands(cancellationToken: token);
+
+        await commands.RequestStream.WriteAsync(new ListenCommandsRequest
+        {
+            Command = 2,
+            Topic = topic,
+        }, token);
     }
 }

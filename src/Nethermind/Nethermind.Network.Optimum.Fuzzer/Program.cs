@@ -19,6 +19,7 @@ public sealed record FuzzerOptions
     public required int SubscriberCount { get; init; }
     public required TimeSpan PublisherDelay { get; init; }
     public required TimeSpan Timeout { get; init; }
+    public required bool TouchTopic { get; init; }
     public required int Runs { get; init; }
 
     public static FuzzerOptions FromParseResult(ParseResult p)
@@ -32,6 +33,7 @@ public sealed record FuzzerOptions
             SubscriberCount = p.GetValue(FuzzerCliOptions.SubscriberCount),
             PublisherDelay = TimeSpan.FromMilliseconds(p.GetValue(FuzzerCliOptions.PublisherDelay)),
             Timeout = TimeSpan.FromMilliseconds(p.GetValue(FuzzerCliOptions.RunTimeout)),
+            TouchTopic = p.GetValue(FuzzerCliOptions.TouchTopic),
             Runs = p.GetValue(FuzzerCliOptions.RunCount)
         };
     }
@@ -87,6 +89,12 @@ public static class FuzzerCliOptions
         DefaultValueFactory = (_) => 1 // 1 run
     }.Validated(Validators.Positive);
 
+    public static readonly Option<bool> TouchTopic = new Option<bool>("--touch-topic")
+    {
+        Description = "(Workaround) Ensure the topic exists before running the fuzzer",
+        DefaultValueFactory = (_) => false
+    };
+
     public static readonly Option<LogLevel> Logging = new Option<LogLevel>("--log")
     {
         Description = "Logging level",
@@ -108,6 +116,7 @@ public static class Program
             FuzzerCliOptions.PublisherDelay,
             FuzzerCliOptions.RunTimeout,
             FuzzerCliOptions.RunCount,
+            FuzzerCliOptions.TouchTopic,
             FuzzerCliOptions.Logging
         };
 
