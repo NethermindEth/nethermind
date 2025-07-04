@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IBlockTree _blockTree;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
         private readonly ILogger _logger;
-        private IBlockProcessor _blockProcessor;
+        private IBranchProcessor _branchProcessor;
         private readonly IValidatorStore _validatorStore;
         private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly long _twoThirdsMajorityTransition;
@@ -48,11 +48,11 @@ namespace Nethermind.Consensus.AuRa
             Initialize();
         }
 
-        public void SetMainBlockProcessor(IBlockProcessor blockProcessor)
+        public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
         {
-            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
-            _blockProcessor.BlockProcessed += OnBlockProcessed;
-            _blockProcessor.BlocksProcessing += OnBlocksProcessing;
+            _branchProcessor = branchProcessor;
+            _branchProcessor.BlockProcessed += OnBlockProcessed;
+            _branchProcessor.BlocksProcessing += OnBlocksProcessing;
         }
 
 
@@ -344,7 +344,7 @@ namespace Nethermind.Consensus.AuRa
 
         public void Dispose()
         {
-            _blockProcessor.BlockProcessed -= OnBlockProcessed;
+            _branchProcessor.BlockProcessed -= OnBlockProcessed;
         }
 
         [DebuggerDisplay("Count = {Count}")]

@@ -261,11 +261,18 @@ public class StartBlockProducerAuRa(
             IReadOnlyTxProcessorSource txProcessingEnv = readOnlyTxProcessingEnvFactory.Create();
             IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(null);
             BlockProcessor blockProcessor = CreateBlockProcessor(scope);
+            BranchProcessor branchProcessor = new BranchProcessor(
+                blockProcessor,
+                specProvider,
+                scope.WorldState,
+                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
+                logManager
+            );
 
             IBlockchainProcessor blockchainProcessor =
                 new BlockchainProcessor(
                     readOnlyBlockTree,
-                    blockProcessor,
+                    branchProcessor,
                     compositeBlockPreprocessorStep,
                     apiStateReader,
                     logManager,
