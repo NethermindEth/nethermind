@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,30 +35,23 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         }
     }
 
-    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null)
     {
         blockNumber ??= GetBlockNumber(blockHash);
 
         if (blockNumber.HasValue && _headerDict.TryGetValue(blockHash, out BlockHeader? header))
         {
-            if (shouldCache)
-            {
-                Cache(header);
-            }
             return header;
         }
 
-        header = readonlyBaseHeaderStore.Get(blockHash, false, blockNumber);
-        if (header is not null && shouldCache)
-        {
-            Cache(header);
-        }
-        return header;
+        return readonlyBaseHeaderStore.Get(blockHash, blockNumber);
     }
 
-    public void Cache(BlockHeader header)
+    public bool Cache(BlockHeader header, bool hasDifficulty, bool isMainChain = false)
     {
+        bool exists = _headerDict.ContainsKey(header.Hash);
         Insert(header);
+        return !exists;
     }
 
     public void Delete(Hash256 blockHash)
@@ -74,5 +68,11 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
     public long? GetBlockNumber(Hash256 blockHash)
     {
         return _blockNumberDict.TryGetValue(blockHash, out var blockNumber) ? blockNumber : readonlyBaseHeaderStore.GetBlockNumber(blockHash);
+    }
+
+    public bool TryGetCache(Hash256 blockHash, bool needsDifficulty, bool requiresCanonical, [NotNullWhen(true)] out BlockHeader? header)
+    {
+        header = null;
+        return !requiresCanonical && _headerDict.TryGetValue(blockHash, out header);
     }
 }

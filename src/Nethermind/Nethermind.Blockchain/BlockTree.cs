@@ -562,8 +562,15 @@ namespace Nethermind.Blockchain
                 // TODO: would be great to check why this is still needed (maybe it is something archaic)
                 return null;
             }
+            
+            bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
+            bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) == BlockTreeLookupOptions.RequireCanonical;
+            if (_headerStore.TryGetCache(blockHash, totalDifficultyNeeded, requiresCanonical, out BlockHeader? header))
+            {
+                return header;
+            }
 
-            BlockHeader? header = _headerStore.Get(blockHash, shouldCache: false, blockNumber: blockNumber);
+            header = _headerStore.Get(blockHash, blockNumber: blockNumber);
             if (header is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
@@ -576,9 +583,7 @@ namespace Nethermind.Blockchain
             }
 
             header.Hash ??= blockHash;
-            bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
             bool createLevelIfMissing = (options & BlockTreeLookupOptions.DoNotCreateLevelIfMissing) == BlockTreeLookupOptions.None;
-            bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) == BlockTreeLookupOptions.RequireCanonical;
 
             if ((totalDifficultyNeeded && header.TotalDifficulty is null) || requiresCanonical)
             {
@@ -615,7 +620,7 @@ namespace Nethermind.Blockchain
 
             if (header is not null && ShouldCache(header.Number))
             {
-                _headerStore.Cache(header);
+                _headerStore.Cache(header, hasDifficulty: totalDifficultyNeeded, requiresCanonical);
             }
 
             return header;
@@ -735,17 +740,6 @@ namespace Nethermind.Blockchain
             } while (current is not null && responseIndex < numberOfBlocks);
 
             return result;
-        }
-
-        private BlockHeader? GetAncestorAtNumber(BlockHeader header, long number)
-        {
-            BlockHeader? result = header;
-            while (result is not null && result.Number < number)
-            {
-                result = this.FindParentHeader(result, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            }
-
-            return header;
         }
 
         private Hash256? GetBlockHashOnMainOrBestDifficultyHash(long blockNumber)
@@ -947,7 +941,7 @@ namespace Nethermind.Blockchain
                 if (ShouldCache(block.Number))
                 {
                     _blockStore.Cache(block);
-                    _headerStore.Cache(block.Header);
+                    _headerStore.Cache(block.Header, hasDifficulty: true);
                 }
 
                 ChainLevelInfo? level = LoadLevel(block.Number);
@@ -1013,17 +1007,17 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
-                if (ShouldCache(block.Number))
-                {
-                    _blockStore.Cache(block);
-                    _headerStore.Cache(block.Header);
-                }
 
                 // we only force update head block for last block in processed blocks
                 bool lastProcessedBlock = i == blocks.Count - 1;
 
                 // Where head is set if wereProcessed is true
                 MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
+                if (ShouldCache(block.Number))
+                {
+                    _blockStore.Cache(block);
+                    _headerStore.Cache(block.Header, hasDifficulty: true, isMainChain: true);
+                }
             }
 
             TryUpdateSyncPivot();
@@ -1499,7 +1493,7 @@ namespace Nethermind.Blockchain
             if (block is not null && ShouldCache(block.Number))
             {
                 _blockStore.Cache(block);
-                _headerStore.Cache(block.Header);
+                _headerStore.Cache(block.Header, hasDifficulty: totalDifficultyNeeded, requiresCanonical);
             }
 
             return block;
