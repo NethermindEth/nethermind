@@ -30,7 +30,7 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, T instance) where T : class
+    public static ContainerBuilder AddInstance<T>(this ContainerBuilder builder, T instance) where T : class
     {
         builder.RegisterInstance(instance)
             .As<T>()
@@ -176,17 +176,6 @@ public static class ContainerBuilderExtensions
             .As<T>()
             .AsSelf()
             .CommonNethermindConfig()
-            .InstancePerLifetimeScope();
-
-        return builder;
-    }
-
-    public static ContainerBuilder AddScoped<T>(this ContainerBuilder builder, T instance) where T : class
-    {
-        builder.Register(ctx => instance)
-            .As<T>()
-            .AsSelf()
-            .ExternallyOwned()
             .InstancePerLifetimeScope();
 
         return builder;

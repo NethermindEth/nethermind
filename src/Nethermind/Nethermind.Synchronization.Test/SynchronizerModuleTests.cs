@@ -29,8 +29,8 @@ public class SynchronizerModuleTests
                 FastSync = true,
                 VerifyTrieOnStateSyncFinished = true
             }))
-            .AddSingleton(treeSync)
-            .AddSingleton(Substitute.For<IWorldStateManager>())
+            .AddInstance(treeSync)
+            .AddInstance(Substitute.For<IWorldStateManager>())
             .Build();
     }
 

@@ -143,7 +143,7 @@ public partial class ForwardHeaderProviderTests
         return CreateMergeNode((builder) =>
         {
             builder
-                .AddSingleton<IBlockTree>(treeBuilder.NotSyncedTree)
+                .AddInstance<IBlockTree>(treeBuilder.NotSyncedTree)
                 .AddKeyedSingleton<IDb>(DbNames.Metadata, treeBuilder.NotSyncedTreeBuilder.MetadataDb);
         }, configs);
     }

@@ -37,7 +37,7 @@ namespace Nethermind.AuRa.Test.Contract
             (ChainSpec ChainSpec, ISpecProvider SpecProvider) provider = GetSpecProvider();
             TTest test = new() { ChainSpecOverride = provider.ChainSpec };
             return (TTest)await test.Build(builder =>
-                builder.AddSingleton<ISpecProvider>(provider.SpecProvider));
+                builder.AddInstance<ISpecProvider>(provider.SpecProvider));
         }
 
         protected override ChainSpec CreateChainSpec()

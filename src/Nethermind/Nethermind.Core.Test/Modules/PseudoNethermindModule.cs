@@ -56,18 +56,18 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
                 logManager))
-            .AddSingleton<IFileSystem>(new FileSystem())
-            .AddSingleton<IDbProvider>(new DbProvider())
-            .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
+            .AddInstance<IFileSystem>(new FileSystem())
+            .AddInstance<IDbProvider>(new DbProvider())
+            .AddInstance<IProcessExitSource>(new ProcessExitSource(default))
             .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
             // Crypto
-            .AddSingleton<ICryptoRandom>(new CryptoRandom())
+            .AddInstance<ICryptoRandom>(new CryptoRandom())
 
-            .AddSingleton<ISignerStore>(NullSigner.Instance)
-            .AddSingleton<IKeyStore>(Substitute.For<IKeyStore>())
+            .AddInstance<ISignerStore>(NullSigner.Instance)
+            .AddInstance<IKeyStore>(Substitute.For<IKeyStore>())
             .AddSingleton<IWallet, DevWallet>()
-            .AddSingleton<ITxSender>(Substitute.For<ITxSender>())
+            .AddInstance<ITxSender>(Substitute.For<ITxSender>())
 
             // Rpc
             .AddSingleton<IJsonRpcService, JsonRpcService>()

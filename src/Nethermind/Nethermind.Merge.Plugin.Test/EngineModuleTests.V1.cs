@@ -1546,8 +1546,8 @@ public partial class EngineModuleTests
 
         using MergeTestBlockchain chain = await CreateBaseBlockchain()
             .BuildMergeTestBlockchain(configurer: builder => builder
-                .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(Prague.Instance))
-                .AddSingleton<ILogManager>(loggerManager));
+                .AddInstance<ISpecProvider>(new TestSingleReleaseSpecProvider(Prague.Instance))
+                .AddInstance<ILogManager>(loggerManager));
 
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         string[] list = new[]

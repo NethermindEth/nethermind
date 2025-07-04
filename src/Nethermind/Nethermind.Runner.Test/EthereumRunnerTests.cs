@@ -442,7 +442,7 @@ public class EthereumRunnerTests
                 ipResolver.LocalIp.Returns(IPAddress.Parse("127.0.0.1"));
 
                 builder
-                    .AddSingleton(ipResolver)
+                    .AddInstance(ipResolver)
                     .AddDecorator<IInitConfig>((ctx, initConfig) =>
                     {
                         initConfig.DiagnosticMode = DiagnosticMode.MemDb;
@@ -461,7 +461,7 @@ public class EthereumRunnerTests
                     // to extract the reporting validator. The blockchain processor is not DI so it fail in step test but
                     // pass in runner test.
                     builder
-                        .AddSingleton(Substitute.For<IReportingValidator>())
+                        .AddInstance(Substitute.For<IReportingValidator>())
                         ;
                 }
 

@@ -48,9 +48,9 @@ public class ParityStyleTracerTests
         _poSSwitcher = Substitute.For<IPoSSwitcher>();
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(cp))
-            .AddSingleton<ISpecProvider>(specProvider)
-            .AddSingleton<IPoSSwitcher>(_poSSwitcher)
-            .AddSingleton<IBlockTree>(_blockTree)
+            .AddInstance<ISpecProvider>(specProvider)
+            .AddInstance<IPoSSwitcher>(_poSSwitcher)
+            .AddInstance<IBlockTree>(_blockTree)
             .Build();
 
         await _container.Resolve<PseudoNethermindRunner>().StartBlockProcessing(default);

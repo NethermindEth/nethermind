@@ -63,7 +63,7 @@ public class MergePluginTests
                 Substitute.For<IProcessExitSource>(),
                 [_consensusPlugin!, _plugin],
                 LimboLogs.Instance))
-            .AddSingleton<IRpcModuleProvider>(Substitute.For<IRpcModuleProvider>())
+            .AddInstance<IRpcModuleProvider>(Substitute.For<IRpcModuleProvider>())
             .AddModule(new HealthCheckPluginModule()) // The merge RPC require it.
             .OnBuild((ctx) =>
             {

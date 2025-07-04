@@ -52,7 +52,7 @@ public partial class FlashbotsModuleTests
         IReleaseSpec? releaseSpec = null)
         => await new EngineModuleTests.MergeTestBlockchain()
             .BuildMergeTestBlockchain(configurer: (builder) => builder
-                .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance))
+                .AddInstance<ISpecProvider>(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance))
                 .AddModule(new FlashbotsModule(new FlashbotsConfig(), new JsonRpcConfig()))
             );
 }

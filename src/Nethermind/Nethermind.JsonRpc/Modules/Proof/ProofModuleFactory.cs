@@ -35,13 +35,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
                     .AddScoped<ITransactionProcessorAdapter, TraceTransactionProcessorAdapter>()
                     .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-                    .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
-                    .AddScoped<IBlockValidator>(Always.Valid) // Why?
+                    .AddInstance<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+                    .AddInstance<IBlockValidator>(Always.Valid) // Why?
 
                     // Specific for proof rpc
-                    .AddScoped<IReceiptStorage>(new InMemoryReceiptStorage()) // Umm.... not `NullReceiptStorage`?
-                    .AddScoped<IRewardCalculator>(NoBlockRewards.Instance)
-                    .AddScoped<IVisitingWorldState>(txProcessingEnv.WorldState).AddScoped<IWorldState>(txProcessingEnv.WorldState)
+                    .AddInstance<IReceiptStorage>(new InMemoryReceiptStorage()) // Umm.... not `NullReceiptStorage`?
+                    .AddInstance<IRewardCalculator>(NoBlockRewards.Instance)
+                    .AddInstance<IVisitingWorldState>(txProcessingEnv.WorldState).AddInstance<IWorldState>(txProcessingEnv.WorldState)
 
                     .AddScoped<ITracer, Tracer>()
                     ;
@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             // Eh, its a good idea to separate what need block processing and what does not anyway.
             ILifetimeScope proofRpcScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             {
-                builder.AddSingleton<ITracer>(tracerScope.Resolve<ITracer>());
+                builder.AddInstance<ITracer>(tracerScope.Resolve<ITracer>());
             });
 
             proofRpcScope.Disposer.AddInstanceForAsyncDisposal(tracerScope);

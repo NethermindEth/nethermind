@@ -83,7 +83,7 @@ public class FullPruningDiskTest
             standardDbInitializer.InitStandardDbs(true);
 
             return base.ConfigureContainer(builder, configProvider)
-                .AddSingleton<IDbProvider>(dbProvider);
+                .AddInstance<IDbProvider>(dbProvider);
         }
 
         public override void Dispose()

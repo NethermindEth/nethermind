@@ -153,7 +153,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             consensusPlugin.ApiType.ReturnsForAnyArgs(typeof(NethermindApi));
 
             return CreateCommonBuilder(stepInfos)
-                .AddSingleton<IConsensusPlugin>(consensusPlugin)
+                .AddInstance<IConsensusPlugin>(consensusPlugin)
                 .Bind<INethermindApi, NethermindApi>()
                 .Build();
         }
@@ -165,7 +165,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             return CreateCommonBuilder(stepInfos)
                 .AddSingleton<AuRaNethermindApi>()
-                .AddSingleton<IConsensusPlugin>(consensusPlugin)
+                .AddInstance<IConsensusPlugin>(consensusPlugin)
                 .Bind<INethermindApi, AuRaNethermindApi>()
                 .Build();
         }
@@ -175,16 +175,16 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             ContainerBuilder builder = new ContainerBuilder()
                 .AddSingleton<INethermindApi, NethermindApi>()
                 .AddSingleton<NethermindApi.Dependencies>()
-                .AddSingleton<IConfigProvider>(new ConfigProvider())
-                .AddSingleton<IJsonSerializer>(new EthereumJsonSerializer())
-                .AddSingleton<ILogManager>(LimboLogs.Instance)
-                .AddSingleton<ChainSpec>(new ChainSpec())
-                .AddSingleton<ISpecProvider>(Substitute.For<ISpecProvider>())
-                .AddSingleton<IProcessExitSource>(Substitute.For<IProcessExitSource>())
+                .AddInstance<IConfigProvider>(new ConfigProvider())
+                .AddInstance<IJsonSerializer>(new EthereumJsonSerializer())
+                .AddInstance<ILogManager>(LimboLogs.Instance)
+                .AddInstance<ChainSpec>(new ChainSpec())
+                .AddInstance<ISpecProvider>(Substitute.For<ISpecProvider>())
+                .AddInstance<IProcessExitSource>(Substitute.For<IProcessExitSource>())
                 .AddSingleton<IDisposableStack, AutofacDisposableStack>()
                 .AddSingleton<IEthereumStepsLoader, EthereumStepsLoader>()
                 .AddSingleton<EthereumStepsManager>()
-                .AddSingleton<ILogManager>(LimboLogs.Instance);
+                .AddInstance<ILogManager>(LimboLogs.Instance);
 
             foreach (var stepInfo in stepInfos)
             {

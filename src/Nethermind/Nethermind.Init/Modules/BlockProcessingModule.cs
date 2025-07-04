@@ -63,12 +63,12 @@ public class BlockProcessingModule : Module
             .AddScoped<IValidationTransactionExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
 
             // Block production components
-            .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
-            .AddSingleton<ISealValidator>(NullSealEngine.Instance)
-            .AddSingleton<ISealer>(NullSealEngine.Instance)
+            .AddInstance<IRewardCalculatorSource>(NoBlockRewards.Instance)
+            .AddInstance<ISealValidator>(NullSealEngine.Instance)
+            .AddInstance<ISealer>(NullSealEngine.Instance)
             .AddSingleton<ISealEngine, SealEngine>()
 
-            .AddSingleton<ISimulateTransactionProcessorFactory>(SimulateTransactionProcessorFactory.Instance)
+            .AddInstance<ISimulateTransactionProcessorFactory>(SimulateTransactionProcessorFactory.Instance)
             .AddSingleton<IBlockProducerEnvFactory, BlockProducerEnvFactory>()
             .AddSingleton<IBlockProducerTxSourceFactory, TxPoolTxSourceFactory>()
 

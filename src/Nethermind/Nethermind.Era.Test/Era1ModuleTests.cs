@@ -304,12 +304,12 @@ public class Era1ModuleTests
         }
 
         await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(inTree)
-            .AddSingleton<ISyncConfig>(new SyncConfig()
+            .AddInstance<IBlockTree>(inTree)
+            .AddInstance<ISyncConfig>(new SyncConfig()
             {
                 FastSync = fastSync
             })
-            .AddSingleton<IEraConfig>(new EraConfig()
+            .AddInstance<IEraConfig>(new EraConfig()
             {
                 From = start,
                 To = end,

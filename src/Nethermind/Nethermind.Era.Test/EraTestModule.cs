@@ -29,7 +29,7 @@ public class EraTestModule : Module
 
         return new ContainerBuilder()
             .AddModule(new EraTestModule())
-            .AddSingleton<IBlockTree>(blockTreeBuilder.TestObject)
+            .AddInstance<IBlockTree>(blockTreeBuilder.TestObject)
             .OnBuild((ctx) =>
             {
                 blockTreeBuilder
@@ -52,9 +52,9 @@ public class EraTestModule : Module
         builder
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddModule(new EraModule())
-            .AddSingleton<IBlockValidator>(Always.Valid)
-            .AddSingleton<IFileSystem>(new FileSystem()) // Run on real filesystem.
-            .AddSingleton<IEraConfig>(new EraConfig()
+            .AddInstance<IBlockValidator>(Always.Valid)
+            .AddInstance<IFileSystem>(new FileSystem()) // Run on real filesystem.
+            .AddInstance<IEraConfig>(new EraConfig()
             {
                 MaxEra1Size = 16,
                 NetworkName = TestNetwork,

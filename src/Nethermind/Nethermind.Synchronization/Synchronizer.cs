@@ -302,10 +302,10 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<SyncDbTuner>()
             .AddSingleton<MallocTrimmer>()
             .AddSingleton<ISyncPointers, SyncPointers>()
-            .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+            .AddInstance<IBeaconSyncStrategy>(No.BeaconSync)
             .AddSingleton<IPivot, Pivot>() // Used by sync report
             .AddSingleton<IBetterPeerStrategy, TotalDifficultyBetterPeerStrategy>()
-            .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
+            .AddInstance<IPoSSwitcher>(NoPoS.Instance)
 
             // For blocks. There are two block scope, Fast and Full
             .AddScoped<SyncFeedComponent<BlocksRequest>>()
