@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using System.IO.MemoryMappedFiles;
 using Autofac;
 using FluentAssertions;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -16,12 +16,10 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm.State;
 using NSubstitute;
-using NUnit.Framework.Constraints;
 
 namespace Nethermind.Era1.Test;
 public class Era1ModuleTests

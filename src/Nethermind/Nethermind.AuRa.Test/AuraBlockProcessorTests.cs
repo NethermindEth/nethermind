@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;

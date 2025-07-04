@@ -11,6 +11,7 @@ using Nethermind.Core.Threading;
 [assembly: InternalsVisibleTo("Nethermind.State")]
 [assembly: InternalsVisibleTo("Nethermind.Evm")]
 [assembly: InternalsVisibleTo("Nethermind.TxPool")]
+[assembly: InternalsVisibleTo("Nethermind.Blockchain")]
 namespace Nethermind.Db
 {
     public static class Metrics

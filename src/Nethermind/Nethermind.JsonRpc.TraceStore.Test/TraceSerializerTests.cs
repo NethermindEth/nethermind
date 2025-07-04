@@ -7,7 +7,7 @@ using System.IO;
 using System.Text.Json;
 
 using FluentAssertions;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
 
 using NUnit.Framework;

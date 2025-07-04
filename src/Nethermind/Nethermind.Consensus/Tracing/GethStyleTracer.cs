@@ -19,12 +19,11 @@ using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
-using Nethermind.Evm.Tracing.GethStyle.Custom.Native;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Tracing;
 

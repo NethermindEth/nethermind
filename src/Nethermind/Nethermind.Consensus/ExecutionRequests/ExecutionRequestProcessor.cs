@@ -16,6 +16,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using System;
 using System.Linq;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.ExecutionRequests;

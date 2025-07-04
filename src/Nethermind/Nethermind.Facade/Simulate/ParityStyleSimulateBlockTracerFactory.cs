@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 
 namespace Nethermind.Facade.Simulate;
 public class ParityStyleSimulateBlockTracerFactory(ParityTraceTypes types) : ISimulateBlockTracerFactory<ParityLikeTxTrace>

@@ -4,7 +4,7 @@
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Specs;
 using NUnit.Framework;
 
