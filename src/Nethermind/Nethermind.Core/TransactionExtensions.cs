@@ -17,7 +17,7 @@ namespace Nethermind.Core
         public static bool TryCalculatePremiumPerGas(this Transaction tx, in UInt256 baseFeePerGas, out UInt256 premiumPerGas)
         {
             bool freeTransaction = tx.IsFree();
-            UInt256 feeCap = tx.Supports1559 ? tx.MaxFeePerGas : tx.GasPrice;
+            UInt256 feeCap = tx.Supports1559 ? tx.MaxFeePerGas : tx.MaxPriorityFeePerGas;
             if (baseFeePerGas > feeCap)
             {
                 premiumPerGas = UInt256.Zero;
@@ -38,15 +38,14 @@ namespace Nethermind.Core
                     effectiveGasPrice = UInt256.Zero;
                 }
 
-                return effectiveGasPrice * (ulong)tx.GasLimit + tx.Value;
+                return effectiveGasPrice * (ulong)tx.GasLimit + tx.ValueRef;
             }
 
-            return tx.GasPrice * (ulong)tx.GasLimit + tx.Value;
+            return tx.MaxPriorityFeePerGas * (ulong)tx.GasLimit + tx.ValueRef;
         }
 
         public static UInt256 CalculateEffectiveGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
         {
-            UInt256 effectiveGasPrice = tx.GasPrice;
             if (eip1559Enabled)
             {
                 if (UInt256.AddOverflow(tx.MaxPriorityFeePerGas, baseFee, out UInt256 effectiveFee))
@@ -54,10 +53,10 @@ namespace Nethermind.Core
                     return tx.MaxFeePerGas;
                 }
 
-                effectiveGasPrice = UInt256.Min(tx.MaxFeePerGas, effectiveFee);
+                return UInt256.Min(tx.MaxFeePerGas, effectiveFee);
             }
 
-            return effectiveGasPrice;
+            return tx.MaxPriorityFeePerGas;
         }
 
         public static UInt256 CalculateMaxPriorityFeePerGas(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee) =>

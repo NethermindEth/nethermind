@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
@@ -11,11 +11,20 @@ public class Osaka : Prague
 {
     private static IReleaseSpec _instance;
 
-    protected Osaka()
+    public Osaka()
     {
         Name = "Osaka";
-        IsEofEnabled = true;
+        IsEip7594Enabled = true;
+        IsEip7823Enabled = true;
+        IsEip7825Enabled = true;
+        IsEip7883Enabled = true;
+        IsEip7918Enabled = true;
+        IsEip7934Enabled = true;
+        IsEip7939Enabled = true;
+        IsEip7951Enabled = true;
+        IsEip7907Enabled = true;
+        Released = false;
     }
 
-    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Osaka());
+    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Osaka());
 }

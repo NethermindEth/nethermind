@@ -10,6 +10,7 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Pyspec.Test;
 
 [TestFixture]
+[Ignore("EOF")]
 [Parallelizable(ParallelScope.All)]
 public class OsakaBlockChainTests : BlockchainTestBase
 {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -40,7 +41,7 @@ namespace Nethermind.Synchronization.ParallelSync
             remove { }
         }
 
-        public void Stop() { }
+        public Task StopAsync() => Task.CompletedTask;
         public void Update() { }
 
         public event EventHandler<SyncModeChangedEventArgs> Changing

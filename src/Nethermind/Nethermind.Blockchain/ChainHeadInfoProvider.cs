@@ -5,8 +5,10 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -31,6 +33,7 @@ namespace Nethermind.Blockchain
         {
         }
 
+        [UseConstructorForDependencyInjection]
         public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, ICodeInfoRepository codeInfoRepository)
         {
             SpecProvider = specProvider;
@@ -56,6 +59,8 @@ namespace Nethermind.Blockchain
 
         public UInt256 CurrentFeePerBlobGas { get; internal set; }
 
+        public ProofVersion CurrentProofVersion { get; private set; }
+
         public bool IsSyncing
         {
             get
@@ -70,6 +75,8 @@ namespace Nethermind.Blockchain
             }
         }
 
+        public bool IsProcessingBlock => _blockTree.IsProcessingBlock;
+
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
@@ -82,6 +89,7 @@ namespace Nethermind.Blockchain
                 BlobGasCalculator.TryCalculateFeePerBlobGas(e.Block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 currentFeePerBlobGas)
                     ? currentFeePerBlobGas
                     : UInt256.Zero;
+            CurrentProofVersion = spec.BlobProofVersion;
             HeadChanged?.Invoke(sender, e);
         }
     }

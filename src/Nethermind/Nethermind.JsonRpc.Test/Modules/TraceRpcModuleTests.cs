@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using FluentAssertions.Execution;
 using FluentAssertions.Json;
@@ -17,7 +18,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
 using NUnit.Framework;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -28,11 +28,10 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Newtonsoft.Json.Linq;
-using NSubstitute;
-using Nethermind.Facade;
-using Nethermind.Config;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -60,30 +59,15 @@ public class TraceRpcModuleTests
                         .WithNonce(Blockchain.StateReader.GetNonce(stateRoot, TestItem.AddressB) + (UInt256)j)
                         .SignedAndResolved(Blockchain.EthereumEcdsa, TestItem.PrivateKeyB).TestObject);
                 }
-                await Blockchain.AddBlock(transactions.ToArray());
+                await Blockchain.AddBlockMayMissTx(transactions.ToArray());
 
                 stateRoot = Blockchain.BlockTree.Head!.StateRoot!;
             }
 
-            Factory = new(
-                Blockchain.WorldStateManager,
-                Blockchain.BlockTree,
-                JsonRpcConfig,
-                Substitute.For<IBlockchainBridge>(),
-                new BlocksConfig().SecondsPerSlot,
-                Blockchain.BlockPreprocessorStep,
-                new RewardCalculator(Blockchain.SpecProvider),
-                Blockchain.ReceiptStorage,
-                Blockchain.SpecProvider,
-                Blockchain.PoSSwitcher,
-                Blockchain.LogManager
-            );
-
-            TraceRpcModule = Factory.Create();
+            TraceRpcModule = Blockchain.TraceRpcModule;
         }
 
         public ITraceRpcModule TraceRpcModule { get; private set; } = null!;
-        public TraceModuleFactory Factory { get; private set; } = null!;
         public IJsonRpcConfig JsonRpcConfig { get; private set; } = null!;
         public TestRpcBlockchain Blockchain { get; set; } = null!;
 
@@ -279,7 +263,7 @@ public class TraceRpcModuleTests
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
         UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
-        await context.Blockchain.AddBlock(
+        await context.Blockchain.AddBlockMayMissTx(
             new[]
             {
                 Build.A.Transaction.WithNonce(currentNonceAddressA + 1).WithTo(TestItem.AddressD)
@@ -626,7 +610,7 @@ public class TraceRpcModuleTests
             .WithGasPrice(875000000)
             .SignedAndResolved(TestItem.PrivateKeyC)
             .WithIsServiceTransaction(true).TestObject;
-        await blockchain.AddBlock(serviceTransaction);
+        await blockchain.AddBlockMayMissTx(serviceTransaction);
         BlockParameter blockParameter = new BlockParameter(BlockParameterType.Latest);
         string[] traceTypes = { "trace" };
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(blockParameter, traceTypes);

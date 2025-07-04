@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -12,7 +13,7 @@ namespace Nethermind.Synchronization.SnapSync
     {
 
         private static readonly IPeerAllocationStrategy DefaultStrategy =
-            new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.SnapRanges, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse), "snap");
+            new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(new BySpeedStrategy(TransferSpeedType.SnapRanges, true), "snap");
 
         public SnapSyncAllocationStrategyFactory() : base(DefaultStrategy)
         {

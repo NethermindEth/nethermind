@@ -13,6 +13,7 @@ public class CLChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong? L2BlockTime { get; init; }
     public ulong? SeqWindowSize { get; init; }
     public ulong? MaxSequencerDrift { get; init; }
+    public ulong? ChannelTimeoutBedrock { get; init; }
 
     // roles
     public Address? SystemConfigOwner { get; init; }
@@ -48,6 +49,7 @@ public class CLChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong? L1ChainId { get; init; }
     public ulong? L1GenesisNumber { get; init; }
     public Hash256? L1GenesisHash { get; init; }
+    public OptimismSystemConfig? GenesisSystemConfig { get; init; }
     public string? EngineName => "OptimismCL";
     public string? SealEngineType => null;
 }

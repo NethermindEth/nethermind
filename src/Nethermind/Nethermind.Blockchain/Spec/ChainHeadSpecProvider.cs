@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Spec
 
         public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
+        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 
@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.Spec
                 _lastHeader = headerNumber;
                 return _headerSpec = header is not null
                     ? _specProvider.GetSpec(header)
-                    : GetSpec((ForkActivation)headerNumber);
+                    : _specProvider.GetSpec((ForkActivation)headerNumber);
             }
         }
     }

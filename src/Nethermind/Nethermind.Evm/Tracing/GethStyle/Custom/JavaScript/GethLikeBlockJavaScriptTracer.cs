@@ -8,7 +8,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 
@@ -48,10 +48,7 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         _ctx.From = tx.SenderAddress;
         _ctx.To = tx.To;
         _ctx.Value = tx.Value;
-        if (tx.Data is not null)
-        {
-            _ctx.Input = tx.Data.Value;
-        }
+        _ctx.Input = tx.Data;
     }
 
     public override void EndBlockTrace()

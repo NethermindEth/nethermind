@@ -18,7 +18,7 @@ public static class EraPathUtils
             MatchCasing = MatchCasing.PlatformDefault
         });
 
-        if (!entries.Any())
+        if (entries.Length == 0)
             yield break;
 
         uint next = 0;

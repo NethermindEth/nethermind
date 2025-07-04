@@ -33,7 +33,7 @@ public partial class EngineModuleTests
 {
     [TestCase(
         "0x73b538422b679dae9148c7de383813d96182bcdf2636955096a19da1ffe97967",
-        "0x43b85f31b7441048476f2dd80f7d58486a0ca37b7f421e5107e6cbf26032b74b",
+        "0xe89937a887c84cf0422c4445780f573929fa8bdec06eaac39be91cd428a9c249",
         "0x0cb5b20122ce36c5d13058d8d6ec33b9fee729730f41a3adeacfb76dd8116ab7",
         "0x0c26dbd2461b7b5d")]
     public virtual async Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash,

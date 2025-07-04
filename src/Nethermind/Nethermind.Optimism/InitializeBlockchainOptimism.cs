@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -8,6 +9,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
@@ -18,7 +20,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Optimism.Rpc;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
@@ -27,14 +29,8 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 {
     private readonly IBlocksConfig _blocksConfig = api.Config<IBlocksConfig>();
 
-    private readonly OptimismChainSpecEngineParameters _chainSpecParameters = api.ChainSpec
-        .EngineChainSpecParametersProvider.GetChainSpecParameters<OptimismChainSpecEngineParameters>();
-
     protected override async Task InitBlockchain()
     {
-        api.L1CostHelper = new(api.SpecHelper, _chainSpecParameters.L1BlockAddress!);
-        api.SimulateTransactionProcessorFactory = new SimulateOptimismTransactionProcessorFactory(api.L1CostHelper, api.SpecHelper);
-
         await base.InitBlockchain();
 
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
@@ -43,7 +39,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         api.Context.Resolve<InvalidChainTracker>().SetupBlockchainProcessorInterceptor(api.MainProcessingContext!.BlockchainProcessor);
     }
 
-    protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
+    protected override ITransactionProcessor CreateTransactionProcessor(ICodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
     {
         if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
         if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
@@ -74,24 +70,21 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             api.SpecProvider,
             api.BlockValidator,
             api.RewardCalculatorSource.Get(transactionProcessor),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
             worldState,
-            api.ReceiptStorage,
-            transactionProcessor,
+            api.ReceiptStorage!,
             new BlockhashStore(api.SpecProvider, worldState),
             new BeaconBlockRootHandler(transactionProcessor, worldState),
             api.LogManager,
             api.SpecHelper,
             contractRewriter,
             new OptimismWithdrawalProcessor(api.WorldStateManager!.GlobalWorldState, api.LogManager, api.SpecHelper),
+            new ExecutionRequestsProcessor(transactionProcessor),
             preWarmer: preWarmer);
     }
 
-    protected override IHealthHintService CreateHealthHintService() =>
-        new ManualHealthHintService(_blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint);
-
     protected override IBlockProductionPolicy CreateBlockProductionPolicy() => AlwaysStartBlockProductionPolicy.Instance;
 
-    protected override ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
-        api.Config<IOptimismConfig>().SequencerUrl is not null ? NullTxPool.Instance : base.CreateTxPool(codeInfoRepository);
+    protected override ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider) =>
+        api.Config<IOptimismConfig>().SequencerUrl is not null ? NullTxPool.Instance : base.CreateTxPool(chainHeadInfoProvider);
 }

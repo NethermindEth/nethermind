@@ -3,7 +3,6 @@
 
 using Autofac;
 using Nethermind.Api.Steps;
-using Nethermind.Init;
 using Nethermind.Init.Steps;
 
 namespace Nethermind.Runner.Ethereum.Modules;
@@ -12,12 +11,9 @@ public class BuiltInStepsModule : Module
 {
     public static readonly StepInfo[] BuiltInSteps =
     [
-        typeof(InitializeStateDb),
         typeof(ApplyMemoryHint),
         typeof(DatabaseMigrations),
         typeof(EraStep),
-        typeof(FilterBootnodes),
-        typeof(InitCrypto),
         typeof(InitDatabase),
         typeof(InitializeBlockchain),
         typeof(InitializeBlockProducer),
@@ -36,7 +32,6 @@ public class BuiltInStepsModule : Module
         typeof(SetupKeyStore),
         typeof(StartBlockProcessor),
         typeof(StartBlockProducer),
-        typeof(StartLogProducer),
         typeof(StartMonitoring),
     ];
 

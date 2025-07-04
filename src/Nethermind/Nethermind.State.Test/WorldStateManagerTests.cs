@@ -12,6 +12,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -24,7 +25,7 @@ public class WorldStateManagerTests
     [Test]
     public void ShouldProxyGlobalWorldState()
     {
-        IWorldState worldState = Substitute.For<IWorldState>();
+        IVisitingWorldState worldState = Substitute.For<IVisitingWorldState>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
@@ -35,7 +36,7 @@ public class WorldStateManagerTests
     [Test]
     public void ShouldProxyReorgBoundaryEvent()
     {
-        IWorldState worldState = Substitute.For<IWorldState>();
+        IVisitingWorldState worldState = Substitute.For<IVisitingWorldState>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
@@ -51,7 +52,7 @@ public class WorldStateManagerTests
     [TestCase(INodeStorage.KeyScheme.HalfPath, false)]
     public void ShouldNotSupportHashLookupOnHalfpath(INodeStorage.KeyScheme keyScheme, bool hashSupported)
     {
-        IWorldState worldState = Substitute.For<IWorldState>();
+        IVisitingWorldState worldState = Substitute.For<IVisitingWorldState>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
@@ -100,6 +101,6 @@ public class WorldStateManagerTests
             }
         }
 
-        blockTree.Received().BestPersistedState = lastBlock - reorgDepth - 1;
+        blockTree.Received().BestPersistedState = lastBlock - reorgDepth;
     }
 }

@@ -9,14 +9,12 @@ using Nethermind.Abi;
 using Nethermind.Shutter.Contracts;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
-using Nethermind.Consensus.Processing;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Shutter;
 
 public class ShutterEon(
     IReadOnlyBlockTree blockTree,
-    ReadOnlyTxProcessingEnvFactory envFactory,
+    IShareableTxProcessorSource txSource,
     IAbiEncoder abiEncoder,
     IShutterConfig shutterConfig,
     ILogManager logManager) : IShutterEon
@@ -30,8 +28,7 @@ public class ShutterEon(
 
     public void Update(BlockHeader header)
     {
-        Hash256 stateRoot = blockTree.Head!.StateRoot!;
-        IReadOnlyTxProcessingScope scope = envFactory.Create().Build(stateRoot);
+        using IReadOnlyTxProcessingScope scope = txSource.Build(blockTree.Head?.Header);
         ITransactionProcessor processor = scope.TransactionProcessor;
 
         try

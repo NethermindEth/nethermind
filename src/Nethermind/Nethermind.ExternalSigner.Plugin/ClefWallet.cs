@@ -122,12 +122,15 @@ namespace Nethermind.ExternalSigner.Plugin
             ArgumentNullException.ThrowIfNull(transaction);
 
             TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
+            //Clef will complain about certain fields if they are serialized
+            if (transactionForRpc is EIP1559TransactionForRpc eip1559ForRpc)
+                eip1559ForRpc.GasPrice = null;
             SignTransactionResponse? signed = rpcClient.Post<SignTransactionResponse>(
                 "account_signTransaction",
                 transactionForRpc).GetAwaiter().GetResult();
             if (signed is null || signed.Tx is null) ThrowInvalidOperationSignFailed();
 
-            transaction.Signature = new Signature(signed.Tx.R!.Value, signed.Tx.S!.Value, (ulong)(signed.Tx.V! + Signature.VOffset));
+            transaction.Signature = new Signature(signed.Tx.R!.Value, signed.Tx.S!.Value, transaction.Type == TxType.Legacy ? (ulong)(signed.Tx.V!) : (ulong)(signed.Tx.V!) + Signature.VOffset);
         }
 
         public Signature SignMessage(byte[] message, Address address)
@@ -149,14 +152,12 @@ namespace Nethermind.ExternalSigner.Plugin
             return false;
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ThrowInvalidOperationSignFailed() =>
             throw new InvalidOperationException("Remote signer failed to sign the request.");
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ThrowNotSupportedException([CallerMemberName] string member = "") =>
             throw new NotSupportedException($"Clef remote signer does not support '{member}'");

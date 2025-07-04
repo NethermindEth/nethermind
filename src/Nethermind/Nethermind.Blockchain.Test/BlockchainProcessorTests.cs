@@ -21,6 +21,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -87,9 +88,8 @@ public class BlockchainProcessorTests
                         Hash256 hash = suggestedBlock.Hash!;
                         if (!_allowed.Contains(hash))
                         {
-                            if (_allowedToFail.Contains(hash))
+                            if (_allowedToFail.Remove(hash))
                             {
-                                _allowedToFail.Remove(hash);
                                 BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), []));
                                 throw new InvalidBlockException(suggestedBlock, "allowed to fail");
                             }

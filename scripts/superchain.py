@@ -16,7 +16,7 @@ from urllib.request import urlopen
 from zipfile import ZipFile
 
 SUPERCHAIN_REPOSITORY = "https://github.com/ethereum-optimism/superchain-registry/archive/refs/heads/main.zip"
-IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet"]
+IGNORED_CHAINS = ["arena-z-testnet", "creator-chain-testnet", "rehearsal-0-bn-0", "rehearsal-0-bn-1", "celo", "radius_testnet"]
 IGNORED_L1S = ["sepolia-dev-0"]
 
 
@@ -107,6 +107,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
                     "regolithTimestamp": "0x0",
                     "bedrockBlockNumber": hex(lookup(config, ["genesis", "l2", "number"])),
                     "canyonTimestamp": fmap(hex, (lookup(config, ["hardforks", "canyon_time"]))),
+                    "deltaTimestamp": fmap(hex, (lookup(config, ["hardforks", "delta_time"]))),
                     "ecotoneTimestamp": fmap(hex, (lookup(config, ["hardforks", "ecotone_time"]))),
                     "fjordTimestamp": fmap(hex, (lookup(config, ["hardforks", "fjord_time"]))),
                     "graniteTimestamp": fmap(hex, (lookup(config, ["hardforks", "granite_time"]))),
@@ -121,6 +122,14 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             },
             "OptimismCL": merge_all(
                 {
+                    "GenesisSystemConfig": {
+                        "BatcherAddr": lookup(config, ["genesis", "system_config", "batcherAddress"]),
+                        "Overhead": lookup(config, ["genesis", "system_config", "overhead"]),
+                        "Scalar": lookup(config, ["genesis", "system_config", "scalar"]),
+                        "GasLimit": lookup(config, ["genesis", "system_config", "gasLimit"]),
+                        "EIP1559Params": "0x0000000000000000",
+                        "OperatorFeeParams": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    },
                     "L1BeaconGenesisSlotTime": lookup(constants, ["L1BeaconGenesisSlotTime", l1]),
                     "L1ChainId": lookup(constants, ["L1ChainId", l1]),
                     "L1GenesisNumber": lookup(config, ["genesis", "l1", "number"]),
@@ -128,6 +137,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
                     "BatcherInboxAddress": lookup(config, ["batch_inbox_addr"]),
                     "L2BlockTime": lookup(config, ["block_time"]),
                     "SeqWindowSize": lookup(config, ["seq_window_size"]),
+                    "ChannelTimeoutBedrock": 300,
                     "MaxSequencerDrift": lookup(config, ["max_sequencer_drift"]),
                     "SystemTransactionSender": "0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001",
                     "SystemTransactionTo": "0x4200000000000000000000000000000000000015",
@@ -201,7 +211,7 @@ def to_nethermind_chainspec(chain_name, l1, superchain, chain, genesis):
             "eip4844TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "ecotone_time"]))),
             "eip5656TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "ecotone_time"]))),
             "eip6780TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "ecotone_time"]))),
-            "rip7212TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "fjord_time"]))),
+            "eip7951TransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "fjord_time"]))),
             "opGraniteTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "granite_time"]))),
             "opHoloceneTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "holocene_time"]))),
             "opIsthmusTransitionTimestamp": fmap(hex, (lookup(config, ["hardforks", "isthmus_time"]))),
@@ -333,10 +343,10 @@ def main(tmp_dir, output_dir):
     for chain in chainList["chains"]:
         [l1, chainName] = chain["identifier"].split("/")
         if chainName in IGNORED_CHAINS or l1 in IGNORED_L1S:
-            logging.info(f"Ignoring `{l1}-{chainName}`")
+            logging.info(f"Ignoring `{chainName}-{l1}`")
             continue
 
-        logging.debug(f"Processing `{l1}-{chainName}`")
+        logging.debug(f"Processing `{chainName}-{l1}`")
         superchain_path = path.join(tmp_dir, "superchain-registry-main", "superchain", "configs", l1, "superchain.toml")
         config_path = path.join(tmp_dir, "superchain-registry-main", "superchain", "configs", l1, f"{chainName}.toml")
         genesis_path = path.join(

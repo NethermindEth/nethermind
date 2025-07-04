@@ -22,45 +22,36 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using static Nethermind.Consensus.Processing.IBlockProcessor;
+
 using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
 public partial class BlockProcessor(
-    ISpecProvider? specProvider,
-    IBlockValidator? blockValidator,
-    IRewardCalculator? rewardCalculator,
-    IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-    IWorldState? stateProvider,
-    IReceiptStorage? receiptStorage,
-    ITransactionProcessor transactionProcessor,
-    IBeaconBlockRootHandler? beaconBlockRootHandler,
-    IBlockhashStore? blockHashStore,
-    ILogManager? logManager,
-    IWithdrawalProcessor? withdrawalProcessor = null,
-    IReceiptsRootCalculator? receiptsRootCalculator = null,
-    IBlockCachePreWarmer? preWarmer = null,
-    IExecutionRequestsProcessor? executionRequestsProcessor = null)
+    ISpecProvider specProvider,
+    IBlockValidator blockValidator,
+    IRewardCalculator rewardCalculator,
+    IBlockTransactionsExecutor blockTransactionsExecutor,
+    IWorldState stateProvider,
+    IReceiptStorage receiptStorage,
+    IBeaconBlockRootHandler beaconBlockRootHandler,
+    IBlockhashStore blockHashStore,
+    ILogManager logManager,
+    IWithdrawalProcessor withdrawalProcessor,
+    IExecutionRequestsProcessor executionRequestsProcessor,
+    IBlockCachePreWarmer? preWarmer = null)
     : IBlockProcessor
 {
-    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-    private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider) ?? throw new ArgumentNullException(nameof(stateProvider));
-    private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-    private readonly IReceiptsRootCalculator _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
-    private readonly IWithdrawalProcessor _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
-    private readonly IBeaconBlockRootHandler _beaconBlockRootHandler = beaconBlockRootHandler ?? throw new ArgumentNullException(nameof(beaconBlockRootHandler));
-    private readonly IBlockValidator _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-    private readonly IRewardCalculator _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
-    private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
-    private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
-    private readonly IExecutionRequestsProcessor _executionRequestsProcessor = executionRequestsProcessor ?? new ExecutionRequestsProcessor(transactionProcessor);
+    private readonly ILogger _logger = logManager.GetClassLogger();
+    protected readonly WorldStateMetricsDecorator _stateProvider = new WorldStateMetricsDecorator(stateProvider);
+    private readonly IReceiptsRootCalculator _receiptsRootCalculator = ReceiptsRootCalculator.Instance;
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
@@ -76,8 +67,8 @@ public partial class BlockProcessor(
 
     public event EventHandler<TxProcessedEventArgs> TransactionProcessed
     {
-        add { _blockTransactionsExecutor.TransactionProcessed += value; }
-        remove { _blockTransactionsExecutor.TransactionProcessed -= value; }
+        add { blockTransactionsExecutor.TransactionProcessed += value; }
+        remove { blockTransactionsExecutor.TransactionProcessed -= value; }
     }
 
     // TODO: move to branch processor
@@ -94,8 +85,9 @@ public partial class BlockProcessor(
         Block suggestedBlock = suggestedBlocks[0];
         // Start prewarming as early as possible
         WaitForCacheClear();
+        IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
         (CancellationTokenSource? prewarmCancellation, Task? preWarmTask)
-            = PreWarmTransactions(suggestedBlock, newBranchStateRoot);
+            = PreWarmTransactions(suggestedBlock, newBranchStateRoot, spec);
 
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
@@ -110,11 +102,16 @@ public partial class BlockProcessor(
             {
                 WaitForCacheClear();
                 suggestedBlock = suggestedBlocks[i];
+                if (i > 0)
+                {
+                    // Refresh spec
+                    spec = specProvider.GetSpec(suggestedBlock.Header);
+                }
                 // If prewarmCancellation is not null it means we are in first iteration of loop
                 // and started prewarming at method entry, so don't start it again
                 if (prewarmCancellation is null)
                 {
-                    (prewarmCancellation, preWarmTask) = PreWarmTransactions(suggestedBlock, preBlockStateRoot);
+                    (prewarmCancellation, preWarmTask) = PreWarmTransactions(suggestedBlock, preBlockStateRoot, spec);
                 }
 
                 if (blocksCount > 64 && i % 8 == 0)
@@ -132,7 +129,7 @@ public partial class BlockProcessor(
 
                 if (prewarmCancellation is not null)
                 {
-                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer, token);
+                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                     // Block is processed, we can cancel the prewarm task
                     CancellationTokenExtensions.CancelDisposeAndClear(ref prewarmCancellation);
                 }
@@ -144,7 +141,7 @@ public partial class BlockProcessor(
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
-                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer, token);
+                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
 
                 processedBlocks[i] = processedBlock;
@@ -202,16 +199,16 @@ public partial class BlockProcessor(
         }
     }
 
-    private (CancellationTokenSource prewarmCancellation, Task preWarmTask) PreWarmTransactions(Block suggestedBlock, Hash256 preBlockStateRoot)
+    private (CancellationTokenSource prewarmCancellation, Task preWarmTask) PreWarmTransactions(Block suggestedBlock, Hash256 preBlockStateRoot, IReleaseSpec spec)
     {
         if (preWarmer is null || suggestedBlock.Transactions.Length < 3) return (null, null);
 
         CancellationTokenSource prewarmCancellation = new();
         Task preWarmTask = preWarmer.PreWarmCaches(suggestedBlock,
-                                                   preBlockStateRoot,
-                                                   _specProvider.GetSpec(suggestedBlock.Header),
-                                                   prewarmCancellation.Token,
-                                                   _beaconBlockRootHandler);
+            preBlockStateRoot,
+            spec,
+            prewarmCancellation.Token,
+            beaconBlockRootHandler);
 
         return (prewarmCancellation, preWarmTask);
     }
@@ -276,17 +273,17 @@ public partial class BlockProcessor(
     }
 
     // TODO: block processor pipeline
-    private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token)
+    private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, token);
+        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
-            StoreTxReceipts(block, receipts);
+            StoreTxReceipts(block, receipts, spec);
         }
 
         return (block, receipts);
@@ -295,7 +292,7 @@ public partial class BlockProcessor(
     // TODO: block processor pipeline
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {
-        if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
+        if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
             throw new InvalidBlockException(suggestedBlock, error);
@@ -307,28 +304,28 @@ public partial class BlockProcessor(
     }
 
     private bool ShouldComputeStateRoot(BlockHeader header) =>
-        !header.IsGenesis || !_specProvider.GenesisStateUnavailable;
+        !header.IsGenesis || !specProvider.GenesisStateUnavailable;
 
     // TODO: block processor pipeline
     protected virtual TxReceipt[] ProcessBlock(
         Block block,
         IBlockTracer blockTracer,
         ProcessingOptions options,
+        IReleaseSpec spec,
         CancellationToken token)
     {
         BlockHeader header = block.Header;
-        IReleaseSpec spec = _specProvider.GetSpec(header);
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
+        blockTransactionsExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+
         StoreBeaconRoot(block, spec);
-        _blockhashStore.ApplyBlockhashStateChanges(header);
+        blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        var blkCtx = new BlockExecutionContext(block.Header, spec);
-
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, blkCtx, options, ReceiptsTracer, spec, token);
+        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         _stateProvider.Commit(spec, commitRoots: false);
 
@@ -341,14 +338,14 @@ public partial class BlockProcessor(
 
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
-        _withdrawalProcessor.ProcessWithdrawals(block, spec);
+        withdrawalProcessor.ProcessWithdrawals(block, spec);
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // we do WorldState.Commit(SystemTransactionReleaseSpec.Instance). In SystemTransactionReleaseSpec
         // Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
         _stateProvider.Commit(spec, commitRoots: false);
 
-        _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
@@ -385,17 +382,17 @@ public partial class BlockProcessor(
             ParallelUnbalancedWork.DefaultOptions,
             receipts,
             static (i, receipts) =>
-        {
-            receipts[i].CalculateBloom();
-            return receipts;
-        });
+            {
+                receipts[i].CalculateBloom();
+                return receipts;
+            });
     }
 
     private void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
         try
         {
-            _beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
+            beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         }
         catch (Exception e)
         {
@@ -404,10 +401,10 @@ public partial class BlockProcessor(
     }
 
     // TODO: block processor pipeline
-    private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
+    private void StoreTxReceipts(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
     {
         // Setting canonical is done when the BlockAddedToMain event is fired
-        _receiptStorage.Insert(block, txReceipts, false);
+        receiptStorage.Insert(block, txReceipts, spec, false);
     }
 
     // TODO: block processor pipeline
@@ -456,7 +453,7 @@ public partial class BlockProcessor(
     private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)
     {
         if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
-        BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
+        BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
         for (int i = 0; i < rewards.Length; i++)
         {
             BlockReward reward = rewards[i];
@@ -491,7 +488,7 @@ public partial class BlockProcessor(
     // TODO: block processor pipeline
     private void ApplyDaoTransition(Block block)
     {
-        long? daoBlockNumber = _specProvider.DaoBlockNumber;
+        long? daoBlockNumber = specProvider.DaoBlockNumber;
         if (daoBlockNumber.HasValue && daoBlockNumber.Value == block.Header.Number)
         {
             ApplyTransition();

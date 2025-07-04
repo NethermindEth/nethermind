@@ -22,6 +22,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Evm.State;
+using Nethermind.State.OverridableEnv;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
@@ -211,13 +213,13 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         for (int index = 0; index < transactions.Length; index++)
         {
             Transaction transaction = transactions[index];
-            BlockProcessor.AddingTxEventArgs? args = env.BlockTransactionPicker.CanAddTransaction(block, transaction, testedTxs, stateProvider);
+            //BlockProcessor.AddingTxEventArgs? args = env.BlockTransactionPicker.CanAddTransaction(block, transaction, testedTxs, stateProvider);
 
-            if (args.Action is BlockProcessor.TxAction.Stop or BlockProcessor.TxAction.Skip && payload.Validation)
-            {
-                error = $"invalid transaction index: {index} at block number: {callHeader.Number}, Reason: {args.Reason}";
-                return false;
-            }
+            //if (args.Action is BlockProcessor.TxAction.Stop or BlockProcessor.TxAction.Skip && payload.Validation)
+            //{
+            //    error = $"invalid transaction index: {index} at block number: {callHeader.Number}, Reason: {args.Reason}";
+            //    return false;
+            //}
 
             stateProvider.IncrementNonce(transaction.SenderAddress!);
             testedTxs.Add(transaction);
@@ -260,7 +262,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     {
         Transaction? transaction = transactionDetails.Transaction;
         transaction.SenderAddress ??= Address.Zero;
-        transaction.Data ??= Memory<byte>.Empty;
 
         if (!transactionDetails.HadNonceInRequest)
         {

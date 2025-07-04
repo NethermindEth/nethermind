@@ -131,6 +131,8 @@ public class DiscoveryApp : IDiscoveryApp, IAsyncDisposable
         if (_logger.IsInfo) _logger.Info("Discovery shutdown complete.. please wait for all components to close");
     }
 
+    string IStoppableService.Description => "discv4";
+
     public void AddNodeToDiscovery(Node node)
     {
         _kademlia.AddOrRefresh(node);

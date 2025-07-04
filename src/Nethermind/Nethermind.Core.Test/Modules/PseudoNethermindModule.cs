@@ -5,18 +5,25 @@ using System.IO.Abstractions;
 using System.Reflection;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
+using Nethermind.JsonRpc;
+using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.Config;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.TxPool;
+using Nethermind.Wallet;
+using NSubstitute;
 using Module = Autofac.Module;
 
 namespace Nethermind.Core.Test.Modules;
@@ -40,10 +47,9 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             .AddModule(new PsudoNetworkModule())
             .AddModule(new BlockTreeModule())
-            .AddModule(new BlockProcessingModule())
+            .AddModule(new TestBlockProcessingModule())
 
             // Environments
-            .AddSingleton<DisposableStack>()
             .AddSingleton<ITimerFactory, TimerFactory>()
             .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext>((blockProcessingContext) => new BackgroundTaskScheduler(
                 blockProcessingContext.BlockProcessor,
@@ -53,12 +59,19 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<IFileSystem>(new FileSystem())
             .AddSingleton<IDbProvider>(new DbProvider())
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
+            .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
             // Crypto
             .AddSingleton<ICryptoRandom>(new CryptoRandom())
-            .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
-            .Bind<IEcdsa, IEthereumEcdsa>()
-            .AddSingleton<IEciesCipher, EciesCipher>()
+
+            .AddSingleton<ISignerStore>(NullSigner.Instance)
+            .AddSingleton<IKeyStore>(Substitute.For<IKeyStore>())
+            .AddSingleton<IWallet, DevWallet>()
+            .AddSingleton<ITxSender>(Substitute.For<ITxSender>())
+
+            // Rpc
+            .AddSingleton<IJsonRpcService, JsonRpcService>()
+
             ;
 
 

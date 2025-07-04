@@ -5,7 +5,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -224,18 +224,18 @@ namespace Nethermind.Evm.Test
             parentEvmState is null
                 ? EvmState.RentTopLevel(10000,
                     ExecutionType.CALL,
-                    Snapshot.Empty,
                     new ExecutionEnvironment(),
-                    new StackAccessTracker())
+                    new StackAccessTracker(),
+                    Snapshot.Empty)
                 : EvmState.RentFrame(10000,
                     0,
                     0,
                     ExecutionType.CALL,
                     false,
                     false,
-                    Snapshot.Empty,
                     new ExecutionEnvironment(),
-                    parentEvmState.AccessTracker);
+                    parentEvmState.AccessTracker,
+                    Snapshot.Empty);
 
         public class Context { }
     }

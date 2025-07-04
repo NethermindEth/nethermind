@@ -3,12 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
@@ -96,6 +96,12 @@ public class ChainLevelHelper : IChainLevelHelper
                 }
             }
 
+            if (headers.Count > 0 && headers[^1].Hash != newHeader.ParentHash)
+            {
+                if (_logger.IsDebug) _logger.Debug($"ChainLevelHelper - header {startingPoint} is not canonical descendent of header before it. Hash: {newHeader.Hash}, Expected parent: {newHeader.ParentHash}, Actual parent: {headers[^1].ParentHash}. Could be a concurrent reorg.");
+                break;
+            }
+
             if (beaconMainChainBlock.IsBeaconInfo)
             {
                 newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty; // This is suppose to be removed, but I forgot to remove it before testing, so we only tested with this line in. Need to remove this back....
@@ -136,7 +142,7 @@ public class ChainLevelHelper : IChainLevelHelper
         }
         else
         {
-            headers.RemoveRange(toTake, headers.Count - toTake);
+            CollectionsMarshal.SetCount(headers, toTake);
         }
 
         return headers.ToArray();

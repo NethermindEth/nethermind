@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie;
 
@@ -27,8 +28,7 @@ namespace Nethermind.Blockchain
             return !account.HasCode ? [] : _stateReader.GetCode(account.CodeHash);
         }
 
-        public byte[]? GetCode(Hash256 codeHash) => _stateReader.GetCode(codeHash);
-        public byte[]? GetCode(ValueHash256 codeHash) => _stateReader.GetCode(codeHash);
+        public byte[]? GetCode(in ValueHash256 codeHash) => _stateReader.GetCode(in codeHash);
 
         public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions) where TCtx : struct, INodeContext<TCtx>
         {

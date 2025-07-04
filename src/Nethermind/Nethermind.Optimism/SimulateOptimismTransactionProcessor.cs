@@ -7,7 +7,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Facade.Simulate;
 
 namespace Nethermind.Optimism;
@@ -32,14 +32,14 @@ public sealed class SimulateOptimismTransactionProcessor(
 {
     protected override bool ShouldValidate(ExecutionOptions opts) => true;
 
-    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+    protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (!validate)
         {
             opts |= ExecutionOptions.SkipValidation;
         }
 
-        return base.Execute(tx, in blCtx, tracer, opts);
+        return base.Execute(tx, tracer, opts);
     }
 }
 
@@ -51,8 +51,8 @@ public sealed class SimulateOptimismTransactionProcessorFactory(
     public ITransactionProcessor CreateTransactionProcessor(
         ISpecProvider specProvider,
         IWorldState worldState,
-        SimulateVirtualMachine virtualMachine,
-        OverridableCodeInfoRepository codeInfoRepository,
+        IVirtualMachine virtualMachine,
+        ICodeInfoRepository codeInfoRepository,
         ILogManager? logManager,
         bool validate)
     {

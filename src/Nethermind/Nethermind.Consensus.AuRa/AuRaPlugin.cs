@@ -11,11 +11,22 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.AuRa.Rewards;
+using Nethermind.Consensus.AuRa.Services;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 
@@ -39,6 +50,8 @@ namespace Nethermind.Consensus.AuRa
 
         private StartBlockProducerAuRa? _blockProducerStarter;
 
+        private StartBlockProducerAuRa BlockProducerStarter => _blockProducerStarter ??= _nethermindApi!.CreateStartBlockProducer();
+
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
         public ValueTask DisposeAsync()
         {
@@ -48,45 +61,28 @@ namespace Nethermind.Consensus.AuRa
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi as AuRaNethermindApi;
-            if (_nethermindApi is not null)
-            {
-                _blockProducerStarter = new(_nethermindApi);
-            }
             return Task.CompletedTask;
         }
 
-        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
+        public IBlockProducer InitBlockProducer()
         {
-            if (_nethermindApi is not null)
-            {
-                return _blockProducerStarter!.BuildProducer(additionalTxSource);
-            }
-
-            return null;
+            return BlockProducerStarter!.BuildProducer();
         }
 
         public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
         {
             return new StandardBlockProducerRunner(
-                _blockProducerStarter.CreateTrigger(),
+                BlockProducerStarter.CreateTrigger(),
                 _nethermindApi.BlockTree,
                 blockProducer);
         }
 
-        public IEnumerable<StepInfo> GetSteps()
-        {
-            yield return typeof(InitializeBlockchainAuRa);
-            yield return typeof(LoadGenesisBlockAuRa);
-            yield return typeof(RegisterAuRaRpcModules);
-            yield return typeof(StartBlockProcessorAuRa);
-        }
-
-        public IModule Module => new AuraModule(chainSpec);
+        public IModule Module => new AuRaModule(chainSpec);
 
         public Type ApiType => typeof(AuRaNethermindApi);
     }
 
-    public class AuraModule(ChainSpec chainSpec) : Module
+    public class AuRaModule(ChainSpec chainSpec) : Module
     {
         protected override void Load(ContainerBuilder builder)
         {
@@ -98,12 +94,47 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
+                .Add<StartBlockProducerAuRa>() // Note: Stateful. Probably just some strange unintentional side effect though.
+                .AddSingleton<AuraStatefulComponents>()
+                .AddSingleton<TxAuRaFilterBuilders>()
+                .AddSingleton<PermissionBasedTxFilter.Cache>()
+                .AddSingleton<IValidatorStore, ValidatorStore>()
+                .AddSingleton<AuRaContractGasLimitOverride.Cache, AuRaContractGasLimitOverride.Cache>()
+                .AddSingleton<ReportingContractBasedValidator.Cache>()
+                .AddSingleton<IReportingValidator, IMainProcessingContext>((mainProcessingContext) =>
+                    ((AuRaBlockProcessor)mainProcessingContext.BlockProcessor).AuRaValidator.GetReportingValidator())
+                .AddSource(new FallbackToFieldFromApi<AuRaNethermindApi>())
+
+                // Steps override
+                .AddStep(typeof(InitializeBlockchainAuRa))
+                .AddStep(typeof(LoadGenesisBlockAuRa))
+
+                // Block processing components
+                .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
+                .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()
+                .AddSingleton<IAuRaStepCalculator, AuRaChainSpecEngineParameters, ITimestamper, ILogManager>((param, timestamper, logManager)
+                    => new AuRaStepCalculator(param.StepDuration, timestamper, logManager))
+                .AddSingleton<AuRaSealValidator>()
+                .Bind<ISealValidator, AuRaSealValidator>()
+                .AddSingleton<ISealer, AuRaSealer>()
+                .AddSingleton<AuRaGasLimitOverrideFactory>()
+
+                // Rpcs
+                .AddScoped<AuRaRpcBlockProcessorFactory>()
+                .AddSingleton<IRpcModuleFactory<ITraceRpcModule>, AuRaTraceModuleFactory>()
+                .AddSingleton<IAuRaBlockProcessorFactory, AuRaBlockProcessorFactory>()
+                .AddSingleton<IRpcModuleFactory<IDebugRpcModule>, AuRaDebugModuleFactory>()
+
+                .AddSingleton<IHealthHintService, AuraHealthHintService>()
+
                 ;
 
             if (specParam.BlockGasLimitContractTransitions?.Any() == true)
             {
                 builder.AddSingleton<IHeaderValidator, AuRaHeaderValidator>();
             }
+
+            if (Rlp.GetStreamDecoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
         }
     }
 }

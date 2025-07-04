@@ -12,6 +12,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -21,7 +22,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -33,6 +33,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
@@ -42,21 +43,23 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
 
-public partial class BaseEngineModuleTests
+public abstract partial class BaseEngineModuleTests
 {
     [SetUp]
     public Task Setup()
@@ -67,35 +70,37 @@ public partial class BaseEngineModuleTests
     }
 
     protected virtual MergeTestBlockchain CreateBaseBlockchain(
-        IMergeConfig? mergeConfig = null,
-        IPayloadPreparationService? mockedPayloadService = null,
-        ILogManager? logManager = null,
-        IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null) =>
-        new(mergeConfig, mockedPayloadService, logManager, mockedExecutionRequestsProcessor);
+        IMergeConfig? mergeConfig = null) =>
+        new(mergeConfig);
 
 
     protected async Task<MergeTestBlockchain> CreateBlockchain(
         IReleaseSpec? releaseSpec = null,
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,
-        ILogManager? logManager = null,
         IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null,
         Action<ContainerBuilder>? configurer = null)
-        => await CreateBaseBlockchain(mergeConfig, mockedPayloadService, logManager, mockedExecutionRequestsProcessor)
+    {
+        var bc = CreateBaseBlockchain(mergeConfig);
+        return await bc
             .BuildMergeTestBlockchain(configurer: (builder) =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
+
+                if (mockedExecutionRequestsProcessor is not null) builder.AddScoped<IExecutionRequestsProcessor>(mockedExecutionRequestsProcessor);
+                if (mockedPayloadService is not null) builder.AddSingleton<IPayloadPreparationService>(mockedPayloadService);
+
                 configurer?.Invoke(builder);
             });
+    }
 
-    protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
-        ILogManager? logManager = null)
-        => await CreateBaseBlockchain(logManager: logManager).Build(specProvider);
+    protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider)
+        => await CreateBaseBlockchain().Build(specProvider);
 
-    protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
+    protected IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, int newPayloadCacheSize = 50)
     {
         IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
-        var synchronizationConfig = syncConfig ?? new SyncConfig();
+        var synchronizationConfig = chain.Container.Resolve<ISyncConfig>();
 
         chain.BlockTree.SyncPivot = (
             LongConverter.FromString(synchronizationConfig.PivotNumber),
@@ -129,8 +134,13 @@ public partial class BaseEngineModuleTests
                 chain.PayloadPreparationService!,
                 chain.SpecProvider!,
                 chain.LogManager),
+            new GetPayloadV5Handler(
+                chain.PayloadPreparationService!,
+                chain.SpecProvider!,
+                chain.LogManager),
             new NewPayloadHandler(
-                chain.BlockValidator,
+                chain.PayloadPreparationService,
+                new InvalidBlockInterceptor(chain.BlockValidator, invalidChainTracker, LimboLogs.Instance),
                 chain.BlockTree,
                 chain.PoSSwitcher,
                 chain.BeaconSync,
@@ -139,9 +149,9 @@ public partial class BaseEngineModuleTests
                 chain.BlockProcessingQueue,
                 invalidChainTracker,
                 chain.BeaconSync,
+                chain.Container.Resolve<IMergeConfig>(),
+                chain.Container.Resolve<IReceiptConfig>(),
                 chain.LogManager,
-                newPayloadTimeout,
-                storeReceipts: true,
                 newPayloadCacheSize),
             new ForkchoiceUpdatedHandler(
                 chain.BlockTree,
@@ -156,12 +166,14 @@ public partial class BaseEngineModuleTests
                 peerRefresher,
                 chain.SpecProvider,
                 chain.SyncPeerPool,
+                chain.Container.Resolve<IMergeConfig>(),
                 chain.LogManager),
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
             new GetBlobsHandler(chain.TxPool),
+            new GetBlobsHandlerV2(chain.TxPool),
             Substitute.For<IEngineRequestsTracker>(),
             chain.SpecProvider,
             new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
@@ -239,12 +251,9 @@ public partial class BaseEngineModuleTests
 
     public class MergeTestBlockchain : TestBlockchain
     {
-        public IMergeConfig MergeConfig { get; set; }
-
-        public PostMergeBlockProducer? PostMergeBlockProducer { get; set; }
-
-        public IPayloadPreparationService? PayloadPreparationService { get; set; }
-        public StoringBlockImprovementContextFactory? StoringBlockImprovementContextFactory { get; set; }
+        public IMergeConfig MergeConfig { get; init; }
+        public IPayloadPreparationService PayloadPreparationService => Container.Resolve<IPayloadPreparationService>();
+        public StoringBlockImprovementContextFactory StoringBlockImprovementContextFactory => (StoringBlockImprovementContextFactory)BlockImprovementContextFactory;
 
         public Task WaitForImprovedBlock(Hash256? parentHash = null)
         {
@@ -255,18 +264,11 @@ public partial class BaseEngineModuleTests
             return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, b => b.Header.ParentHash == parentHash);
         }
 
-        public Task WaitForImprovedBlockWithCondition(Func<Block, bool> predicate)
-        {
-            return StoringBlockImprovementContextFactory!.WaitForImprovedBlockWithCondition(_cts.Token, predicate);
-        }
-
-        public ISealValidator? SealValidator => Container.Resolve<ISealValidator>();
-
         public IBeaconPivot? BeaconPivot { get; set; }
 
         public BeaconSync? BeaconSync { get; set; }
 
-        public IWithdrawalProcessor? WithdrawalProcessor { get; set; }
+        public IWithdrawalProcessor WithdrawalProcessor => ((MainBlockProcessingContext)MainProcessingContext).LifetimeScope.Resolve<IWithdrawalProcessor>();
 
         public ISyncPeerPool SyncPeerPool { get; set; }
 
@@ -282,19 +284,15 @@ public partial class BaseEngineModuleTests
             return this;
         }
 
-        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null, IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null)
+        public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
         {
             GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
-            MergeConfig = mergeConfig ?? new MergeConfig() { TerminalTotalDifficulty = "0" };
-            PayloadPreparationService = mockedPayloadPreparationService;
+            MergeConfig = mergeConfig ?? new MergeConfig();
+            if (MergeConfig.TerminalTotalDifficulty is null) MergeConfig.TerminalTotalDifficulty = "0";
             SyncPeerPool = Substitute.For<ISyncPeerPool>();
-            LogManager = logManager ?? LogManager;
-            ExecutionRequestsProcessor = mockedExecutionRequestsProcessor;
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
-
-        public sealed override ILogManager LogManager { get; set; } = LimboLogs.Instance;
 
         public IEthSyncingInfo? EthSyncingInfo { get; protected set; }
 
@@ -308,14 +306,36 @@ public partial class BaseEngineModuleTests
             return base.CreateConfigs().Concat([MergeConfig, SyncConfig.Default]);
         }
 
-        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
-            base.ConfigureContainer(builder, configProvider)
-                .AddModule(new MergeModule(configProvider));
-
-        protected override IBlockProducer CreateTestBlockProducer(ITxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
         {
-            IBlockProducer preMergeBlockProducer =
-                base.CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
+            builder = base.ConfigureContainer(builder, configProvider)
+                .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
+                .AddModule(new TestMergeModule(configProvider))
+                .AddDecorator<IBlockImprovementContextFactory>((ctx, factory) =>
+                {
+                    if (factory is StoringBlockImprovementContextFactory) return factory;
+                    return new StoringBlockImprovementContextFactory(factory);
+                })
+                .AddSingleton<IBlockProducer>(ctx => this.BlockProducer)
+                .AddSingleton<IPayloadPreparationService, IBlockProducer, ITxPool, IBlockImprovementContextFactory, ITimerFactory, ILogManager>(
+                    (producer, txPool, ctxFactory, timer, logManager) =>
+                        new PayloadPreparationService(
+                            producer,
+                            txPool,
+                            ctxFactory,
+                            timer,
+                            logManager,
+                            TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
+                            50000)); // by default we want to avoid cleanup payload effects in testing                    )
+            ;
+
+            return builder;
+        }
+
+        protected override IBlockProducer CreateTestBlockProducer()
+        {
+            IBlockProducer preMergeBlockProducer = base.CreateTestBlockProducer();
+
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
             ISyncConfig syncConfig = new SyncConfig();
@@ -329,67 +349,36 @@ public partial class BaseEngineModuleTests
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
-            BlockProducerEnvFactory blockProducerEnvFactory = new(
-                WorldStateManager!,
-                BlockTree,
-                SpecProvider,
-                BlockValidator,
-                NoBlockRewards.Instance,
-                ReceiptStorage,
-                BlockPreprocessorStep,
-                TxPool,
-                transactionComparerProvider,
-                blocksConfig,
-                LogManager,
-                ExecutionRequestsProcessor);
-
-            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
+            IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
-            PostMergeBlockProducer = postMergeBlockProducer;
-            BlockImprovementContextFactory ??= new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
-            PayloadPreparationService ??= new PayloadPreparationService(
-                postMergeBlockProducer,
-                BlockImprovementContextFactory,
-                TimerFactory.Default,
-                LogManager,
-                TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
-                50000); // by default we want to avoid cleanup payload effects in testing
+            BlockProducer = postMergeBlockProducer;
 
-            ExecutionRequestsProcessor ??= new ExecutionRequestsProcessor(TxProcessor);
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 
         protected override IBlockProcessor CreateBlockProcessor(IWorldState worldState)
         {
-            WithdrawalProcessor = new WithdrawalProcessor(worldState, LogManager);
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), worldState),
                 worldState,
                 ReceiptStorage,
-                TxProcessor,
                 new BeaconBlockRootHandler(TxProcessor, worldState),
                 new BlockhashStore(SpecProvider, worldState),
                 LogManager,
                 WithdrawalProcessor,
-                preWarmer: CreateBlockCachePreWarmer(),
-                executionRequestsProcessor: ExecutionRequestsProcessor);
+                MainExecutionRequestsProcessor,
+                CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
 
         public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
 
-        public IBlockImprovementContextFactory BlockImprovementContextFactory
-        {
-            get => StoringBlockImprovementContextFactory!;
-            set
-            {
-                StoringBlockImprovementContextFactory = value as StoringBlockImprovementContextFactory ?? new StoringBlockImprovementContextFactory(value);
-            }
-        }
+        public IBlockImprovementContextFactory BlockImprovementContextFactory =>
+            Container.Resolve<IBlockImprovementContextFactory>();
 
         public async Task<MergeTestBlockchain> Build(ISpecProvider specProvider) =>
             (MergeTestBlockchain)await Build(configurer: (builder) => builder.AddSingleton<ISpecProvider>(specProvider));

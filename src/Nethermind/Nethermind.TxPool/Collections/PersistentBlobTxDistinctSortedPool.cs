@@ -30,7 +30,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
 
     private void RecreateLightTxCollectionAndCache(ITxStorage blobTxStorage)
     {
-        if (_logger.IsDebug) _logger.Debug("Recreating light collection of blob transactions and cache");
+        if (_logger.IsTrace) _logger.Trace("Recreating light collection of blob transactions and cache");
         int numberOfTxsInDb = 0;
         int numberOfBlobsInDb = 0;
         long startTime = Stopwatch.GetTimestamp();

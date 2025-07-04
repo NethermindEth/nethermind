@@ -8,6 +8,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Trie.Pruning;
@@ -49,7 +50,7 @@ namespace Nethermind.Core.Test.Builders
 
             public static StateTree GetStateTree(ITrieStore? store = null)
             {
-                store ??= TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance);
+                store ??= new TestRawTrieStore(new MemDb());
 
                 var stateTree = new StateTree(store.GetTrieStore(null), LimboLogs.Instance);
 

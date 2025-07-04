@@ -4,13 +4,10 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -28,19 +25,24 @@ using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Config;
-using Nethermind.Db;
-using Nethermind.Facade.Simulate;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Consensus.Rewards;
-using System.IO.Abstractions;
 using Autofac;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-using Nethermind.Core.Timers;
+using Nethermind.Core.Test.Container;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Network;
+using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.Rlpx;
+using Nethermind.Stats;
+using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -48,14 +50,14 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         public IJsonRpcConfig RpcConfig { get; private set; } = new JsonRpcConfig();
         public IEthRpcModule EthRpcModule { get; private set; } = null!;
-        public IDebugRpcModule DebugRpcModule { get; private set; } = null!;
-        public ITraceRpcModule TraceRpcModule { get; private set; } = null!;
-        public IBlockchainBridge Bridge { get; private set; } = null!;
+        public IDebugRpcModule DebugRpcModule => Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+        public ITraceRpcModule TraceRpcModule => Container.Resolve<IRpcModuleFactory<ITraceRpcModule>>().Create();
+        public IBlockchainBridge Bridge => Container.Resolve<IBlockchainBridge>();
         public ITxSealer TxSealer { get; private set; } = null!;
         public ITxSender TxSender { get; private set; } = null!;
         public IReceiptFinder ReceiptFinder => Container.Resolve<IReceiptFinder>();
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
-        public IOverridableWorldScope OverridableWorldStateManager { get; private set; } = null!;
+        public IProtocolsManager ProtocolsManager { get; private set; } = null!;
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; } =
@@ -77,16 +79,18 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             private IBlockFinder? _blockFinderOverride = null;
             private IReceiptFinder? _receiptFinderOverride = null;
+            private IBlockchainBridge? _blockchainBridgeOverride = null;
+            private IBlocksConfig? _blocksConfigOverride = null;
 
             public Builder<T> WithBlockchainBridge(IBlockchainBridge blockchainBridge)
             {
-                _blockchain.Bridge = blockchainBridge;
+                _blockchainBridgeOverride = blockchainBridge;
                 return this;
             }
 
-            public Builder<T> WithBlocksConfig(BlocksConfig blocksConfig)
+            public Builder<T> WithBlocksConfig(IBlocksConfig blocksConfig)
             {
-                _blockchain.BlocksConfig = blocksConfig;
+                _blocksConfigOverride = blocksConfig;
                 return this;
             }
 
@@ -160,8 +164,21 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return (T)await _blockchain.Build(configurer: (builder) =>
                 {
                     configurer?.Invoke(builder);
+
+                    // So only the rpc module need to have actual reward calculator....
+                    // Can't set globally as that would cause block production to fail with invalid stateroot
+                    // as the reward is being applied.
+                    // TODO: Double check if block production have the same reward calculator
+                    builder.UpdateSingleton<IRpcModuleFactory<ITraceRpcModule>>(builder => builder.AddSingleton<IRewardCalculatorSource, RewardCalculator>());
+
+                    // Filter manager need the block processor, but the block processor is currently not completely DI, so need to patch it in.
+                    builder.AddSingleton<IFilterManager, IFilterStore, ITxPool, ILogManager>((store, txPool, logManager) =>
+                            new FilterManager(store, _blockchain.BlockProcessor, txPool, logManager));
+
                     if (_blockFinderOverride is not null) builder.AddSingleton(_blockFinderOverride);
                     if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
+                    if (_blockchainBridgeOverride is not null) builder.AddSingleton(_blockchainBridgeOverride);
+                    if (_blocksConfigOverride is not null) builder.AddSingleton(_blocksConfigOverride);
                 });
             }
         }
@@ -182,41 +199,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
+            @this.ProtocolsManager,
             @this.BlocksConfig.SecondsPerSlot);
-
-        private readonly Func<TestRpcBlockchain, IDebugRpcModule> _debugRpcModuleBuilder = static @this => new DebugModuleFactory(
-            @this.WorldStateManager,
-            @this.DbProvider,
-            @this.BlockTree,
-            @this.RpcConfig,
-            @this.Bridge,
-            @this.BlocksConfig.SecondsPerSlot,
-            @this.BlockValidator,
-            @this.BlockPreprocessorStep,
-            new RewardCalculator(@this.SpecProvider),
-            @this.ReceiptStorage,
-            Substitute.For<IReceiptsMigration>(),
-            Substitute.For<IConfigProvider>(),
-            @this.SpecProvider,
-            Substitute.For<ISyncModeSelector>(),
-            new BadBlockStore(@this.BlocksDb, 100),
-            new FileSystem(),
-            @this.LogManager).Create();
-
-
-        private readonly Func<TestRpcBlockchain, ITraceRpcModule> _traceRpcModuleBuilder = static @this => new TraceModuleFactory(
-            @this.WorldStateManager,
-            @this.BlockTree,
-            @this.RpcConfig,
-            @this.Bridge,
-            new BlocksConfig().SecondsPerSlot,
-            @this.BlockPreprocessorStep,
-            new RewardCalculator(@this.SpecProvider),
-            @this.ReceiptStorage,
-            @this.SpecProvider,
-            @this.PoSSwitcher,
-            @this.LogManager
-        ).Create();
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
@@ -226,25 +210,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 configurer?.Invoke(builder);
             });
 
-            IFilterStore filterStore = new FilterStore(new TimerFactory());
-            IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
-            var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
-            IReadOnlyBlockTree? roBlockTree = BlockTree!.AsReadOnly();
-            IOverridableWorldScope overridableWorldStateManager = WorldStateManager.CreateOverridableWorldScope();
-            OverridableTxProcessingEnv processingEnv = new(
-                WorldStateManager.CreateOverridableWorldScope(),
-                roBlockTree,
-                SpecProvider,
-                LimboLogs.Instance);
-            SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory = new SimulateReadOnlyBlocksProcessingEnvFactory(
-                WorldStateManager,
-                roBlockTree,
-                new ReadOnlyDbProvider(dbProvider, true),
-                SpecProvider,
-                SimulateTransactionProcessorFactory.Instance,
-                LimboLogs.Instance);
-
-            Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, BlocksConfig, false);
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
 
             ITxSigner txSigner = new WalletTxSigner(TestWallet, SpecProvider.ChainId);
@@ -252,10 +217,27 @@ namespace Nethermind.JsonRpc.Test.Modules
             TxSender ??= new TxPoolSender(TxPool, TxSealer, NonceManager, EthereumEcdsa ?? new EthereumEcdsa(SpecProvider.ChainId));
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
             FeeHistoryOracle ??= new FeeHistoryOracle(BlockTree, ReceiptStorage, SpecProvider);
+
+            ProtocolsManager = new ProtocolsManager(
+                Substitute.For<ISyncPeerPool>(),
+                Substitute.For<ISyncServer>(),
+                Substitute.For<IBackgroundTaskScheduler>(),
+                TxPool,
+                Substitute.For<IPooledTxsRequestor>(),
+                Substitute.For<IDiscoveryApp>(),
+                Substitute.For<IMessageSerializationService>(),
+                Substitute.For<IRlpxHost>(),
+                Substitute.For<INodeStatsManager>(),
+                Substitute.For<IProtocolValidator>(),
+                Substitute.For<INetworkStorage>(),
+                Container.Resolve<IForkInfo>(),
+                Substitute.For<IGossipPolicy>(),
+                WorldStateManager,
+                LimboLogs.Instance,
+                Substitute.For<ITxGossipPolicy>()
+            );
+
             EthRpcModule = _ethRpcModuleBuilder(this);
-            TraceRpcModule = _traceRpcModuleBuilder(this);
-            DebugRpcModule = _debugRpcModuleBuilder(this);
-            OverridableWorldStateManager = overridableWorldStateManager;
 
             return this;
         }

@@ -11,6 +11,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -310,5 +311,7 @@ namespace Nethermind.Network
             await storageCloseTask;
             if (_logger.IsInfo) _logger.Info("Peer Pool shutdown complete.. please wait for all components to close");
         }
+
+        string IStoppableService.Description => "peer pool";
     }
 }

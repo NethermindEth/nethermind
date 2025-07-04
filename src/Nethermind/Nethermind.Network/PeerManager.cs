@@ -15,6 +15,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -85,7 +86,14 @@ namespace Nethermind.Network
         public IReadOnlyCollection<Peer> ConnectedPeers => _peerPool.ActivePeers.Values.Where(IsConnected).ToList();
 
         public int MaxActivePeers => _networkConfig.MaxActivePeers + _peerPool.StaticPeerCount;
+        public int ActivePeersCount => _peerPool.ActivePeerCount;
         private int AvailableActivePeersCount => MaxActivePeers - _peerPool.ActivePeers.Count;
+
+        /// <summary>
+        /// Allow some incoming peer connection before disconnecting. This is to allow the protocol to be initialized
+        /// before disconnecting through <see cref="IProtocolValidator"/> so that disconnect message is sent properly
+        /// </summary>
+        private int MaxActivePeerMargin = 10;
 
         /// <summary>
         /// The simplest hack for now until it is cleaned further.
@@ -194,6 +202,8 @@ namespace Nethermind.Network
             await Task.CompletedTask;
             if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete.. please wait for all components to close");
         }
+
+        string IStoppableService.Description => "peer manager";
 
         #region Inactive peer loop handling. Peer may be discovered but inactive.
 
@@ -725,26 +735,11 @@ namespace Nethermind.Network
                 return;
             }
 
-            if (!session.Node.IsStatic && _peerPool.ActivePeers.Count >= MaxActivePeers)
+            if (!session.Node.IsStatic && ActivePeersCount >= MaxActivePeers + MaxActivePeerMargin)
             {
-                int initCount = 0;
-                foreach (KeyValuePair<PublicKeyAsKey, Peer> pair in _peerPool.ActivePeers)
-                {
-                    // we need to count initialized as we may have a list of active peers that is just being initialized
-                    // and we do not know yet whether they are fine or not
-                    if (pair.Value.InSession?.State == SessionState.Initialized ||
-                        pair.Value.OutSession?.State == SessionState.Initialized)
-                    {
-                        initCount++;
-                    }
-                }
-
-                if (initCount >= MaxActivePeers)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with {session} {DisconnectReason.TooManyPeers} {DisconnectType.Local}");
-                    session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"{initCount}");
-                    return;
-                }
+                if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with {session} {DisconnectReason.HardLimitTooManyPeers} {DisconnectType.Local}");
+                session.InitiateDisconnect(DisconnectReason.HardLimitTooManyPeers, $"{ActivePeersCount}");
+                return;
             }
 
             try

@@ -21,6 +21,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -33,7 +34,7 @@ namespace Nethermind.Consensus.Test;
 public class CensorshipDetectorTests
 {
     private ILogManager _logManager;
-    private WorldState _stateProvider;
+    private IWorldState _stateProvider;
     private IBlockTree _blockTree;
     private IBlockProcessor _blockProcessor;
     private ISpecProvider _specProvider;
@@ -46,9 +47,8 @@ public class CensorshipDetectorTests
     public void Setup()
     {
         _logManager = LimboLogs.Instance;
-        TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(), _logManager);
-        MemDb codeDb = new();
-        _stateProvider = new WorldState(trieStore, codeDb, _logManager);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
         _blockProcessor = Substitute.For<IBlockProcessor>();
     }
 

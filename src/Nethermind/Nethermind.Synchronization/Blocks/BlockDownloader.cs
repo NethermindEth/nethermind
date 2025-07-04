@@ -24,6 +24,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
 using NonBlocking;
 
@@ -31,7 +32,8 @@ namespace Nethermind.Synchronization.Blocks
 {
     public class BlockDownloader : IForwardSyncController
     {
-        private static readonly BlocksSyncPeerAllocationStrategy _estimatedAllocationStrategy = new(0);
+        private static readonly IPeerAllocationStrategy EstimatedAllocationStrategy =
+            BlocksSyncPeerAllocationStrategyFactory.AllocationStrategy;
 
         private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>() ?? throw new InvalidOperationException();
 
@@ -140,8 +142,10 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (previousStartingHeaderNumber == headers[0].Number)
                 {
-                    // Note: Could be change in peer or a fork.
-                    throw new InvalidOperationException("Forward header starting block number did not changed. This is unexpected");
+                    // When the block is suggested right between a `NewPayload` and `ForkChoiceUpdatedHandler` the block is not added because it was added already
+                    // by NP, but it still a beacon block because `FCU` has not happened yet. Causing this situation.
+                    if (_logger.IsDebug) _logger.Debug($"Forward header starting block number did not changed from {previousStartingHeaderNumber}.");
+                    return null;
                 }
                 previousStartingHeaderNumber = headers[0].Number;
 
@@ -181,6 +185,8 @@ namespace Nethermind.Synchronization.Blocks
                         // is interpreted as invalid. `IForwardHeaderProvider` need to provide a different chain later on.
                         return null;
                     }
+
+                    GC.KeepAlive(entry.ParentHeader); // ParentHeader is used with `Header.MaybeParent` to ensure reference is kept.
 
                     if (SuggestBlock(entry.PeerInfo, entry.Block, blockIndex == 0, shouldProcess, downloadReceipts, entry.Receipts))
                     {
@@ -239,19 +245,25 @@ namespace Nethermind.Synchronization.Blocks
             ArrayPoolList<BlockHeader> bodiesToDownload = new ArrayPoolList<BlockHeader>(headers.Count);
 
             int bodiesRequestSize =
-                (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, _estimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
+                (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxBodyFetch;
             int receiptsRequestSize =
-                (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, _estimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
+                (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxReceiptFetch;
 
             BlockHeader parentHeader = headers[0];
             foreach (var blockHeader in headers.Skip(1))
             {
+                if (parentHeader.Hash != blockHeader.ParentHash)
+                {
+                    // Precaution for weird consensus
+                    throw new InvalidOperationException($"{nameof(IForwardHeaderProvider)} return a disconnected chain");
+                }
+
                 BlockEntry? entry;
                 while (!_downloadRequests.TryGetValue(blockHeader.Hash!, out entry))
                 {
-                    blockHeader.MaybeParent ??= new WeakReference<BlockHeader>(parentHeader);
+                    blockHeader.MaybeParent = new WeakReference<BlockHeader>(parentHeader);
                     _downloadRequests.TryAdd(blockHeader.Hash, new BlockEntry(parentHeader, blockHeader, null, null, null));
                 }
                 parentHeader = blockHeader;
@@ -461,7 +473,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private bool ValidateReceiptsRoot(Block block, TxReceipt[] blockReceipts)
         {
-            Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, _receiptDecoder);
+            Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, _receiptDecoder);
             return receiptsRoot == block.ReceiptsRoot;
         }
 

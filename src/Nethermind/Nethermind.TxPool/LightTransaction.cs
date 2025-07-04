@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
@@ -28,6 +28,7 @@ public class LightTransaction : Transaction
         GasBottleneck = fullTx.GasBottleneck;
         Timestamp = fullTx.Timestamp;
         PoolIndex = fullTx.PoolIndex;
+        ProofVersion = (fullTx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default;
         _size = fullTx.GetLength();
     }
 
@@ -43,7 +44,8 @@ public class LightTransaction : Transaction
         UInt256 maxFeePerBlobGas,
         byte[][] blobVersionHashes,
         ulong poolIndex,
-        int size)
+        int size,
+        ProofVersion proofVersion)
     {
         Type = TxType.Blob;
         Hash = hash;
@@ -57,6 +59,9 @@ public class LightTransaction : Transaction
         BlobVersionedHashes = blobVersionHashes;
         Timestamp = timestamp;
         PoolIndex = poolIndex;
+        ProofVersion = proofVersion;
         _size = size;
     }
+
+    public ProofVersion ProofVersion { get; set; }
 }

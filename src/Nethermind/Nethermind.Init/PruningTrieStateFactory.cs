@@ -18,6 +18,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Evm.State;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
@@ -38,110 +39,24 @@ public class PruningTrieStateFactory(
     IBlockTree blockTree,
     IFileSystem fileSystem,
     ITimerFactory timerFactory,
+    MainPruningTrieStoreFactory mainPruningTrieStoreFactory,
+    INodeStorageFactory nodeStorageFactory,
+    INodeStorage mainNodeStorage,
     IProcessExitSource processExit,
     ChainSpec chainSpec,
-    DisposableStack disposeStack,
+    IDisposableStack disposeStack,
     ILogManager logManager
 )
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PruningTrieStateFactory>();
 
-    public (IWorldStateManager, INodeStorage, IPruningTrieStateAdminRpcModule) Build()
+    public (IWorldStateManager, IPruningTrieStateAdminRpcModule) Build()
     {
         CompositePruningTrigger compositePruningTrigger = new CompositePruningTrigger();
 
-        INodeStorageFactory nodeStorageFactory = new NodeStorageFactory(initConfig.StateDbKeyScheme, logManager);
-        nodeStorageFactory.DetectCurrentKeySchemeFrom(dbProvider.StateDb);
+        AdviseConfig();
 
-        syncConfig.SnapServingEnabled |= syncConfig.SnapServingEnabled is null
-            && nodeStorageFactory.CurrentKeyScheme is INodeStorage.KeyScheme.HalfPath or null
-            && initConfig.StateDbKeyScheme != INodeStorage.KeyScheme.Hash;
-
-        if (nodeStorageFactory.CurrentKeyScheme is INodeStorage.KeyScheme.Hash
-            || initConfig.StateDbKeyScheme == INodeStorage.KeyScheme.Hash)
-        {
-            // Special case in case its using hashdb, use a slightly different database configuration.
-            if (dbProvider.StateDb is ITunableDb tunableDb) tunableDb.Tune(ITunableDb.TuneType.HashDb);
-        }
-
-        if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < 128)
-        {
-            if (_logger.IsInfo) _logger.Info($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
-            pruningConfig.PruningBoundary = 128;
-        }
-
-        if (pruningConfig.PruningBoundary < 64)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Pruning boundary must be at least 64. Setting to 64.");
-            pruningConfig.PruningBoundary = 64;
-        }
-
-        if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
-        {
-            if (_logger.IsWarn) _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
-            syncConfig.DownloadBodiesInFastSync = true;
-        }
-
-        IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
-        IDb stateDb = dbProvider.StateDb;
-        IPersistenceStrategy persistenceStrategy;
-        IPruningStrategy pruningStrategy;
-        if (pruningConfig.Mode.IsMemory())
-        {
-            persistenceStrategy = Persist.EveryNBlock(pruningConfig.PersistenceInterval); // TODO: this should be based on time
-            if (pruningConfig.Mode.IsFull() && stateDb is IFullPruningDb fullPruningDb)
-            {
-                PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(fullPruningDb, blockTree!, logManager);
-                disposeStack.Push(triggerPersistenceStrategy);
-                persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
-            }
-
-            // On a 7950x (32 logical coree), assuming write buffer is large enough, the pruning time is about 3 second
-            // with 8GB of pruning cache. Lets assume that this is a safe estimate as the ssd can be a limitation also.
-            long maximumCacheMb = Environment.ProcessorCount * 250;
-            // It must be at least 1GB as on mainnet at least 500MB will remain to support snap sync. So pruning cache only drop to about 500MB after pruning.
-            maximumCacheMb = Math.Max(1000, maximumCacheMb);
-            if (pruningConfig.CacheMb > maximumCacheMb)
-            {
-                // The user can also change `--Db.StateDbWriteBufferSize`.
-                // Which may or may not be better as each read will need to go through eacch write buffer.
-                // So having less of them is probably better..
-                if (_logger.IsWarn) _logger.Warn($"Detected {pruningConfig.CacheMb}MB of pruning cache config. Pruning cache more than {maximumCacheMb}MB is not recommended with {Environment.ProcessorCount} logical core as it may cause long memory pruning time which affect attestation.");
-            }
-
-            var totalWriteBufferMb = dbConfig.StateDbWriteBufferNumber * dbConfig.StateDbWriteBufferSize / (ulong)1.MB();
-            var minimumWriteBufferMb = 0.2 * pruningConfig.CacheMb;
-            if (totalWriteBufferMb < minimumWriteBufferMb)
-            {
-                long minimumWriteBufferSize = (int)Math.Ceiling((minimumWriteBufferMb * 1.MB()) / dbConfig.StateDbWriteBufferNumber);
-
-                if (_logger.IsWarn) _logger.Warn($"Detected {totalWriteBufferMb}MB of maximum write buffer size. Write buffer size should be at least 20% of pruning cache MB or memory pruning may slow down. Try setting `--Db.{nameof(dbConfig.StateDbWriteBufferSize)} {minimumWriteBufferSize}`.");
-            }
-
-            if (pruningConfig.CacheMb <= pruningConfig.DirtyCacheMb)
-            {
-                throw new InvalidConfigurationException("Dirty pruning cache size must be less than persisted pruning cache size.", -1);
-            }
-
-            pruningStrategy = Prune
-                .WhenCacheReaches(pruningConfig.DirtyCacheMb.MB())
-                .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB() - pruningConfig.DirtyCacheMb.MB());
-        }
-        else
-        {
-            pruningStrategy = No.Pruning;
-            persistenceStrategy = Persist.EveryBlock;
-        }
-
-        INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb);
-
-        TrieStore trieStore = new TrieStore(
-            mainNodeStorage,
-            pruningStrategy,
-            persistenceStrategy,
-            pruningConfig,
-            logManager);
-
+        IPruningTrieStore trieStore = mainPruningTrieStoreFactory.PruningTrieStore;
         ITrieStore mainWorldTrieStore = trieStore;
         PreBlockCaches? preBlockCaches = null;
         if (blockConfig.PreWarmStateOnBlockProcessing)
@@ -150,7 +65,8 @@ public class PruningTrieStateFactory(
             mainWorldTrieStore = new PreCachedTrieStore(trieStore, preBlockCaches.RlpCache);
         }
 
-        IWorldState worldState = syncConfig.TrieHealing
+        IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
+        IVisitingWorldState worldState = syncConfig.TrieHealing
             ? new HealingWorldState(
                 mainWorldTrieStore,
                 mainNodeStorage,
@@ -189,12 +105,13 @@ public class PruningTrieStateFactory(
         disposeStack.Push(mainWorldTrieStore);
 
         InitializeFullPruning(
-            stateDb,
+            dbProvider.StateDb,
             stateManager.GlobalStateReader,
             mainNodeStorage,
             nodeStorageFactory,
             trieStore,
-            compositePruningTrigger
+            compositePruningTrigger,
+            preBlockCaches
         );
 
         var verifyTrieStarter = new VerifyTrieStarter(stateManager, processExit!, logManager);
@@ -207,16 +124,46 @@ public class PruningTrieStateFactory(
             verifyTrieStarter!
         );
 
-        return (stateManager, mainNodeStorage, adminRpcModule);
+        return (stateManager, adminRpcModule);
     }
 
-    private void InitializeFullPruning(
-        IDb stateDb,
+    private void AdviseConfig()
+    {
+        // On a 7950x (32 logical coree), assuming write buffer is large enough, the pruning time is about 3 second
+        // with 8GB of pruning cache. Lets assume that this is a safe estimate as the ssd can be a limitation also.
+        long maximumCacheMb = Environment.ProcessorCount * 250;
+        // It must be at least 1GB as on mainnet at least 500MB will remain to support snap sync. So pruning cache only drop to about 500MB after pruning.
+        maximumCacheMb = Math.Max(1000, maximumCacheMb);
+        if (pruningConfig.CacheMb > maximumCacheMb)
+        {
+            // The user can also change `--Db.StateDbWriteBufferSize`.
+            // Which may or may not be better as each read will need to go through eacch write buffer.
+            // So having less of them is probably better..
+            if (_logger.IsWarn) _logger.Warn($"Detected {pruningConfig.CacheMb}MB of pruning cache config. Pruning cache more than {maximumCacheMb}MB is not recommended with {Environment.ProcessorCount} logical core as it may cause long memory pruning time which affect attestation.");
+        }
+
+        var totalWriteBufferMb = dbConfig.StateDbWriteBufferNumber * dbConfig.StateDbWriteBufferSize / (ulong)1.MB();
+        var minimumWriteBufferMb = 0.2 * pruningConfig.CacheMb;
+        if (totalWriteBufferMb < minimumWriteBufferMb)
+        {
+            long minimumWriteBufferSize = (int)Math.Ceiling((minimumWriteBufferMb * 1.MB()) / dbConfig.StateDbWriteBufferNumber);
+
+            if (_logger.IsWarn) _logger.Warn($"Detected {totalWriteBufferMb}MB of maximum write buffer size. Write buffer size should be at least 20% of pruning cache MB or memory pruning may slow down. Try setting `--Db.{nameof(dbConfig.StateDbWriteBufferSize)} {minimumWriteBufferSize}`.");
+        }
+
+        if (pruningConfig.CacheMb <= pruningConfig.DirtyCacheMb)
+        {
+            throw new InvalidConfigurationException("Dirty pruning cache size must be less than persisted pruning cache size.", -1);
+        }
+    }
+
+    private void InitializeFullPruning(IDb stateDb,
         IStateReader stateReader,
         INodeStorage mainNodeStorage,
         INodeStorageFactory nodeStorageFactory,
         IPruningTrieStore trieStore,
-        CompositePruningTrigger compositePruningTrigger)
+        CompositePruningTrigger compositePruningTrigger,
+        PreBlockCaches? preBlockCaches)
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
@@ -261,4 +208,76 @@ public class PruningTrieStateFactory(
             disposeStack.Push(pruner);
         }
     }
+}
+
+public class MainPruningTrieStoreFactory
+{
+    private readonly ILogger _logger;
+
+    public MainPruningTrieStoreFactory(
+        ISyncConfig syncConfig,
+        IPruningConfig pruningConfig,
+        IDbProvider dbProvider,
+        INodeStorageFactory nodeStorageFactory,
+        IBlockTree blockTree,
+        IDisposableStack disposeStack,
+        ILogManager logManager
+        )
+    {
+        _logger = logManager.GetClassLogger<MainPruningTrieStoreFactory>();
+
+        if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < 128)
+        {
+            if (_logger.IsInfo) _logger.Info($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
+            pruningConfig.PruningBoundary = 128;
+        }
+
+        if (pruningConfig.PruningBoundary < 64)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Pruning boundary must be at least 64. Setting to 64.");
+            pruningConfig.PruningBoundary = 64;
+        }
+
+        IDb stateDb = dbProvider.StateDb;
+        IPersistenceStrategy persistenceStrategy;
+        if (pruningConfig.Mode.IsMemory())
+        {
+            persistenceStrategy = No.Persistence;
+        }
+        else
+        {
+            persistenceStrategy = Persist.EveryNBlock(pruningConfig.PersistenceInterval);
+        }
+
+        IPruningStrategy pruningStrategy = Prune
+            .WhenCacheReaches(pruningConfig.DirtyCacheMb.MB())
+            .WhenPersistedCacheReaches(pruningConfig.CacheMb.MB() - pruningConfig.DirtyCacheMb.MB())
+            .WhenLastPersistedBlockIsTooOld(pruningConfig.MaxUnpersistedBlockCount, pruningConfig.PruningBoundary)
+            .UnlessLastPersistedBlockIsTooNew(pruningConfig.MinUnpersistedBlockCount, pruningConfig.PruningBoundary);
+
+        if (!pruningConfig.Mode.IsMemory())
+        {
+            pruningStrategy = pruningStrategy
+                .DontDeleteObsoleteNode();
+        }
+
+        if (stateDb is IFullPruningDb fullPruningDb)
+        {
+            // PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(fullPruningDb, logManager);
+            // disposeStack.Push(triggerPersistenceStrategy);
+            // persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
+            pruningStrategy = new PruningTriggerPruningStrategy(fullPruningDb, pruningStrategy);
+        }
+
+        INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb);
+
+        PruningTrieStore = new TrieStore(
+            mainNodeStorage,
+            pruningStrategy,
+            persistenceStrategy,
+            pruningConfig,
+            logManager);
+    }
+
+    public IPruningTrieStore PruningTrieStore { get; }
 }

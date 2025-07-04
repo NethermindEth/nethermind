@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
@@ -251,7 +252,8 @@ public class SnapServer : ISnapServer
 
             if (pathWithStorageCollector.Slots.Count == 0)
             {
-                break;
+                //return proof of absence
+                return (responseNodes, proofs);
             }
 
             responseNodes.Add(pathWithStorageCollector.Slots);

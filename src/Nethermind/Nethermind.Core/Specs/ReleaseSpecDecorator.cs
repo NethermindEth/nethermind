@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -70,6 +70,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip4788Enabled => spec.IsEip4788Enabled;
     public virtual ulong TargetBlobCount => spec.TargetBlobCount;
     public virtual ulong MaxBlobCount => spec.MaxBlobCount;
+    public virtual ulong MaxBlobsPerTx => spec.MaxBlobsPerTx;
     public virtual UInt256 BlobBaseFeeUpdateFraction => spec.BlobBaseFeeUpdateFraction;
     public virtual Address? Eip4788ContractAddress => spec.Eip4788ContractAddress;
     public bool IsEip6110Enabled => spec.IsEip6110Enabled;
@@ -84,18 +85,22 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
     public bool IsEip7702Enabled => spec.IsEip7702Enabled;
     public bool IsEip7823Enabled => spec.IsEip7823Enabled;
-    public virtual bool IsRip7212Enabled => spec.IsRip7212Enabled;
+    public virtual bool IsEip7934Enabled => spec.IsEip7934Enabled;
+    public virtual int Eip7934MaxRlpBlockSize => spec.Eip7934MaxRlpBlockSize;
+    public virtual bool IsEip7951Enabled => spec.IsEip7951Enabled;
     public virtual bool IsOpGraniteEnabled => spec.IsOpGraniteEnabled;
     public virtual bool IsOpHoloceneEnabled => spec.IsOpHoloceneEnabled;
     public virtual bool IsOpIsthmusEnabled => spec.IsOpIsthmusEnabled;
     public virtual bool IsEip7623Enabled => spec.IsEip7623Enabled;
+    public virtual bool IsEip7825Enabled => spec.IsEip7825Enabled;
+    public bool IsEip7883Enabled => spec.IsEip7883Enabled;
+    public virtual bool IsEip7918Enabled => spec.IsEip7918Enabled;
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
-
     public virtual bool IsEofEnabled => spec.IsEofEnabled;
-
     public virtual bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
     public bool IsEip4844FeeCollectorEnabled => spec.IsEip4844FeeCollectorEnabled;
+    public bool IsEip7594Enabled => spec.IsEip7594Enabled;
 
     public virtual long MaxInitCodeSize => spec.MaxInitCodeSize;
     public virtual bool ValidateChainId => spec.ValidateChainId;
@@ -143,4 +148,6 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool ValidateReceipts => spec.ValidateReceipts;
     Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
+    public bool IsEip7939Enabled => spec.IsEip7939Enabled;
+    public bool IsEip7907Enabled => spec.IsEip7907Enabled;
 }
