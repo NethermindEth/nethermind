@@ -17,6 +17,7 @@ using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -265,6 +266,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                             // time in the queue as the queue is probably full. In this case, queuing again wont help
                             // as it later will just take as much time in the queue, then timing out again.
                             if (Logger.IsDebug) Logger.Debug("Background task queue full. Dropping transactions.");
+
+                            foreach (var tx in transactionsSpan.Slice(startIdx))
+                            {
+                                TxDecoder.TxObjectPool.Return(tx);
+                            }
+
                             return ValueTask.CompletedTask;
                         }
 
