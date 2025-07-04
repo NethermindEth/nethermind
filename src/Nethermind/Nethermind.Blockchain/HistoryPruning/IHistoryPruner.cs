@@ -11,4 +11,5 @@ public interface IHistoryPruner
 {
     void OnBlockProcessorQueueEmpty(object? sender, EventArgs e);
     Task TryPruneHistory(CancellationToken cancellationToken);
+    public long? CutoffBlockNumber { get; }
 }

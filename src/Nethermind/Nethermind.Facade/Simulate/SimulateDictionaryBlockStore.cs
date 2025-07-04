@@ -81,4 +81,17 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
             yield return kv.Value;
         }
     }
+
+    public Block? GetBlockByTimestamp(ulong timestamp)
+    {
+        foreach (KeyValuePair<long, Block> kv in _blockNumDict)
+        {
+            if (kv.Value.Timestamp == timestamp)
+            {
+                return kv.Value;
+            }
+        }
+
+        return null;
+    }
 }

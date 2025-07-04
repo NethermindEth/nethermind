@@ -22,4 +22,5 @@ public interface IBlockStore
     void Cache(Block block);
     bool HasBlock(long blockNumber, Hash256 blockHash);
     IEnumerable<Block> GetBlocksOlderThan(ulong timestamp);
+    public Block? GetBlockByTimestamp(ulong timestamp);
 }

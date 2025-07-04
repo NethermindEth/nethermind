@@ -804,12 +804,6 @@ namespace Nethermind.Blockchain
             }
         }
 
-        // public BatchWrite CreateBatch()
-        //     => _chainLevelInfoRepository.StartBatch();
-
-        // public IEnumerable<Block> GetBlocksOlderThan(ulong cutoffTimestamp)
-        //     => _blockStore.GetBlocksOlderThan(cutoffTimestamp);
-
         public void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256 nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null, bool isOldBlock = false)
         {
             currentLevel ??= LoadLevel(currentNumber);

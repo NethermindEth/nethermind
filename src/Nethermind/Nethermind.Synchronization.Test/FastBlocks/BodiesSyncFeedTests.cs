@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -28,15 +29,16 @@ namespace Nethermind.Synchronization.Test.FastBlocks;
 
 public class BodiesSyncFeedTests
 {
-    private IBlockTree _syncingFromBlockTree = null!;
-    private IBlockTree _syncingToBlockTree = null!;
-    private TestMemDb _blocksDb = null!;
-    private ISyncPointers _syncPointers = null!;
-    private BodiesSyncFeed _feed = null!;
-    private ISyncConfig _syncConfig = null!;
-    private MemDb _metadataDb = null!;
-    private Block _pivotBlock = null!;
-    private ISyncPeerPool _syncPeerPool = null!;
+    private IBlockTree _syncingFromBlockTree;
+    private IBlockTree _syncingToBlockTree;
+    private TestMemDb _blocksDb;
+    private ISyncPointers _syncPointers;
+    private BodiesSyncFeed _feed;
+    private ISyncConfig _syncConfig;
+    private MemDb _metadataDb;
+    private Block _pivotBlock;
+    private ISyncPeerPool _syncPeerPool;
+    private IHistoryPruner _historyPruner;
 
     [SetUp]
     public void Setup()
@@ -71,6 +73,7 @@ public class BodiesSyncFeedTests
         _syncingToBlockTree.SyncPivot = (_pivotBlock.Number, _pivotBlock.Hash);
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
+        _historyPruner = Substitute.For<IHistoryPruner>();
         _feed = new BodiesSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
@@ -81,6 +84,7 @@ public class BodiesSyncFeedTests
             new NullSyncReport(),
             _blocksDb,
             _metadataDb,
+            _historyPruner,
             LimboLogs.Instance,
             flushDbInterval: 10
         );

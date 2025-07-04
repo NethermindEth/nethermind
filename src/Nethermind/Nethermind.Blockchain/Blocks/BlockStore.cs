@@ -105,4 +105,19 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
             yield return block;
         }
     }
+
+    public Block? GetBlockByTimestamp(ulong timestamp)
+    {
+        // todo: check if block aligns exactly with timestamp
+        IEnumerable<KeyValuePair<byte[], byte[]?>> blocks = blockDb.GetAll(true);
+        foreach ((byte[] _, byte[]? value) in blocks)
+        {
+            Block block = _blockDecoder.Decode(value.AsRlpStream());
+            if (block.Timestamp == timestamp)
+            {
+                return block;
+            }
+        }
+        return null;
+    }
 }
