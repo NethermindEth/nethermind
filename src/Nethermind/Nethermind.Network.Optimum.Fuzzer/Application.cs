@@ -89,7 +89,7 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
                     await Task.Delay(options.PublisherDelay, token);
                 }
 
-                logger.LogDebug("Publisher {Id} completed", id);
+                logger.LogDebug("Publisher {Id} completed with {PublishedMessages} messages", id, options.MessageCount);
             }))
             .ToArray();
 
