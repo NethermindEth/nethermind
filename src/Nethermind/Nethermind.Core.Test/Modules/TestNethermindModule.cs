@@ -45,6 +45,6 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
         builder
             .AddModule(new PseudoNethermindModule(chainSpec, configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
-            .AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance));
+            .AddInstance<ISpecProvider>(new TestSpecProvider(Cancun.Instance));
     }
 }

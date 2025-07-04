@@ -24,8 +24,8 @@ public class TraceModuleFactory(IOverridableEnvFactory overridableEnvFactory, IL
             .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
             .AddScoped<ITransactionProcessorAdapter, T>() // T can be trace or execute
             .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
-            .AddScoped<IBlockValidator>(Always.Valid) // Why?
+            .AddInstance<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+            .AddInstance<IBlockValidator>(Always.Valid) // Why?
 
             .AddDecorator<IRewardCalculator, MergeRpcRewardCalculator>(); // TODO: Check, what if this is pre merge?
 
@@ -54,7 +54,7 @@ public class TraceModuleFactory(IOverridableEnvFactory overridableEnvFactory, IL
         IOverridableEnv<ITracer> tracerEnv = tracerLifetimeScope.Resolve<IOverridableEnv<ITracer>>();
 
         ILifetimeScope rpcLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
-            .AddScoped(tracerEnv));
+            .AddInstance(tracerEnv));
 
         tracerLifetimeScope.Disposer.AddInstanceForAsyncDisposal(rpcProcessingScope);
         tracerLifetimeScope.Disposer.AddInstanceForAsyncDisposal(validationProcessingScope);

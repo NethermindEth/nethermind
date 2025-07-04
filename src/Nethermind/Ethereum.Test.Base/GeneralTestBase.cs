@@ -79,9 +79,9 @@ namespace Ethereum.Test.Base
             IConfigProvider configProvider = new ConfigProvider();
             using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
-                .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
-                .AddSingleton(specProvider)
-                .AddSingleton(_logManager)
+                .AddInstance<IBlockhashProvider>(new TestBlockhashProvider())
+                .AddInstance(specProvider)
+                .AddInstance(_logManager)
                 .Build();
 
             MainBlockProcessingContext mainBlockProcessingContext = container.Resolve<MainBlockProcessingContext>();

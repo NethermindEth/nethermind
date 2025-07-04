@@ -26,7 +26,7 @@ public sealed class OptimismSynchronizerModule(ChainSpec chainSpec) : Module
                 .GetChainSpecParameters<OptimismChainSpecEngineParameters>();
             ArgumentNullException.ThrowIfNull(parameters.BedrockBlockNumber);
 
-            builder.AddSingleton<ITotalDifficultyStrategy>(
+            builder.AddInstance<ITotalDifficultyStrategy>(
                 new FixedTotalDifficultyStrategy(
                     new CumulativeTotalDifficultyStrategy(),
                     fixesBlockNumber: parameters.BedrockBlockNumber.Value - 1,

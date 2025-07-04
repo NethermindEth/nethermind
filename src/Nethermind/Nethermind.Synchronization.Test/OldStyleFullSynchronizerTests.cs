@@ -52,9 +52,9 @@ namespace Nethermind.Synchronization.Test
 
             IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
-                .AddSingleton<IBlockTree>(_blockTree)
-                .AddSingleton<IBlockValidator>(Always.Valid)
-                .AddSingleton<ISealValidator>(Always.Valid)
+                .AddInstance<IBlockTree>(_blockTree)
+                .AddInstance<IBlockValidator>(Always.Valid)
+                .AddInstance<ISealValidator>(Always.Valid)
                 .Build();
             _container = container;
         }

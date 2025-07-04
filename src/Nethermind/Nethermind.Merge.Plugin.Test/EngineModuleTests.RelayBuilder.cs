@@ -54,7 +54,7 @@ public partial class EngineModuleTests
             });
 
         using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig, configurer: builder => builder
-            .AddSingleton<IBlocksConfig>(blocksConfig)
+            .AddInstance<IBlocksConfig>(blocksConfig)
             .AddSingleton<IBlockImprovementContextFactory>((ctx) =>
             {
                 BoostBlockImprovementContextFactory improvementContextFactory = new(ctx.Resolve<IBlockProducer>(),
@@ -165,7 +165,7 @@ public partial class EngineModuleTests
                     TimeSpan.FromSeconds(5000), boostRelay, stateReader);
                 return improvementContextFactory;
             })
-            .AddSingleton<IBlocksConfig>(new BlocksConfig() { SecondsPerSlot = 1000 })
+            .AddInstance<IBlocksConfig>(new BlocksConfig() { SecondsPerSlot = 1000 })
         );
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -212,7 +212,7 @@ public partial class EngineModuleTests
 
                 return improvementContextFactory;
             })
-            .AddSingleton<IBlocksConfig>(new BlocksConfig() { SecondsPerSlot = 10 })
+            .AddInstance<IBlocksConfig>(new BlocksConfig() { SecondsPerSlot = 10 })
         );
 
         IEngineRpcModule rpc = CreateEngineModule(chain);

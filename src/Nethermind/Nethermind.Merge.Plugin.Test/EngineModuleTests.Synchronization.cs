@@ -847,7 +847,7 @@ public partial class EngineModuleTests
             };
         }
 
-        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder.AddSingleton<ISyncConfig>(syncConfig));
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder.AddInstance<ISyncConfig>(syncConfig));
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload prePivotRequest = ExecutionPayload.Create(blockBeforePivot);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(prePivotRequest);
@@ -875,7 +875,7 @@ public partial class EngineModuleTests
             };
         }
 
-        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder.AddSingleton<ISyncConfig>(syncConfig));
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder.AddInstance<ISyncConfig>(syncConfig));
         await chain.BlockTree.SuggestBlockAsync(blockNr1, BlockTreeSuggestOptions.None);
         chain.BlockTree.UpdateMainChain(new List<Block>() { blockNr1 }, true, true);
 
@@ -906,7 +906,7 @@ public partial class EngineModuleTests
         }
 
 
-        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder.AddSingleton<ISyncConfig>(syncConfig));
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder.AddInstance<ISyncConfig>(syncConfig));
         IEngineRpcModule rpc = CreateEngineModule(chain);
         // create block gap from fast sync pivot
         int gap = 7;

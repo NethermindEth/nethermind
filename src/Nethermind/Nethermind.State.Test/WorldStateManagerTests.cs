@@ -82,7 +82,7 @@ public class WorldStateManagerTests
         {
             using IContainer ctx = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
-                .AddSingleton(blockTree)
+                .AddInstance(blockTree)
                 .Build();
 
             IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;

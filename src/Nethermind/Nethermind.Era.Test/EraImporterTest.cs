@@ -55,8 +55,8 @@ public class EraImporterTest
         blockTree.SuggestBlock(sourceBlocktree.FindBlock(0)!, BlockTreeSuggestOptions.None);
 
         await using IContainer targetCtx = EraTestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(blockTree)
-            .AddSingleton<IBlockValidator>(Always.Invalid)
+            .AddInstance<IBlockTree>(blockTree)
+            .AddInstance<IBlockValidator>(Always.Invalid)
             .Build();
 
         IEraImporter sut = targetCtx.Resolve<IEraImporter>();
@@ -75,7 +75,7 @@ public class EraImporterTest
             .WithBlocks(fromCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
 
         await using IContainer toCtx = EraTestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(inTree)
+            .AddInstance<IBlockTree>(inTree)
             .Build();
 
         IEraImporter sut = toCtx.Resolve<IEraImporter>();
@@ -97,7 +97,7 @@ public class EraImporterTest
         BlockTree inTree = Build.A.BlockTree()
             .WithBlocks(outputCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
         using IContainer inCtx = EraTestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(inTree)
+            .AddInstance<IBlockTree>(inTree)
             .Build();
 
         IEraImporter sut = inCtx.Resolve<IEraImporter>();
@@ -122,7 +122,7 @@ public class EraImporterTest
         BlockTree inTree = Build.A.BlockTree()
             .WithBlocks(outputCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
         using IContainer inCtx = EraTestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(inTree)
+            .AddInstance<IBlockTree>(inTree)
             .Build();
 
         IEraImporter sut = inCtx.Resolve<IEraImporter>();
@@ -144,8 +144,8 @@ public class EraImporterTest
             .TestObject;
 
         await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(inTree)
-            .AddSingleton<IEraConfig>(new EraConfig()
+            .AddInstance<IBlockTree>(inTree)
+            .AddInstance<IEraConfig>(new EraConfig()
             {
                 ImportBlocksBufferSize = 10,
                 MaxEra1Size = 16,
@@ -190,8 +190,8 @@ public class EraImporterTest
             .TestObject;
 
         await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(inTree)
-            .AddSingleton<IEraConfig>(new EraConfig()
+            .AddInstance<IBlockTree>(inTree)
+            .AddInstance<IEraConfig>(new EraConfig()
             {
                 ImportBlocksBufferSize = 10,
                 MaxEra1Size = 16,

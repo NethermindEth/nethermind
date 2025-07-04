@@ -19,7 +19,7 @@ public static class IContainerSynchronizerTestExtensions
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
         blockTree.BestSuggestedHeader.Returns(header);
 
-        builder.AddSingleton(blockTree);
+        builder.AddInstance(blockTree);
 
         return builder;
     }

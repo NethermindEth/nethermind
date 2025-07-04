@@ -306,7 +306,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             .AddModule(new BaseMergePluginModule())
             .AddModule(new OptimismSynchronizerModule(chainSpec))
 
-            .AddSingleton(chainSpec.EngineChainSpecParametersProvider
+            .AddInstance(chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<OptimismChainSpecEngineParameters>())
             .AddSingleton<IOptimismSpecHelper, OptimismSpecHelper>()
             .AddSingleton<ICostHelper, OptimismCostHelper>()
@@ -320,7 +320,7 @@ public class OptimismModule(ChainSpec chainSpec) : Module
             // Validators
             .AddSingleton<IBlockValidator, OptimismBlockValidator>()
             .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
-            .AddSingleton<IUnclesValidator>(Always.Valid)
+            .AddInstance<IUnclesValidator>(Always.Valid)
 
             // Block processing
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()

@@ -92,7 +92,7 @@ namespace Nethermind.Consensus.AuRa
 
             builder
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
-                .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
+                .AddInstance<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
                 .Add<StartBlockProducerAuRa>() // Note: Stateful. Probably just some strange unintentional side effect though.
                 .AddSingleton<AuraStatefulComponents>()

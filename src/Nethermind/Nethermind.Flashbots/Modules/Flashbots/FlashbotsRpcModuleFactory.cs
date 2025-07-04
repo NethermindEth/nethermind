@@ -36,7 +36,7 @@ namespace Nethermind.Flashbots.Modules.Flashbots
 
             ILifetimeScope moduleLifetime = rootLifetime.BeginLifetimeScope((builder) => builder
                 .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
-                .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
+                .AddInstance<IReceiptStorage>(NullReceiptStorage.Instance)
                 .AddSingleton<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 .AddScoped<ValidateSubmissionHandler.ProcessingEnv>()
                 .AddModule(overridableEnv));

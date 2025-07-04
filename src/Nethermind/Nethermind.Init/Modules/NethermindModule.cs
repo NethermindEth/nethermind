@@ -53,7 +53,7 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly())
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
-            .AddSingleton<IAbiEncoder>(Nethermind.Abi.AbiEncoder.Instance)
+            .AddInstance<IAbiEncoder>(Nethermind.Abi.AbiEncoder.Instance)
             .AddSingleton<IEciesCipher, EciesCipher>()
             .AddSingleton<ICryptoRandom, CryptoRandom>()
 
@@ -77,9 +77,9 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             base.Load(builder);
 
             builder
-                .AddSingleton(configProvider)
-                .AddSingleton<ChainSpec>(chainSpec)
-                .AddSingleton<ILogManager>(logManager)
+                .AddInstance(configProvider)
+                .AddInstance<ChainSpec>(chainSpec)
+                .AddInstance<ILogManager>(logManager)
                 .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
                 ;
         }

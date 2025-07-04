@@ -463,7 +463,7 @@ namespace Nethermind.Facade
 
             ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddScoped<BlockchainBridge>()
-                .AddScoped(blockProcessingEnv));
+                .AddInstance(blockProcessingEnv));
 
             blockchainBridgeLifetime.Disposer.AddInstanceForAsyncDisposal(overridableScopeLifetime);
             rootLifetimeScope.Disposer.AddInstanceForDisposal(blockchainBridgeLifetime);

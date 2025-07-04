@@ -172,7 +172,7 @@ public partial class BlockDownloaderTests
             FastSync = true,
             StateMinDistanceFromHead = fastSyncLag,
         }),
-            configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
+            configurer: (builder) => builder.AddInstance<IForwardHeaderProvider>(mockForwardHeaderProvider));
 
         Context ctx = node.Resolve<Context>();
         SyncPeerMock syncPeer = new(chainLength, withReceipts, Response.AllCorrect | Response.WithTransactions);
@@ -214,7 +214,7 @@ public partial class BlockDownloaderTests
         IBlockTree instance = CachedBlockTreeBuilder.OfLength(1024);
         await using IContainer node = CreateNode(builder =>
         {
-            builder.AddSingleton<IBlockTree>(instance);
+            builder.AddInstance<IBlockTree>(instance);
         });
         Context ctx = node.Resolve<Context>();
 
@@ -246,7 +246,7 @@ public partial class BlockDownloaderTests
     {
         using IContainer node = CreateNode(builder =>
         {
-            builder.AddSingleton<IBlockTree>(CachedBlockTreeBuilder.OfLength(2048 + 1));
+            builder.AddInstance<IBlockTree>(CachedBlockTreeBuilder.OfLength(2048 + 1));
         });
         Context ctx = node.Resolve<Context>();
 
@@ -270,7 +270,7 @@ public partial class BlockDownloaderTests
     {
         Action<ContainerBuilder> configurer = builder =>
         {
-            builder.AddSingleton<ISyncPeerPool>(Substitute.For<ISyncPeerPool>());
+            builder.AddInstance<ISyncPeerPool>(Substitute.For<ISyncPeerPool>());
         };
 
         await using IContainer node = mergeDownloader ? CreateMergeNode(configurer) : CreateNode(configurer);
@@ -444,7 +444,7 @@ public partial class BlockDownloaderTests
     [Test]
     public async Task Throws_on_invalid_seal()
     {
-        await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(Always.Invalid));
+        await using IContainer node = CreateNode(builder => builder.AddInstance<ISealValidator>(Always.Invalid));
         Context ctx = node.Resolve<Context>();
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -463,7 +463,7 @@ public partial class BlockDownloaderTests
     [Test]
     public async Task Throws_on_invalid_header()
     {
-        await using IContainer node = CreateNode(builder => builder.AddSingleton<IBlockValidator>(Always.Invalid));
+        await using IContainer node = CreateNode(builder => builder.AddInstance<IBlockValidator>(Always.Invalid));
         Context ctx = node.Resolve<Context>();
 
         Response options = Response.AllCorrect | Response.Consistent;
@@ -495,7 +495,7 @@ public partial class BlockDownloaderTests
                 syncConfig.MaxTxInForwardSyncBuffer = 3200;
                 return syncConfig;
             })
-            .AddSingleton<IBlockValidator>(Always.Invalid));
+            .AddInstance<IBlockValidator>(Always.Invalid));
         Context ctx = node.Resolve<Context>();
 
         SyncPeerMock syncPeer = new(40, true, Response.AllCorrect);
@@ -929,10 +929,10 @@ public partial class BlockDownloaderTests
         ContainerBuilder b = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton<IReceiptStorage, InMemoryReceiptStorage>()
-            .AddSingleton<ISealValidator>(Always.Valid)
-            .AddSingleton<ISpecProvider>(new MainnetSpecProvider())
-            .AddSingleton<IBlockValidator>(Always.Valid)
-            .AddSingleton<ISyncPeerPool>(Substitute.For<ISyncPeerPool>())
+            .AddInstance<ISealValidator>(Always.Valid)
+            .AddInstance<ISpecProvider>(new MainnetSpecProvider())
+            .AddInstance<IBlockValidator>(Always.Valid)
+            .AddInstance<ISyncPeerPool>(Substitute.For<ISyncPeerPool>())
             .AddSingleton<ResponseBuilder>()
             .AddDecorator<IBlockTree>((ctx, tree) =>
             {

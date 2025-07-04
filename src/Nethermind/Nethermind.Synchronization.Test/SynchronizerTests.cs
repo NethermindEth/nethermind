@@ -295,13 +295,13 @@ public class SynchronizerTests
             IConfigProvider configProvider = new ConfigProvider(syncConfig, mergeConfig, pruningConfig);
             ContainerBuilder builder = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
-                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
-                .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
-                .AddSingleton(Substitute.For<IProcessExitSource>())
-                .AddSingleton<ISealValidator>(Always.Valid)
-                .AddSingleton<IBlockValidator>(Always.Valid)
+                .AddInstance<ISpecProvider>(MainnetSpecProvider.Instance)
+                .AddInstance<IReceiptStorage>(NullReceiptStorage.Instance)
+                .AddInstance(Substitute.For<IProcessExitSource>())
+                .AddInstance<ISealValidator>(Always.Valid)
+                .AddInstance<IBlockValidator>(Always.Valid)
                 .AddSingleton<ContainerDependencies>()
-                .AddSingleton(_logManager);
+                .AddInstance(_logManager);
 
             if (IsMerge(synchronizerType))
             {

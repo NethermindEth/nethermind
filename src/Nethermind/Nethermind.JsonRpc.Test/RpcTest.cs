@@ -67,7 +67,7 @@ public static class RpcTest
                 EnabledModules = [typeof(T).GetCustomAttribute<RpcModuleAttribute>()!.ModuleType]
             }))
             .RegisterBoundedJsonRpcModule<T, AutoRpcModuleFactory<T>>(1, new JsonRpcConfig().Timeout)
-            .AddScoped<T>(module)
+            .AddInstance<T>(module)
             .Build();
     }
 
