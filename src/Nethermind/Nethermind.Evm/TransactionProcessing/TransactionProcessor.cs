@@ -588,8 +588,6 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        protected virtual bool ShouldValidate(ExecutionOptions opts) => !opts.HasFlag(ExecutionOptions.SkipValidation);
-
         private int ExecuteEvmCall<TTracingInst>(
             Transaction tx,
             BlockHeader header,
@@ -605,8 +603,6 @@ namespace Nethermind.Evm.TransactionProcessing
             out GasConsumed gasConsumed)
             where TTracingInst : struct, IFlag
         {
-            _ = ShouldValidate(opts);
-
             substate = default;
             gasConsumed = tx.GasLimit;
             byte statusCode = StatusCode.Failure;
