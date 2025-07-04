@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -62,12 +63,28 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
                 Console.WriteLine($"* Subscribers ({options.SubscriberCount}):");
                 foreach (var subscriber in report.Subscribers)
                 {
-                    Console.WriteLine($"    {subscriber.Id} => Received {subscriber.Messages} messages");
+                    Console.Write($"    {subscriber.Id} => {subscriber.Messages} messages");
+                    if (subscriber.RunningTime.HasValue)
+                    {
+                        Console.WriteLine($" / {subscriber.RunningTime.Value.TotalMilliseconds} ms");
+                    }
+                    else
+                    {
+                        Console.WriteLine(" (DNC)");
+                    }
                 }
                 Console.WriteLine($"* Publishers ({options.PublisherCount}):");
                 foreach (var publisher in report.Publishers)
                 {
-                    Console.WriteLine($"    {publisher.Id} => Published {publisher.Messages} messages");
+                    Console.Write($"    {publisher.Id} => {publisher.Messages} messages");
+                    if (publisher.RunningTime.HasValue)
+                    {
+                        Console.WriteLine($" / {publisher.RunningTime.Value.TotalMilliseconds} ms");
+                    }
+                    else
+                    {
+                        Console.WriteLine(" (DNC)");
+                    }
                 }
             }
         }
@@ -89,11 +106,16 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
 
                     var expectedMessages = options.MessageCount * options.PublisherCount;
                     var subscription = client.SubscribeToTopic(topic, token);
+
+                    var startTime = 0L;
                     await foreach (var msg in subscription.Take(expectedMessages))
                     {
+                        if (report.Messages == 0) { startTime = Stopwatch.GetTimestamp(); }
+
                         logger.LogTrace("Received message: {Message}", msg);
                         report.Messages++;
                     }
+                    report.RunningTime = Stopwatch.GetElapsedTime(startTime);
 
                     if (report.Messages != expectedMessages)
                     {
@@ -123,6 +145,8 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
                     var client = new GrpcOptimumNodeClient(grpcChannel);
 
                     var message = new byte[options.MessageSize];
+
+                    var startTime = Stopwatch.GetTimestamp();
                     for (var i = 0; i < options.MessageCount; i++)
                     {
                         random.NextBytes(message);
@@ -133,6 +157,7 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
 
                         await Task.Delay(options.PublisherDelay, token);
                     }
+                    report.RunningTime = Stopwatch.GetElapsedTime(startTime);
 
                     logger.LogDebug("Completed with {PublishedMessages} messages", options.MessageCount);
                 }

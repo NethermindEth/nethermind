@@ -10,6 +10,7 @@ public sealed class ClientReport
 {
     public int Id { get; set; }
     public int Messages { get; set; }
+    public TimeSpan? RunningTime { get; set; }
 }
 
 public class ClientException(string reason) : Exception(reason);
