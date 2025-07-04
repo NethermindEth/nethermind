@@ -2203,6 +2203,7 @@ namespace Nethermind.TxPool.Test
                 new TxValidator(_specProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),
+                [],
                 ShouldGossip.Instance,
                 incomingTxFilter,
                 HeadTxValidator.Instance,

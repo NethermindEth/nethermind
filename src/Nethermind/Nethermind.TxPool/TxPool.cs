@@ -76,6 +76,7 @@ namespace Nethermind.TxPool
         private Transaction[]? _blobTransactionSnapshot;
         private long _lastBlockNumber = -1;
         private Hash256? _lastBlockHash;
+        private byte[] _nodeIdEnd;
 
         private bool _isDisposed;
 
@@ -102,6 +103,7 @@ namespace Nethermind.TxPool
             ITxValidator validator,
             ILogManager? logManager,
             IComparer<Transaction> comparer,
+            byte[] nodeId,
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter? incomingTxFilter = null,
             IHeadTxValidator? headTxValidator = null,
@@ -118,6 +120,7 @@ namespace Nethermind.TxPool
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
             SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
+            _nodeIdEnd = nodeId.Length >= 4 ? nodeId[..-4] : [];
             _cts = new();
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
@@ -717,6 +720,12 @@ namespace Nethermind.TxPool
                             continue;
                     }
 
+                    if (tx.SupportsBlobs && IsBlobTxInCorrectShard(tx))
+                    {
+                        EvictTx(tx, false);
+                        continue;
+                    }
+
                     previousTxBottleneck ??= tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
 
@@ -755,6 +764,9 @@ namespace Nethermind.TxPool
                 }
             }
         }
+
+        private bool IsBlobTxInCorrectShard(Transaction tx)
+            => tx.Hash!.Bytes[..-4].SequenceEqual(_nodeIdEnd);
 
         private void UpdateBuckets()
         {
@@ -944,8 +956,10 @@ namespace Nethermind.TxPool
 
         internal void ResetAddress(Address address)
         {
-            using ArrayPoolList<AddressAsKey> arrayPoolList = new(1);
-            arrayPoolList.Add(address);
+            using ArrayPoolList<AddressAsKey> arrayPoolList = new(1)
+            {
+                address
+            };
             _accountCache.RemoveAccounts(arrayPoolList);
         }
 

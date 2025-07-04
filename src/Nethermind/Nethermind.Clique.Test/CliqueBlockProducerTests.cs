@@ -129,7 +129,8 @@ public class CliqueBlockProducerTests
                 new TxPoolConfig(),
                 new TxValidator(testnetSpecProvider.ChainId),
                 _logManager,
-                transactionComparerProvider.GetDefaultComparer());
+                transactionComparerProvider.GetDefaultComparer(),
+                []);
             _pools[privateKey] = txPool;
 
             BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);

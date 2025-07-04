@@ -24,7 +24,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -80,7 +79,8 @@ public class ReorgTests
             new TxPoolConfig(),
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
-            transactionComparerProvider.GetDefaultComparer());
+            transactionComparerProvider.GetDefaultComparer(),
+            []);
         BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
         VirtualMachine virtualMachine = new(
             blockhashProvider,

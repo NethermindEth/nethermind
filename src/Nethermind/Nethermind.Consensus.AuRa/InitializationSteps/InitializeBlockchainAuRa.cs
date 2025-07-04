@@ -18,6 +18,7 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
@@ -169,6 +170,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.TxValidator!,
             _api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
+            _api.Enode.PublicKey.ToBytes(),
             _api.TxGossipPolicy,
             new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager, _api.SpecProvider),
             null,
