@@ -222,9 +222,9 @@ public partial class BlockDownloaderTests
         await using IContainer container = CreateMergeNode((builder) =>
         {
             builder
-                .AddSingleton<IBlockTree>(notSyncedTree)
+                .AddInstance<IBlockTree>(notSyncedTree)
                 .AddKeyedSingleton<IDb>(DbNames.Metadata, blockTrees.NotSyncedTreeBuilder.MetadataDb)
-                .AddSingleton<ISealValidator>(sealValidator);
+                .AddInstance<ISealValidator>(sealValidator);
         }, new MergeConfig()
         {
             TerminalTotalDifficulty = $"{ttd}"
@@ -343,7 +343,7 @@ public partial class BlockDownloaderTests
         return CreateMergeNode((builder) =>
         {
             builder
-                .AddSingleton<IBlockTree>(treeBuilder.NotSyncedTree)
+                .AddInstance<IBlockTree>(treeBuilder.NotSyncedTree)
                 .AddKeyedSingleton<IDb>(DbNames.Metadata, treeBuilder.NotSyncedTreeBuilder.MetadataDb);
         }, configs);
     }

@@ -132,8 +132,8 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
     public async Task<IList<INethermindPlugin>> LoadPlugins(IConfigProvider configProvider, ChainSpec chainSpec)
     {
         ContainerBuilder builder = new ContainerBuilder()
-            .AddSingleton(configProvider)
-            .AddSingleton(chainSpec)
+            .AddInstance(configProvider)
+            .AddInstance(chainSpec)
             .AddSource(new ConfigRegistrationSource());
 
         foreach (var pluginType in PluginTypes)

@@ -506,8 +506,8 @@ public partial class EngineModuleTests
 
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) =>
             builder
-                .AddSingleton<IBlockTree>(blockTree)
-                .AddSingleton(new TestBlockchain.Configuration()
+                .AddInstance<IBlockTree>(blockTree)
+                .AddInstance(new TestBlockchain.Configuration()
                 {
                     SuggestGenesisOnStart = false,
                 }));
@@ -529,8 +529,8 @@ public partial class EngineModuleTests
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
 
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) => builder
-            .AddSingleton<IBlockTree>(blockTree)
-            .AddSingleton(new TestBlockchain.Configuration()
+            .AddInstance<IBlockTree>(blockTree)
+            .AddInstance(new TestBlockchain.Configuration()
             {
                 SuggestGenesisOnStart = false,
             }));

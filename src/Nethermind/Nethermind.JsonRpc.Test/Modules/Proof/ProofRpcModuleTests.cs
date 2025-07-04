@@ -80,12 +80,12 @@ public class ProofRpcModuleTests
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))
-            .AddSingleton<ISpecProvider>(_specProvider)
-            .AddSingleton<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), _specProvider, LimboLogs.Instance)))
-            .AddSingleton<IBlockTree>(_blockTree)
-            .AddSingleton<IDbProvider>(_dbProvider)
-            .AddSingleton<IReceiptStorage>(receiptStorage)
-            .AddSingleton<IWorldStateManager>(_worldStateManager)
+            .AddInstance<ISpecProvider>(_specProvider)
+            .AddInstance<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), _specProvider, LimboLogs.Instance)))
+            .AddInstance<IBlockTree>(_blockTree)
+            .AddInstance<IDbProvider>(_dbProvider)
+            .AddInstance<IReceiptStorage>(receiptStorage)
+            .AddInstance<IWorldStateManager>(_worldStateManager)
             .Build();
         _proofRpcModule = _container.Resolve<IRpcModuleFactory<IProofRpcModule>>().Create();
     }
@@ -231,12 +231,12 @@ public class ProofRpcModuleTests
         _container.Dispose();
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))
-            .AddSingleton<ISpecProvider>(_specProvider)
-            .AddSingleton<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), _specProvider, LimboLogs.Instance)))
-            .AddSingleton<IBlockTree>(_blockTree)
-            .AddSingleton<IReceiptFinder>(_receiptFinder)
-            .AddSingleton<IDbProvider>(_dbProvider)
-            .AddSingleton<IWorldStateManager>(_worldStateManager)
+            .AddInstance<ISpecProvider>(_specProvider)
+            .AddInstance<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), _specProvider, LimboLogs.Instance)))
+            .AddInstance<IBlockTree>(_blockTree)
+            .AddInstance<IReceiptFinder>(_receiptFinder)
+            .AddInstance<IDbProvider>(_dbProvider)
+            .AddInstance<IWorldStateManager>(_worldStateManager)
             .Build();
         _proofRpcModule = _container.Resolve<IRpcModuleFactory<IProofRpcModule>>().Create();
         ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;

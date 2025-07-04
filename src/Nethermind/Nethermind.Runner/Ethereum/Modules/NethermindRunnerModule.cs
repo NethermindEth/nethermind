@@ -68,15 +68,15 @@ public class NethermindRunnerModule(
             .AddSingleton<EthereumRunner>()
             .AddSingleton<IEthereumStepsLoader, EthereumStepsLoader>()
             .AddSingleton<EthereumStepsManager>()
-            .AddSingleton<IProcessExitSource>(processExitSource)
+            .AddInstance<IProcessExitSource>(processExitSource)
 
             .AddSingleton<NethermindApi>()
             .AddSingleton<NethermindApi.Dependencies>()
             .Bind<INethermindApi, NethermindApi>()
 
             .AddSingleton<IBlockPreprocessorStep, INethermindApi>((api) => api.BlockPreprocessor)
-            .AddSingleton(jsonSerializer)
-            .AddSingleton<IConsensusPlugin>(consensusPlugin)
+            .AddInstance(jsonSerializer)
+            .AddInstance<IConsensusPlugin>(consensusPlugin)
             ;
 
         foreach (var plugin in plugins)
@@ -85,7 +85,7 @@ public class NethermindRunnerModule(
             {
                 builder.AddModule(plugin.Module);
             }
-            builder.AddSingleton<INethermindPlugin>(plugin);
+            builder.AddInstance<INethermindPlugin>(plugin);
         }
 
         builder.OnBuild((ctx) =>

@@ -81,7 +81,7 @@ public partial class ForwardHeaderProviderTests
         IBlockTree instance = CachedBlockTreeBuilder.OfLength(1024);
         await using IContainer node = CreateNode(builder =>
         {
-            builder.AddSingleton<IBlockTree>(instance);
+            builder.AddInstance<IBlockTree>(instance);
         });
         Context ctx = node.Resolve<Context>();
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
@@ -139,7 +139,7 @@ public partial class ForwardHeaderProviderTests
     {
         await using IContainer node = CreateNode(builder =>
         {
-            builder.AddSingleton<IBlockTree>(CachedBlockTreeBuilder.OfLength(2048 + 1));
+            builder.AddInstance<IBlockTree>(CachedBlockTreeBuilder.OfLength(2048 + 1));
         });
         Context ctx = node.Resolve<Context>();
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
@@ -197,7 +197,7 @@ public partial class ForwardHeaderProviderTests
     [Test]
     public async Task Throws_on_invalid_seal()
     {
-        await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(Always.Invalid));
+        await using IContainer node = CreateNode(builder => builder.AddInstance<ISealValidator>(Always.Invalid));
         Context ctx = node.Resolve<Context>();
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -267,7 +267,7 @@ public partial class ForwardHeaderProviderTests
     [Ignore("Fails OneLoggerLogManager Travis only")]
     public async Task Can_cancel_seal_validation()
     {
-        await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(new SlowSealValidator()));
+        await using IContainer node = CreateNode(builder => builder.AddInstance<ISealValidator>(new SlowSealValidator()));
         Context ctx = node.Resolve<Context>();
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -296,7 +296,7 @@ public partial class ForwardHeaderProviderTests
     {
         ISealValidator sealValidator = Substitute.For<ISealValidator>();
         sealValidator.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
-        await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(sealValidator));
+        await using IContainer node = CreateNode(builder => builder.AddInstance<ISealValidator>(sealValidator));
         Context ctx = node.Resolve<Context>();
 
         using IOwnedReadOnlyList<BlockHeader>? blockHeaders = await ctx.ResponseBuilder.BuildHeaderResponse(0, 512, Response.AllCorrect);
@@ -422,10 +422,10 @@ public partial class ForwardHeaderProviderTests
         ContainerBuilder b = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton<IReceiptStorage, InMemoryReceiptStorage>()
-            .AddSingleton<ISealValidator>(Always.Valid)
-            .AddSingleton<ISpecProvider>(new MainnetSpecProvider())
-            .AddSingleton<IBlockValidator>(Always.Valid)
-            .AddSingleton<ISyncPeerPool>(Substitute.For<ISyncPeerPool>())
+            .AddInstance<ISealValidator>(Always.Valid)
+            .AddInstance<ISpecProvider>(new MainnetSpecProvider())
+            .AddInstance<IBlockValidator>(Always.Valid)
+            .AddInstance<ISyncPeerPool>(Substitute.For<ISyncPeerPool>())
             .AddSingleton<ResponseBuilder>()
             .AddDecorator<IBlockTree>((ctx, tree) =>
             {

@@ -22,7 +22,7 @@ public class EraExporterTests
     public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated(int chainlength, int start, int end, int size, int expectedNumberOfFiles)
     {
         await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainlength)
-            .AddSingleton<IEraConfig>(new EraConfig() { MaxEra1Size = size })
+            .AddInstance<IEraConfig>(new EraConfig() { MaxEra1Size = size })
             .Build();
 
         string tmpDirectory = container.ResolveTempDirPath();
@@ -53,7 +53,7 @@ public class EraExporterTests
     public void Export_ReceiptsAreNull_ThrowEraException()
     {
         using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(10)
-            .AddSingleton<IReceiptStorage>(Substitute.For<IReceiptStorage>())
+            .AddInstance<IReceiptStorage>(Substitute.For<IReceiptStorage>())
             .Build();
 
         string tmpDirectory = container.ResolveTempDirPath();

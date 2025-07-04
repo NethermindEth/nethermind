@@ -70,7 +70,7 @@ public class TestBlockProcessingModule : Module
             .AddSingleton<ProducedBlockSuggester>()
             .ResolveOnServiceActivation<ProducedBlockSuggester, IBlockProducerRunner>()
 
-            .AddSingleton<ISigner>(NullSigner.Instance)
+            .AddInstance<ISigner>(NullSigner.Instance)
 
             ;
     }
@@ -88,11 +88,12 @@ public class TestBlockProcessingModule : Module
         {
             processingCtxBuilder
                 // These are main block processing specific
-                .AddScoped<ICodeInfoRepository>(mainCodeInfoRepository)
-                .AddSingleton<IVisitingWorldState>(mainWorldState).AddSingleton<IWorldState>(mainWorldState)
+                .AddInstance<ICodeInfoRepository>(mainCodeInfoRepository)
+                .AddInstance<IVisitingWorldState>(mainWorldState)
+                .AddInstance<IWorldState>(mainWorldState)
                 .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
-                .AddScoped(new BlockchainProcessor.Options
+                .AddInstance(new BlockchainProcessor.Options
                 {
                     StoreReceiptsByDefault = receiptConfig.StoreReceipts,
                     DumpOptions = initConfig.AutoDump
@@ -108,7 +109,7 @@ public class TestBlockProcessingModule : Module
             if (blocksConfig.PreWarmStateOnBlockProcessing)
             {
                 processingCtxBuilder
-                    .AddScoped<PreBlockCaches>((mainWorldState as IPreBlockCaches)!.Caches)
+                    .AddInstance<PreBlockCaches>((mainWorldState as IPreBlockCaches)!.Caches)
                     .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
                     ;
             }
@@ -125,9 +126,9 @@ public class TestBlockProcessingModule : Module
             ILifetimeScope innerScope = rootLifetime.BeginLifetimeScope((builder) => builder
                 // Block producer specific things is in `IBlockProducerEnvFactory`.
                 // Yea, it can be added as `AddScoped` too and then mapped out, but its clearer this way.
-                .AddScoped<IWorldState>(env.ReadOnlyStateProvider)
-                .AddScoped<IBlockchainProcessor>(env.ChainProcessor)
-                .AddScoped<ITxSource>(env.TxSource)
+                .AddInstance<IWorldState>(env.ReadOnlyStateProvider)
+                .AddInstance<IBlockchainProcessor>(env.ChainProcessor)
+                .AddInstance<ITxSource>(env.TxSource)
 
                 .AddScoped<IBlockProducer, T>());
 

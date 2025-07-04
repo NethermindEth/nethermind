@@ -144,7 +144,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 return Build((builder) =>
                 {
-                    if (specProvider is not null) builder.AddSingleton<ISpecProvider>(specProvider);
+                    if (specProvider is not null) builder.AddInstance<ISpecProvider>(specProvider);
                 });
             }
 
@@ -175,10 +175,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                     builder.AddSingleton<IFilterManager, IFilterStore, ITxPool, ILogManager>((store, txPool, logManager) =>
                             new FilterManager(store, _blockchain.BlockProcessor, txPool, logManager));
 
-                    if (_blockFinderOverride is not null) builder.AddSingleton(_blockFinderOverride);
-                    if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
-                    if (_blockchainBridgeOverride is not null) builder.AddSingleton(_blockchainBridgeOverride);
-                    if (_blocksConfigOverride is not null) builder.AddSingleton(_blocksConfigOverride);
+                    if (_blockFinderOverride is not null) builder.AddInstance(_blockFinderOverride);
+                    if (_receiptFinderOverride is not null) builder.AddInstance(_receiptFinderOverride);
+                    if (_blockchainBridgeOverride is not null) builder.AddInstance(_blockchainBridgeOverride);
+                    if (_blocksConfigOverride is not null) builder.AddInstance(_blocksConfigOverride);
                 });
             }
         }
@@ -206,7 +206,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             await base.Build(builder =>
             {
-                builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
+                builder.AddInstance<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
                 configurer?.Invoke(builder);
             });
 

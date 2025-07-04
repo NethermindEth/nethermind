@@ -35,12 +35,12 @@ public class PsudoNetworkModule() : Module
 
         builder
             .AddSingleton<IFullStateFinder, FullStateFinder>()
-            .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
-            .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
+            .AddInstance<IBeaconSyncStrategy>(No.BeaconSync)
+            .AddInstance<IPoSSwitcher>(NoPoS.Instance)
 
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
             .AddSingleton<IPooledTxsRequestor, PooledTxsRequestor>()
-            .AddSingleton<IGossipPolicy>(Policy.FullGossip)
+            .AddInstance<IGossipPolicy>(Policy.FullGossip)
             .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
 
             // TODO: LastNStateRootTracker

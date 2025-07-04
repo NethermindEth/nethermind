@@ -130,8 +130,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 .AddModule(new AuRaModule(ChainSpec))
                 .AddModule(new AuRaMergeModule())
                 .AddSingleton<NethermindApi.Dependencies>()
-                .AddSingleton<IReportingValidator>(NullReportingValidator.Instance)
-                .AddSingleton<ISealer>(NullSealEngine.Instance) // Test not originally made with aura sealer
+                .AddInstance<IReportingValidator>(NullReportingValidator.Instance)
+                .AddInstance<ISealer>(NullSealEngine.Instance) // Test not originally made with aura sealer
 
                 .AddScoped<WithdrawalContractFactory>()
                 .AddScoped<IWithdrawalContract, WithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))

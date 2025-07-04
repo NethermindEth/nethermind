@@ -271,16 +271,16 @@ public class TestBlockchain : IDisposable
         builder
             .AddModule(new PseudoNethermindModule(ChainSpec, configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
-            .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+            .AddInstance<ISpecProvider>(MainnetSpecProvider.Instance)
             .AddDecorator<ISpecProvider>((ctx, specProvider) => WrapSpecProvider(specProvider))
-            .AddSingleton<ManualTimestamper>(new ManualTimestamper(InitialTimestamp))
+            .AddInstance<ManualTimestamper>(new ManualTimestamper(InitialTimestamp))
             .AddSingleton<Configuration>()
             .AddSingleton<FromContainer>()
 
             // Some validator configurations
-            .AddSingleton<ISealValidator>(Always.Valid)
-            .AddSingleton<IUnclesValidator>(Always.Valid)
-            .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD))
+            .AddInstance<ISealValidator>(Always.Valid)
+            .AddInstance<IUnclesValidator>(Always.Valid)
+            .AddInstance<ISealer>(new NethDevSealEngine(TestItem.AddressD))
 
             .AddSingleton<IBlockProducer>((_) => this.BlockProducer)
             .AddSingleton<IBlockProducerRunner>((_) => this.BlockProducerRunner)

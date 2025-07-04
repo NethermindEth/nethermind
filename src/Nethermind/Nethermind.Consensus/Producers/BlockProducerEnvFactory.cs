@@ -20,9 +20,9 @@ namespace Nethermind.Consensus.Producers
     ) : IBlockProducerEnvFactory
     {
         protected virtual ContainerBuilder ConfigureBuilder(ContainerBuilder builder) => builder
-            .AddScoped<ITxSource>(txSourceFactory.Create())
-            .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
-            .AddScoped(BlockchainProcessor.Options.NoReceipts)
+            .AddInstance<ITxSource>(txSourceFactory.Create())
+            .AddInstance<IReceiptStorage>(NullReceiptStorage.Instance)
+            .AddInstance(BlockchainProcessor.Options.NoReceipts)
             .AddScoped<ITransactionProcessorAdapter, BuildUpTransactionProcessorAdapter>()
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
             .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.Producers
             IWorldState worldState = worldStateManager.CreateResettableWorldState();
             ILifetimeScope lifetimeScope = rootLifetime.BeginLifetimeScope(builder =>
                 ConfigureBuilder(builder)
-                    .AddScoped(worldState));
+                    .AddInstance(worldState));
 
             rootLifetime.Disposer.AddInstanceForAsyncDisposal(lifetimeScope);
 

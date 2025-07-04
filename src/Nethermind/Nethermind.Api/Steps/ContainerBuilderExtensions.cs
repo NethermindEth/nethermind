@@ -11,7 +11,7 @@ public static class ContainerBuilderExtensions
 {
     public static ContainerBuilder AddStep(this ContainerBuilder builder, StepInfo stepInfo)
     {
-        builder.AddSingleton<StepInfo>(stepInfo);
+        builder.AddInstance<StepInfo>(stepInfo);
         builder.RegisterType(stepInfo.StepType).WithAttributeFiltering().SingleInstance();
         return builder;
     }

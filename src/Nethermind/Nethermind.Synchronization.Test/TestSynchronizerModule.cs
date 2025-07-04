@@ -23,14 +23,14 @@ public class TestSynchronizerModule(ISyncConfig syncConfig) : Module
         builder
             .AddModule(new SynchronizerModule(syncConfig))
             .AddModule(new DbModule())
-            .AddSingleton<IDbProvider>(TestMemDbProvider.Init())
+            .AddInstance<IDbProvider>(TestMemDbProvider.Init())
             .Map<INodeStorage, IDbProvider>(dbProvider => new NodeStorage(dbProvider.StateDb))
-            .AddSingleton<IBlockTree>(Substitute.For<IBlockTree>())
-            .AddSingleton<ITimerFactory>(Substitute.For<ITimerFactory>())
-            .AddSingleton<ISyncConfig>(syncConfig)
-            .AddSingleton<IBetterPeerStrategy>(new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance))
+            .AddInstance<IBlockTree>(Substitute.For<IBlockTree>())
+            .AddInstance<ITimerFactory>(Substitute.For<ITimerFactory>())
+            .AddInstance<ISyncConfig>(syncConfig)
+            .AddInstance<IBetterPeerStrategy>(new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance))
             .AddSingleton<INodeStatsManager, NodeStatsManager>()
             .AddSingleton<CancelOnDisposeToken>()
-            .AddSingleton<ILogManager>(LimboLogs.Instance);
+            .AddInstance<ILogManager>(LimboLogs.Instance);
     }
 }

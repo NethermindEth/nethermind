@@ -173,7 +173,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             timestamper = new ManualTimestamper(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
             builder
                 .AddModule(new TestMergeModule(configProvider.GetConfig<ITxPoolConfig>()))
-                .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
+                .AddInstance<ManualTimestamper>(timestamper) // Used by test code
                 .AddDecorator<ITestEnv, PostMergeTestEnv>()
                 ;
         }
@@ -182,8 +182,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             // So that any EIP after the merge is not activated.
             timestamper = ManualTimestamper.PreMerge;
             builder
-                .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
-                .AddSingleton<ITimestamper>(timestamper)
+                .AddInstance<ManualTimestamper>(timestamper) // Used by test code
+                .AddInstance<ITimestamper>(timestamper)
                 ;
         }
 

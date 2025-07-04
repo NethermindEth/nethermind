@@ -129,7 +129,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
             })
             .Build((builder) => builder
                 .ConfigureTestConfiguration((config) => config.AddBlockOnStart = false)
-                .AddSingleton<ISpecProvider>(new TestSpecProvider(London.Instance)));
+                .AddInstance<ISpecProvider>(new TestSpecProvider(London.Instance)));
 
         await chain.AddBlock();
         await chain.AddBlock(BuildSimpleTransaction.WithNonce(0).TestObject);

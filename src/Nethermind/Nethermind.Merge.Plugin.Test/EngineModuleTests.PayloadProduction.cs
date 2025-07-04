@@ -334,7 +334,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig, configurer: (builder) => builder
             .AddSingleton<IBlockImprovementContextFactory>(static chain => new StoringBlockImprovementContextFactory(new MockBlockImprovementContextFactory()))
             .AddSingleton(ConfigurePayloadPreparationService(timePerSlot, delay))
-            .AddSingleton(txPool)
+            .AddInstance(txPool)
         );
 
         StoringBlockImprovementContextFactory improvementContextFactory = chain.StoringBlockImprovementContextFactory!;
@@ -434,7 +434,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await blockchain.BuildMergeTestBlockchain(builder =>
         {
             builder
-                .AddSingleton<ISpecProvider>(SepoliaSpecProvider.Instance)
+                .AddInstance<ISpecProvider>(SepoliaSpecProvider.Instance)
                 .AddSingleton(ConfigurePayloadPreparationService(timePerSlot, delay))
                 ;
 
@@ -509,7 +509,7 @@ public partial class EngineModuleTests
         TimeSpan timePerSlot = 4 * delay;
 
         using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
-            .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(London.Instance))
+            .AddInstance<ISpecProvider>(new TestSingleReleaseSpecProvider(London.Instance))
             .AddSingleton<IBlockImprovementContextFactory>(ctx =>
                 new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(
                     ctx.Resolve<IBlockProducer>(),

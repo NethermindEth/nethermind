@@ -97,7 +97,7 @@ public abstract class StateSyncFeedTestsBase
         }
 
         ContainerBuilder builder = BuildTestContainerBuilder(dbContext, syncDispatcherAllocateTimeoutMs)
-            .AddSingleton<SyncPeerMock[]>(syncPeers);
+            .AddInstance<SyncPeerMock[]>(syncPeers);
 
         builder.RegisterBuildCallback((ctx) =>
         {
@@ -123,10 +123,10 @@ public abstract class StateSyncFeedTestsBase
                 syncConfig.SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs; // there is a test for requested nodes which get affected if allocate timeout
                 return syncConfig;
             })
-            .AddSingleton<ILogManager>(_logManager)
+            .AddInstance<ILogManager>(_logManager)
             .AddKeyedSingleton<IDb>(DbNames.Code, dbContext.LocalCodeDb)
             .AddKeyedSingleton<IDb>(DbNames.State, dbContext.LocalStateDb)
-            .AddSingleton<INodeStorage>(dbContext.LocalNodeStorage)
+            .AddInstance<INodeStorage>(dbContext.LocalNodeStorage)
 
             // Use factory function to make it lazy in case test need to replace IBlockTree
             .AddSingleton<IBlockTree>((ctx) => CachedBlockTreeBuilder.BuildCached(

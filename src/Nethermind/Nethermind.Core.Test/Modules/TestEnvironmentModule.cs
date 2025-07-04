@@ -37,17 +37,17 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
         base.Load(builder);
 
         builder
-            .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Error)) // Limbologs actually have IsTrace set to true, so actually slow.
+            .AddInstance<ILogManager>(new TestLogManager(LogLevel.Error)) // Limbologs actually have IsTrace set to true, so actually slow.
             .AddSingleton<IDbFactory>((_) => new MemDbFactory())
-            .AddSingleton<IDbProvider>(TestMemDbProvider.Init())
+            .AddInstance<IDbProvider>(TestMemDbProvider.Init())
             // These two dont use db provider
             .AddKeyedSingleton<IFullDb>(DbNames.PeersDb, (_) => new MemDb())
             .AddKeyedSingleton<IFullDb>(DbNames.DiscoveryNodes, (_) => new MemDb())
-            .AddSingleton<IFileStoreFactory>(new InMemoryDictionaryFileStoreFactory())
+            .AddInstance<IFileStoreFactory>(new InMemoryDictionaryFileStoreFactory())
             .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig))
 
             .AddSingleton<PseudoNethermindRunner>()
-            .AddSingleton<ISealer>(new NethDevSealEngine(nodeKey.Address))
+            .AddInstance<ISealer>(new NethDevSealEngine(nodeKey.Address))
             .AddSingleton<ITimestamper, ManualTimestamper>()
             .AddSingleton<IIPResolver, FixedIpResolver>()
 

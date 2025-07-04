@@ -220,7 +220,7 @@ public class TaikoModule : Module
             .AddSingleton<IL1OriginStore, L1OriginStore>()
 
             // Sync modification
-            .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance)
+            .AddInstance<IPoSSwitcher>(AlwaysPoS.Instance)
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
             .AddDecorator<BeaconSync>((_, strategy) =>
             {
@@ -232,7 +232,7 @@ public class TaikoModule : Module
             // Validators
             .AddSingleton<IBlockValidator, TaikoBlockValidator>()
             .AddSingleton<IHeaderValidator, TaikoHeaderValidator>()
-            .AddSingleton<IUnclesValidator>(Always.Valid)
+            .AddInstance<IUnclesValidator>(Always.Valid)
 
             // Blok processing
             .AddScoped<IValidationTransactionExecutor, TaikoBlockValidationTransactionExecutor>()

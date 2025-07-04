@@ -1590,7 +1590,7 @@ public partial class EthRpcModuleTests
         {
             Action<ContainerBuilder> wrappedConfigurer = builder =>
             {
-                if (specProvider is not null) builder.AddSingleton<ISpecProvider>(specProvider);
+                if (specProvider is not null) builder.AddInstance<ISpecProvider>(specProvider);
                 configurer?.Invoke(builder);
             };
 

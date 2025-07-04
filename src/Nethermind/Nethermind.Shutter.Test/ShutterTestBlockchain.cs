@@ -24,9 +24,9 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
             .AddModule(new ShutterPluginModule())
             .AddSingleton<ShutterApiSimulator>()
             .AddSingleton<ShutterEventSimulator>((ctx) => ShutterTestsCommon.InitEventSimulator(_rnd))
-            .AddSingleton<ShutterValidatorsInfo>(new ShutterValidatorsInfo())
-            .AddSingleton<Random>(_rnd)
-            .AddSingleton<IShutterConfig>(ShutterTestsCommon.Cfg)
+            .AddInstance<ShutterValidatorsInfo>(new ShutterValidatorsInfo())
+            .AddInstance<Random>(_rnd)
+            .AddInstance<IShutterConfig>(ShutterTestsCommon.Cfg)
             .Bind<ShutterApi, ShutterApiSimulator>()
 
             // ShutterApiSimulator add receipts to block with empty transaction. Crash with full receipt storage.
@@ -34,17 +34,17 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
 
             // It seems that it does not work with bloom.
             // This or use a separate bloom storage for LogFinder and BlockTree.
-            .AddSingleton<IBloomStorage>(NullBloomStorage.Instance)
+            .AddInstance<IBloomStorage>(NullBloomStorage.Instance)
             ;
 
         if (eventSimulator is not null)
         {
-            builder.AddSingleton<ShutterEventSimulator>(eventSimulator);
+            builder.AddInstance<ShutterEventSimulator>(eventSimulator);
         }
 
         if (_timestamper is not null)
         {
-            builder.AddSingleton<ITimestamper>(_timestamper);
+            builder.AddInstance<ITimestamper>(_timestamper);
         }
 
         return builder;

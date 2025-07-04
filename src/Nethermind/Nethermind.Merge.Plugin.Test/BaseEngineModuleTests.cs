@@ -85,10 +85,10 @@ public abstract partial class BaseEngineModuleTests
         return await bc
             .BuildMergeTestBlockchain(configurer: (builder) =>
             {
-                builder.AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
+                builder.AddInstance<ISpecProvider>(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
-                if (mockedExecutionRequestsProcessor is not null) builder.AddScoped<IExecutionRequestsProcessor>(mockedExecutionRequestsProcessor);
-                if (mockedPayloadService is not null) builder.AddSingleton<IPayloadPreparationService>(mockedPayloadService);
+                if (mockedExecutionRequestsProcessor is not null) builder.AddInstance<IExecutionRequestsProcessor>(mockedExecutionRequestsProcessor);
+                if (mockedPayloadService is not null) builder.AddInstance<IPayloadPreparationService>(mockedPayloadService);
 
                 configurer?.Invoke(builder);
             });
@@ -381,7 +381,7 @@ public abstract partial class BaseEngineModuleTests
             Container.Resolve<IBlockImprovementContextFactory>();
 
         public async Task<MergeTestBlockchain> Build(ISpecProvider specProvider) =>
-            (MergeTestBlockchain)await Build(configurer: (builder) => builder.AddSingleton<ISpecProvider>(specProvider));
+            (MergeTestBlockchain)await Build(configurer: (builder) => builder.AddInstance<ISpecProvider>(specProvider));
 
         public async Task<MergeTestBlockchain> BuildMergeTestBlockchain(Action<ContainerBuilder> configurer) =>
             (MergeTestBlockchain)await Build(configurer: configurer);

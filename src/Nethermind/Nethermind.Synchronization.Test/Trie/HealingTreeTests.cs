@@ -146,7 +146,7 @@ public class HealingTreeTests
             configProvider.GetConfig<IInitConfig>().StateDbKeyScheme = keyScheme;
             return new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
-                .AddSingleton<IBlockTree>(Build.A.BlockTree().OfChainLength(1).TestObject)
+                .AddInstance<IBlockTree>(Build.A.BlockTree().OfChainLength(1).TestObject)
                 .Build();
         }
 

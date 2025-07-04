@@ -44,12 +44,12 @@ public class BlockchainBridgeTests
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
-            .AddSingleton(_blockTree)
-            .AddSingleton<IReceiptFinder>(_receiptStorage)
-            .AddSingleton(_timestamper)
-            .AddSingleton(Substitute.For<ILogFinder>())
-            .AddSingleton<IMiningConfig>(new MiningConfig() { Enabled = false })
-            .AddScoped<ITransactionProcessor>(_transactionProcessor)
+            .AddInstance(_blockTree)
+            .AddInstance<IReceiptFinder>(_receiptStorage)
+            .AddInstance(_timestamper)
+            .AddInstance(Substitute.For<ILogFinder>())
+            .AddInstance<IMiningConfig>(new MiningConfig() { Enabled = false })
+            .AddInstance<ITransactionProcessor>(_transactionProcessor)
             .Build();
 
         _blockchainBridge = _container.Resolve<IBlockchainBridge>();

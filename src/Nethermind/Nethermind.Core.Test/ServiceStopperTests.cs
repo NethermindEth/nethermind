@@ -19,7 +19,7 @@ public class ServiceStopperTests
             .AddServiceStopper()
             .AddSingleton<Service1>()
             .AddSingleton<Service2>()
-            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddInstance<ILogManager>(LimboLogs.Instance)
             .Build();
 
         Service1 service1 = container.Resolve<Service1>();
@@ -37,7 +37,7 @@ public class ServiceStopperTests
             .AddServiceStopper()
             .AddSingleton<Service1>()
             .Add<Service2>()
-            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddInstance<ILogManager>(LimboLogs.Instance)
             .Build();
 
         Service1 service1 = container.Resolve<Service1>();
