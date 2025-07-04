@@ -31,8 +31,7 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GenesisSpec { get; set; }
 
-        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => SpecToReturn;
-
+        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => forkActivation.BlockNumber == 0 || forkActivation.BlockNumber < ForkOnBlockNumber ? GenesisSpec : SpecToReturn;
         public IReleaseSpec SpecToReturn { get; set; }
 
         public long? DaoBlockNumber { get; set; }
@@ -45,6 +44,8 @@ namespace Nethermind.Specs
 
         public ForkActivation[] TransitionActivations { get; set; } = new ForkActivation[] { (ForkActivation)0 };
         public bool AllowTestChainOverride { get; set; } = true;
+
+        public long? ForkOnBlockNumber { get; set; }
 
         private TestSpecProvider() { }
 
