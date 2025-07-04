@@ -127,11 +127,11 @@ public abstract class BlockchainTestBase
         // configProvider.GetConfig<IBlocksConfig>().PreWarmStateOnBlockProcessing = false;
         await using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
-            .AddSingleton(specProvider)
-            .AddSingleton(_logManager)
-            .AddSingleton(rewardCalculator)
-            .AddSingleton<IDifficultyCalculator>(DifficultyCalculator)
-            .AddSingleton<ITxPool>(NullTxPool.Instance)
+            .AddInstance(specProvider)
+            .AddInstance(_logManager)
+            .AddInstance(rewardCalculator)
+            .AddInstance<IDifficultyCalculator>(DifficultyCalculator)
+            .AddInstance<ITxPool>(NullTxPool.Instance)
             .Build();
 
         MainBlockProcessingContext mainBlockProcessingContext = container.Resolve<MainBlockProcessingContext>();
