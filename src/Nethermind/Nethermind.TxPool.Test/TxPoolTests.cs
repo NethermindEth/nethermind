@@ -1842,6 +1842,7 @@ namespace Nethermind.TxPool.Test
             new object[]{ false, 0, AcceptTxResult.Accepted},
             new object[]{ false, 1, AcceptTxResult.NotCurrentNonceForDelegation},
         };
+
         [TestCaseSource(nameof(NonceAndRemovedCases))]
         public void Tx_with_conflicting_pending_delegation_is_rejected_then_is_accepted_after_delegation_removal(bool withRemoval, int secondNonce, AcceptTxResult expected)
         {
