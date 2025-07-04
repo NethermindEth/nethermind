@@ -90,7 +90,7 @@ public static class FuzzerCliOptions
     public static readonly Option<LogLevel> Logging = new Option<LogLevel>("--log")
     {
         Description = "Logging level",
-        DefaultValueFactory = (_) => LogLevel.Information
+        DefaultValueFactory = (_) => LogLevel.None
     };
 }
 
