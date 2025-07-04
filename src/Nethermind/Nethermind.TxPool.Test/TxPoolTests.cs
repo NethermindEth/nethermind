@@ -21,7 +21,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -30,7 +29,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
@@ -1837,7 +1835,7 @@ namespace Nethermind.TxPool.Test
         }
 
 
-        private static object[] NonceAndRemovedCases =
+        private static readonly object[] NonceAndRemovedCases =
         {
             new object[]{ true, 1, AcceptTxResult.Accepted },
             new object[]{ true, 0, AcceptTxResult.Accepted},

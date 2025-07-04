@@ -1,0 +1,10 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+namespace Nethermind.Core;
+
+public class Eip7594Constants
+{
+
+    public const int MaxBlobsPerTx = 6;
+}
