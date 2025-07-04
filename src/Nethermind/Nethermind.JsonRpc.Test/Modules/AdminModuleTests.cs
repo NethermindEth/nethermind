@@ -237,11 +237,22 @@ public class AdminModuleTests
         var peerInfoList = ((JsonElement)response.Result!).Deserialize<List<PeerInfo>>(EthereumJsonSerializer.JsonOptions)!;
         peerInfoList.Count.Should().Be(1);
         PeerInfo peerInfo = peerInfoList[0];
+        
+        // Test legacy format fields for backward compatibility
         peerInfo.Host.Should().Be("127.0.0.1");
         peerInfo.Port.Should().Be(30303);
         peerInfo.Inbound.Should().BeFalse();
         peerInfo.IsStatic.Should().BeTrue();
         peerInfo.Id.Should().NotBeEmpty();
+        
+        // Test standard format fields
+        peerInfo.Enode.Should().NotBeNullOrEmpty();
+        peerInfo.Name.Should().NotBeNullOrEmpty();
+        peerInfo.Caps.Should().NotBeNull();
+        peerInfo.Network.Should().NotBeNull();
+        peerInfo.Network.Inbound.Should().BeFalse();
+        peerInfo.Network.Static.Should().BeTrue();
+        peerInfo.Protocols.Should().NotBeNull();
     }
 
     [Test]
