@@ -21,13 +21,13 @@ namespace Nethermind.Blockchain.Test;
 public class GenesisLoaderTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_load_genesis_with_emtpy_accounts_and_storage()
+    public void Can_load_genesis_with_empty_accounts_and_storage()
     {
         AssertBlockHash("0x61b2253366eab37849d21ac066b96c9de133b8c58a9a38652deae1dd7ec22e7b", "Specs/empty_accounts_and_storages.json");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_load_genesis_with_emtpy_accounts_and_code()
+    public void Can_load_genesis_with_empty_accounts_and_code()
     {
         AssertBlockHash("0xfa3da895e1c2a4d2673f60dd885b867d60fb6d823abaf1e5276a899d7e2feca5", "Specs/empty_accounts_and_codes.json");
     }
