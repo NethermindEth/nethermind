@@ -7,7 +7,6 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -17,7 +16,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -32,6 +30,7 @@ using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Validators;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 
 namespace Nethermind.Init.Steps
 {
@@ -122,7 +121,7 @@ namespace Nethermind.Init.Steps
 
             getApi.DisposeStack.Push(blockchainProcessor);
 
-            var mainProcessingContext = setApi.MainProcessingContext = new MainProcessingContext(
+            IMainProcessingContext mainProcessingContext = setApi.MainProcessingContext = new MainProcessingContext(
                 transactionProcessor,
                 mainBlockProcessor,
                 blockchainProcessor,
@@ -199,6 +198,7 @@ namespace Nethermind.Init.Steps
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
+                _api.Enode!.PublicKey.ToBytes(),
                 _api.TxGossipPolicy,
                 null,
                 HeadTxValidator.Instance
