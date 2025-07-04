@@ -174,7 +174,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
                     // Filter manager need the block processor, but the block processor is currently not completely DI, so need to patch it in.
                     builder.AddSingleton<IFilterManager, IFilterStore, ITxPool, ILogManager>((store, txPool, logManager) =>
-                            new FilterManager(store, _blockchain.BlockProcessor, txPool, logManager));
+                            new FilterManager(store, _blockchain.BranchProcessor, txPool, logManager));
 
                     if (_blockFinderOverride is not null) builder.AddSingleton(_blockFinderOverride);
                     if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
@@ -263,7 +263,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
 
             // simulating restarts - we stopped the old blockchain processor and create the new one
-            _currentBlockchainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor,
+            _currentBlockchainProcessor = new BlockchainProcessor(BlockTree, BranchProcessor,
                 BlockPreprocessorStep, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default);
             _currentBlockchainProcessor.Start();
         }

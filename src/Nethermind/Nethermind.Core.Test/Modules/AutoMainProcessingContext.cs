@@ -74,6 +74,7 @@ public record AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposab
     public ILifetimeScope LifetimeScope { get; init; }
     public IBlockchainProcessor BlockchainProcessor => _mainProcessingContext.BlockchainProcessor;
     public IWorldState WorldState => _mainProcessingContext.WorldState;
+    public IBranchProcessor BranchProcessor => _mainProcessingContext.BranchProcessor;
     public IBlockProcessor BlockProcessor => _mainProcessingContext.BlockProcessor;
     public ITransactionProcessor TransactionProcessor => _mainProcessingContext.TransactionProcessor;
     public GenesisLoader GenesisLoader { get; init; }

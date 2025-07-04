@@ -37,7 +37,7 @@ public class CensorshipDetectorTests
     private ILogManager _logManager;
     private TestReadOnlyStateProvider _stateProvider;
     private IBlockTree _blockTree;
-    private IBlockProcessor _blockProcessor;
+    private IBranchProcessor _branchProcessor;
     private ISpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
     private IComparer<Transaction> _comparer;
@@ -49,7 +49,7 @@ public class CensorshipDetectorTests
     {
         _logManager = LimboLogs.Instance;
         _stateProvider = new TestReadOnlyStateProvider();
-        _blockProcessor = Substitute.For<IBlockProcessor>();
+        _branchProcessor = Substitute.For<IBranchProcessor>();
     }
 
     [TearDown]
@@ -65,7 +65,7 @@ public class CensorshipDetectorTests
     public void Censorship_when_address_censorship_is_false_and_high_paying_tx_censorship_is_true_for_all_blocks_in_main_cache()
     {
         _txPool = CreatePool();
-        _censorshipDetector = new(_blockTree, _txPool, _comparer, _blockProcessor, _logManager, new CensorshipDetectorConfig() { });
+        _censorshipDetector = new(_blockTree, _txPool, _comparer, _branchProcessor, _logManager, new CensorshipDetectorConfig() { });
 
         Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
         Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
@@ -96,7 +96,7 @@ public class CensorshipDetectorTests
     public void No_censorship_when_address_censorship_is_false_and_high_paying_tx_censorship_is_false_for_some_blocks_in_main_cache()
     {
         _txPool = CreatePool();
-        _censorshipDetector = new(_blockTree, _txPool, _comparer, _blockProcessor, _logManager, new CensorshipDetectorConfig() { });
+        _censorshipDetector = new(_blockTree, _txPool, _comparer, _branchProcessor, _logManager, new CensorshipDetectorConfig() { });
 
         Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
         Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
@@ -135,7 +135,7 @@ public class CensorshipDetectorTests
             _blockTree,
             _txPool,
             _comparer,
-            _blockProcessor,
+            _branchProcessor,
             _logManager,
             new CensorshipDetectorConfig()
             {
@@ -191,7 +191,7 @@ public class CensorshipDetectorTests
             _blockTree,
             _txPool,
             _comparer,
-            _blockProcessor,
+            _branchProcessor,
             _logManager,
             new CensorshipDetectorConfig()
             {
@@ -272,7 +272,7 @@ public class CensorshipDetectorTests
 
     private void BlockProcessingWorkflow(Block block)
     {
-        _blockProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(block));
+        _branchProcessor.BlockProcessing += Raise.EventWith(new BlockEventArgs(block));
         Assert.That(() => _censorshipDetector.BlockPotentiallyCensored(block.Number, block.Hash), Is.EqualTo(true).After(10, 1));
 
         foreach (Transaction tx in block.Transactions)

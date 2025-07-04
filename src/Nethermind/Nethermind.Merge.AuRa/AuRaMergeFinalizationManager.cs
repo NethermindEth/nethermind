@@ -30,9 +30,9 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
         return _auRaBlockFinalizationManager.GetFinalizationLevel(level);
     }
 
-    public void SetMainBlockProcessor(IBlockProcessor blockProcessor)
+    public void SetMainBlockBranchProcessor(IBranchProcessor branchProcessor)
     {
-        _auRaBlockFinalizationManager.SetMainBlockProcessor(blockProcessor);
+        _auRaBlockFinalizationManager.SetMainBlockBranchProcessor(branchProcessor);
     }
 
     public override long LastFinalizedBlockLevel

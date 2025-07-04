@@ -60,6 +60,7 @@ public class TestBlockchain : IDisposable
     public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => _fromContainer.ReadOnlyTxProcessingEnvFactory;
     public IShareableTxProcessorSource ShareableTxProcessorSource => _fromContainer.ShareableTxProcessorSource;
     public IBlockProcessor BlockProcessor => _fromContainer.MainProcessingContext.BlockProcessor;
+    public IBranchProcessor BranchProcessor => _fromContainer.MainProcessingContext.BranchProcessor;
     public IBlockchainProcessor BlockchainProcessor => _fromContainer.MainProcessingContext.BlockchainProcessor;
     public IBlockPreprocessorStep BlockPreprocessorStep => _fromContainer.BlockPreprocessorStep;
 
