@@ -20,20 +20,16 @@ public class KademliaTests
 {
     private readonly IKademliaMessageSender<ValueHash256, ValueHash256> _kademliaMessageSender = Substitute.For<IKademliaMessageSender<ValueHash256, ValueHash256>>();
 
-    private Kademlia<ValueHash256, ValueHash256> CreateKad(KademliaConfig<ValueHash256> config)
-    {
-        var builder = new ContainerBuilder();
-        builder
+    private Kademlia<ValueHash256, ValueHash256> CreateKad(KademliaConfig<ValueHash256> config) =>
+        new ContainerBuilder()
             .AddModule(new KademliaModule<ValueHash256, ValueHash256>())
             .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
             .AddSingleton<IKeyOperator<ValueHash256, ValueHash256>>(new ValueHashNodeHashProvider())
             .AddSingleton(config)
             .AddSingleton(_kademliaMessageSender)
-            .AddSingleton<Kademlia<ValueHash256, ValueHash256>>();
-
-        var container = builder.Build();
-        return container.Resolve<Kademlia<ValueHash256, ValueHash256>>();
-    }
+            .AddSingleton<Kademlia<ValueHash256, ValueHash256>>()
+            .Build()
+            .Resolve<Kademlia<ValueHash256, ValueHash256>>();
 
     [Test]
     public void TestNewNodeAdded()
