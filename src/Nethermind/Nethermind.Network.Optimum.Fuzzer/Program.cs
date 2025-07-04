@@ -116,7 +116,11 @@ public static class Program
             var fuzzerOptions = FuzzerOptions.FromParseResult(parseResult);
             using ILoggerFactory factory = LoggerFactory.Create(builder =>
                 builder
-                    .AddConsole()
+                    .AddSimpleConsole(opts =>
+                    {
+                        opts.IncludeScopes = true;
+                        opts.TimestampFormat = "[HH:mm:ss] ";
+                    })
                     .SetMinimumLevel(parseResult.GetValue(FuzzerCliOptions.Logging))
             );
             ILogger logger = factory.CreateLogger<Application>();
