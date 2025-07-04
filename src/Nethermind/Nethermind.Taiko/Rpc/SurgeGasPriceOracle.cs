@@ -61,12 +61,25 @@ public class SurgeGasPriceOracle : GasPriceOracle
         }
 
         Hash256 headBlockHash = headBlock.Hash!;
+        bool forceRefresh = ForceRefreshGasPrice();
+        ulong averageGasUsage;
 
-        // Use the cached price if it exists and the timeout hasn't elapsed
-        if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price) && !ForceRefreshGasPrice())
+        // Check if the cached price exists.
+        if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price))
         {
-            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Using cached gas price estimate: {price}");
-            return price!.Value;
+            // Use the cached price only if the timeout hasn't elapsed.
+            if (!forceRefresh)
+            {
+                if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Using cached gas price estimate: {price}");
+                return price!.Value;
+            }
+
+            // Since the head block has not changed, we can reuse the existing average gas usage (even with force refresh)
+            averageGasUsage = _gasUsageBuffer.Average;
+        }
+        else
+        {
+            averageGasUsage = await GetAverageGasUsageAcrossBatches();
         }
 
         // Get the fee history from the L1 client with RPC
@@ -89,11 +102,13 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         UInt256 proofPostingCost = _surgeConfig.ProofPostingGas * UInt256.Max(l1BaseFee, l1AverageBaseFee);
 
-        ulong averageGasUsage = await GetAverageGasUsageAcrossBatches();
-
         UInt256 gasPriceEstimate = (minProposingCost + proofPostingCost + _surgeConfig.ProvingCostPerL2Batch) /
                                    Math.Max(averageGasUsage, _surgeConfig.L2GasPerL2Batch);
-        UInt256 adjustedGasPriceEstimate = gasPriceEstimate * 100 / (UInt256)_surgeConfig.SharingPercentage;
+
+        // Adjust the gas price estimate with the config values.
+        UInt256 adjustedGasPriceEstimate = gasPriceEstimate;
+        adjustedGasPriceEstimate += gasPriceEstimate * (UInt256)_surgeConfig.BoostBaseFeePercentage / 100;
+        adjustedGasPriceEstimate = adjustedGasPriceEstimate * 100 / (UInt256)_surgeConfig.SharingPercentage;
 
         // Update the cache and timestamp
         _gasPriceEstimation.Set(headBlockHash, adjustedGasPriceEstimate);
@@ -102,8 +117,10 @@ public class SurgeGasPriceOracle : GasPriceOracle
         if (_logger.IsTrace)
         {
             _logger.Trace($"[{ClassName}] Calculated new gas price estimate: {adjustedGasPriceEstimate}, " +
-                          $"L1 Base Fee: {l1BaseFee}, L1 Blob Base Fee: {l1BlobBaseFee}, L1 Average Base Fee: {l1AverageBaseFee}, " +
-                          $"Average Gas Usage: {averageGasUsage}, Adjusted with a sharing percentage of {_surgeConfig.SharingPercentage}");
+                          $"L1 Base Fee: {l1BaseFee}, L1 Blob Base Fee: {l1BlobBaseFee}, " +
+                          $"L1 Average Base Fee: {l1AverageBaseFee}, Average Gas Usage: {averageGasUsage}, " +
+                          $"Adjusted with boost base fee percentage of {_surgeConfig.BoostBaseFeePercentage}% " +
+                          $"and sharing percentage of {_surgeConfig.SharingPercentage}%");
         }
 
         return adjustedGasPriceEstimate;
@@ -173,6 +190,18 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         // Record the batch's gas usage and compute the average
         _gasUsageBuffer.Add(totalGasUsed);
+
+        if (_logger.IsTrace)
+        {
+            _logger.Trace($"[{ClassName}] Total gas used: {totalGasUsed}, " +
+                          $"startBlockId: {startBlockId}, endBlockId: {endBlockId}, " +
+                          $"Average gas usage: {_gasUsageBuffer.Average}, " +
+                          $"L2GasUsageWindowSize: {_surgeConfig.L2GasUsageWindowSize}, " +
+                          $"numBatches: {numBatches}, " +
+                          $"startBlockId: {startBlockId}, " +
+                          $"endBlockId: {endBlockId}");
+        }
+
         return _gasUsageBuffer.Average;
     }
 
@@ -225,39 +254,46 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
     /// <summary>
     /// A fixed-size ring buffer for tracking gas usage and computing moving averages.
+    ///
+    /// +----+----+----+----+
+    /// | A  | B  | C  | D  |
+    /// +----+----+----+----+
+    ///       ^
+    /// insertAt = 1 (next insert location)
+    /// average = (A + B + C + D) / 4
     /// </summary>
     private sealed class GasUsageRingBuffer
     {
         private readonly ulong[] _buffer;
-        private int _index;
-        private int _count;
-        private ulong _total;
+        private int _insertAt;
+        private int _numItems;
+        private ulong _sum;
 
-        public ulong Average => _count == 0 ? 0 : _total / (ulong)_count;
+        public ulong Average => _numItems == 0 ? 0 : _sum / (ulong)_numItems;
 
         public GasUsageRingBuffer(int capacity)
         {
             _buffer = new ulong[capacity];
-            _index = 0;
-            _count = 0;
-            _total = 0;
+            _insertAt = 0;
+            _numItems = 0;
+            _sum = 0;
         }
 
         public void Add(ulong gasUsed)
         {
-            // If the buffer is full, remove the oldest value
-            if (_count == _buffer.Length)
+            // If the buffer is full, overwrite the oldest value
+            if (_numItems == _buffer.Length)
             {
-                _total -= _buffer[_index];
+                _sum -= _buffer[_insertAt];
             }
             else
             {
-                _count++;
+                _numItems++;
             }
 
-            _buffer[_index] = gasUsed;
-            _total += _buffer[_index];
-            _index = (_index + 1) % _buffer.Length;
+            _buffer[_insertAt] = gasUsed;
+            _sum += _buffer[_insertAt];
+            _insertAt = (_insertAt + 1) % _buffer.Length;
         }
     }
 }
