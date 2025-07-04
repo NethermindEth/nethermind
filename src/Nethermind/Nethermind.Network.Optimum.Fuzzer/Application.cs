@@ -14,34 +14,37 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
 {
     public async Task RunAsync(CancellationToken topLevelToken)
     {
-        var topic = Guid.NewGuid().ToString();
-        logger.LogDebug("Using topic {Topic}", topic);
-
         var seed = Random.Shared.Next();
         var random = new Random(seed);
         logger.LogDebug("Using seed {Seed}", seed);
 
         for (var run = 1; run <= options.Runs; run++)
         {
-            logger.LogInformation("Run {RunNumber}/{TotalRuns}", run, options.Runs);
-            using var cts = new CancellationTokenSource(options.Timeout);
-            using var registration = topLevelToken.Register(cts.Cancel);
-            try
+            using (logger.BeginScope("Run {Run}/{TotalRuns}", run, options.Runs))
             {
-                await SingleRun(topic, random, cts.Token);
-            }
-            catch (OperationCanceledException) when (topLevelToken.IsCancellationRequested)
-            {
-                logger.LogInformation("Cancelled by user");
-                return;
-            }
-            catch (Exception) when (cts.Token.IsCancellationRequested)
-            {
-                logger.LogError("Run {RunNumber} timed out after {Timeout} ms", run, options.Timeout.TotalMilliseconds);
-            }
-            catch (Exception e)
-            {
-                logger.LogError(e, "Run {RunNumber} failed", run);
+                using var cts = new CancellationTokenSource(options.Timeout);
+                using var registration = topLevelToken.Register(cts.Cancel);
+
+                var topic = Guid.NewGuid().ToString();
+                logger.LogDebug("Using topic {Topic}", topic);
+
+                try
+                {
+                    await SingleRun(topic, random, cts.Token);
+                }
+                catch (OperationCanceledException) when (topLevelToken.IsCancellationRequested)
+                {
+                    logger.LogInformation("Cancelled by user");
+                    return;
+                }
+                catch (Exception) when (cts.Token.IsCancellationRequested)
+                {
+                    logger.LogError("Timed out after {Timeout} ms", options.Timeout.TotalMilliseconds);
+                }
+                catch (Exception e)
+                {
+                    logger.LogError(e, "Failed");
+                }
             }
         }
     }
@@ -52,19 +55,25 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
         Task<int>[] subscribers = Enumerable.Range(0, options.SubscriberCount)
             .Select(id => Task.Run(async () =>
             {
-                logger.LogDebug("Initializing subscriber {Id}", id);
-                using var grpcChannel = GrpcChannel.ForAddress(options.GrpcEndpoint, Options.DefaultGrpcChannelOptions);
-                var client = new GrpcOptimumNodeClient(grpcChannel);
-
-                var subscription = client.SubscribeToTopic(topic, token);
-                var receivedMessages = 0;
-                await foreach (var msg in subscription.Take(options.MessageCount * options.PublisherCount))
+                using (logger.BeginScope("Subscriber {Id}", id))
                 {
-                    logger.LogTrace("Subscriber {Id} received message: {Message}", id, msg);
-                    receivedMessages++;
-                }
+                    logger.LogDebug("Initializing");
 
-                return receivedMessages;
+                    using var grpcChannel = GrpcChannel.ForAddress(options.GrpcEndpoint, Options.DefaultGrpcChannelOptions);
+                    var client = new GrpcOptimumNodeClient(grpcChannel);
+
+                    var subscription = client.SubscribeToTopic(topic, token);
+                    var receivedMessages = 0;
+                    await foreach (var msg in subscription.Take(options.MessageCount * options.PublisherCount))
+                    {
+                        logger.LogTrace("Received message: {Message}", msg);
+                        receivedMessages++;
+                    }
+
+                    logger.LogDebug("Completed with {ReceivedMessages} messages", receivedMessages);
+
+                    return receivedMessages;
+                }
             }))
             .ToArray();
 
@@ -74,22 +83,24 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
         var publishers = Enumerable.Range(0, options.PublisherCount)
             .Select(id => Task.Run(async () =>
             {
-                logger.LogDebug("Initializing publisher {Id}", id);
-                using var grpcChannel = GrpcChannel.ForAddress(options.GrpcEndpoint, Options.DefaultGrpcChannelOptions);
-                var client = new GrpcOptimumNodeClient(grpcChannel);
-
-                var message = new byte[options.MessageSize];
-                for (var i = 0; i < options.MessageCount; i++)
+                using (logger.BeginScope("Publisher {Id}", id))
                 {
-                    random.NextBytes(message);
+                    using var grpcChannel = GrpcChannel.ForAddress(options.GrpcEndpoint, Options.DefaultGrpcChannelOptions);
+                    var client = new GrpcOptimumNodeClient(grpcChannel);
 
-                    await client.PublishToTopicAsync(topic, message, CancellationToken.None);
-                    logger.LogTrace("Publisher {Id} published message {Message}", id, message);
+                    var message = new byte[options.MessageSize];
+                    for (var i = 0; i < options.MessageCount; i++)
+                    {
+                        random.NextBytes(message);
 
-                    await Task.Delay(options.PublisherDelay, token);
+                        await client.PublishToTopicAsync(topic, message, CancellationToken.None);
+                        logger.LogTrace("Published message: {Message}", message);
+
+                        await Task.Delay(options.PublisherDelay, token);
+                    }
+
+                    logger.LogDebug("Completed with {PublishedMessages} messages", options.MessageCount);
                 }
-
-                logger.LogDebug("Publisher {Id} completed with {PublishedMessages} messages", id, options.MessageCount);
             }))
             .ToArray();
 
