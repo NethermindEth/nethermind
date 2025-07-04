@@ -22,10 +22,9 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -34,6 +33,7 @@ using System.Collections.Generic;
 using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test;
 

@@ -23,7 +23,7 @@ public record MainBlockProcessingContext(
     ILifetimeScope LifetimeScope,
     IBlockProcessingQueue BlockProcessingQueue,
     IBlockchainProcessor BlockchainProcessor,
-    IWorldState WorldState,
+    IVisitingWorldState WorldState,
     IBlockProcessor BlockProcessor,
     ITransactionProcessor TransactionProcessor,
     GenesisLoader GenesisLoader) : IMainProcessingContext, IAsyncDisposable

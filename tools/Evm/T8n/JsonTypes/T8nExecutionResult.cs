@@ -11,6 +11,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.State.Proofs;
 
 namespace Evm.T8n.JsonTypes;

@@ -162,7 +162,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _api.LogManager,
             _api.TxPool,
             readonlyBlockTree,
-            _api.ReadOnlyTxProcessingEnvFactory,
+            _api.Context.Resolve<IShareableTxProcessorSource>(),
             txDecoder,
             _api.L1OriginStore
         );

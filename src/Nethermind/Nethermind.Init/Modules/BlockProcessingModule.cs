@@ -17,11 +17,12 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.OverridableEnv;
+using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Simulate;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
@@ -53,6 +54,7 @@ public class BlockProcessingModule : Module
             .AddScoped<BlockProcessor.IBlockProductionTransactionPicker, ISpecProvider, IBlocksConfig>((specProvider, blocksConfig) =>
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
             .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
+            .AddSingleton<IShareableTxProcessorSource, ShareableTxProcessingSource>()
 
             .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()
             .AddScopedOpenGeneric(typeof(IOverridableEnv<>), typeof(DisposableScopeOverridableEnv<>))

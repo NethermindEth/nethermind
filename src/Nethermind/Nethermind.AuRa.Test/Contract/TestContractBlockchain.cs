@@ -9,7 +9,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.AuRa.Test.Contract
 {

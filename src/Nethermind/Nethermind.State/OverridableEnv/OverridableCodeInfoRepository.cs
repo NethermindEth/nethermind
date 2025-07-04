@@ -7,10 +7,11 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
-namespace Nethermind.Evm.OverridableEnv;
+namespace Nethermind.State.OverridableEnv;
 
 public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository) : IOverridableCodeInfoRepository
 {

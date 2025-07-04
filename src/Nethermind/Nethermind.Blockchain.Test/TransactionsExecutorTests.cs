@@ -19,7 +19,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool.Comparison;
 using NSubstitute;
@@ -27,6 +27,7 @@ using NUnit.Framework;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test
 {

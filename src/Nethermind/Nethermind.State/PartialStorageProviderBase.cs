@@ -7,8 +7,8 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
-using Nethermind.State.Tracing;
 
 namespace Nethermind.State
 {
