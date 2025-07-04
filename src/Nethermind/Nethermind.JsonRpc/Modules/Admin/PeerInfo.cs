@@ -14,26 +14,97 @@ using Nethermind.Network.P2P;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {
+    /// <summary>
+    /// Peer information in standard format compatible with other Ethereum execution clients.
+    /// Includes both standard fields and legacy fields for backward compatibility.
+    /// </summary>
     public class PeerInfo
     {
+        /// <summary>
+        /// ENR (Ethereum Node Record) string representation (currently not implemented)
+        /// </summary>
         public string Enr { get; set; }
+        
+        /// <summary>
+        /// Enode URL of the peer
+        /// </summary>
         public string Enode { get; set; }
+        
+        /// <summary>
+        /// Hex-encoded node ID (public key hash)
+        /// </summary>
         public string Id { get; }
+        
+        /// <summary>
+        /// Client identification string
+        /// </summary>
         public string Name { get; set; }
+        
+        /// <summary>
+        /// Array of protocol capabilities (e.g., ["eth/68", "snap/1"])
+        /// </summary>
         public string[] Caps { get; set; }
+        
+        /// <summary>
+        /// Network connection information
+        /// </summary>
         public NetworkInfo Network { get; set; }
+        
+        /// <summary>
+        /// Protocol-specific information (e.g., eth protocol details)
+        /// </summary>
         public Dictionary<string, object> Protocols { get; set; }
 
-        // Legacy fields for backward compatibility
+        // Legacy fields for backward compatibility - these may be deprecated in future versions
+        
+        /// <summary>
+        /// [Legacy] Host IP address
+        /// </summary>
         public string Host { get; set; }
+        
+        /// <summary>
+        /// [Legacy] Port number
+        /// </summary>
         public int Port { get; set; }
+        
+        /// <summary>
+        /// [Legacy] Full address (host:port)
+        /// </summary>
         public string Address { get; set; }
+        
+        /// <summary>
+        /// [Legacy] Whether this is a bootnode
+        /// </summary>
         public bool IsBootnode { get; set; }
+        
+        /// <summary>
+        /// [Legacy] Whether this is a trusted peer
+        /// </summary>
         public bool IsTrusted { get; set; }
+        
+        /// <summary>
+        /// [Legacy] Whether this is a static peer
+        /// </summary>
         public bool IsStatic { get; set; }
+        
+        /// <summary>
+        /// [Legacy] Client type (when includeDetails=true)
+        /// </summary>
         public string ClientType { get; set; }
+        
+        /// <summary>
+        /// [Legacy] Ethereum protocol details (when includeDetails=true)
+        /// </summary>
         public string EthDetails { get; set; }
+        
+        /// <summary>
+        /// [Legacy] Last signal timestamp (when includeDetails=true)
+        /// </summary>
         public string LastSignal { get; set; }
+        
+        /// <summary>
+        /// [Legacy] Connection direction
+        /// </summary>
         public bool Inbound { get; set; }
 
         public PeerInfo()
@@ -197,12 +268,34 @@ namespace Nethermind.JsonRpc.Modules.Admin
         }
     }
     
+    /// <summary>
+    /// Network connection information in standard format
+    /// </summary>
     public class NetworkInfo
     {
+        /// <summary>
+        /// Local address and port (e.g., "127.0.0.1:30303")
+        /// </summary>
         public string LocalAddress { get; set; }
+        
+        /// <summary>
+        /// Remote peer address and port (e.g., "172.16.0.11:30303")
+        /// </summary>
         public string RemoteAddress { get; set; }
+        
+        /// <summary>
+        /// True if this is an inbound connection (peer connected to us)
+        /// </summary>
         public bool Inbound { get; set; }
+        
+        /// <summary>
+        /// True if this peer is in the trusted nodes list
+        /// </summary>
         public bool Trusted { get; set; }
+        
+        /// <summary>
+        /// True if this peer is in the static nodes list
+        /// </summary>
         public bool Static { get; set; }
     }
 }
