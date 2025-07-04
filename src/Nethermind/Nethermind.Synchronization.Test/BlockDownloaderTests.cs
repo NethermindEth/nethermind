@@ -194,9 +194,9 @@ public partial class BlockDownloaderTests
             .Throws(new Exception("test exception"));
 
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
-            {
-                FastSync = true
-            }),
+        {
+            FastSync = true
+        }),
             configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
 
         Context ctx = node.Resolve<Context>();
