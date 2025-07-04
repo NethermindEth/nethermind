@@ -187,7 +187,7 @@ public abstract partial class BaseEngineModuleTests
         public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
         {
             _blockProcessingThrottle = delayMs;
-            if (Container is not null && BlockProcessor is TestBlockProcessorInterceptor testBlockProcessor)
+            if (Container is not null && BranchProcessor is TestBranchProcessorInterceptor testBlockProcessor)
             {
                 testBlockProcessor.DelayMs = delayMs;
             }
@@ -217,7 +217,7 @@ public abstract partial class BaseEngineModuleTests
             base.ConfigureContainer(builder, configProvider)
                 .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
                 .AddModule(new TestMergeModule(configProvider))
-                .AddDecorator<IBlockProcessor>((ctx, blockProcessor) => new TestBlockProcessorInterceptor(blockProcessor, _blockProcessingThrottle))
+                .AddDecorator<IBranchProcessor>((ctx, branchProcessor) => new TestBranchProcessorInterceptor(branchProcessor, _blockProcessingThrottle))
                 .AddDecorator<IBlockImprovementContextFactory>((ctx, factory) =>
                 {
                     if (factory is StoringBlockImprovementContextFactory) return factory;
