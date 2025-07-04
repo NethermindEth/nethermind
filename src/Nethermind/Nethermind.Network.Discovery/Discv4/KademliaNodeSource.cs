@@ -12,27 +12,15 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
-public class KademliaNodeSource : IKademliaNodeSource
+public class KademliaNodeSource(
+    IKademlia<PublicKey, Node> kademlia,
+    IIteratorNodeLookup<PublicKey, Node> lookup2,
+    IKademliaDiscv4Adapter discv4Adapter,
+    IDiscoveryConfig discoveryConfig,
+    ILogManager logManager)
+    : IKademliaNodeSource
 {
-    private readonly IKademlia<PublicKey, Node> _kademlia;
-    private readonly IIteratorNodeLookup _lookup;
-    private readonly IKademliaDiscv4Adapter _discv4Adapter;
-    private readonly IDiscoveryConfig _discoveryConfig;
-    private readonly ILogger _logger;
-
-    public KademliaNodeSource(
-        IKademlia<PublicKey, Node> kademlia,
-        IIteratorNodeLookup lookup2,
-        IKademliaDiscv4Adapter discv4Adapter,
-        IDiscoveryConfig discoveryConfig,
-        ILogManager logManager)
-    {
-        _kademlia = kademlia;
-        _lookup = lookup2;
-        _discv4Adapter = discv4Adapter;
-        _discoveryConfig = discoveryConfig;
-        _logger = logManager.GetClassLogger();
-    }
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
@@ -48,18 +36,18 @@ public class KademliaNodeSource : IKademliaNodeSource
             bool anyFound = false;
             int count = 0;
 
-            await foreach (var node in _lookup.Lookup(target, token))
+            await foreach (var node in lookup2.Lookup(target, token))
             {
-                if (!_discv4Adapter.GetSession(node).HasReceivedPong)
+                if (!discv4Adapter.GetSession(node).HasReceivedPong)
                 {
-                    if (_discv4Adapter.GetSession(node).HasTriedPingRecently)
+                    if (discv4Adapter.GetSession(node).HasTriedPingRecently)
                     {
                         // Tried ping before and did not receive a response
                         continue;
                     }
                     try
                     {
-                        await _discv4Adapter.Ping(node, token);
+                        await discv4Adapter.Ping(node, token);
                     }
                     catch (OperationCanceledException)
                     {
@@ -88,7 +76,7 @@ public class KademliaNodeSource : IKademliaNodeSource
             }
         }
 
-        Task discoverTask = Task.WhenAll(Enumerable.Range(0, _discoveryConfig.ConcurrentDiscoveryJob).Select((_) => Task.Run(async () =>
+        Task discoverTask = Task.WhenAll(Enumerable.Range(0, discoveryConfig.ConcurrentDiscoveryJob).Select((_) => Task.Run(async () =>
         {
             Random random = new();
             byte[] randomBytes = new byte[64];
@@ -120,7 +108,7 @@ public class KademliaNodeSource : IKademliaNodeSource
 
         try
         {
-            _kademlia.OnNodeAdded += Handler;
+            kademlia.OnNodeAdded += Handler;
 
             await foreach (Node node in ch.Reader.ReadAllAsync(token))
             {
@@ -130,7 +118,7 @@ public class KademliaNodeSource : IKademliaNodeSource
         finally
         {
             await discoverTask;
-            _kademlia.OnNodeAdded -= Handler;
+            kademlia.OnNodeAdded -= Handler;
         }
 
         yield break;

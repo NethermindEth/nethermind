@@ -25,7 +25,6 @@ public class DiscV4KademliaModule(PublicKey masterNode, IReadOnlyList<Node> boot
 
             // This two class contains the actual `INodeSource` logic. As in finding nodes within the network.
             .AddSingleton<IKademliaNodeSource, KademliaNodeSource>()
-            .AddSingleton<IIteratorNodeLookup, IteratorNodeLookup>()
 
             // Some transport wiring.
             .AddSingleton<IKademliaDiscv4Adapter, KademliaDiscv4Adapter>()

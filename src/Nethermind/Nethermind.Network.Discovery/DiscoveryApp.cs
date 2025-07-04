@@ -8,6 +8,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;

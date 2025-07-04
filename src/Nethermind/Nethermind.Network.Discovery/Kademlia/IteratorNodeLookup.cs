@@ -7,26 +7,26 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
-using Nethermind.Stats.Model;
 using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
 /// <summary>
-/// Special lookup made specially for DiscV4 as the standard lookup is too slow or unnecessarily parallelized.
+/// Special lookup made specially for node discovery as the standard lookup is too slow or unnecessarily parallelized.
 /// Instead of returning k closest node, it just returns the nodes that it found along the way and stopped early.
 /// This is useful for node discovery as trying to get the k closest node is not completely necessary, as the main goal
 /// is to reach all node. The lookup is not parallelized as it is expected to be parallelized at a higher level with
 /// each worker having different target to look into.
 /// </summary>
-public class IteratorNodeLookup(
-    IRoutingTable<Node> routingTable,
-    KademliaConfig<Node> kademliaConfig,
-    IKademliaDiscv4Adapter discv4Adapter,
-    ILogManager logManager) : IIteratorNodeLookup
+public class IteratorNodeLookup<TKey, TNode>(
+    IRoutingTable<TNode> routingTable,
+    KademliaConfig<TNode> kademliaConfig,
+    IKademliaMessageSender<TKey, TNode> msgSender,
+    IKeyOperator<TKey, TNode> keyOperator,
+    ILogManager logManager) : IIteratorNodeLookup<TKey, TNode> where TNode : notnull
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<IteratorNodeLookup>();
-    private readonly ValueHash256 _currentNodeIdAsHash = kademliaConfig.CurrentNodeId.IdHash;
+    private readonly ILogger _logger = logManager.GetClassLogger<IteratorNodeLookup<TKey, TNode>>();
+    private readonly ValueHash256 _currentNodeIdAsHash = keyOperator.GetNodeHash(kademliaConfig.CurrentNodeId);
 
     // Small lru of unreachable nodes, prevent retrying. Pretty effective, although does not improve discovery overall.
     private readonly LruCache<ValueHash256, DateTimeOffset> _unreacheableNodes = new(256, "");
@@ -39,27 +39,27 @@ public class IteratorNodeLookup(
     private const int MaxNonProgressingRound = 3;
     private const int MinResult = 128;
 
-    private bool SameAsSelf(Node node)
+    private bool SameAsSelf(TNode node)
     {
-        return node.IdHash == _currentNodeIdAsHash;
+        return keyOperator.GetNodeHash(node) == _currentNodeIdAsHash;
     }
 
-    public async IAsyncEnumerable<Node> Lookup(PublicKey target, [EnumeratorCancellation] CancellationToken token)
+    public async IAsyncEnumerable<TNode> Lookup(TKey target, [EnumeratorCancellation] CancellationToken token)
     {
-        ValueHash256 targetHash = target.Hash;
+        ValueHash256 targetHash = keyOperator.GetKeyHash(target);
         if (_logger.IsDebug) _logger.Debug($"Initiate lookup for hash {targetHash}");
 
         using var cts = token.CreateChildTokenSource();
         token = cts.Token;
 
-        ConcurrentDictionary<ValueHash256, Node> queried = new();
-        ConcurrentDictionary<ValueHash256, Node> seen = new();
+        ConcurrentDictionary<ValueHash256, TNode> queried = new();
+        ConcurrentDictionary<ValueHash256, TNode> seen = new();
 
         IComparer<ValueHash256> comparer = Comparer<ValueHash256>.Create((h1, h2) =>
             Hash256XorUtils.Compare(h1, h2, targetHash));
 
         // Ordered by lowest distance. Will get popped for next round.
-        PriorityQueue<(ValueHash256, Node), ValueHash256> queryQueue = new(comparer);
+        PriorityQueue<(ValueHash256, TNode), ValueHash256> queryQueue = new(comparer);
 
         // Used to determine if the worker should stop
         ValueHash256 bestNodeId = ValueKeccak.Zero;
@@ -68,9 +68,9 @@ public class IteratorNodeLookup(
         int totalResult = 0;
 
         // Check internal table first
-        foreach (Node node in routingTable.GetKNearestNeighbour(targetHash, null))
+        foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash, null))
         {
-            ValueHash256 nodeHash = node.IdHash;
+            ValueHash256 nodeHash = keyOperator.GetNodeHash(node);
             seen.TryAdd(nodeHash, node);
 
             queryQueue.Enqueue((nodeHash, node), nodeHash);
@@ -86,7 +86,7 @@ public class IteratorNodeLookup(
         while (true)
         {
             token.ThrowIfCancellationRequested();
-            if (!queryQueue.TryDequeue(out (ValueHash256 hash, Node node) toQuery, out ValueHash256 hash256))
+            if (!queryQueue.TryDequeue(out (ValueHash256 hash, TNode node) toQuery, out ValueHash256 hash256))
             {
                 // No node to query and running query.
                 if (_logger.IsTrace) _logger.Trace("Stopping lookup. No node to query.");
@@ -98,7 +98,7 @@ public class IteratorNodeLookup(
             queried.TryAdd(toQuery.hash, toQuery.node);
             if (_logger.IsTrace) _logger.Trace($"Query {toQuery.node} at round {currentRound}");
 
-            Node[]? neighbours = await FindNeighbour(toQuery.node, target, token);
+            TNode[]? neighbours = await FindNeighbour(toQuery.node, target, token);
             if (neighbours == null || neighbours?.Length == 0)
             {
                 if (_logger.IsTrace) _logger.Trace("Empty result");
@@ -107,9 +107,9 @@ public class IteratorNodeLookup(
 
             int queryIgnored = 0;
             int seenIgnored = 0;
-            foreach (Node neighbour in neighbours!)
+            foreach (TNode neighbour in neighbours!)
             {
-                ValueHash256 neighbourHash = neighbour.IdHash;
+                ValueHash256 neighbourHash = keyOperator.GetNodeHash(neighbour);
 
                 // Already queried, we ignore
                 if (queried.ContainsKey(neighbourHash))
@@ -178,21 +178,21 @@ public class IteratorNodeLookup(
         }
     }
 
-    async Task<Node[]?> FindNeighbour(Node node, PublicKey target, CancellationToken token)
+    async Task<TNode[]?> FindNeighbour(TNode node, TKey target, CancellationToken token)
     {
         try
         {
-            if (_unreacheableNodes.TryGet(node.IdHash, out var lastAttempt) &&
+            if (_unreacheableNodes.TryGet(keyOperator.GetNodeHash(node), out var lastAttempt) &&
                 lastAttempt + TimeSpan.FromMinutes(5) > DateTimeOffset.Now)
             {
                 return [];
             }
 
-            return await discv4Adapter.FindNeighbours(node, target, token);
+            return await msgSender.FindNeighbours(node, target, token);
         }
         catch (OperationCanceledException)
         {
-            _unreacheableNodes.Set(node.IdHash, DateTimeOffset.Now);
+            _unreacheableNodes.Set(keyOperator.GetNodeHash(node), DateTimeOffset.Now);
             return null;
         }
         catch (Exception e)
