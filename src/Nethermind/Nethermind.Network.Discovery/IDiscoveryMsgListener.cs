@@ -7,5 +7,5 @@ namespace Nethermind.Network.Discovery;
 
 public interface IDiscoveryMsgListener
 {
-    void OnIncomingMsg(DiscoveryMsg msg);
+    Task OnIncomingMsg(DiscoveryMsg msg);
 }
