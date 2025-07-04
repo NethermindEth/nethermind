@@ -61,6 +61,30 @@ public class WrappedEthTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
     }
 
     [Test]
+    public void TransferRevert()
+    {
+        UInt256 senderBalance = 0;
+        UInt256 value = 1000;
+
+        // arrange so that the value sent is greater than the sender balance, causing a revert
+        TestState.Set(SenderBalanceCell, senderBalance.ToBigEndian().WithoutLeadingZeros().ToArray());
+
+        byte[] data = TransferSelector
+            .Concat(OtherAddress.Bytes.PadLeft(32))
+            .Concat(value.ToBigEndian().PadLeft(32))
+            .ToArray();
+
+        (Block block, Transaction transaction, Block ctrlBlk, Transaction ctrlTx) = PrepareTxWithControl(Activation, 100000, parsed, data, 0);
+
+        // Execute
+        ExecuteNoPrepare(block, transaction, ctrlBlk, ctrlTx, NullTxTracer.Instance, Activation, 100000, null, true);
+
+        // Assert value
+        AssertBalance(SenderBalanceCell, 0);
+        AssertBalance(OtherAddressBalanceCell, 0);
+    }
+
+    [Test]
     public void Transfer()
     {
         // https://etherscan.io/tx/0x3ab9c62830fb8db708bd5ab23506465c37f589eb6ccaf3ec455a0f4f5ef2c5fd
@@ -68,16 +92,17 @@ public class WrappedEthTests(bool useIlEvm) : RealContractTestsBase(useIlEvm)
 
         // Arrange value to be equal to the transfer value.
         TestState.Set(SenderBalanceCell, value.ToBigEndian().WithoutLeadingZeros().ToArray());
+        ControlState.Set(SenderBalanceCell, value.ToBigEndian().WithoutLeadingZeros().ToArray());
 
         byte[] data = TransferSelector
             .Concat(OtherAddress.Bytes.PadLeft(32))
             .Concat(value.ToBigEndian().PadLeft(32))
             .ToArray();
 
-        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, parsed, data, 0);
+        (Block block, Transaction transaction, Block ctrlBlk, Transaction ctrlTx) = PrepareTxWithControl(Activation, 100000, parsed, data, 0);
 
         // Execute
-        ExecuteNoPrepare(block, transaction, NullTxTracer.Instance, Activation, 100000, null, true);
+        ExecuteNoPrepare(block, transaction, ctrlBlk, ctrlTx, NullTxTracer.Instance, Activation, 100000, null, true);
 
         // Assert value
         AssertBalance(SenderBalanceCell, 0);
