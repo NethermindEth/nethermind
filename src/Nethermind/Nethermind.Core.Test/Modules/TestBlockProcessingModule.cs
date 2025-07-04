@@ -12,6 +12,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core.Container;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -81,6 +82,8 @@ public class TestBlockProcessingModule : Module
         var mainWorldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
         ICodeInfoRepository mainCodeInfoRepository =
             ctx.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
+        IBlockValidationModule[] validationBlockProcessingModules =
+            ctx.Resolve<IBlockValidationModule[]>();
 
         ILifetimeScope innerScope = ctx.BeginLifetimeScope((processingCtxBuilder) =>
         {
@@ -88,8 +91,7 @@ public class TestBlockProcessingModule : Module
                 // These are main block processing specific
                 .AddScoped<ICodeInfoRepository>(mainCodeInfoRepository)
                 .AddSingleton<IWorldState>(mainWorldState)
-                .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
-                .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
+                .AddModule(validationBlockProcessingModules)
                 .AddScoped(new BlockchainProcessor.Options
                 {
                     StoreReceiptsByDefault = receiptConfig.StoreReceipts,
@@ -99,7 +101,6 @@ public class TestBlockProcessingModule : Module
 
                 // And finally, to wrap things up.
                 .AddScoped<MainBlockProcessingContext>()
-                .Bind<IBlockchainProcessor, BlockchainProcessor>()
                 .Bind<IBlockProcessingQueue, BlockchainProcessor>()
                 ;
 
