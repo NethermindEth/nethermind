@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -18,18 +19,13 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     private readonly BlockDecoder _blockDecoder = new();
     public const int CacheSize = 128 + 32;
 
-    private readonly ClockCache<ValueHash256, Block>
-        _blockCache = new(CacheSize);
+    private readonly ClockCache<ValueHash256, Block> _blockCache = new(CacheSize);
 
     public void SetMetadata(byte[] key, byte[] value)
-    {
-        blockDb.Set(key, value);
-    }
+        => blockDb.Set(key, value);
 
     public byte[]? GetMetadata(byte[] key)
-    {
-        return blockDb.Get(key);
-    }
+        => blockDb.Get(key);
 
     public bool HasBlock(long blockNumber, Hash256 blockHash)
     {
@@ -93,7 +89,35 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     }
 
     public void Cache(Block block)
+        => _blockCache.Set(block.Hash, block);
+
+    public IEnumerable<Block> GetBlocksOlderThan(ulong timestamp)
     {
-        _blockCache.Set(block.Hash, block);
+        IEnumerable<KeyValuePair<byte[], byte[]?>> blocks = blockDb.GetAll(true);
+        foreach ((byte[] _, byte[]? value) in blocks)
+        {
+            Block block = _blockDecoder.Decode(value.AsRlpStream());
+            if (block.Timestamp >= timestamp)
+            {
+                continue;
+            }
+
+            yield return block;
+        }
+    }
+
+    public Block? GetBlockByTimestamp(ulong timestamp)
+    {
+        // todo: check if block aligns exactly with timestamp
+        IEnumerable<KeyValuePair<byte[], byte[]?>> blocks = blockDb.GetAll(true);
+        foreach ((byte[] _, byte[]? value) in blocks)
+        {
+            Block block = _blockDecoder.Decode(value.AsRlpStream());
+            if (block.Timestamp == timestamp)
+            {
+                return block;
+            }
+        }
+        return null;
     }
 }

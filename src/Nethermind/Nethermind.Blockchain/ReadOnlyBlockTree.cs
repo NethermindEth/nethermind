@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.State.Repositories;
 
 namespace Nethermind.Blockchain
 {
@@ -189,6 +190,9 @@ namespace Nethermind.Blockchain
 
         }
 
+        public IEnumerable<Block> DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken)
+            => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteBlocksBeforeTimestamp)} calls");
+
         public bool IsBetterThanHead(BlockHeader? header) => _wrapped.IsBetterThanHead(header);
         public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateBeaconMainChain)} calls");
         public void RecalculateTreeLevels() => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(RecalculateTreeLevels)} calls");
@@ -207,5 +211,8 @@ namespace Nethermind.Blockchain
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ForkChoiceUpdated)} calls");
 
         public long GetLowestBlock() => _wrapped.GetLowestBlock();
+
+        public void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256 nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null, bool isOldBlock = false)
+            => _wrapped.DeleteBlock(currentNumber, currentHash, nextHash, batch, currentLevel, isOldBlock);
     }
 }

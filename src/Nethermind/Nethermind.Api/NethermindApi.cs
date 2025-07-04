@@ -42,15 +42,12 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Facade.Find;
+using Nethermind.Blockchain.HistoryPruning;
 
 namespace Nethermind.Api
 {
-    public class NethermindApi : INethermindApi
+    public class NethermindApi(NethermindApi.Dependencies dependencies) : INethermindApi
     {
-        public NethermindApi(Dependencies dependencies)
-        {
-            _dependencies = dependencies;
-        }
 
         // A simple class to prevent having to modify subclass of NethermindApi many time
         public record Dependencies(
@@ -64,7 +61,7 @@ namespace Nethermind.Api
             ILifetimeScope Context
         );
 
-        private Dependencies _dependencies;
+        private Dependencies _dependencies = dependencies;
 
         public IBlockchainBridge CreateBlockchainBridge()
         {
@@ -91,6 +88,8 @@ namespace Nethermind.Api
         public IEthereumEcdsa EthereumEcdsa => Context.Resolve<IEthereumEcdsa>();
         public IFileSystem FileSystem { get; set; } = new FileSystem();
         public IUnclesValidator? UnclesValidator => Context.Resolve<IUnclesValidator>();
+        public IHistoryPruner? HistoryPruner { get; set; }
+        // public IHistoryPruner? HistoryPruner => Context.Resolve<IHistoryPruner>();
         public IHeaderValidator? HeaderValidator => Context.Resolve<IHeaderValidator>();
         public IEngineRequestsTracker EngineRequestsTracker => Context.Resolve<IEngineRequestsTracker>();
 
