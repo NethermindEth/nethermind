@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
@@ -23,8 +24,9 @@ public class HeaderStore : IHeaderStore
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
     private readonly HeaderDecoder _headerDecoder = new();
-    private readonly ClockCache<ValueHash256, BlockHeader> _headerCache =
-        new(CacheSize);
+    private readonly ClockCache<Hash256AsKey, BlockHeader> _headerCache = new(CacheSize);
+    private readonly ClockCache<Hash256AsKey, BlockHeader> _headerCanonicalCache = new(CacheSize);
+    private readonly ClockCache<Hash256AsKey, BlockHeader> _headerWithoutDifficultyCache = new(CacheSize);
 
     public HeaderStore([KeyFilter(DbNames.Headers)] IDb headerDb, [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb)
     {
@@ -55,23 +57,57 @@ public class HeaderStore : IHeaderStore
         }
     }
 
-    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null)
     {
         blockNumber ??= GetBlockNumberFromBlockNumberDb(blockHash);
 
         BlockHeader? header = null;
         if (blockNumber is not null)
         {
-            header = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+            header = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: false);
         }
-        return header ?? _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+        return header ?? _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: false);
     }
 
-    public void Cache(BlockHeader header)
+    public bool TryGetCache(Hash256 blockHash, bool needsDifficulty, bool requiresCanonical, [NotNullWhen(true)] out BlockHeader? header)
     {
-        _headerCache.Set(header.Hash, header);
+        if (_headerCanonicalCache.TryGet(blockHash, out header))
+        {
+            return true;
+        }
+
+        if (requiresCanonical)
+        {
+            return false;
+        }
+
+        if (!needsDifficulty && _headerWithoutDifficultyCache.TryGet(blockHash, out header))
+        {
+            return true;
+        }
+
+        return _headerCache.TryGet(blockHash, out header);
     }
 
+    public bool Cache(BlockHeader header, bool hasDifficulty, bool isCanonical = false)
+    {
+        if (hasDifficulty)
+        {
+            if (isCanonical)
+            {
+                return _headerCanonicalCache.Set(header.Hash, header);
+            }
+            else
+            {
+                return _headerCache.Set(header.Hash, header);
+            }
+        }
+        else
+        {
+            return _headerWithoutDifficultyCache.Set(header.Hash, header);
+        }
+    }
+    public void ClearCanonicalCache(Hash256 blockHash) => _headerCanonicalCache.Delete(blockHash);
     public void Delete(Hash256 blockHash)
     {
         long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
@@ -79,6 +115,8 @@ public class HeaderStore : IHeaderStore
         _blockNumberDb.Delete(blockHash);
         _headerDb.Delete(blockHash);
         _headerCache.Delete(blockHash);
+        _headerCanonicalCache.Delete(blockHash);
+        _headerWithoutDifficultyCache.Delete(blockHash);
     }
 
     public void InsertBlockNumber(Hash256 blockHash, long blockNumber)

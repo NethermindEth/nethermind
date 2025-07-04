@@ -53,7 +53,7 @@ public class HeaderStoreTests
         HeaderStore store = new(new MemDb(), new MemDb());
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
-        store.Cache(header);
+        store.Cache(header, hasDifficulty: true);
         store.Get(header.Hash!)!.Hash.Should().Be(header.Hash!);
     }
 

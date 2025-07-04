@@ -22,7 +22,20 @@ public static class KeyValueStoreRlpExtensions
         return Get(db, hash, dbKey, decoder, cache, rlpBehaviors, shouldCache);
     }
 
+    [SkipLocalsInit]
+    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long blockNumber, Hash256 hash, IRlpStreamDecoder<TItem> decoder,
+        ClockCache<Hash256AsKey, TItem> cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
+    {
+        Span<byte> dbKey = stackalloc byte[40];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, hash, dbKey);
+        return Get(db, hash, dbKey, decoder, cache, rlpBehaviors, shouldCache);
+    }
+
     public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, ValueHash256 key, IRlpStreamDecoder<TItem> decoder, ClockCache<ValueHash256, TItem> cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
+    {
+        return Get(db, key, key.Bytes, decoder, cache, rlpBehaviors, shouldCache);
+    }
+    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, Hash256 key, IRlpStreamDecoder<TItem> decoder, ClockCache<Hash256AsKey, TItem> cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
     {
         return Get(db, key, key.Bytes, decoder, cache, rlpBehaviors, shouldCache);
     }

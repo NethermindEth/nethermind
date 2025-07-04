@@ -373,7 +373,7 @@ public class BeaconHeadersSyncTests
         blockTree.FindHeader(pivot.PivotNumber - 1, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().NotBeNull();
         blockTree.LowestInsertedBeaconHeader?.Hash.Should().BeEquivalentTo(syncedBlockTree.FindHeader(endLowestBeaconHeader, BlockTreeLookupOptions.None)?.Hash);
         blockTree.BestKnownNumber.Should().Be(bestPointer);
-        blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader);
+        blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader, options => options.Excluding(h => h!.TotalDifficulty));
         ctx.Feed.CurrentState.Should().Be(SyncFeedState.Dormant);
         ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
     }
