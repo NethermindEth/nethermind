@@ -15,7 +15,6 @@ namespace Nethermind.Evm.Config;
 public class VMConfig : IVMConfig
 {
 
-    const string WETH = "0xd0a06b12ac47863b5c7be4185c2deaad1c61557033f56c7d4ea74429cbb25e23";
 
     public bool IsILEvmEnabled { get; set; } = true;
     public ILMode IlEvmEnabledMode { get; set; } = ILMode.AOT_MODE;
@@ -28,6 +27,15 @@ public class VMConfig : IVMConfig
     public float IlEvmAnalysisCoreUsage { get; set; } = 0.0f;
     public int? IlEvmBytecodeMaxLength { get; set; } = null;
     public int IlEvmBytecodeMinLength { get; set; } = 16;
-    public string[] IlEvmAllowedContracts { get; set; } = [WETH];
+    public string[] IlEvmAllowedContracts { get; set; } =
+    {
+        WhitelistedContracts.Weth,
+        WhitelistedContracts.UsdcProxy,
+        WhitelistedContracts.AllowanceHolder,
+        WhitelistedContracts.Erc20Router,
+        WhitelistedContracts.Permit2,
+        WhitelistedContracts.Uniswap,
+        WhitelistedContracts.Gasspas
+    };
 
 }
