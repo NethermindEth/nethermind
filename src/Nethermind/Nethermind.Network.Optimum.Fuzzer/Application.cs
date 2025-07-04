@@ -28,9 +28,10 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
                 var topic = Guid.NewGuid().ToString();
                 logger.LogDebug("Using topic {Topic}", topic);
 
+                var report = new RunReport(options.SubscriberCount, options.PublisherCount);
                 try
                 {
-                    await SingleRun(topic, random, cts.Token);
+                    await SingleRun(report, topic, random, cts.Token);
                 }
                 catch (OperationCanceledException) when (topLevelToken.IsCancellationRequested)
                 {
@@ -40,39 +41,62 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
                 catch (Exception) when (cts.Token.IsCancellationRequested)
                 {
                     logger.LogError("Timed out after {Timeout} ms", options.Timeout.TotalMilliseconds);
+                    report.Status = new ReportStatus.TimedOut(timeout: options.Timeout);
                 }
                 catch (Exception e)
                 {
                     logger.LogError(e, "Failed");
+                    report.Status = new ReportStatus.Failed(e);
+                }
+
+                Console.WriteLine($"=== Run {run}/{options.Runs} ===");
+                Console.WriteLine($"* Status: {report.Status}");
+                Console.WriteLine($"* Topic: '{topic}'");
+                Console.WriteLine($"* Subscribers ({options.SubscriberCount}):");
+                foreach (var subscriber in report.Subscribers)
+                {
+                    Console.WriteLine($"    {subscriber.Id} => Received {subscriber.Messages} messages");
+                }
+                Console.WriteLine($"* Publishers ({options.PublisherCount}):");
+                foreach (var publisher in report.Publishers)
+                {
+                    Console.WriteLine($"    {publisher.Id} => Published {publisher.Messages} messages");
                 }
             }
         }
     }
 
-    private async Task SingleRun(string topic, Random random, CancellationToken token)
+    private async Task SingleRun(RunReport run, string topic, Random random, CancellationToken token)
     {
         logger.LogDebug("Initializing {SubscriberCount} subscribers", options.SubscriberCount);
-        Task<int>[] subscribers = Enumerable.Range(0, options.SubscriberCount)
+        var subscribers = Enumerable.Range(0, options.SubscriberCount)
             .Select(id => Task.Run(async () =>
             {
                 using (logger.BeginScope("Subscriber {Id}", id))
                 {
                     logger.LogDebug("Initializing");
+                    var report = run.Subscribers[id];
 
                     using var grpcChannel = GrpcChannel.ForAddress(options.GrpcEndpoint, Options.DefaultGrpcChannelOptions);
                     var client = new GrpcOptimumNodeClient(grpcChannel);
 
+                    var expectedMessages = options.MessageCount * options.PublisherCount;
                     var subscription = client.SubscribeToTopic(topic, token);
-                    var receivedMessages = 0;
-                    await foreach (var msg in subscription.Take(options.MessageCount * options.PublisherCount))
+                    await foreach (var msg in subscription.Take(expectedMessages))
                     {
                         logger.LogTrace("Received message: {Message}", msg);
-                        receivedMessages++;
+                        report.Messages++;
                     }
 
-                    logger.LogDebug("Completed with {ReceivedMessages} messages", receivedMessages);
-
-                    return receivedMessages;
+                    if (report.Messages != expectedMessages)
+                    {
+                        logger.LogError("Received {ReceivedMessages} messages, expected {ExpectedMessages}", report.Messages, expectedMessages);
+                        throw new ClientException($"Subscriber {id} received an unexpected number of messages");
+                    }
+                    else
+                    {
+                        logger.LogDebug("Completed with {ReceivedMessages} messages", report.Messages);
+                    }
                 }
             }))
             .ToArray();
@@ -85,6 +109,9 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
             {
                 using (logger.BeginScope("Publisher {Id}", id))
                 {
+                    logger.LogDebug("Initializing");
+                    var report = run.Publishers[id];
+
                     using var grpcChannel = GrpcChannel.ForAddress(options.GrpcEndpoint, Options.DefaultGrpcChannelOptions);
                     var client = new GrpcOptimumNodeClient(grpcChannel);
 
@@ -94,6 +121,7 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
                         random.NextBytes(message);
 
                         await client.PublishToTopicAsync(topic, message, CancellationToken.None);
+                        report.Messages++;
                         logger.LogTrace("Published message: {Message}", message);
 
                         await Task.Delay(options.PublisherDelay, token);
@@ -106,16 +134,5 @@ public sealed class Application(FuzzerOptions options, ILogger logger)
 
         await Task.WhenAll(subscribers);
         await Task.WhenAll(publishers);
-
-        for (var i = 0; i < options.SubscriberCount; i++)
-        {
-            var receivedMessages = await subscribers[i];
-            var expectedMessages = options.MessageCount * options.PublisherCount;
-            if (receivedMessages != expectedMessages)
-            {
-                logger.LogError("Subscriber {Id} received {ReceivedMessages} messages, expected {ExpectedMessages}",
-                    i, receivedMessages, expectedMessages);
-            }
-        }
     }
 }
