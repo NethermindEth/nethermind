@@ -159,7 +159,7 @@ namespace Nethermind.Init.Steps
         private void WarmupEvm()
         {
             IWorldState state = _api.WorldStateManager!.CreateResettableWorldState();
-            state.StateRoot = Keccak.EmptyTreeHash;
+            state.SetBaseBlock(null);
             VirtualMachine.WarmUpEvmInstructions(state, new CodeInfoRepository());
         }
 

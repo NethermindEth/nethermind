@@ -44,7 +44,7 @@ public class DebugRpcModule(
 
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
-        return blockchainBridge.HasStateForRoot(header.StateRoot!);
+        return blockchainBridge.HasStateForBlock(header);
     }
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)

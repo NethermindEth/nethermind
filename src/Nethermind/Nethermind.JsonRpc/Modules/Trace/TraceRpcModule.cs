@@ -200,7 +200,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 }
 
                 Block block = blockSearch.Object;
-                if (!stateReader.HasStateForBlock(block.Header))
+                if (!stateReader.HasStateForBlock(block?.Header))
                 {
                     return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
                 }

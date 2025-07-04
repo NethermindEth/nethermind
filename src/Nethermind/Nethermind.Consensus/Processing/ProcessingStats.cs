@@ -79,7 +79,7 @@ namespace Nethermind.Consensus.Processing
             _startSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
         }
 
-        public void UpdateStats(Block? block, Hash256 branchRoot, long blockProcessingTimeInMicros)
+        public void UpdateStats(Block? block, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
         {
             if (block is null) return;
 
@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.Processing
 
             BlockData blockData = _dataPool.Get();
             blockData.Block = block;
-            blockData.BranchRoot = branchRoot;
+            blockData.BaseBlock = baseBlock;
             blockData.RunningMicroseconds = _runStopwatch.ElapsedMicroseconds();
             blockData.RunMicroseconds = (_runStopwatch.ElapsedMicroseconds() - _lastElapsedRunningMicroseconds);
             blockData.StartSLoadOps = _startSLoadOps;
@@ -200,7 +200,7 @@ namespace Nethermind.Consensus.Processing
                 isMev = true;
             }
 
-            if (data.BranchRoot is null || !_stateReader.HasStateForRoot(data.BranchRoot) || block.StateRoot is null || !_stateReader.HasStateForRoot(block.StateRoot))
+            if (data.BaseBlock is null || !_stateReader.HasStateForBlock(data.BaseBlock) || block.StateRoot is null || !_stateReader.HasStateForBlock(block.Header))
                 return;
 
             UInt256 rewards = default;
@@ -208,7 +208,7 @@ namespace Nethermind.Consensus.Processing
             {
                 if (!isMev)
                 {
-                    rewards = CalculateBalanceChange(data.BranchRoot, block.StateRoot, beneficiary);
+                    rewards = CalculateBalanceChange(data.BaseBlock, block.Header, beneficiary);
                 }
                 else
                 {
@@ -217,7 +217,7 @@ namespace Nethermind.Consensus.Processing
                     rewards = lastTx.Value;
                     if (rewards.IsZero)
                     {
-                        rewards = CalculateBalanceChange(data.BranchRoot, block.StateRoot, lastTx.To);
+                        rewards = CalculateBalanceChange(data.BaseBlock, block.Header, lastTx.To);
                     }
                 }
             }
@@ -376,10 +376,10 @@ namespace Nethermind.Consensus.Processing
                 }
             }
 
-            UInt256 CalculateBalanceChange(Hash256 beforeRoot, Hash256 afterRoot, Address beneficiary)
+            UInt256 CalculateBalanceChange(BlockHeader? startBlock, BlockHeader endBlock, Address beneficiary)
             {
-                UInt256 beforeBalance = _stateReader.GetBalance(beforeRoot, beneficiary);
-                UInt256 afterBalance = _stateReader.GetBalance(afterRoot, beneficiary);
+                UInt256 beforeBalance = _stateReader.GetBalance(startBlock, beneficiary);
+                UInt256 afterBalance = _stateReader.GetBalance(endBlock, beneficiary);
                 return beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
             }
         }
@@ -408,7 +408,7 @@ namespace Nethermind.Consensus.Processing
             {
                 // Release the object references so we don't hold them from being GC'd
                 data.Block = null;
-                data.BranchRoot = null;
+                data.BaseBlock = null;
 
                 return true;
             }
@@ -417,7 +417,7 @@ namespace Nethermind.Consensus.Processing
         private class BlockData
         {
             public Block Block;
-            public Hash256 BranchRoot;
+            public BlockHeader? BaseBlock;
             public long CurrentSLoadOps;
             public long CurrentSStoreOps;
             public long CurrentCallOps;

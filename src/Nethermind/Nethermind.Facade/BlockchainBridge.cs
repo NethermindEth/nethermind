@@ -204,12 +204,12 @@ namespace Nethermind.Facade
         {
             AccessTxTracer accessTxTracer = optimize
                 ? new(tx.SenderAddress,
-                    tx.GetRecipient(tx.IsContractCreation ? _stateReader.GetNonce(header.StateRoot, tx.SenderAddress) : 0), header.GasBeneficiary)
+                    tx.GetRecipient(tx.IsContractCreation ? _stateReader.GetNonce(header, tx.SenderAddress) : 0), header.GasBeneficiary)
                 : new(header.GasBeneficiary);
 
             CallOutputTracer callOutputTracer = new();
 
-            using var scope = _processingEnv.Build(header.StateRoot!);
+            using var scope = _processingEnv.BuildAndOverride(header);
             var components = scope.Component;
 
             TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, false,
@@ -251,10 +251,9 @@ namespace Nethermind.Facade
             BlockProcessingComponents components)
         {
             transaction.SenderAddress ??= Address.SystemUser;
-            Hash256 stateRoot = blockHeader.StateRoot!;
 
             //Ignore nonce on all CallAndRestore calls
-            transaction.Nonce = components.StateReader.GetNonce(stateRoot, transaction.SenderAddress);
+            transaction.Nonce = components.StateReader.GetNonce(blockHeader, transaction.SenderAddress);
 
             BlockHeader callHeader = treatBlockHeaderAsParentBlock
                 ? new(
@@ -405,9 +404,9 @@ namespace Nethermind.Facade
             _stateReader.RunTreeVisitor(treeVisitor, stateRoot);
         }
 
-        public bool HasStateForRoot(Hash256 stateRoot)
+        public bool HasStateForBlock(BlockHeader baseBlock)
         {
-            return _stateReader.HasStateForRoot(stateRoot);
+            return _stateReader.HasStateForBlock(baseBlock);
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)

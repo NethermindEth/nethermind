@@ -22,5 +22,5 @@ public interface IReadOnlyStateProvider : IAccountStateProvider
 
     bool IsEmptyAccount(Address address);
 
-    bool HasStateForRoot(Hash256 stateRoot);
+    bool HasStateForBlock(BlockHeader? baseBlock);
 }
