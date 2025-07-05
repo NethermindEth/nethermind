@@ -5,5 +5,5 @@ namespace Nethermind.Config;
 
 public static class GCConfig
 {
-    public const int GCBlockProcessingDelayMs = 250; 
+    public const int GCBlockProcessingDelayMs = 250;
 }

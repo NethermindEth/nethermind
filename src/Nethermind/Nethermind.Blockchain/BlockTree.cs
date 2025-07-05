@@ -27,7 +27,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain
 {
@@ -567,7 +566,7 @@ namespace Nethermind.Blockchain
                 // TODO: would be great to check why this is still needed (maybe it is something archaic)
                 return null;
             }
-            
+
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) == BlockTreeLookupOptions.RequireCanonical;
             if (_headerStore.TryGetCache(blockHash, totalDifficultyNeeded, requiresCanonical, out BlockHeader? header))
