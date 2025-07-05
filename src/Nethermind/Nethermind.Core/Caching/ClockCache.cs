@@ -185,7 +185,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
 
             if (typeof(TValue).IsValueType)
             {
-                return EqualityComparer<TValue>.Default.Equals(other.Value, Value); 
+                return EqualityComparer<TValue>.Default.Equals(other.Value, Value);
             }
 
             return ReferenceEquals(other.Value, Value);
