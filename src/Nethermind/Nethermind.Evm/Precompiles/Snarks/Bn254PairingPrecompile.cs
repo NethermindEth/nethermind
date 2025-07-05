@@ -5,13 +5,9 @@ using System;
 using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles.Snarks;
 
-/// <summary>
-/// https://github.com/herumi/mcl/blob/master/api.md
-/// </summary>
 public class Bn254PairingPrecompile : IPrecompile<Bn254PairingPrecompile>
 {
     private const int Bn256PairingMaxInputSizeGranite = 112687;
@@ -38,26 +34,15 @@ public class Bn254PairingPrecompile : IPrecompile<Bn254PairingPrecompile>
             return IPrecompile.Failure;
         }
 
-        byte[] inputDataArray = ArrayPool<byte>.Shared.Rent(inputData.Length);
+        byte[] input = ArrayPool<byte>.Shared.Rent(inputData.Length);
+        Span<byte> output = stackalloc byte[32];
 
-        /* we modify input in place here and this is save for EVM but not
-               safe in benchmarks so we need to remember to clone */
-        Span<byte> output = stackalloc byte[64];
-        Span<byte> inputDataSpanReshuffled = inputDataArray.AsSpan(0, inputData.Length);
-        ReadOnlySpan<byte> inputDataSpan = inputData.Span;
-        Span<byte> inputReshuffled = stackalloc byte[PairSize];
-        for (int i = 0; i < inputData.Length / PairSize; i++)
-        {
-            inputDataSpan.Slice(i * PairSize + 0, 64).CopyTo(inputReshuffled[..64]);
-            inputDataSpan.Slice(i * PairSize + 64, 32).CopyTo(inputReshuffled.Slice(96, 32));
-            inputDataSpan.Slice(i * PairSize + 96, 32).CopyTo(inputReshuffled.Slice(64, 32));
-            inputDataSpan.Slice(i * PairSize + 128, 32).CopyTo(inputReshuffled.Slice(160, 32));
-            inputDataSpan.Slice(i * PairSize + 160, 32).CopyTo(inputReshuffled.Slice(128, 32));
-            inputReshuffled.CopyTo(inputDataSpanReshuffled.Slice(i * PairSize, PairSize));
-        }
+        inputData.CopyTo(input);
 
-        bool result = Pairings.Bn254Pairing(inputDataSpanReshuffled, output);
-        ArrayPool<byte>.Shared.Return(inputDataArray);
-        return result ? (output[..32].ToArray(), true) : IPrecompile.Failure;
+        bool result = BN254.Pairing(input.AsSpan(0, inputData.Length), output);
+
+        ArrayPool<byte>.Shared.Return(input);
+
+        return result ? (output.ToArray(), true) : IPrecompile.Failure;
     }
 }
