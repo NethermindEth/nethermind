@@ -68,7 +68,7 @@ namespace Nethermind.Serialization.Rlp
             int blockCheck = decoderContext.Position + sequenceLength;
 
             BlockHeader header = Rlp.Decode<BlockHeader>(ref decoderContext);
-            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck);
+            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck, rlpBehaviors);
 
             Block block = new(header, body)
             {

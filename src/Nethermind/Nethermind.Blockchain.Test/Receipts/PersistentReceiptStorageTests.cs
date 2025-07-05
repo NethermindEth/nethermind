@@ -320,26 +320,26 @@ public class PersistentReceiptStorageTests
     }
 
     [Test]
-    public void When_TxLookupLimitIs_NegativeOne_DoNotIndexTxHash()
+    public async Task When_TxLookupLimitIs_NegativeOne_DoNotIndexTxHash()
     {
         _receiptConfig.TxLookupLimit = -1;
         CreateStorage();
         (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true);
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
-        Thread.Sleep(100);
+        await Task.Delay(500);
         _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeNull();
     }
 
     [TestCase(1L, false)]
     [TestCase(10L, false)]
     [TestCase(11L, true)]
-    public void Should_only_prune_index_tx_hashes_if_blockNumber_is_bigger_than_lookupLimit(long blockNumber, bool WillPruneOldIndicies)
+    public async Task Should_only_prune_index_tx_hashes_if_blockNumber_is_bigger_than_lookupLimit(long blockNumber, bool WillPruneOldIndicies)
     {
         _receiptConfig.TxLookupLimit = 10;
         CreateStorage();
         _blockTree.BlockAddedToMain +=
             Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(blockNumber).TestObject));
-        Thread.Sleep(100);
+        await Task.Delay(500);
         IEnumerable<ICall> calls = _blockTree.ReceivedCalls()
             .Where(static call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlock)));
         if (WillPruneOldIndicies)
@@ -349,13 +349,13 @@ public class PersistentReceiptStorageTests
     }
 
     [Test]
-    public void When_HeadBlockIsFarAhead_DoNotIndexTxHash()
+    public async Task When_HeadBlockIsFarAhead_DoNotIndexTxHash()
     {
         _receiptConfig.TxLookupLimit = 1000;
         CreateStorage();
         (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true, headNumber: 1001);
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
-        Thread.Sleep(100);
+        await Task.Delay(500);
         _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeNull();
     }
 
@@ -430,7 +430,7 @@ public class PersistentReceiptStorageTests
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block3, block));
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block4, block2));
 
-        await Task.Delay(100);
+        await Task.Delay(500);
         if (_receiptConfig.CompactTxIndex)
         {
             _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block4.Transactions[0].Hash!.Bytes].Should().BeEquivalentTo(Rlp.Encode(block4.Number).Bytes);
@@ -477,6 +477,8 @@ public class PersistentReceiptStorageTests
             .TestObject;
 
         _blockTree.FindBlock(block.Hash!).Returns(block);
+        _blockTree.FindBlock(block.Number).Returns(block);
+        _blockTree.FindBlock(block.Number, Arg.Any<BlockTreeLookupOptions>()).Returns(block);
         _blockTree.FindBlock(block.Number).Returns(block);
         _blockTree.FindHeader(block.Number).Returns(block.Header);
         _blockTree.FindBlockHash(block.Number).Returns(block.Hash);

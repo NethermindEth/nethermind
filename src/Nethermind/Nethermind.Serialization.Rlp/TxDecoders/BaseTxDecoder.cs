@@ -38,15 +38,15 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
-            CalculateHash(transaction, transactionSequence);
+            CalculateHash(transaction, transactionSequence, forceHashes: rlpBehaviors.HasFlag(RlpBehaviors.OnlyHashes));
         }
 
         return transaction;
     }
 
-    protected void CalculateHash(Transaction transaction, ReadOnlySpan<byte> transactionSequence)
+    public static void CalculateHash(Transaction transaction, ReadOnlySpan<byte> transactionSequence, bool forceHashes)
     {
-        if (transactionSequence.Length <= MaxDelayedHashTxnSize)
+        if (!forceHashes && transactionSequence.Length <= MaxDelayedHashTxnSize)
         {
             // Delay hash generation, as may be filtered as having too low gas etc
             transaction.SetPreHashNoLock(transactionSequence);

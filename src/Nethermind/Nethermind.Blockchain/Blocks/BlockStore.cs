@@ -18,8 +18,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     private readonly BlockDecoder _blockDecoder = new();
     public const int CacheSize = 128 + 32;
 
-    private readonly ClockCache<ValueHash256, Block>
-        _blockCache = new(CacheSize);
+    private readonly ClockCache<ValueHash256, Block> _blockCache = new(CacheSize);
 
     public void SetMetadata(byte[] key, byte[] value)
     {

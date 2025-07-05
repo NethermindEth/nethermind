@@ -128,7 +128,15 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
             }
         }
 
-        GetDecoder(txType).Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+        if (rlpBehaviors.HasFlag(RlpBehaviors.OnlyHashes) && !rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
+        {
+            BaseTxDecoder<Transaction>.CalculateHash(transaction ??= new T(), transactionSequence, forceHashes: true);
+            decoderContext.Position = txSequenceStart + transactionSequence.Length;
+        }
+        else
+        {
+            GetDecoder(txType).Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+        }
     }
 
     public Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
