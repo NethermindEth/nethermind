@@ -406,6 +406,11 @@ namespace Nethermind.Blockchain
             }
 
             _blockStore.Insert(block, writeFlags: blockWriteFlags);
+            if (ShouldCache(block.Number))
+            {
+                _blockStore.Cache(block);
+            }
+
             _headerStore.InsertBlockNumber(block.Hash, block.Number);
 
             bool saveHeader = (insertBlockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0;
@@ -1435,7 +1440,8 @@ namespace Nethermind.Blockchain
                 block = _blockStore.Get(
                     blockNumber.Value,
                     blockHash,
-                    (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
+                    ((options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None) |
+                    ((options & BlockTreeLookupOptions.OnlyTxHashes) != 0 ? RlpBehaviors.OnlyHashes : RlpBehaviors.None),
                     shouldCache: false);
             }
 
