@@ -1495,7 +1495,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (block is not null && ShouldCache(block.Number))
+            if (block is not null && (options & BlockTreeLookupOptions.OnlyTxHashes) == 0 && ShouldCache(block.Number))
             {
                 _blockStore.Cache(block);
                 _headerStore.Cache(block.Header, hasDifficulty: totalDifficultyNeeded, requiresCanonical);
