@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
@@ -19,10 +20,9 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
     IReadOnlyBlockTree baseBlockTree,
     IDbProvider dbProvider,
     ISpecProvider specProvider,
-    ISimulateTransactionProcessorFactory transactionProcessorFactory,
     ILogManager? logManager = null)
 {
-    public SimulateReadOnlyBlocksProcessingEnv Create(bool validate)
+    public SimulateReadOnlyBlocksProcessingEnv Create()
     {
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         IWorldState worldState = worldStateManager.CreateOverlayWorldState(editableDbProvider.StateDb, editableDbProvider.CodeDb);
@@ -34,9 +34,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             editableDbProvider,
             tempBlockTree,
             specProvider,
-            transactionProcessorFactory,
-            logManager,
-            validate);
+            logManager);
     }
 
     private static BlockTree CreateTempBlockTree(IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider? specProvider, ILogManager? logManager, IReadOnlyDbProvider editableDbProvider)

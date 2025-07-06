@@ -6,8 +6,10 @@ using System.Collections.Generic;
 using Autofac.Core;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 
-namespace Nethermind.Evm.OverridableEnv;
+namespace Nethermind.State.OverridableEnv;
 
 /// <summary>
 /// An <see cref="IOverridableEnv"/> is an environment where the world state and or the code repository can be overridden.

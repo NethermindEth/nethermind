@@ -263,11 +263,11 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     private DateTime _lastPingSent = DateTime.MinValue;
 
-    public async Task SendPingAsync()
+    public Task SendPingAsync()
     {
         _lastPingSent = DateTime.UtcNow;
         _sentPing = true;
-        await CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
+        return CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
     }
 
     private long CalculateExpirationTime()
@@ -326,9 +326,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         if (newState == NodeLifecycleState.New)
         {
             //if node is just discovered we send ping to confirm it is active
-#pragma warning disable 4014
-            SendPingAsync();
-#pragma warning restore 4014
+            _ = SendPingAsync();
         }
         else if (newState == NodeLifecycleState.Active)
         {
@@ -356,9 +354,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
             if (DateTime.UtcNow - _lastPingSent > TimeSpan.FromSeconds(5))
             {
-#pragma warning disable 4014
-                SendPingAsync();
-#pragma warning restore 4014
+                _ = SendPingAsync();
             }
             else
             {

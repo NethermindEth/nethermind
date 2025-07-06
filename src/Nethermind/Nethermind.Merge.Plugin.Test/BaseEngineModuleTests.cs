@@ -43,12 +43,13 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -139,7 +140,7 @@ public abstract partial class BaseEngineModuleTests
                 chain.LogManager),
             new NewPayloadHandler(
                 chain.PayloadPreparationService,
-                chain.BlockValidator,
+                new InvalidBlockInterceptor(chain.BlockValidator, invalidChainTracker, LimboLogs.Instance),
                 chain.BlockTree,
                 chain.PoSSwitcher,
                 chain.BeaconSync,

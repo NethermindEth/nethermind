@@ -7,7 +7,7 @@ using Nethermind.Core;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native;
 
