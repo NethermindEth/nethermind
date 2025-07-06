@@ -155,13 +155,13 @@ namespace Nethermind.Facade
             CallOutputTracer callOutputTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(scope.Component, header, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken));
-
+            
             return new CallOutput
             {
                 Error = ConstructError(tryCallResult, callOutputTracer.Error, tx.GasLimit),
                 GasSpent = callOutputTracer.GasSpent,
                 OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.Success
+                InputError = !tryCallResult.TransactionExecuted
             };
         }
 
@@ -195,7 +195,7 @@ namespace Nethermind.Facade
             {
                 Error = error,
                 GasSpent = estimate,
-                InputError = !tryCallResult.Success || err is not null
+                InputError = !tryCallResult.TransactionExecuted || err is not null
             };
         }
 
@@ -220,7 +220,7 @@ namespace Nethermind.Facade
                 GasSpent = accessTxTracer.GasSpent,
                 OperationGas = callOutputTracer.OperationGas,
                 OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.Success,
+                InputError = !tryCallResult.TransactionExecuted,
                 AccessList = accessTxTracer.AccessList
             };
         }
@@ -423,14 +423,17 @@ namespace Nethermind.Facade
 
         private static string? ConstructError(TransactionResult txResult, string? tracerError, long gasLimit)
         {
+            const string errorTemplate = "err: {0} (supplied gas {1})";
+
             var error = txResult switch
             {
-                { Success: true } when tracerError is not null => tracerError,
-                { Success: false, Error: not null } => txResult.Error,
+                { TransactionExecuted: true } when txResult.EvmExceptionType is not EvmExceptionType.None => txResult.EvmExceptionType.GetEvmExceptionDescription(),
+                { TransactionExecuted: true } when tracerError is not null => string.Format(errorTemplate, tracerError, gasLimit),
+                { TransactionExecuted: false, Error: not null } => string.Format(errorTemplate, txResult.Error, gasLimit),
                 _ => null
             };
 
-            return error is null ? null : $"err: {error} (supplied gas {gasLimit})";
+            return error is null ? null : errorTemplate;
         }
 
         public record BlockProcessingComponents(

@@ -219,7 +219,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (statusCode == StatusCode.Failure)
                 {
                     byte[] output = substate.ShouldRevert ? substate.Output.Bytes.ToArray() : [];
-                    tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate.Error, substate.EvmExceptionType, stateRoot);
+                    tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate.Error, stateRoot);
                 }
                 else
                 {
@@ -227,6 +227,9 @@ namespace Nethermind.Evm.TransactionProcessing
                     tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.Bytes.ToArray(), logs, stateRoot);
                 }
             }
+
+            if (substate.EvmExceptionType != EvmExceptionType.None)
+                return TransactionResult.EvmException(substate.EvmExceptionType);
 
             return TransactionResult.Ok;
         }
@@ -898,23 +901,29 @@ namespace Nethermind.Evm.TransactionProcessing
         }
     }
 
-    public readonly struct TransactionResult(string? error) : IEquatable<TransactionResult>
+    public readonly struct TransactionResult(string? error, EvmExceptionType evmException = EvmExceptionType.None) : IEquatable<TransactionResult>
     {
         [MemberNotNullWhen(true, nameof(Fail))]
-        [MemberNotNullWhen(false, nameof(Success))]
+        [MemberNotNullWhen(false, nameof(TransactionExecuted))]
         public string? Error { get; } = error;
         public bool Fail => Error is not null;
-        public bool Success => Error is null;
+        public bool TransactionExecuted => Error is null;
+        public EvmExceptionType EvmExceptionType { get; } = evmException;
 
         public static implicit operator TransactionResult(string? error) => new(error);
-        public static implicit operator bool(TransactionResult result) => result.Success;
-        public bool Equals(TransactionResult other) => (Success && other.Success) || (Error == other.Error);
+        public static implicit operator bool(TransactionResult result) => result.TransactionExecuted;
+        public bool Equals(TransactionResult other) => (TransactionExecuted && other.TransactionExecuted) || (Error == other.Error);
         public static bool operator ==(TransactionResult obj1, TransactionResult obj2) => obj1.Equals(obj2);
         public static bool operator !=(TransactionResult obj1, TransactionResult obj2) => !obj1.Equals(obj2);
         public override bool Equals(object? obj) => obj is TransactionResult result && Equals(result);
-        public override int GetHashCode() => Success ? 1 : Error.GetHashCode();
+        public override int GetHashCode() => TransactionExecuted ? 1 : Error.GetHashCode();
 
         public override string ToString() => Error is not null ? $"Fail : {Error}" : "Success";
+
+        public static TransactionResult EvmException(EvmExceptionType evmExceptionType)
+        {
+            return new TransactionResult(null, evmExceptionType);
+        }
 
         public static readonly TransactionResult Ok = new();
 

@@ -67,7 +67,7 @@ public sealed unsafe partial class VirtualMachine
         public bool ShouldRevert { get; }
         public bool? PrecompileSuccess { get; }
         public bool IsReturn => StateToExecute is null;
-        public bool IsException => ExceptionType != EvmExceptionType.None;
+        public bool IsException => ExceptionType != EvmExceptionType.None && ExceptionType != EvmExceptionType.Revert;
         public int FromVersion { get; }
     }
 }
