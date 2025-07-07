@@ -261,25 +261,6 @@ public abstract partial class BaseEngineModuleTests
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 
-        protected override IBlockProcessor CreateBlockProcessor(IWorldState worldState)
-        {
-            IBlockProcessor processor = new BlockProcessor(
-                SpecProvider,
-                BlockValidator,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), worldState),
-                worldState,
-                ReceiptStorage,
-                new BeaconBlockRootHandler(TxProcessor, worldState),
-                new BlockhashStore(SpecProvider, worldState),
-                LogManager,
-                WithdrawalProcessor,
-                MainExecutionRequestsProcessor,
-                CreateBlockCachePreWarmer());
-
-            return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
-        }
-
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
             TestBlockchain bc = await base.Build(configurer);

@@ -251,8 +251,10 @@ namespace Nethermind.AuRa.Test.Contract
 
             public ContractDataStoreWithLocalData<Address> SendersWhitelist { get; private set; }
 
-            protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
+            protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
             {
+                TestBlockchain bc = await base.Build(configurer);
+
                 TxPriorityContract = new TxPriorityContract(AbiEncoder.Instance, TestItem.AddressA,
                     ReadOnlyTxProcessingEnvFactory.Create());
 
@@ -279,7 +281,7 @@ namespace Nethermind.AuRa.Test.Contract
                     LimboLogs.Instance,
                     GetWhitelistLocalDataStore());
 
-                return base.CreateBlockProcessor(state);
+                return bc;
             }
 
             protected virtual ILocalDataSource<IEnumerable<Address>> GetWhitelistLocalDataStore() => new EmptyLocalDataSource<IEnumerable<Address>>();
@@ -363,22 +365,6 @@ namespace Nethermind.AuRa.Test.Contract
                 Semaphore = new SemaphoreSlim(0);
                 LocalDataSource.Changed += (o, e) => Semaphore.Release();
 
-                return base.Build(configurer: configurer);
-            }
-
-            public override void Dispose()
-            {
-                base.Dispose();
-                LocalDataSource?.Dispose();
-                TempFile?.Dispose();
-                Semaphore.Dispose();
-                FileSemaphore?.Dispose();
-            }
-
-            protected virtual bool FileFirst => false;
-
-            protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
-            {
                 LocalData = new TxPriorityContract.LocalData()
                 {
                     Priorities = new[]
@@ -396,8 +382,19 @@ namespace Nethermind.AuRa.Test.Contract
                     Whitelist = new[] { TestItem.AddressD, TestItem.AddressB }
                 };
 
-                return base.CreateBlockProcessor(state);
+                return base.Build(configurer: configurer);
             }
+
+            public override void Dispose()
+            {
+                base.Dispose();
+                LocalDataSource?.Dispose();
+                TempFile?.Dispose();
+                Semaphore.Dispose();
+                FileSemaphore?.Dispose();
+            }
+
+            protected virtual bool FileFirst => false;
 
             private TxPriorityContract.LocalData LocalData { get; set; }
 

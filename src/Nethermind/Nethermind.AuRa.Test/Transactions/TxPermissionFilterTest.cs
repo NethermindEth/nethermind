@@ -5,17 +5,20 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -23,6 +26,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -266,7 +270,7 @@ public class TxPermissionFilterTest
 
         public LruCache<ValueHash256, UInt256> TransactionPermissionContractVersions { get; private set; }
 
-        protected override BlockProcessor CreateBlockProcessor(IWorldState worldState)
+        protected override Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
             TransactionPermissionContractVersions =
                 new LruCache<ValueHash256, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
@@ -277,21 +281,13 @@ public class TxPermissionFilterTest
             TxPermissionFilterCache = new PermissionBasedTxFilter.Cache();
             PermissionBasedTxFilter = new PermissionBasedTxFilter(transactionPermissionContract, TxPermissionFilterCache, LimboLogs.Instance);
 
-            return new AuRaBlockProcessor(
-                SpecProvider,
-                Always.Valid,
-                new RewardCalculator(SpecProvider),
-                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), worldState),
-                worldState,
-                ReceiptStorage,
-                new BeaconBlockRootHandler(TxProcessor, worldState),
-                LimboLogs.Instance,
-                BlockTree,
-                NullWithdrawalProcessor.Instance,
-                new ExecutionRequestsProcessor(TxProcessor),
-                null,
-                txFilter: PermissionBasedTxFilter,
-                preWarmer: CreateBlockCachePreWarmer());
+            return base.Build(configurer);
+        }
+
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
+        {
+            return base.ConfigureContainer(builder, configProvider)
+                .AddSingleton<ITxFilter>(PermissionBasedTxFilter);
         }
 
         protected override async Task AddBlocksOnStart()

@@ -61,7 +61,7 @@ public class TestBlockchain : IDisposable
     public IWorldStateManager WorldStateManager => _fromContainer.WorldStateManager;
     public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => _fromContainer.ReadOnlyTxProcessingEnvFactory;
     public IShareableTxProcessorSource ShareableTxProcessorSource => _fromContainer.ShareableTxProcessorSource;
-    public IBlockProcessor BlockProcessor { get; set; } = null!;
+    public IBlockProcessor BlockProcessor => _fromContainer.MainProcessingContext.BlockProcessor;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
     public IBlockPreprocessorStep BlockPreprocessorStep => _fromContainer.BlockPreprocessorStep;
@@ -234,8 +234,6 @@ public class TestBlockchain : IDisposable
         state.Commit(SpecProvider.GenesisSpec);
         state.CommitTree(0);
 
-        BlockProcessor = CreateBlockProcessor(WorldStateManager.GlobalWorldState);
-
         BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
         BlockchainProcessor = chainProcessor;
         BlockProcessingQueue = chainProcessor;
@@ -405,22 +403,6 @@ public class TestBlockchain : IDisposable
 
         return txBuilder;
     }
-
-    protected virtual IBlockProcessor CreateBlockProcessor(IWorldState state) =>
-        new BlockProcessor(
-            SpecProvider,
-            BlockValidator,
-            NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), state),
-            state,
-            ReceiptStorage,
-            new BeaconBlockRootHandler(TxProcessor, state),
-            new BlockhashStore(SpecProvider, state),
-            LogManager,
-            new WithdrawalProcessor(state, LogManager),
-            MainExecutionRequestsProcessor,
-            preWarmer: CreateBlockCachePreWarmer());
-
 
     protected IBlockCachePreWarmer CreateBlockCachePreWarmer() =>
         new BlockCachePreWarmer(

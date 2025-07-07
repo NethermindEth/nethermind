@@ -154,6 +154,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             return baseChainSpec;
         }
 
+        /*
         protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
         {
             // Note: Different from production. No aura validator,
@@ -165,6 +166,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
+        */
 
 
         protected override IBlockProducer CreateTestBlockProducer()

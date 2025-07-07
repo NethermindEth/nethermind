@@ -4,10 +4,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
@@ -81,10 +83,11 @@ public class AuRaContractGasLimitOverrideTests
 
     public class TestGasLimitContractBlockchain : TestContractBlockchain
     {
-        public IGasLimitCalculator GasLimitCalculator { get; private set; }
-        public AuRaContractGasLimitOverride.Cache GasLimitOverrideCache { get; private set; }
+        private IGasLimitCalculator? _gasLimitCalculator = null;
+        public IGasLimitCalculator GasLimitCalculator => _gasLimitCalculator ??= CreateGasLimitCalculator();
+        public AuRaContractGasLimitOverride.Cache GasLimitOverrideCache => Container.Resolve<AuRaContractGasLimitOverride.Cache>();
 
-        protected override BlockProcessor CreateBlockProcessor(IWorldState worldState)
+        private AuRaContractGasLimitOverride CreateGasLimitCalculator()
         {
             KeyValuePair<long, Address> blockGasLimitContractTransition = ChainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>().BlockGasLimitContractTransitions
@@ -93,24 +96,16 @@ public class AuRaContractGasLimitOverrideTests
                 blockGasLimitContractTransition.Key,
                 ReadOnlyTxProcessingEnvFactory.Create());
 
-            GasLimitOverrideCache = new AuRaContractGasLimitOverride.Cache();
-            GasLimitCalculator = new AuRaContractGasLimitOverride(new[] { gasLimitContract }, GasLimitOverrideCache, false, new FollowOtherMiners(SpecProvider), LimboLogs.Instance);
+            return new AuRaContractGasLimitOverride(new[] { gasLimitContract }, GasLimitOverrideCache, false, new FollowOtherMiners(SpecProvider), LimboLogs.Instance);
+        }
 
-            return new AuRaBlockProcessor(
-                SpecProvider,
-                Always.Valid,
-                new RewardCalculator(SpecProvider),
-                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), worldState),
-                worldState,
-                ReceiptStorage,
-                new BeaconBlockRootHandler(TxProcessor, worldState),
-                LimboLogs.Instance,
-                BlockTree,
-                NullWithdrawalProcessor.Instance,
-                new ExecutionRequestsProcessor(TxProcessor),
-                auRaValidator: null,
-                gasLimitOverride: GasLimitCalculator as AuRaContractGasLimitOverride,
-                preWarmer: CreateBlockCachePreWarmer());
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
+        {
+            builder = base.ConfigureContainer(builder, configProvider);
+
+            builder.AddScoped<IBlockProcessor, AuRaBlockProcessor>();
+
+            return builder;
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
@@ -118,13 +113,14 @@ public class AuRaContractGasLimitOverrideTests
 
     public class TestGasLimitContractBlockchainLateBlockGasLimit : TestGasLimitContractBlockchain
     {
-        protected override BlockProcessor CreateBlockProcessor(IWorldState worldState)
+        protected override ChainSpec CreateChainSpec()
         {
-            var parameters = ChainSpec.EngineChainSpecParametersProvider
+            ChainSpec chainSpec = base.CreateChainSpec();
+            var parameters = chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
             KeyValuePair<long, Address> blockGasLimitContractTransition = parameters.BlockGasLimitContractTransitions.First();
             parameters.BlockGasLimitContractTransitions = new Dictionary<long, Address>() { { 10, blockGasLimitContractTransition.Value } };
-            return base.CreateBlockProcessor(worldState);
+            return chainSpec;
         }
     }
 }
