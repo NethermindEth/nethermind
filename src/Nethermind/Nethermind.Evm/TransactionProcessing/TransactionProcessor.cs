@@ -609,6 +609,17 @@ namespace Nethermind.Evm.TransactionProcessing
 
             Snapshot snapshot = WorldState.TakeSnapshot();
 
+            // If contract is large, charge for access
+            if (env.CodeInfo is not null && spec.IsEip7907Enabled)
+            {
+                ICodeInfo codeInfo = env.CodeInfo;
+                uint excessContractSize = codeInfo.ExcessCodeSize();
+                if (excessContractSize > 0 && !EvmInstructions.ChargeForLargeContractAccess(excessContractSize, tx.To, in accessedItems, ref gasAvailable))
+                {
+                    goto Complete;
+                }
+            }
+
             PayValue(tx, spec, opts);
 
             if (env.CodeInfo is not null)

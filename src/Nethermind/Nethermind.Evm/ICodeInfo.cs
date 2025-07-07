@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -62,4 +63,10 @@ public interface ICodeInfo
     /// <param name="destination">The instruction index to validate.</param>
     /// <returns><c>true</c> if the jump is valid; otherwise, <c>false</c>.</returns>
     bool ValidateJump(int destination) => false;
+}
+
+public static class ICodeInfoExtensions
+{
+    public static uint ExcessCodeSize(this ICodeInfo codeInfo)
+        => (uint)Math.Max(0, codeInfo.CodeSpan.Length - CodeSizeConstants.MaxCodeSizeEip170);
 }
