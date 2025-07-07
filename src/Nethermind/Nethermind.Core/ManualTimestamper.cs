@@ -35,5 +35,9 @@ namespace Nethermind.Core
         {
             UtcNow = utcNow;
         }
+
+        public DateTimeOffset UtcNowOffset => new(UtcNow);
+
+        public UnixTime UnixTime => new(UtcNow);
     }
 }
