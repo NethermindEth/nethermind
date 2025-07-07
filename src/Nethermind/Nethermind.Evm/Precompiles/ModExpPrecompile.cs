@@ -93,7 +93,7 @@ namespace Nethermind.Evm.Precompiles
             UInt256 exp = new(inputData.Span.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
             UInt256 iterationCount = CalculateIterationCount(expLength, exp, isModexpRepricingEnabled);
             bool overflow = UInt256.MultiplyOverflow(complexity, iterationCount, out UInt256 result);
-            result /= 3;
+            if (!isModexpRepricingEnabled) result /= 3;
             return result > long.MaxValue || overflow
                 ? long.MaxValue
                 : Math.Max(isModexpRepricingEnabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExpEip2565, (long)result);
