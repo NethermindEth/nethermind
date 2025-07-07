@@ -260,7 +260,6 @@ public class OptimismModule(ChainSpec chainSpec) : Module
 
             .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddDecorator<IBlockProducerTxSourceFactory, OptimismBlockProducerTxSourceFactory>()
-            .AddSingleton<ISimulateTransactionProcessorFactory, SimulateOptimismTransactionProcessorFactory>()
             .AddSingleton<IPayloadPreparationService, OptimismPayloadPreparationService>()
 
             // Rpcs

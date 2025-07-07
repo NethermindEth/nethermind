@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -12,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Shutter.Config;
 using Nethermind.Merge.Plugin;
 using Nethermind.Logging;
-using System.Threading;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Config;
@@ -20,10 +18,10 @@ using Nethermind.Abi;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network;
@@ -108,7 +106,7 @@ public class ShutterPluginModule : Module
             ctx.Resolve<ILogManager>(),
             ctx.Resolve<ISpecProvider>(),
             ctx.Resolve<ITimestamper>(),
-            ctx.Resolve<IReadOnlyTxProcessingEnvFactory>(),
+            ctx.Resolve<IShareableTxProcessorSource>(),
             ctx.Resolve<IFileSystem>(),
             ctx.Resolve<IKeyStoreConfig>(),
             shutterConfig,
