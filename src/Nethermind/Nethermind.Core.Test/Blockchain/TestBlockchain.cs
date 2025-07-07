@@ -119,7 +119,7 @@ public class TestBlockchain : IDisposable
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
-    public IExecutionRequestsProcessor MainExecutionRequestsProcessor => ((MainBlockProcessingContext)_fromContainer.MainProcessingContext).LifetimeScope.Resolve<IExecutionRequestsProcessor>();
+    public IExecutionRequestsProcessor MainExecutionRequestsProcessor => ((AutoMainProcessingContext)_fromContainer.MainProcessingContext).LifetimeScope.Resolve<IExecutionRequestsProcessor>();
     public IChainLevelInfoRepository ChainLevelInfoRepository => _fromContainer.ChainLevelInfoRepository;
 
     protected IBlockProducerEnvFactory BlockProducerEnvFactory => _fromContainer.BlockProducerEnvFactory;
