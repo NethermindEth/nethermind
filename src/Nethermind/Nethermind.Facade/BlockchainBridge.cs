@@ -125,7 +125,7 @@ namespace Nethermind.Facade
             CallOutputTracer callOutputTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(scope.Component, header, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken));
-            
+
             return new CallOutput
             {
                 Error = ConstructError(tryCallResult, callOutputTracer.Error),
