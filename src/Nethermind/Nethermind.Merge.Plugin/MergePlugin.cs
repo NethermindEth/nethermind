@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -424,7 +425,9 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 _api.SpecProvider!,
                 _api.SyncModeSelector,
                 _api.BadBlocksStore!,
-                _api.BlockProducer!);
+                _api.BlockProducer!,
+                new ExecutionRequestsProcessor(scope.TransactionProcessor),
+                scope.WorldState);
 
             var debugModule = new MergeDebugRpcModule(_api.LogManager, debugBridge, _jsonRpcConfig, _api.SpecProvider!);
             RegisterDebugRpcModule(debugModule);
