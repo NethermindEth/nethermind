@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using System.Threading.Tasks;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -33,5 +34,10 @@ namespace Nethermind.Consensus.Processing
         int Count { get; }
 
         public bool IsEmpty => Count == 0;
+
+        /// <summary>
+        /// Task that completes when the processing queue is empty and all processing is done.
+        /// </summary>
+        Task ProcessingCompletedTask { get; }
     }
 }

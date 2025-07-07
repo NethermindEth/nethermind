@@ -26,11 +26,7 @@ public class RegisterPluginRpcModules(
     {
         if (!initConfig.InRunnerTest)
         {
-            // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
-            // Then we will wait 5s more to ensure everything is processed
-            while (!blockProcessingQueue!.IsEmpty)
-                await Task.Delay(100);
-            await Task.Delay(5000);
+            await blockProcessingQueue.ProcessingCompletedTask;
         }
 
         foreach (INethermindPlugin plugin in plugins)
