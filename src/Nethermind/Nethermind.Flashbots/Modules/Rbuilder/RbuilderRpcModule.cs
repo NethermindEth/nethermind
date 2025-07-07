@@ -37,7 +37,6 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         using IReadOnlyTxProcessingScope worldScope = txProcessorSource.Build(blockHeader);
         IWorldState worldState = worldScope.WorldState;
         IReleaseSpec releaseSpec = specProvider.GetSpec(blockHeader);
-        // worldState.StateRoot = blockHeader.StateRoot!;
 
         foreach (KeyValuePair<Address, AccountChange> kv in accountDiff)
         {
