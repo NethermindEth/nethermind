@@ -9,8 +9,7 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Consensus.Transactions;
 internal static class NextBlockSpecHelper
 {
-    public static IReleaseSpec GetSpec(ISpecProvider specProvider, BlockHeader parentHeader, PayloadAttributes? payloadAttributes, IBlocksConfig? blocksConfig)
-        => payloadAttributes is not null
-                ? specProvider.GetSpec(parentHeader.Number + 1, payloadAttributes.Timestamp)
-                : specProvider.GetSpec(parentHeader.Number + 1, parentHeader.Timestamp + (blocksConfig?.SecondsPerSlot ?? 0));
+    public static IReleaseSpec GetSpec(ISpecProvider specProvider, BlockHeader parentHeader,
+        PayloadAttributes? payloadAttributes, IBlocksConfig? blocksConfig)
+        => specProvider.GetSpec(parentHeader.Number + 1, payloadAttributes?.Timestamp ?? parentHeader.Timestamp + (blocksConfig?.SecondsPerSlot ?? 0));
 }

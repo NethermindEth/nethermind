@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -207,7 +206,7 @@ public sealed class BlobFieldsTxValidator : ITxValidator
     {
         int blobCount = transaction.BlobVersionedHashes!.Length;
         ulong totalDataGas = BlobGasCalculator.CalculateBlobGas(blobCount);
-        var maxBlobGasPerTx = spec.GetMaxBlobGasPerTx();
+        ulong maxBlobGasPerTx = spec.GetMaxBlobGasPerTx();
         return totalDataGas > maxBlobGasPerTx ? TxErrorMessages.BlobTxGasLimitExceeded(totalDataGas, maxBlobGasPerTx)
             : blobCount < Eip4844Constants.MinBlobsPerTransaction ? TxErrorMessages.BlobTxMissingBlobs
             : ValidateBlobVersionedHashes();

@@ -10,23 +10,15 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Ignores transactions that outright exceed block gas limit or configured max block gas limit.
     /// </summary>
-    internal sealed class GasLimitTxFilter : IIncomingTxFilter
+    internal sealed class GasLimitTxFilter(IChainHeadInfoProvider chainHeadInfoProvider, ITxPoolConfig txPoolConfig, ILogManager logManager)
+        : IIncomingTxFilter
     {
-        private readonly IChainHeadInfoProvider _chainHeadInfoProvider;
-        private readonly ILogger _logger;
-        private readonly long _configuredGasLimit;
-
-        public GasLimitTxFilter(IChainHeadInfoProvider chainHeadInfoProvider, ITxPoolConfig txPoolConfig,
-            ILogManager logManager)
-        {
-            _chainHeadInfoProvider = chainHeadInfoProvider;
-            _logger = logManager.GetClassLogger();
-            _configuredGasLimit = txPoolConfig.GasLimit ?? long.MaxValue;
-        }
+        private readonly ILogger _logger = logManager.GetClassLogger();
+        private readonly long _configuredGasLimit = txPoolConfig.GasLimit ?? long.MaxValue;
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            long gasLimit = Math.Min(_chainHeadInfoProvider.BlockGasLimit ?? long.MaxValue, _configuredGasLimit);
+            long gasLimit = Math.Min(chainHeadInfoProvider.BlockGasLimit ?? long.MaxValue, _configuredGasLimit);
             if (tx.GasLimit > gasLimit)
             {
                 Metrics.PendingTransactionsGasLimitTooHigh++;

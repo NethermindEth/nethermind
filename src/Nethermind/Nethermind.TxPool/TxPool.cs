@@ -678,34 +678,29 @@ namespace Nethermind.TxPool
         }
 
         private void UpdateGasBottleneck(
-        EnhancedSortedSet<Transaction> transactions, long currentNonce, UInt256 balance, Transaction? lastElement,
-        UpdateTransactionDelegate updateTx)
+            EnhancedSortedSet<Transaction> transactions,
+            long currentNonce,
+            UInt256 balance,
+            Transaction? lastElement,
+            UpdateTransactionDelegate updateTx)
         {
             UInt256? previousTxBottleneck = null;
-            int i = -1;
+            int i = 0;
             UInt256 cumulativeCost = 0;
             IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
             bool evictNextTxs = false;
 
-            void EvictTx(Transaction tx, bool allowLaterPoolReentrance)
-            {
-                _broadcaster.StopBroadcast(tx.Hash!);
-                if (allowLaterPoolReentrance) _hashCache.DeleteFromLongTerm(tx.Hash!);
-                updateTx(transactions, tx, null, lastElement);
-                evictNextTxs |= tx.SupportsBlobs;
-            }
-
             foreach (Transaction tx in transactions)
             {
-                UInt256 gasBottleneck = 0;
-
                 if (tx.Nonce < currentNonce)
                 {
                     EvictTx(tx, false);
+                    continue;
                 }
-                else
+
+                try
                 {
-                    i++;
+                    UInt256 gasBottleneck = 0;
 
                     switch (_headTxValidator?.IsWellFormed(tx, headSpec))
                     {
@@ -717,10 +712,11 @@ namespace Nethermind.TxPool
                             continue;
                     }
 
-                    previousTxBottleneck ??= tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
-                            _headInfo.CurrentBaseFee, balance);
+                    previousTxBottleneck ??= tx.CalculateAffordableGasPrice(
+                        _specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
+                        _headInfo.CurrentBaseFee, balance);
 
-                    // it is not affecting non-blob txs - for them MaxFeePerBlobGas is null so check is skipped
+                    // it is not affecting non-blob txs - for them MaxFeePerBlobGas is null, so check is skipped
                     if (tx.MaxFeePerBlobGas < _headInfo.CurrentFeePerBlobGas)
                     {
                         gasBottleneck = UInt256.Zero;
@@ -750,9 +746,21 @@ namespace Nethermind.TxPool
                     if (evictNextTxs)
                     {
                         EvictTx(tx, true);
-                        continue;
                     }
                 }
+                finally
+                {
+                    i++;
+                }
+            }
+
+            void EvictTx(Transaction tx, bool allowLaterPoolReentrance)
+            {
+                _broadcaster.StopBroadcast(tx.Hash!);
+                if (allowLaterPoolReentrance) _hashCache.DeleteFromLongTerm(tx.Hash!);
+                updateTx(transactions, tx, null, lastElement);
+                // no nonce gaps for blob transactions
+                evictNextTxs |= tx.SupportsBlobs;
             }
         }
 

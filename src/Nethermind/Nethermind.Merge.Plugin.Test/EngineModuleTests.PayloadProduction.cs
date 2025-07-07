@@ -776,7 +776,7 @@ public partial class EngineModuleTests
                     Osaka.Instance,
                     osakaWithSmallerBlobCap,
                     isForked)
-                { TestName = "Blob count higher than lowered" + nameSuffix };
+                { TestName = "Blob count higher than lowered maximum" + nameSuffix };
             }
         }
     }

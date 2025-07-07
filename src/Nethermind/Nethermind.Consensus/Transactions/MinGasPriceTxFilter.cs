@@ -15,9 +15,7 @@ namespace Nethermind.Consensus.Transactions;
 public class MinGasPriceTxFilter(IBlocksConfig blocksConfig) : IMinGasPriceTxFilter
 {
     public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
-    {
-        return IsAllowed(tx, parentHeader, blocksConfig.MinGasPrice, currentSpec);
-    }
+        => IsAllowed(tx, parentHeader, blocksConfig.MinGasPrice, currentSpec);
 
     public AcceptTxResult IsAllowed(Transaction tx, BlockHeader? parentHeader, in UInt256 minGasPriceFloor, IReleaseSpec spec)
     {

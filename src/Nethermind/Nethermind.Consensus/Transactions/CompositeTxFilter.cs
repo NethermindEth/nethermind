@@ -8,14 +8,9 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Transactions
 {
-    public class CompositeTxFilter : ITxFilter
+    public class CompositeTxFilter(params ITxFilter?[] txFilters) : ITxFilter
     {
-        private readonly ITxFilter[] _txFilters;
-
-        public CompositeTxFilter(params ITxFilter?[] txFilters)
-        {
-            _txFilters = txFilters.Where(static f => f is not null).ToArray();
-        }
+        private readonly ITxFilter[] _txFilters = txFilters.Where(static f => f is not null).ToArray();
 
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
         {
