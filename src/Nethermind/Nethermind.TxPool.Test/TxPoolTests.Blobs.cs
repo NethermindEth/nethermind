@@ -26,6 +26,7 @@ using NUnit.Framework;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.State;
 
 namespace Nethermind.TxPool.Test
 {

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,6 +40,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
@@ -58,6 +60,7 @@ public class TestBlockchain : IDisposable
     public ITxPool TxPool => _fromContainer.TxPool;
     public IWorldStateManager WorldStateManager => _fromContainer.WorldStateManager;
     public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => _fromContainer.ReadOnlyTxProcessingEnvFactory;
+    public IShareableTxProcessorSource ShareableTxProcessorSource => _fromContainer.ShareableTxProcessorSource;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
@@ -103,13 +106,15 @@ public class TestBlockchain : IDisposable
 
     protected AutoCancelTokenSource _cts;
     public CancellationToken CancellationToken => _cts.Token;
-    private TestBlockchainUtil _testUtil = null!;
+
+    private TestBlockchainUtil TestUtil => _fromContainer.TestBlockchainUtil.Value;
+    private PoWTestBlockchainUtil PoWTestUtil => _fromContainer.PoWTestBlockchainUtil.Value;
 
     public IBlockValidator BlockValidator => _fromContainer.BlockValidator;
 
-    public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
+    public IManualBlockProductionTrigger BlockProductionTrigger => _fromContainer.BlockProductionTrigger;
 
-    public ManualTimestamper Timestamper { get; private set; } = null!;
+    public ManualTimestamper Timestamper => _fromContainer.ManualTimestamper;
     public IBlocksConfig BlocksConfig => Container.Resolve<IBlocksConfig>();
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
@@ -152,6 +157,11 @@ public class TestBlockchain : IDisposable
         IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory,
         IBlockProducerEnvFactory BlockProducerEnvFactory,
         Configuration Configuration,
+        Lazy<TestBlockchainUtil> TestBlockchainUtil,
+        Lazy<PoWTestBlockchainUtil> PoWTestBlockchainUtil,
+        ManualTimestamper ManualTimestamper,
+        IManualBlockProductionTrigger BlockProductionTrigger,
+        IShareableTxProcessorSource ShareableTxProcessorSource,
         ISealer Sealer
     )
     {
@@ -170,7 +180,6 @@ public class TestBlockchain : IDisposable
     // Try to use plugin's module where possible to make sure prod and test components are wired similarly.
     protected virtual async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
     {
-        Timestamper = new ManualTimestamper(InitialTimestamp);
         JsonSerializer = new EthereumJsonSerializer();
 
         IConfigProvider configProvider = new ConfigProvider(CreateConfigs().ToArray());
@@ -237,15 +246,7 @@ public class TestBlockchain : IDisposable
         BlockProducerRunner.Start();
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
 
-        _cts = AutoCancelTokenSource.ThatCancelAfter(TimeSpan.FromMilliseconds(TestTimout));
-        _testUtil = new TestBlockchainUtil(
-            BlockProducerRunner,
-            BlockProductionTrigger,
-            Timestamper,
-            BlockTree,
-            TxPool,
-            testConfiguration.SlotTime
-        );
+        _cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimout));
 
         if (testConfiguration.SuggestGenesisOnStart)
         {
@@ -272,6 +273,7 @@ public class TestBlockchain : IDisposable
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, Random.Shared.Next().ToString()))
             .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
             .AddDecorator<ISpecProvider>((ctx, specProvider) => WrapSpecProvider(specProvider))
+            .AddSingleton<ManualTimestamper>(new ManualTimestamper(InitialTimestamp))
             .AddSingleton<Configuration>()
             .AddSingleton<FromContainer>()
 
@@ -279,7 +281,29 @@ public class TestBlockchain : IDisposable
             .AddSingleton<ISealValidator>(Always.Valid)
             .AddSingleton<IUnclesValidator>(Always.Valid)
             .AddSingleton<ISealer>(new NethDevSealEngine(TestItem.AddressD))
-        ;
+
+            .AddSingleton<IBlockProducer>((_) => this.BlockProducer)
+            .AddSingleton<IBlockProducerRunner>((_) => this.BlockProducerRunner)
+
+            .AddSingleton<TestBlockchainUtil>((ctx) => new TestBlockchainUtil(
+                ctx.Resolve<IBlockProducer>(),
+                ctx.Resolve<ManualTimestamper>(),
+                ctx.Resolve<IBlockTree>(),
+                ctx.Resolve<ITxPool>(),
+                ctx.Resolve<Configuration>().SlotTime
+            ))
+
+            .AddSingleton<PoWTestBlockchainUtil>((ctx) => new PoWTestBlockchainUtil(
+                ctx.Resolve<IBlockProducerRunner>(),
+                ctx.Resolve<IManualBlockProductionTrigger>(),
+                ctx.Resolve<ManualTimestamper>(),
+                ctx.Resolve<IBlockTree>(),
+                ctx.Resolve<ITxPool>(),
+                ctx.Resolve<Configuration>().SlotTime
+            ))
+
+            .AddSingleton<IBlockProcessingQueue>((ctx) => this.BlockProcessingQueue)
+    ;
 
     protected virtual IEnumerable<IConfig> CreateConfigs()
     {
@@ -298,7 +322,7 @@ public class TestBlockchain : IDisposable
 
     protected virtual IBlockProducer CreateTestBlockProducer()
     {
-        BlockProducerEnv env = BlockProducerEnvFactory.Create();
+        IBlockProducerEnv env = BlockProducerEnvFactory.Create();
         return new TestBlockProducer(
             env.TxSource,
             env.ChainProcessor,
@@ -316,7 +340,7 @@ public class TestBlockchain : IDisposable
         return new StandardBlockProducerRunner(BlockProductionTrigger, BlockTree, BlockProducer);
     }
 
-    public virtual ILogManager LogManager { get; set; } = LimboLogs.Instance;
+    public ILogManager LogManager => Container.Resolve<ILogManager>();
 
     public BlockBuilder GenesisBlockBuilder { get; set; } = null!;
 
@@ -357,8 +381,29 @@ public class TestBlockchain : IDisposable
     protected virtual async Task AddBlocksOnStart()
     {
         await AddBlock();
-        await AddBlock(BuildSimpleTransaction.WithNonce(0).TestObject);
-        await AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
+        await AddBlock(CreateTransactionBuilder().WithNonce(0).TestObject);
+        await AddBlock(CreateTransactionBuilder().WithNonce(1).TestObject, CreateTransactionBuilder().WithNonce(2).TestObject);
+    }
+
+    private TransactionBuilder<Transaction> CreateTransactionBuilder()
+    {
+        TransactionBuilder<Transaction> txBuilder = BuildSimpleTransaction;
+
+        Block? head = BlockFinder.Head;
+        if (head is not null)
+        {
+            IReleaseSpec headReleaseSpec = SpecProvider.GetSpec(head.Header);
+
+            if (headReleaseSpec.IsEip1559Enabled && headReleaseSpec.Eip1559TransitionBlock <= head.Number)
+            {
+                UInt256 nextFee = headReleaseSpec.BaseFeeCalculator.Calculate(head.Header, headReleaseSpec);
+                txBuilder = txBuilder
+                    .WithType(TxType.EIP1559)
+                    .WithMaxFeePerGasIfSupports1559(nextFee * 2);
+            }
+        }
+
+        return txBuilder;
     }
 
     protected virtual IBlockProcessor CreateBlockProcessor(IWorldState state) =>
@@ -401,12 +446,22 @@ public class TestBlockchain : IDisposable
 
     public async Task AddBlock(params Transaction[] transactions)
     {
-        await _testUtil.AddBlockAndWaitForHead(_cts.Token, transactions);
+        await TestUtil.AddBlockAndWaitForHead(false, _cts.Token, transactions);
+    }
+
+    public async Task AddBlockMayMissTx(params Transaction[] transactions)
+    {
+        await TestUtil.AddBlockAndWaitForHead(true, _cts.Token, transactions);
+    }
+
+    public async Task AddBlockThroughPoW(params Transaction[] transactions)
+    {
+        await PoWTestUtil.AddBlockAndWaitForHead(_cts.Token, transactions);
     }
 
     public async Task AddBlockDoNotWaitForHead(params Transaction[] transactions)
     {
-        await _testUtil.AddBlockDoNotWaitForHead(_cts.Token, transactions);
+        await TestUtil.AddBlockDoNotWaitForHead(false, _cts.Token, transactions);
     }
 
     public void AddTransactions(params Transaction[] txs)
@@ -431,7 +486,7 @@ public class TestBlockchain : IDisposable
     /// <param name="ether">Value of ether to add to the account</param>
     /// <returns></returns>
     public async Task AddFunds(Address address, UInt256 ether) =>
-        await AddBlock(GetFundsTransaction(address, ether));
+        await AddBlockMayMissTx(GetFundsTransaction(address, ether));
 
     public async Task AddFunds(params (Address address, UInt256 ether)[] funds) =>
         await AddBlock(funds.Select((f, i) => GetFundsTransaction(f.address, f.ether, (uint)i)).ToArray());
@@ -441,7 +496,7 @@ public class TestBlockchain : IDisposable
 
     private Transaction GetFundsTransaction(Address address, UInt256 ether, uint index = 0)
     {
-        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.StateRoot!, TestItem.AddressA);
+        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
         Transaction tx = Builders.Build.A.Transaction
             .SignedAndResolved(TestItem.PrivateKeyA)
             .To(address)
@@ -453,7 +508,7 @@ public class TestBlockchain : IDisposable
 
     private Transaction GetFunds1559Transaction(Address address, UInt256 ether, uint index = 0)
     {
-        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.StateRoot!, TestItem.AddressA);
+        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
         Transaction tx = Builders.Build.A.Transaction
             .SignedAndResolved(TestItem.PrivateKeyA)
             .To(address)

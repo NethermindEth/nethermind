@@ -119,6 +119,15 @@ namespace Nethermind.Synchronization.Blocks
             {
                 return await DoPrepareRequest(options, fastSyncLag, cancellation);
             }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"Unhandled exception in {nameof(BlockDownloader)}: {ex}");
+#if DEBUG
+                throw;
+#else
+                return null;
+#endif
+            }
             finally
             {
                 _requestLock.Release();
@@ -186,6 +195,8 @@ namespace Nethermind.Synchronization.Blocks
                         return null;
                     }
 
+                    GC.KeepAlive(entry.ParentHeader); // ParentHeader is used with `Header.MaybeParent` to ensure reference is kept.
+
                     if (SuggestBlock(entry.PeerInfo, entry.Block, blockIndex == 0, shouldProcess, downloadReceipts, entry.Receipts))
                     {
                         if (shouldProcess)
@@ -252,10 +263,16 @@ namespace Nethermind.Synchronization.Blocks
             BlockHeader parentHeader = headers[0];
             foreach (var blockHeader in headers.Skip(1))
             {
+                if (parentHeader.Hash != blockHeader.ParentHash)
+                {
+                    // Precaution for weird consensus
+                    throw new InvalidOperationException($"{nameof(IForwardHeaderProvider)} return a disconnected chain");
+                }
+
                 BlockEntry? entry;
                 while (!_downloadRequests.TryGetValue(blockHeader.Hash!, out entry))
                 {
-                    blockHeader.MaybeParent ??= new WeakReference<BlockHeader>(parentHeader);
+                    blockHeader.MaybeParent = new WeakReference<BlockHeader>(parentHeader);
                     _downloadRequests.TryAdd(blockHeader.Hash, new BlockEntry(parentHeader, blockHeader, null, null, null));
                 }
                 parentHeader = blockHeader;

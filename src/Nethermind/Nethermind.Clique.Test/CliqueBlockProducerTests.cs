@@ -27,8 +27,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using System;
@@ -39,6 +38,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.State;
 
 namespace Nethermind.Clique.Test;
 

@@ -7,17 +7,16 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.Stats.Model;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using System.Text.Json;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Admin;
 
@@ -183,7 +182,7 @@ public class AdminRpcModule : IAdminRpcModule
             return ResultWrapper<bool>.Fail("Unable to find block. Unable to know state root to verify.");
         }
 
-        return ResultWrapper<bool>.Success(_stateReader.HasStateForBlock(header));
+        return ResultWrapper<bool>.Success(_stateReader.HasStateForBlock(header!));
     }
 
     public ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null)

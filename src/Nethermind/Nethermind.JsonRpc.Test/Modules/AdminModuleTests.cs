@@ -23,13 +23,13 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -278,7 +278,7 @@ public class AdminModuleTests
     public async Task Test_hasStateForBlock()
     {
         (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_isStateRootAvailable", "latest")).Should().Contain("false");
-        _stateReader.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
+        _stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
         (await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_isStateRootAvailable", "latest")).Should().Contain("true");
     }
 

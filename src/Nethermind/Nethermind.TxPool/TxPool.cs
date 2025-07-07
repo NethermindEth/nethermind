@@ -78,6 +78,7 @@ namespace Nethermind.TxPool
         private Hash256? _lastBlockHash;
 
         private bool _isDisposed;
+        private long _pendingTransactionsAdded = 0;
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
@@ -347,7 +348,7 @@ namespace Nethermind.TxPool
                         blobTx.SenderAddress ??= _ecdsa.RecoverAddress(blobTx);
                         SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                     }
-                    if (_logger.IsDebug) _logger.Debug($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
+                    if (_logger.IsTrace) _logger.Trace($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
                     _blobTxStorage.DeleteBlobTransactionsFromBlock(previousBlock.Number);
                 }
@@ -463,6 +464,7 @@ namespace Nethermind.TxPool
 
         public bool AcceptTxWhenNotSynced { get; set; }
         public bool SupportsBlobs { get; }
+        public long PendingTransactionsAdded => Volatile.Read(ref _pendingTransactionsAdded);
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
@@ -617,6 +619,7 @@ namespace Nethermind.TxPool
 
             relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, _updateBucketAdded);
             Interlocked.Increment(ref Metrics.PendingTransactionsAdded);
+            Interlocked.Increment(ref _pendingTransactionsAdded);
             if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
             if (tx.SupportsBlobs) { Metrics.PendingBlobTransactionsAdded++; }
 

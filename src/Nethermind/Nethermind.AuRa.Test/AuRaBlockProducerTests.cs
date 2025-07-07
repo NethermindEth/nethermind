@@ -21,7 +21,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NSubstitute;
 using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
@@ -72,7 +72,7 @@ namespace Nethermind.AuRa.Test
                     block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, block.GasLimit).ToArray());
                     return block;
                 });
-                StateProvider.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => true);
+                StateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(x => true);
                 InitProducer();
             }
 

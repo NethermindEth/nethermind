@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -38,7 +39,7 @@ public class StateProviderTests
         frontierProvider.CommitTree(0);
 
         IWorldState provider = worldStateManager.GlobalWorldState;
-        provider.StateRoot = frontierProvider.StateRoot;
+        provider.SetBaseBlock(Build.A.BlockHeader.WithStateRoot(frontierProvider.StateRoot).TestObject);
 
         provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
         provider.Commit(SpuriousDragon.Instance);
@@ -66,7 +67,7 @@ public class StateProviderTests
     public void Can_dump_state()
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState provider = worldStateManager.GlobalWorldState;
+        IVisitingWorldState provider = worldStateManager.GlobalWorldState;
         provider.CreateAccount(TestItem.AddressA, 1.Ether());
         provider.Commit(MuirGlacier.Instance);
         provider.CommitTree(0);
@@ -79,7 +80,7 @@ public class StateProviderTests
     public void Can_accepts_visitors()
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IWorldState provider = worldStateManager.GlobalWorldState;
+        IVisitingWorldState provider = worldStateManager.GlobalWorldState;
         provider.CreateAccount(TestItem.AddressA, 1.Ether());
         provider.Commit(MuirGlacier.Instance);
         provider.CommitTree(0);

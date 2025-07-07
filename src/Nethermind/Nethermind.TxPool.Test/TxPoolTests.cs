@@ -27,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool.Filters;
 using NSubstitute;

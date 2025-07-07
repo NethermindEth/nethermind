@@ -15,6 +15,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -798,9 +799,9 @@ namespace Nethermind.Trie.Test
         [Repeat(10)]
         public void Fuzz_accounts(
             (TrieStoreConfigurations trieStoreConfig,
-            int accountsCount,
-            int blocksCount,
-            int uniqueValuesCount) test)
+                int accountsCount,
+                int blocksCount,
+                int uniqueValuesCount) test)
         {
             (TrieStoreConfigurations trieStoreConfig, int accountsCount, int blocksCount, int uniqueValuesCount) = test;
 
@@ -908,10 +909,10 @@ namespace Nethermind.Trie.Test
         [TestCaseSource(nameof(FuzzAccountsWithReorganizationsScenarios))]
         public void Fuzz_accounts_with_reorganizations(
             (TrieStoreConfigurations trieStoreConfig,
-            int accountsCount,
-            int blocksCount,
-            int uniqueValuesCount,
-            int? seed) scenario)
+                int accountsCount,
+                int blocksCount,
+                int uniqueValuesCount,
+                int? seed) scenario)
         {
             (TrieStoreConfigurations trieStoreConfig,
                 int accountsCount,
@@ -1072,9 +1073,9 @@ namespace Nethermind.Trie.Test
         [TestCaseSource(nameof(FuzzAccountsWithStorageScenarios))]
         public void Fuzz_accounts_with_storage(
             (TrieStoreConfigurations trieStoreConfigurations,
-            int accountsCount,
-            int blocksCount,
-            int? seed) scenario)
+                int accountsCount,
+                int blocksCount,
+                int? seed) scenario)
         {
             (TrieStoreConfigurations trieStoreConfigurations, int accountsCount, int blocksCount, int? seed) = scenario;
 
@@ -1092,7 +1093,7 @@ namespace Nethermind.Trie.Test
             using FileStream fileStream = new(fileName, FileMode.Create);
             using StreamWriter streamWriter = new(fileStream);
 
-            Queue<Hash256> rootQueue = new();
+            Queue<BlockHeader> rootQueue = new();
 
             IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
             IWorldState stateProvider = worldStateManager.GlobalWorldState;
@@ -1172,7 +1173,9 @@ namespace Nethermind.Trie.Test
 
                 if (blockNumber > blocksCount - Reorganization.MaxDepth)
                 {
-                    rootQueue.Enqueue(stateProvider.StateRoot);
+                    rootQueue.Enqueue(
+                        Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithNumber(blockNumber).TestObject
+                    );
                 }
             }
 
@@ -1181,11 +1184,11 @@ namespace Nethermind.Trie.Test
 
             int verifiedBlocks = 0;
 
-            while (rootQueue.TryDequeue(out Hash256 currentRoot))
+            while (rootQueue.TryDequeue(out BlockHeader baseBlock))
             {
                 try
                 {
-                    stateProvider.StateRoot = currentRoot;
+                    stateProvider.SetBaseBlock(baseBlock);
                     for (int i = 0; i < addresses.Length; i++)
                     {
                         if (stateProvider.AccountExists(addresses[i]))

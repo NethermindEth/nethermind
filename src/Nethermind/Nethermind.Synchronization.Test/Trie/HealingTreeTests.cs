@@ -21,7 +21,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.State.Healing;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
@@ -128,7 +128,7 @@ public class HealingTreeTests
         await using IContainer client = CreateNode();
 
         // Add some data to the server.
-        Hash256 stateRoot = FillStorage(server);
+        BlockHeader baseBlock = FillStorage(server);
 
         RandomCopyState(server, client);
 
@@ -150,11 +150,11 @@ public class HealingTreeTests
                 .Build();
         }
 
-        Hash256 FillStorage(IContainer server)
+        BlockHeader FillStorage(IContainer server)
         {
             IWorldState mainWorldState = server.Resolve<MainBlockProcessingContext>().WorldState;
             IBlockTree blockTree = server.Resolve<IBlockTree>();
-            mainWorldState.StateRoot = Keccak.EmptyTreeHash;
+            mainWorldState.SetBaseBlock(null);
 
             for (int i = 0; i < 100; i++)
             {
@@ -178,7 +178,7 @@ public class HealingTreeTests
             blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
             blockTree.UpdateMainChain([block], true);
 
-            return mainWorldState.StateRoot;
+            return block.Header;
         }
 
         void RandomCopyState(IContainer server, IContainer client)
@@ -204,7 +204,7 @@ public class HealingTreeTests
         void AssertStorage(IContainer client)
         {
             IWorldState mainWorldState = client.Resolve<MainBlockProcessingContext>().WorldState;
-            mainWorldState.StateRoot = stateRoot;
+            mainWorldState.SetBaseBlock(baseBlock);
 
             for (int i = 0; i < 100; i++)
             {

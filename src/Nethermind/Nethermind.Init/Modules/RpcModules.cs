@@ -11,7 +11,6 @@ using Nethermind.Config;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
-using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Simulate;
@@ -34,6 +33,7 @@ using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Sockets;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -50,6 +50,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .AddSingleton<IEthSyncingInfo, EthSyncingInfo>()
             .AddSingleton<IRpcModuleProvider, RpcModuleProvider>()
             .AddSingleton<IJsonRpcLocalStats, JsonRpcLocalStats>()
+            .AddSingleton<IWebSocketsManager, WebSocketsManager>()
 
             // Smallish RPCs
             .AddSingleton<INetBridge, NetBridge>()
@@ -93,10 +94,12 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
             // Debug
             .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(Environment.ProcessorCount, jsonRpcConfig.Timeout)
-                .AddScoped<IDebugRpcModule, DebugRpcModule>()
+                .AddScoped<GethStyleTracer.BlockProcessingComponents>()
                 .AddScoped<IDebugBridge, DebugBridge>()
+                .AddScoped<IDebugRpcModule, DebugRpcModule>()
                 .AddScoped<IGethStyleTracer, GethStyleTracer>()
                 .AddScoped<IReceiptsMigration, ReceiptMigration>()
+
             ;
     }
 

@@ -19,10 +19,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Clique;
@@ -489,7 +489,7 @@ public class CliqueBlockProducer : IBlockProducer
         header.MixHash = Keccak.Zero;
         header.WithdrawalsRoot = spec.WithdrawalsEnabled ? Keccak.EmptyTreeHash : null;
 
-        _stateProvider.StateRoot = parentHeader.StateRoot!;
+        _stateProvider.SetBaseBlock(parentHeader);
 
         IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentHeader, header.GasLimit, null, filterSource: true);
         Block block = new BlockToProduce(
