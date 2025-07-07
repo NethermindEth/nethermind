@@ -155,8 +155,20 @@ public class AdminRpcModule : IAdminRpcModule
     }
 
     public ResultWrapper<PeerInfo[]> admin_peers(bool includeDetails = false)
-        => ResultWrapper<PeerInfo[]>.Success(
-            _peerPool.ActivePeers.Select(p => new PeerInfo(p.Value, includeDetails)).ToArray());
+    {
+        var validatedPeers = _peerPool.ActivePeers
+            .Where(p => IsValidatedPeer(p.Value))
+            .Select(p => new PeerInfo(p.Value, includeDetails))
+            .ToArray();
+
+        return ResultWrapper<PeerInfo[]>.Success(validatedPeers);
+    }
+
+    private static bool IsValidatedPeer(Peer peer)
+    {
+        return peer.InSession?.IsNetworkIdMatched == true ||
+               peer.OutSession?.IsNetworkIdMatched == true;
+    }
 
     public ResultWrapper<NodeInfo> admin_nodeInfo()
     {
@@ -182,7 +194,7 @@ public class AdminRpcModule : IAdminRpcModule
             return ResultWrapper<bool>.Fail("Unable to find block. Unable to know state root to verify.");
         }
 
-        return ResultWrapper<bool>.Success(_stateReader.HasStateForBlock(header));
+        return ResultWrapper<bool>.Success(_stateReader.HasStateForBlock(header!));
     }
 
     public ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null)

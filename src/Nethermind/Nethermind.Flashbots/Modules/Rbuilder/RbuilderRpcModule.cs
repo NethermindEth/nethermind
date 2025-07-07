@@ -37,7 +37,6 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
         using IReadOnlyTxProcessingScope worldScope = txProcessorSource.Build(blockHeader);
         IWorldState worldState = worldScope.WorldState;
         IReleaseSpec releaseSpec = specProvider.GetSpec(blockHeader);
-        worldState.StateRoot = blockHeader.StateRoot!;
 
         foreach (KeyValuePair<Address, AccountChange> kv in accountDiff)
         {
@@ -115,8 +114,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             return ResultWrapper<AccountState?>.Fail("Block not found", ErrorCodes.ResourceNotFound);
         }
 
-        if (stateReader.TryGetAccount(blockHeader.StateRoot!, address,
-                out AccountStruct account))
+        if (stateReader.TryGetAccount(blockHeader, address, out AccountStruct account))
         {
             return ResultWrapper<AccountState?>.Success(new AccountState(account.Nonce, account.Balance,
                 account.CodeHash));
