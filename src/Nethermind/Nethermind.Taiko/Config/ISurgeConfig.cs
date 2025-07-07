@@ -40,6 +40,6 @@ public interface ISurgeConfig : IConfig
     [ConfigItem(Description = "Percentage of the base fee that is used for boosting.", DefaultValue = "5")]
     int BoostBaseFeePercentage { get; set; }
 
-    [ConfigItem(Description = "Maximum time in seconds to use cached gas price estimates before forcing a refresh.", DefaultValue = "30")]
+    [ConfigItem(Description = "Maximum time in seconds to use cached gas price estimates before forcing a refresh.", DefaultValue = "12")]
     int GasPriceRefreshTimeoutSeconds { get; set; }
 }
