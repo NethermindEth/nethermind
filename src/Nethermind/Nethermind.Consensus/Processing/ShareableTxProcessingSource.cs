@@ -24,7 +24,7 @@ public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFact
     public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
     {
         IReadOnlyTxProcessorSource? source = _envPool.Get();
-        IReadOnlyTxProcessingScope? scope = source.Build(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
+        IReadOnlyTxProcessingScope? scope = source.Build(baseBlock);
         return new ScopeWrapper(source, _envPool, scope);
     }
 

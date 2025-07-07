@@ -194,7 +194,7 @@ public class AdminRpcModule : IAdminRpcModule
             return ResultWrapper<bool>.Fail("Unable to find block. Unable to know state root to verify.");
         }
 
-        return ResultWrapper<bool>.Success(_stateReader.HasStateForBlock(header));
+        return ResultWrapper<bool>.Success(_stateReader.HasStateForBlock(header!));
     }
 
     public ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null)
