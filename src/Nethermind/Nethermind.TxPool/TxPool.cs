@@ -676,11 +676,11 @@ namespace Nethermind.TxPool
                 UInt256 balance = account.Balance;
                 long currentNonce = (long)(account.Nonce);
 
-                UpdateGasBottleneck(transactions, currentNonce, balance, lastElement, updateTx);
+                UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx);
             }
         }
 
-        private void UpdateGasBottleneck(
+        private void UpdateGasBottleneckAndMarkForEviction(
             EnhancedSortedSet<Transaction> transactions,
             long currentNonce,
             UInt256 balance,
@@ -697,7 +697,7 @@ namespace Nethermind.TxPool
             {
                 if (tx.Nonce < currentNonce)
                 {
-                    EvictTx(tx, false);
+                    MarkForEviction(tx, false);
                     continue;
                 }
 
@@ -708,10 +708,10 @@ namespace Nethermind.TxPool
                     switch (_headTxValidator?.IsWellFormed(tx, headSpec))
                     {
                         case HeadTxValidatorResult.InvalidAllowReentrance:
-                            EvictTx(tx, true);
+                            MarkForEviction(tx, true);
                             continue;
                         case HeadTxValidatorResult.Invalid:
-                            EvictTx(tx, false);
+                            MarkForEviction(tx, false);
                             continue;
                     }
 
@@ -733,7 +733,7 @@ namespace Nethermind.TxPool
                         if (tx.CheckForNotEnoughBalance(cumulativeCost, balance, out cumulativeCost))
                         {
                             // balance too low, remove tx from the pool
-                            EvictTx(tx, false);
+                            MarkForEviction(tx, false);
                         }
 
                         gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck ?? 0);
@@ -748,7 +748,7 @@ namespace Nethermind.TxPool
 
                     if (evictNextTxs)
                     {
-                        EvictTx(tx, true);
+                        MarkForEviction(tx, true);
                     }
                 }
                 finally
@@ -757,7 +757,7 @@ namespace Nethermind.TxPool
                 }
             }
 
-            void EvictTx(Transaction tx, bool allowLaterPoolReentrance)
+            void MarkForEviction(Transaction tx, bool allowLaterPoolReentrance)
             {
                 _broadcaster.StopBroadcast(tx.Hash!);
                 if (allowLaterPoolReentrance) _hashCache.DeleteFromLongTerm(tx.Hash!);
@@ -819,7 +819,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    UpdateGasBottleneck(transactions, currentNonce, balance, lastElement, updateTx);
+                    UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx);
                 }
             }
         }

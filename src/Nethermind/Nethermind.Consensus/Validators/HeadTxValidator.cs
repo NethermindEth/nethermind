@@ -1,17 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool;
-using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
-using Nethermind.Evm;
-using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Validators;
 

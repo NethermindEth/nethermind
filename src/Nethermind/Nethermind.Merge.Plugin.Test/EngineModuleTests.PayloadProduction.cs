@@ -746,9 +746,9 @@ public partial class EngineModuleTests
         chain.GenesisBlockBuilder = Build.A.Block.Genesis.Genesis.WithTimestamp(1UL).WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap * 2);
         await chain.Build(new TestSpecProvider(initialSpec) { SpecToReturn = isForked ? nextBlockSpec : initialSpec });
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-        Hash256 blockX = chain.BlockTree.HeadHash;
-        await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 blockHash = chain.BlockTree.HeadHash;
+        await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(blockHash, Keccak.Zero, blockHash));
 
         AcceptTxResult initiallyAccepted = chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
         Assert.That(initiallyAccepted, Is.EqualTo(AcceptTxResult.Accepted));
