@@ -302,6 +302,7 @@ public class TestBlockchain : IDisposable
                 ctx.Resolve<Configuration>().SlotTime
             ))
 
+            .AddSingleton<IBlockProcessingQueue>((ctx) => this.BlockProcessingQueue)
     ;
 
     protected virtual IEnumerable<IConfig> CreateConfigs()

@@ -20,7 +20,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
     IPayloadPreparationService payloadPreparationService,
     ISpecProvider specProvider,
     ILogManager logManager,
-    CensorshipDetector? censorshipDetector = null)
+    ICensorshipDetector? censorshipDetector = null)
     : IAsyncHandler<byte[], TGetPayloadResult?>
     where TGetPayloadResult : IForkValidator
 {
