@@ -152,7 +152,7 @@ public class HealingTreeTests
 
         BlockHeader FillStorage(IContainer server)
         {
-            IWorldState mainWorldState = server.Resolve<MainBlockProcessingContext>().WorldState;
+            IWorldState mainWorldState = server.Resolve<AutoMainProcessingContext>().WorldState;
             IBlockTree blockTree = server.Resolve<IBlockTree>();
             mainWorldState.SetBaseBlock(null);
 
@@ -203,7 +203,7 @@ public class HealingTreeTests
 
         void AssertStorage(IContainer client)
         {
-            IWorldState mainWorldState = client.Resolve<MainBlockProcessingContext>().WorldState;
+            IWorldState mainWorldState = client.Resolve<AutoMainProcessingContext>().WorldState;
             mainWorldState.SetBaseBlock(baseBlock);
 
             for (int i = 0; i < 100; i++)
