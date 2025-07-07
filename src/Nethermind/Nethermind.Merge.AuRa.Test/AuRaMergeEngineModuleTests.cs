@@ -11,6 +11,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Withdrawals;
@@ -152,19 +153,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             baseChainSpec.Parameters = new ChainParameters();
             return baseChainSpec;
         }
-
-        protected override IBlockProcessor CreateBlockProcessor(IWorldState state)
-        {
-            // Note: Different from production. No aura validator,
-            IBlockProcessor processor = Container.Resolve<ILifetimeScope>().BeginLifetimeScope((builder) => builder
-                    .AddScoped(state)
-                    .AddScoped(CreateBlockCachePreWarmer())
-                    .AddModule(Container.Resolve<IBlockValidationModule[]>()))
-                .Resolve<IBlockProcessor>();
-
-            return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
-        }
-
 
         protected override IBlockProducer CreateTestBlockProducer()
         {

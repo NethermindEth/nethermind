@@ -273,7 +273,7 @@ public static class ContainerBuilderExtensions
             .CommonNethermindConfig()
             .InstancePerLifetimeScope();
 
-        builder.Bind<T, TImpl>();
+        builder.BindScoped<T, TImpl>();
 
         return builder;
     }
@@ -424,6 +424,19 @@ public static class ContainerBuilderExtensions
     {
         builder.Register(static (it) => it.Resolve<TFrom>())
             .As<TTo>()
+            .ExternallyOwned();
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Like <see cref="Bind"/> but register as scoped. Make a difference with decorator. Otherwise, does not make a difference.
+    /// </summary>
+    public static ContainerBuilder BindScoped<TTo, TFrom>(this ContainerBuilder builder) where TFrom : TTo where TTo : notnull
+    {
+        builder.Register(static (it) => it.Resolve<TFrom>())
+            .As<TTo>()
+            .InstancePerLifetimeScope()
             .ExternallyOwned();
 
         return builder;

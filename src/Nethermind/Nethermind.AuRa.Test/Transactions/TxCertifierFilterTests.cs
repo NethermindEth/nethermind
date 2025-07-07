@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
@@ -19,6 +21,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -136,29 +139,16 @@ public class TxCertifierFilterTests
         public RegisterContract RegisterContract { get; private set; }
         public CertifierContract CertifierContract { get; private set; }
 
-        protected override BlockProcessor CreateBlockProcessor(IWorldState worldState)
+        protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
+            TestBlockchain blockchain = await base.Build(configurer);
             AbiEncoder abiEncoder = AbiEncoder.Instance;
             RegisterContract = new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, ReadOnlyTxProcessingEnvFactory.Create());
             CertifierContract = new CertifierContract(
                 abiEncoder,
                 RegisterContract,
                 ReadOnlyTxProcessingEnvFactory.Create());
-
-            return new AuRaBlockProcessor(
-                SpecProvider,
-                Always.Valid,
-                new RewardCalculator(SpecProvider),
-                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(TxProcessor), worldState),
-                worldState,
-                ReceiptStorage,
-                new BeaconBlockRootHandler(TxProcessor, worldState),
-                LimboLogs.Instance,
-                BlockTree,
-                NullWithdrawalProcessor.Instance,
-                new ExecutionRequestsProcessor(TxProcessor),
-                auRaValidator: null,
-                preWarmer: CreateBlockCachePreWarmer());
+            return blockchain;
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;

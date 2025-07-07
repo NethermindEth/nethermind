@@ -145,14 +145,13 @@ namespace Nethermind.Consensus.AuRa
         /// <param name="gasLimitOverrideFactory"></param>
         private class AuraValidationModule(
             AuRaChainSpecEngineParameters parameters,
-            ISpecProvider specProvider,
             TxAuRaFilterBuilders txAuRaFilterBuilders,
             AuRaGasLimitOverrideFactory gasLimitOverrideFactory
         ) : Module, IBlockValidationModule
         {
             protected override void Load(ContainerBuilder builder)
             {
-                ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter(specProvider));
+                ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter());
 
                 IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
                 ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
