@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -10,6 +11,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Evm;
+using Nethermind.Core.Events;
 
 namespace Nethermind.Init.Steps;
 
@@ -26,7 +28,14 @@ public class RegisterPluginRpcModules(
     {
         if (!initConfig.InRunnerTest)
         {
-            await blockProcessingQueue.ProcessingCompletedTask;
+            if (!blockProcessingQueue.IsEmpty)
+            {
+                await Wait.ForEvent(
+                    cancellationToken,
+                    h => blockProcessingQueue.ProcessingQueueEmpty += h,
+                    h => blockProcessingQueue.ProcessingQueueEmpty -= h
+                );
+            }
         }
 
         foreach (INethermindPlugin plugin in plugins)

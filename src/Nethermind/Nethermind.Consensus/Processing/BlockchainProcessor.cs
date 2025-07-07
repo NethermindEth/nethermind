@@ -76,8 +76,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private const int MaxBranchSize = 8192;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
-    private TaskCompletionSource<bool> _processingCompletedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    public Task ProcessingCompletedTask => _processingCompletedTcs.Task;
 
     public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
 
@@ -144,11 +142,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (!_recoveryComplete)
         {
             Interlocked.Increment(ref _queueCount);
-            // Reset the TCS if new blocks are enqueued after completion
-            if (_processingCompletedTcs.Task.IsCompleted)
-            {
-                _processingCompletedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            }
             try
             {
                 _recoveryQueue.Writer.TryWrite(blockRef);
@@ -346,7 +339,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     {
         if (((IBlockProcessingQueue)this).IsEmpty)
         {
-            _processingCompletedTcs.TrySetResult(true);
             ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
         }
     }
