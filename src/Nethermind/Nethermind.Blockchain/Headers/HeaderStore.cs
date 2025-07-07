@@ -20,13 +20,16 @@ public class HeaderStore : IHeaderStore
 {
     // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
     public const int CacheSize = 256 + 16;
+    // Numbers mapping is smaller keep 4 times more
+    public const int NumberCacheSize = CacheSize * 4;
 
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
-    private readonly HeaderDecoder _headerDecoder = new();
+    private static readonly HeaderDecoder _headerDecoder = new();
     private readonly ClockCache<Hash256AsKey, BlockHeader> _headerCache = new(CacheSize);
     private readonly ClockCache<Hash256AsKey, BlockHeader> _headerCanonicalCache = new(CacheSize);
     private readonly ClockCache<Hash256AsKey, BlockHeader> _headerWithoutDifficultyCache = new(CacheSize);
+    private readonly ClockCache<Hash256AsKey, long> _numberCache = new(NumberCacheSize);
 
     public HeaderStore([KeyFilter(DbNames.Headers)] IDb headerDb, [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb)
     {
@@ -54,6 +57,7 @@ public class HeaderStore : IHeaderStore
 
             header.Number.WriteBigEndian(blockNumberSpan);
             blockNumberWriteBatch.Set(header.Hash, blockNumberSpan);
+            CacheNumber(header.Hash, header.Number);
         }
     }
 
@@ -91,6 +95,7 @@ public class HeaderStore : IHeaderStore
 
     public bool Cache(BlockHeader header, bool hasDifficulty, bool isCanonical = false)
     {
+        CacheNumber(header.Hash, header.Number);
         if (hasDifficulty)
         {
             if (isCanonical)
@@ -117,6 +122,7 @@ public class HeaderStore : IHeaderStore
         _headerCache.Delete(blockHash);
         _headerCanonicalCache.Delete(blockHash);
         _headerWithoutDifficultyCache.Delete(blockHash);
+        _numberCache.Delete(blockHash);
     }
 
     public void InsertBlockNumber(Hash256 blockHash, long blockNumber)
@@ -124,19 +130,50 @@ public class HeaderStore : IHeaderStore
         Span<byte> blockNumberSpan = stackalloc byte[8];
         blockNumber.WriteBigEndian(blockNumberSpan);
         _blockNumberDb.Set(blockHash, blockNumberSpan);
+        CacheNumber(blockHash, blockNumber);
     }
+
+    private void CacheNumber(Hash256 blockHash, long blockNumber)
+        => _numberCache.Set(blockHash, blockNumber);
 
     public long? GetBlockNumber(Hash256 blockHash)
     {
+        if (_numberCache.TryGet(blockHash, out long number))
+        {
+            return number;
+        }
+
+        return GetBlockNumberThroughHeaderCache(blockHash);
+    }
+
+    private long? GetBlockNumberThroughHeaderCache(Hash256 blockHash)
+    {
+        if (TryGetCache(blockHash, needsDifficulty: false, requiresCanonical: false, out BlockHeader header))
+        {
+            CacheNumber(blockHash, header.Number);
+            return header.Number;
+        }
+
         long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
         if (blockNumber is not null) return blockNumber.Value;
 
         // Probably still hash based
-        return Get(blockHash)?.Number;
+        blockNumber = Get(blockHash)?.Number;
+        if (blockNumber.HasValue)
+        {
+            CacheNumber(blockHash, blockNumber.Value);
+        }
+        return blockNumber;
     }
 
     private long? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
     {
+        // Double check cache as we have done a fair amount of checks
+        // since the cache check and something else might have populated it.
+        if (_numberCache.TryGet(blockHash, out long number))
+        {
+            return number;
+        }
         Span<byte> numberSpan = _blockNumberDb.GetSpan(blockHash);
         if (numberSpan.IsNullOrEmpty()) return null;
         try
@@ -146,7 +183,9 @@ public class HeaderStore : IHeaderStore
                 throw new InvalidDataException($"Unexpected number span length: {numberSpan.Length}");
             }
 
-            return BinaryPrimitives.ReadInt64BigEndian(numberSpan);
+            number = BinaryPrimitives.ReadInt64BigEndian(numberSpan);
+            CacheNumber(blockHash, number);
+            return number;
         }
         finally
         {
