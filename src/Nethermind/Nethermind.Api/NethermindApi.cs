@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -133,6 +132,7 @@ namespace Nethermind.Api
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
+        public IHeadTxValidator? HeadTxValidator => Context.ResolveOptional<IHeadTxValidator>();
         public IBlockFinalizationManager? FinalizationManager { get; set; }
 
         public IBlockProducerEnvFactory BlockProducerEnvFactory => Context.Resolve<IBlockProducerEnvFactory>();
