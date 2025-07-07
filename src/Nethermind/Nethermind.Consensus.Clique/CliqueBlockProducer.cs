@@ -490,7 +490,7 @@ public class CliqueBlockProducer : IBlockProducer
         header.MixHash = Keccak.Zero;
         header.WithdrawalsRoot = spec.WithdrawalsEnabled ? Keccak.EmptyTreeHash : null;
 
-        _stateProvider.StateRoot = parentHeader.StateRoot!;
+        _stateProvider.SetBaseBlock(parentHeader);
 
         IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentHeader, header.GasLimit, null, filterSource: true);
         Block block = new BlockToProduce(

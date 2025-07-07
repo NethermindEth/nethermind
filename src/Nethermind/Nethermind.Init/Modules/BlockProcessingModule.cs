@@ -68,7 +68,6 @@ public class BlockProcessingModule : Module
             .AddSingleton<ISealer>(NullSealEngine.Instance)
             .AddSingleton<ISealEngine, SealEngine>()
 
-            .AddSingleton<ISimulateTransactionProcessorFactory>(SimulateTransactionProcessorFactory.Instance)
             .AddSingleton<IBlockProducerEnvFactory, BlockProducerEnvFactory>()
             .AddSingleton<IBlockProducerTxSourceFactory, TxPoolTxSourceFactory>()
 
