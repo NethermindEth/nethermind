@@ -41,7 +41,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         BlockHeader parent,
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
         IWorldState stateProvider,
-        OverridableCodeInfoRepository codeInfoRepository,
+        IOverridableCodeInfoRepository codeInfoRepository,
         IReleaseSpec releaseSpec)
     {
         stateProvider.SetBaseBlock(parent);
@@ -65,7 +65,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
-        SimulateReadOnlyBlocksProcessingEnv env,
+        SimulateReadOnlyBlocksProcessingScope env,
         CancellationToken cancellationToken)
     {
         List<SimulateBlockResult<TTrace>> list = new();
@@ -96,7 +96,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private bool TrySimulate<TTrace>(BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
-        SimulateReadOnlyBlocksProcessingEnv env,
+        SimulateReadOnlyBlocksProcessingScope env,
         List<SimulateBlockResult<TTrace>> output,
         CancellationToken cancellationToken,
         [NotNullWhen(false)] out string? error)
@@ -204,7 +204,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
     private static bool TryGetBlock(
         SimulatePayload<TransactionWithSourceDetails> payload,
-        SimulateReadOnlyBlocksProcessingEnv env,
+        SimulateReadOnlyBlocksProcessingScope env,
         BlockHeader callHeader,
         Transaction[] transactions,
         out Block currentBlock,
