@@ -60,6 +60,7 @@ public class TestBlockchain : IDisposable
     public ITxPool TxPool => _fromContainer.TxPool;
     public IWorldStateManager WorldStateManager => _fromContainer.WorldStateManager;
     public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => _fromContainer.ReadOnlyTxProcessingEnvFactory;
+    public IShareableTxProcessorSource ShareableTxProcessorSource => _fromContainer.ShareableTxProcessorSource;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
@@ -162,6 +163,7 @@ public class TestBlockchain : IDisposable
         Lazy<PoWTestBlockchainUtil> PoWTestBlockchainUtil,
         ManualTimestamper ManualTimestamper,
         IManualBlockProductionTrigger BlockProductionTrigger,
+        IShareableTxProcessorSource ShareableTxProcessorSource,
         ISealer Sealer
     )
     {
@@ -302,6 +304,7 @@ public class TestBlockchain : IDisposable
                 ctx.Resolve<Configuration>().SlotTime
             ))
 
+            .AddSingleton<IBlockProcessingQueue>((ctx) => this.BlockProcessingQueue)
     ;
 
     protected virtual IEnumerable<IConfig> CreateConfigs()
@@ -495,7 +498,7 @@ public class TestBlockchain : IDisposable
 
     private Transaction GetFundsTransaction(Address address, UInt256 ether, uint index = 0)
     {
-        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.StateRoot!, TestItem.AddressA);
+        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
         Transaction tx = Builders.Build.A.Transaction
             .SignedAndResolved(TestItem.PrivateKeyA)
             .To(address)
@@ -507,7 +510,7 @@ public class TestBlockchain : IDisposable
 
     private Transaction GetFunds1559Transaction(Address address, UInt256 ether, uint index = 0)
     {
-        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.StateRoot!, TestItem.AddressA);
+        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
         Transaction tx = Builders.Build.A.Transaction
             .SignedAndResolved(TestItem.PrivateKeyA)
             .To(address)

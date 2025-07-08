@@ -62,7 +62,7 @@ public partial class EngineModuleTests
                 return improvementContextFactory;
             }));
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
@@ -168,7 +168,7 @@ public partial class EngineModuleTests
             .AddSingleton<IBlocksConfig>(new BlocksConfig() { SecondsPerSlot = 1000 })
         );
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
         Task blockImprovementWait = chain.WaitForImprovedBlock();
@@ -215,7 +215,7 @@ public partial class EngineModuleTests
             .AddSingleton<IBlocksConfig>(new BlocksConfig() { SecondsPerSlot = 10 })
         );
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;

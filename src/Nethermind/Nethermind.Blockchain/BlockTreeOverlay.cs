@@ -22,7 +22,11 @@ public class BlockTreeOverlay : IBlockTree
     {
         _baseTree = baseTree ?? throw new ArgumentNullException(nameof(baseTree));
         _overlayTree = overlayTree ?? throw new ArgumentNullException(nameof(overlayTree));
-        _overlayTree.UpdateMainChain(new[] { _baseTree.Head }, true, true);
+    }
+
+    public void ResetMainChain()
+    {
+        _overlayTree.UpdateMainChain(new[] { _baseTree.Head }, true, true); // Cannot be called until blocktree is ready.
     }
 
     public ulong NetworkId => _baseTree.NetworkId;
