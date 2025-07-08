@@ -5,8 +5,9 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 
-namespace Nethermind.Evm.OverridableEnv;
+namespace Nethermind.State.OverridableEnv;
 
 /// <summary>
 /// A utility that provide `IOverridableEnv<T>`
@@ -20,12 +21,6 @@ public class DisposableScopeOverridableEnv<T>(
     T resolvedComponents
 ) : IOverridableEnv<T>
 {
-    public Scope<T> Build(Hash256 stateRoot)
-    {
-        IDisposable disposable = overridableEnv.Build(stateRoot);
-        return new Scope<T>(resolvedComponents, disposable);
-    }
-
     public Scope<T> BuildAndOverride(BlockHeader header)
     {
         IDisposable disposable = overridableEnv.BuildAndOverride(header, null);

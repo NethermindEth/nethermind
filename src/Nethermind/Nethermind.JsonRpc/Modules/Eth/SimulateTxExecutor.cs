@@ -204,7 +204,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
             {
                 foreach (SimulateCallResult? call in result.Calls)
                 {
-                    if (call is { Error: not null } simulateResult && simulateResult.Error.Message != "")
+                    if (call is { Error: not null } simulateResult && !string.IsNullOrEmpty(simulateResult.Error.Message))
                     {
                         simulateResult.Error.Code = ErrorCodes.ExecutionError;
                     }
@@ -216,10 +216,10 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         {
             results.ErrorCode = results.Error switch
             {
-                var x when x.Contains("invalid transaction") => ErrorCodes.InvalidTransaction,
-                var x when x.Contains("InsufficientBalanceException") => ErrorCodes.InvalidTransaction,
-                var x when x.Contains("InvalidBlockException") => ErrorCodes.InvalidParams,
-                var x when x.Contains("below intrinsic gas") => ErrorCodes.InsufficientIntrinsicGas,
+                var e when e.Contains("invalid transaction", StringComparison.OrdinalIgnoreCase) => ErrorCodes.InvalidTransaction,
+                var e when e.Contains("InsufficientBalanceException", StringComparison.OrdinalIgnoreCase) => ErrorCodes.InvalidTransaction,
+                var e when e.Contains("InvalidBlockException", StringComparison.OrdinalIgnoreCase) => ErrorCodes.InvalidParams,
+                var e when e.Contains("below intrinsic gas", StringComparison.OrdinalIgnoreCase) => ErrorCodes.InsufficientIntrinsicGas,
                 _ => results.ErrorCode
             };
         }
@@ -227,7 +227,7 @@ public class SimulateTxExecutor<TTrace>(IBlockchainBridge blockchainBridge, IBlo
         return results.Error is null
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success([.. results.Items])
             : results.ErrorCode is not null
-                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error!, results.ErrorCode!.Value, [.. results.Items])
-                : ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error, [.. results.Items]);
+                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error!, results.ErrorCode!.Value)
+                : ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error);
     }
 }

@@ -13,7 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
-using Nethermind.Evm.OverridableEnv;
+using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Facade;
@@ -200,7 +200,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 }
 
                 Block block = blockSearch.Object;
-                if (!stateReader.HasStateForBlock(block.Header))
+                if (!stateReader.HasStateForBlock(block?.Header))
                 {
                     return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
                 }

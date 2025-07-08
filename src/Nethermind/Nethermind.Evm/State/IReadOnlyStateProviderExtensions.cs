@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using System;
 
-namespace Nethermind.State
+namespace Nethermind.Evm.State
 {
     public static class IReadOnlyStateProviderExtensions
     {

@@ -7,7 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 

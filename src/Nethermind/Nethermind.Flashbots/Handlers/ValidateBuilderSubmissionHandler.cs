@@ -19,9 +19,9 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.State;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.OverridableEnv;
+using Nethermind.Evm.State;
+using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Flashbots.Handlers;
 
@@ -194,16 +194,14 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        using var scope = _blockProcessorEnv.Build(parentHeader.StateRoot!);
+        using var scope = _blockProcessorEnv.BuildAndOverride(parentHeader);
         IWorldState worldState = scope.Component.WorldState;
         IBlockProcessor blockProcessor = scope.Component.BlockProcessor;
 
-        Hash256 stateRoot = parentHeader.StateRoot!;
-        worldState.StateRoot = stateRoot;
         IReleaseSpec spec = _specProvider.GetSpec(parentHeader);
 
         RecoverSenderAddress(block, spec);
-        UInt256 feeRecipientBalanceBefore = worldState.HasStateForRoot(stateRoot) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
+        UInt256 feeRecipientBalanceBefore = worldState.HasStateForBlock(parentHeader) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
 
         List<Block> suggestedBlocks = [block];
         BlockReceiptsTracer blockReceiptsTracer = new();
@@ -214,7 +212,7 @@ public class ValidateSubmissionHandler
             {
                 ValidateSubmissionProcessingOptions |= ProcessingOptions.NoValidation;
             }
-            _ = blockProcessor.Process(stateRoot, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
+            _ = blockProcessor.Process(parentHeader, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
         }
         catch (Exception e)
         {

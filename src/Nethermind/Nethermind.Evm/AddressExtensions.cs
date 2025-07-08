@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm
 {

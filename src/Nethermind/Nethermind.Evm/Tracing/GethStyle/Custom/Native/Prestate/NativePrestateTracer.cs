@@ -10,7 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
 

@@ -6,10 +6,10 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain.Contracts
 {

@@ -492,7 +492,7 @@ public class SnapServerTest
     private IStateReader CreateConstantStateRootTracker(bool available)
     {
         IStateReader tracker = Substitute.For<IStateReader>();
-        tracker.HasStateForRoot(Arg.Any<Hash256>()).Returns(available);
+        tracker.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(available);
         return tracker;
     }
 }

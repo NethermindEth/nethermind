@@ -22,7 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Withdrawals;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Merge.AuRa.InitializationSteps;
 

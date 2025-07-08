@@ -7,16 +7,17 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
-using Nethermind.State.Tracing;
 
-namespace Nethermind.State;
+namespace Nethermind.Evm.State;
 /// <summary>
 /// Represents state that can be anchored at specific state root, snapshot, committed, reverted.
 /// Current format is an intermittent form on the way to a better state management.
 /// </summary>
 public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 {
+    void SetBaseBlock(BlockHeader? header);
     new ref readonly UInt256 GetBalance(Address address);
     new ref readonly ValueHash256 GetCodeHash(Address address);
 
@@ -81,8 +82,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void ClearStorage(Address address);
 
     void RecalculateStateRoot();
-
-    new Hash256 StateRoot { get; set; }
 
     void DeleteAccount(Address address);
 

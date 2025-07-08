@@ -28,6 +28,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
@@ -258,7 +259,7 @@ public class StartBlockProducerAuRa(
             ReadOnlyBlockTree readOnlyBlockTree = blockTree.AsReadOnly();
 
             IReadOnlyTxProcessorSource txProcessingEnv = readOnlyTxProcessingEnvFactory.Create();
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(null);
             BlockProcessor blockProcessor = CreateBlockProcessor(scope);
 
             IBlockchainProcessor blockchainProcessor =

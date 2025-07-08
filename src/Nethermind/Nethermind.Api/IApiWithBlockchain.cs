@@ -3,9 +3,6 @@
 
 #nullable enable
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.FullPruning;
-using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -17,8 +14,6 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Facade;
-using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -41,11 +36,6 @@ namespace Nethermind.Api
 
         IEnode? Enode { get; set; }
 
-        [SkipServiceCollection]
-        IUnclesValidator? UnclesValidator { get; }
-
-        [SkipServiceCollection]
-        IHeaderValidator? HeaderValidator { get; }
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         IRewardCalculatorSource RewardCalculatorSource { get; }
         ISealer Sealer { get; }
@@ -59,7 +49,6 @@ namespace Nethermind.Api
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
         CompositeTxGossipPolicy TxGossipPolicy { get; }
-        IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
 
         [SkipServiceCollection]
@@ -80,6 +69,6 @@ namespace Nethermind.Api
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
-        CensorshipDetector CensorshipDetector { get; set; }
+        ICensorshipDetector CensorshipDetector { get; set; }
     }
 }

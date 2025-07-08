@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.IO;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -28,8 +29,8 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.TxPool;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -52,7 +53,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
+        IShareableTxProcessorSource txProcessorSource,
         IRlpStreamDecoder<Transaction> txDecoder,
         IL1OriginStore l1OriginStore) :
             EngineRpcModule(getPayloadHandlerV1,
@@ -133,8 +134,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             return ResultWrapper<PreBuiltTxList[]?>.Success([]);
         }
 
-        IReadOnlyTxProcessorSource readonlyTxProcessingEnv = readOnlyTxProcessingEnvFactory.Create();
-        using IReadOnlyTxProcessingScope scope = readonlyTxProcessingEnv.Build(head.StateRoot);
+        using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(head);
 
         return ResultWrapper<PreBuiltTxList[]?>.Success(ProcessTransactions(scope.TransactionProcessor, scope.WorldState, new BlockHeader(
                 head.Hash!,
@@ -172,7 +172,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         }
 
         BlockExecutionContext blkCtx = new(blockHeader, _specProvider.GetSpec(blockHeader));
-        worldState.StateRoot = blockHeader.StateRoot;
+        worldState.SetBaseBlock(blockHeader);
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
 

@@ -32,7 +32,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(Prague.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
@@ -169,7 +169,7 @@ public partial class EngineModuleTests
     {
         ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, executionRequestsProcessorMock);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
 
@@ -204,7 +204,7 @@ public partial class EngineModuleTests
     {
         ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, executionRequestsProcessorMock);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
 
@@ -236,7 +236,7 @@ public partial class EngineModuleTests
     public async Task can_progress_chain_one_by_one_v4(int count)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
@@ -250,7 +250,7 @@ public partial class EngineModuleTests
     {
         ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, executionRequestsProcessorMock);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
