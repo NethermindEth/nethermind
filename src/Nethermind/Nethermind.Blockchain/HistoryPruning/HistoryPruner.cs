@@ -82,11 +82,15 @@ public class HistoryPruner : IHistoryPruner
         await _pruneHistoryTask;
     }
 
-    public long? CutoffBlockNumber { get {
-        ulong cutoffTimestamp = CalculateCutoffTimestamp();
-        Block? block = _blockStore.GetBlockByTimestamp(cutoffTimestamp);
-        return block?.Number;
-    }}
+    public long? CutoffBlockNumber
+    {
+        get
+        {
+            ulong cutoffTimestamp = CalculateCutoffTimestamp();
+            Block? block = _blockStore.GetBlockByTimestamp(cutoffTimestamp);
+            return block?.Number;
+        }
+    }
 
     private void CheckConfig()
     {
