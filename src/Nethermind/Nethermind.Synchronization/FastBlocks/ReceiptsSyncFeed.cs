@@ -34,7 +34,7 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedReceiptBlockNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.ReceiptsBarrierWhenStarted;
-        protected override long SyncConfigBarrierCalc => _syncConfig.AncientReceiptsBarrierCalc;
+        protected override long SyncConfigBarrierCalc => _historyPruner.CutoffBlockNumber is null ? _syncConfig.AncientBodiesBarrierCalc : long.Max(_syncConfig.AncientBodiesBarrierCalc, _historyPruner.CutoffBlockNumber.Value);
         protected override Func<bool> HasPivot =>
             () => _receiptStorage.HasBlock(_blockTree.SyncPivot.BlockNumber, _blockTree.SyncPivot.BlockHash);
 
