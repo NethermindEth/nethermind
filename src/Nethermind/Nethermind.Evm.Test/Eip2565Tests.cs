@@ -6,7 +6,7 @@ using System.Linq;
 using FluentAssertions;
 using MathNet.Numerics.Random;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Precompiles;
+using Nethermind.Blockchain.Precompiles;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 

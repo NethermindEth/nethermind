@@ -8,6 +8,9 @@ using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Blockchain.Precompiles;
+using Nethermind.Blockchain.Precompiles.Bls;
+using Nethermind.Blockchain.Precompiles.Snarks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -16,11 +19,10 @@ using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Bls;
-using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.Evm.State;
+using Nethermind.State;
 
-namespace Nethermind.State;
+namespace Nethermind.Blockchain;
 
 public class CodeInfoRepository : ICodeInfoRepository
 {
@@ -64,6 +66,8 @@ public class CodeInfoRepository : ICodeInfoRepository
             ? _precompiles
             : _precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
     }
+
+    public bool IsPrecompile(Address address, IReleaseSpec spec) => address.IsPrecompile(spec);
 
     public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {

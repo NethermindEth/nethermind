@@ -15,6 +15,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using NUnit.Framework;
 using System.Collections.Generic;
+using Nethermind.Blockchain;
 using Nethermind.Core.Test;
 using Nethermind.State;
 

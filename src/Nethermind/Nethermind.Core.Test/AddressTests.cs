@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Diagnostics.CodeAnalysis;
 using FluentAssertions;
+using Nethermind.Blockchain.Precompiles;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -12,7 +13,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;

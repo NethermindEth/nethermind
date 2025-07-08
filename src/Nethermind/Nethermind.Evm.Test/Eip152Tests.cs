@@ -3,7 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Specs;
-using Nethermind.Evm.Precompiles;
+using Nethermind.Blockchain.Precompiles;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;

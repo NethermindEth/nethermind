@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 
-namespace Nethermind.Evm.Precompiles.Bls;
+namespace Nethermind.Blockchain.Precompiles.Bls;
 
 public static class BlsConst
 {

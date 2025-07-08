@@ -5,10 +5,10 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-
+using Nethermind.Evm.Precompiles;
 using G1 = Nethermind.Crypto.Bls.P1;
 
-namespace Nethermind.Evm.Precompiles.Bls;
+namespace Nethermind.Blockchain.Precompiles.Bls;
 
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-2537

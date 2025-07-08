@@ -19,6 +19,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using Nethermind.Trie.Pruning;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Core.Test;
 using Nethermind.State;
 using NUnit.Framework;

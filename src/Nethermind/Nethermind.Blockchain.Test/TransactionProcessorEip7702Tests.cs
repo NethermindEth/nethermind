@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using System;
 using System.Linq;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core.Test;
 using Nethermind.Int256;

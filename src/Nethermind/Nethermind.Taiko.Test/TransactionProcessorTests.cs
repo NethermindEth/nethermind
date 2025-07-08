@@ -13,6 +13,7 @@ using Nethermind.Logging;
 using Nethermind.Evm.State;
 using NUnit.Framework;
 using System.Collections;
+using Nethermind.Blockchain;
 using Nethermind.Core.Test;
 using Nethermind.Evm;
 using Nethermind.Evm.Test;

@@ -3,6 +3,7 @@
 
 using System;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Core;

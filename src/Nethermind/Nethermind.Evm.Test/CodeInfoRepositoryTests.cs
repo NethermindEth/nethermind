@@ -12,6 +12,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core.Test.Builders;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Evm.State;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;

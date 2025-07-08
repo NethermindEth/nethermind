@@ -14,7 +14,7 @@ using Int256;
 /// <summary>
 /// Implements various EVM instruction handlers for transient storage, memory, and persistent storage operations.
 /// </summary>
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Enumeration for specifying the type of storage access.

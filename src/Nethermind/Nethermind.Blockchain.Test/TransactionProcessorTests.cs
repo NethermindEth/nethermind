@@ -25,6 +25,7 @@ using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using Nethermind.Config;
 using System.Collections.Generic;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core.Test;
 using Nethermind.State;

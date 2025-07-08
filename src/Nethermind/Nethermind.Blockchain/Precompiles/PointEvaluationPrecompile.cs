@@ -8,9 +8,10 @@ using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm.Precompiles;
+namespace Nethermind.Blockchain.Precompiles;
 
 public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
 {
