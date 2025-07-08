@@ -15,7 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;

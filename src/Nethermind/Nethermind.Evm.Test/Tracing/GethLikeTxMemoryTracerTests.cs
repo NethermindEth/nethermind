@@ -5,7 +5,7 @@ using System.Linq;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Evm.State;
 using NUnit.Framework;
 

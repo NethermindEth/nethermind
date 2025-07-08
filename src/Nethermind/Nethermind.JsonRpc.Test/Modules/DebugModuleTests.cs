@@ -17,7 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;

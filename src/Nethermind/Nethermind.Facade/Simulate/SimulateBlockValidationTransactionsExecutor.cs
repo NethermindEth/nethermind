@@ -3,11 +3,11 @@
 
 using System;
 using System.Threading;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Facade.Simulate;
 
