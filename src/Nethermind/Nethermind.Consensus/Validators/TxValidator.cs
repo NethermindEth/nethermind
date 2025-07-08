@@ -244,7 +244,7 @@ public sealed class MaxBlobCountBlobTxValidator : ITxValidator
     {
         int blobCount = transaction.BlobVersionedHashes?.Length ?? 0;
         ulong totalDataGas = BlobGasCalculator.CalculateBlobGas(blobCount);
-        var maxBlobGasPerTx = spec.GetMaxBlobGasPerTx();
+        ulong maxBlobGasPerTx = spec.GetMaxBlobGasPerTx();
         return totalDataGas > maxBlobGasPerTx ? TxErrorMessages.BlobTxGasLimitExceeded(totalDataGas, maxBlobGasPerTx) : ValidationResult.Success;
     }
 }
