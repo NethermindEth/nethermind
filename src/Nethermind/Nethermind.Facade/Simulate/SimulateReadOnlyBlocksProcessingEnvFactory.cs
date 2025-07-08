@@ -89,7 +89,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
 
             // If not debug, hide all log
             ILogger baseLogger = baseLogManager.GetClassLogger<T>();
-            return !baseLogger.IsDebug ? NullLogger.Instance : baseLogManager.GetClassLogger<T>();
+            return !baseLogger.IsDebug ? NullLogger.Instance : baseLogger;
         }
 
         public ILogger GetClassLogger(string filePath = "")
