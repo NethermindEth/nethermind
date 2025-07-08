@@ -27,9 +27,9 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
     IReadOnlyBlockTree baseBlockTree,
     IDbProvider dbProvider,
     ISpecProvider specProvider,
-    ILogManager? logManager = null)
+    ILogManager logManager) : ISimulateReadOnlyBlocksProcessingEnvFactory
 {
-    public SimulateReadOnlyBlocksProcessingEnv Create()
+    public ISimulateReadOnlyBlocksProcessingEnv Create()
     {
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         IOverridableEnv overridableEnv = overridableEnvFactory.Create();
@@ -56,7 +56,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         return envLifetimeScope.Resolve<SimulateReadOnlyBlocksProcessingEnv>();
     }
 
-    private static BlockTree CreateTempBlockTree(IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider? specProvider, ILogManager? logManager, IReadOnlyDbProvider editableDbProvider)
+    private static BlockTree CreateTempBlockTree(IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider? specProvider, ILogManager logManager, IReadOnlyDbProvider editableDbProvider)
     {
         IBlockStore mainblockStore = new BlockStore(editableDbProvider.BlocksDb);
         IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb);
@@ -75,6 +75,31 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             specProvider,
             NullBloomStorage.Instance,
             new SyncConfig(),
-            logManager);
+            new BlockTreeLogHider(logManager));
+    }
+
+    private class BlockTreeLogHider(ILogManager baseLogManager) : ILogManager
+    {
+        public ILogger GetClassLogger<T>()
+        {
+            if (typeof(T) != typeof(BlockTree))
+            {
+                return baseLogManager.GetClassLogger<T>();
+            }
+
+            // If not debug, hide all log
+            ILogger baseLogger = baseLogManager.GetClassLogger<T>();
+            return !baseLogger.IsDebug ? NullLogger.Instance : baseLogManager.GetClassLogger<T>();
+        }
+
+        public ILogger GetClassLogger(string filePath = "")
+        {
+            return baseLogManager.GetClassLogger(filePath);
+        }
+
+        public ILogger GetLogger(string loggerName)
+        {
+            return baseLogManager.GetLogger(loggerName);
+        }
     }
 }
