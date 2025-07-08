@@ -20,6 +20,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     public const int CacheSize = 128 + 32;
 
     private readonly ClockCache<ValueHash256, Block> _blockCache = new(CacheSize);
+    private const int MaxBlockSearch = 100;
 
     public void SetMetadata(byte[] key, byte[] value)
         => blockDb.Set(key, value);
@@ -109,6 +110,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     public Block? GetBlockByTimestamp(ulong timestamp)
     {
         // todo: check if block aligns exactly with timestamp
+        int i = 0;
         IEnumerable<KeyValuePair<byte[], byte[]?>> blocks = blockDb.GetAll(true);
         foreach ((byte[] _, byte[]? value) in blocks)
         {
@@ -116,6 +118,11 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
             if (block.Timestamp == timestamp)
             {
                 return block;
+            }
+
+            if (++i > MaxBlockSearch)
+            {
+                return null;
             }
         }
         return null;
