@@ -10,8 +10,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -20,9 +18,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
@@ -62,11 +58,9 @@ public class TestBlockchain : IDisposable
     public IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory => _fromContainer.ReadOnlyTxProcessingEnvFactory;
     public IShareableTxProcessorSource ShareableTxProcessorSource => _fromContainer.ShareableTxProcessorSource;
     public IBlockProcessor BlockProcessor => _fromContainer.MainProcessingContext.BlockProcessor;
-    public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
-
+    public IBlockchainProcessor BlockchainProcessor => _fromContainer.MainProcessingContext.BlockchainProcessor;
     public IBlockPreprocessorStep BlockPreprocessorStep => _fromContainer.BlockPreprocessorStep;
 
-    public IBlockProcessingQueue BlockProcessingQueue { get; set; } = null!;
     public IBlockTree BlockTree => _fromContainer.BlockTree;
 
     public Action<IWorldState>? InitialStateMutator { get; set; }
@@ -77,7 +71,6 @@ public class TestBlockchain : IDisposable
     public IJsonSerializer JsonSerializer { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyState => _fromContainer.ReadOnlyState;
     public IDb StateDb => DbProvider.StateDb;
-    public IDb BlocksDb => DbProvider.BlocksDb;
     public IBlockProducer BlockProducer { get; protected set; } = null!;
     public IBlockProducerRunner BlockProducerRunner { get; protected set; } = null!;
     public IDbProvider DbProvider => _fromContainer.DbProvider;
@@ -102,20 +95,16 @@ public class TestBlockchain : IDisposable
     public static readonly DateTime InitialTimestamp = new(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc);
 
     public static readonly UInt256 InitialValue = 1000.Ether();
-    public IHeaderValidator HeaderValidator => _fromContainer.HeaderValidator;
 
     protected AutoCancelTokenSource _cts;
     public CancellationToken CancellationToken => _cts.Token;
 
     private TestBlockchainUtil TestUtil => _fromContainer.TestBlockchainUtil.Value;
     private PoWTestBlockchainUtil PoWTestUtil => _fromContainer.PoWTestBlockchainUtil.Value;
-
-    public IBlockValidator BlockValidator => _fromContainer.BlockValidator;
-
-    public IManualBlockProductionTrigger BlockProductionTrigger => _fromContainer.BlockProductionTrigger;
+    private IManualBlockProductionTrigger BlockProductionTrigger => _fromContainer.BlockProductionTrigger;
 
     public ManualTimestamper Timestamper => _fromContainer.ManualTimestamper;
-    public IBlocksConfig BlocksConfig => Container.Resolve<IBlocksConfig>();
+    protected IBlocksConfig BlocksConfig => Container.Resolve<IBlocksConfig>();
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
@@ -150,8 +139,6 @@ public class TestBlockchain : IDisposable
         ISealEngine SealEngine,
         ITransactionComparerProvider TransactionComparerProvider,
         IPoSSwitcher PoSSwitcher,
-        IHeaderValidator HeaderValidator,
-        IBlockValidator BlockValidator,
         IChainLevelInfoRepository ChainLevelInfoRepository,
         IMainProcessingContext MainProcessingContext,
         IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory,
@@ -234,10 +221,7 @@ public class TestBlockchain : IDisposable
         state.Commit(SpecProvider.GenesisSpec);
         state.CommitTree(0);
 
-        BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
-        BlockchainProcessor = chainProcessor;
-        BlockProcessingQueue = chainProcessor;
-        chainProcessor.Start();
+        BlockchainProcessor.Start();
 
         BlockProducer = CreateTestBlockProducer();
         BlockProducerRunner ??= CreateBlockProducerRunner();
@@ -299,8 +283,6 @@ public class TestBlockchain : IDisposable
                 ctx.Resolve<ITxPool>(),
                 ctx.Resolve<Configuration>().SlotTime
             ))
-
-            .AddSingleton<IBlockProcessingQueue>((ctx) => this.BlockProcessingQueue)
     ;
 
     protected virtual IEnumerable<IConfig> CreateConfigs()
