@@ -193,10 +193,10 @@ namespace Nethermind.Init.Steps
 
             var txPoolConfig = _api.Config<ITxPoolConfig>();
 
-            if (txPoolConfig.BlackListedAddresses.Length != 0)
+            if (txPoolConfig.BlackListedSenderAddresses.Length != 0)
             {
-                HashSet<AddressAsKey> blacklist = new(txPoolConfig.BlackListedAddresses.Length);
-                foreach (string address in txPoolConfig.BlackListedAddresses)
+                HashSet<AddressAsKey> blacklist = new(txPoolConfig.BlackListedSenderAddresses.Length);
+                foreach (string address in txPoolConfig.BlackListedSenderAddresses)
                 {
                     blacklist.Add(new AddressAsKey(new Address(address)));
                 }

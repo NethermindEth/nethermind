@@ -9,12 +9,13 @@ using Nethermind.Logging;
 namespace Nethermind.TxPool.Filters;
 
 internal sealed class AddressFilter(
-    HashSet<AddressAsKey> hashCache,
+    HashSet<AddressAsKey> toAddressCache,
+    HashSet<AddressAsKey> fromAddressCache,
     ILogger logger) : IIncomingTxFilter
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
     {
-        if (hashCache.Contains(tx.SenderAddress!))
+        if (fromAddressCache.Contains(tx.SenderAddress!))
         {
             logger.Error(
                 $"Submitted transaction:{tx.Hash} has a blocked SENDER. Blocked Address: {tx.SenderAddress}. Full Sender: {tx.SenderAddress}, Recipient: {tx.To}.");
@@ -22,7 +23,7 @@ internal sealed class AddressFilter(
             return AcceptTxResult.BlacklistedAddress;
         }
 
-        if (tx.To is not null && hashCache.Contains(tx.To))
+        if (tx.To is not null && toAddressCache.Contains(tx.To))
         {
             logger.Error(
                 $"Submitted transaction:{tx.Hash} has a blocked RECIPIENT. Blocked Address: {tx.To}. Full Sender: {tx.SenderAddress}, Recipient: {tx.To}.");
