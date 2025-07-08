@@ -386,14 +386,6 @@ public class TestBlockchain : IDisposable
         return txBuilder;
     }
 
-    protected IBlockCachePreWarmer CreateBlockCachePreWarmer() =>
-        new BlockCachePreWarmer(
-            ReadOnlyTxProcessingEnvFactory,
-            WorldStateManager.GlobalWorldState,
-            4,
-            LogManager,
-            (WorldStateManager.GlobalWorldState as IPreBlockCaches)?.Caches);
-
     public async Task WaitForNewHead()
     {
         await BlockTree.WaitForNewBlock(_cts.Token);
