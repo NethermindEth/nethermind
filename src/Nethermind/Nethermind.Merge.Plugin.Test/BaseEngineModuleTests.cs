@@ -239,7 +239,7 @@ public abstract partial class BaseEngineModuleTests
                 .AddSingleton<ISyncProgressResolver>(Substitute.For<ISyncProgressResolver>())
                 .AddSingleton<ISyncModeSelector>(new StaticSelector(SyncMode.All))
                 .AddSingleton<IPeerRefresher>(Substitute.For<IPeerRefresher>())
-                .Intercept<IInitConfig>((initConfig) => initConfig.DisableGcOnNewPayload = true);
+                .Intercept<IInitConfig>((initConfig) => initConfig.DisableGcOnNewPayload = false);
 
         protected override IBlockProducer CreateTestBlockProducer()
         {

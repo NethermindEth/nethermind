@@ -19,7 +19,7 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class BlockValidatorTests
 {
-    private static BlockValidator? _blockValidator;
+    private static BlockValidator _blockValidator = null!;
 
     [SetUp]
     public void Setup()
@@ -39,7 +39,7 @@ public class BlockValidatorTests
     public void Accepts_valid_block()
     {
         Block block = Build.A.Block.WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize).TestObject;
-        bool result = _blockValidator!.ValidateSuggestedBlock(block);
+        bool result = _blockValidator.ValidateSuggestedBlock(block);
         Assert.That(result, Is.True);
     }
 
@@ -71,7 +71,7 @@ public class BlockValidatorTests
 
 
         Assert.That(
-            _blockValidator!.ValidateBodyAgainstHeader(block.Header, block.Body),
+            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
             Is.True);
     }
 
@@ -85,7 +85,7 @@ public class BlockValidatorTests
         block.Header.TxRoot = Keccak.OfAnEmptyString;
 
         Assert.That(
-            _blockValidator!.ValidateBodyAgainstHeader(block.Header, block.Body),
+            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
             Is.False);
     }
 
@@ -100,7 +100,7 @@ public class BlockValidatorTests
         block.Header.UnclesHash = Keccak.OfAnEmptyString;
 
         Assert.That(
-            _blockValidator!.ValidateBodyAgainstHeader(block.Header, block.Body),
+            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
             Is.False);
     }
 
@@ -114,7 +114,7 @@ public class BlockValidatorTests
         block.Header.WithdrawalsRoot = Keccak.OfAnEmptyString;
 
         Assert.That(
-            _blockValidator!.ValidateBodyAgainstHeader(block.Header, block.Body),
+            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
             Is.False);
     }
 
