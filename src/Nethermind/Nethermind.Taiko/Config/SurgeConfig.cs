@@ -16,5 +16,5 @@ public class SurgeConfig : ISurgeConfig
     public string? TaikoInboxAddress { get; set; }
     public int SharingPercentage { get; set; } = 75;
     public int BoostBaseFeePercentage { get; set; } = 5;
-    public int GasPriceRefreshTimeoutSeconds { get; set; } = 30;
+    public int GasPriceRefreshTimeoutSeconds { get; set; } = 12;
 }
