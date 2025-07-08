@@ -292,7 +292,8 @@ jobs:
               --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
           fi
 
-          echo 'Running sedge...'
+          echo 'Running sedge...'          
+          ./build/sedge run -p $GITHUB_WORKSPACE/sedge
           
       - name: Wait for ${{ matrix.config.network }} to sync
         id: wait
@@ -409,4 +410,3 @@ jobs:
           inputs: '{
             "nethermind_branch": "refs/heads/${{ github.event.workflow_run.head_branch }}"
           }'
-          ./build/sedge run -p $GITHUB_WORKSPACE/sedge
