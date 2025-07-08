@@ -22,6 +22,8 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Stats.SyncLimits;
+using Nethermind.Blockchain.HistoryPruning;
+using ZstdSharp.Unsafe;
 
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 
@@ -36,7 +38,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected override Func<bool> HasPivot =>
             () => _receiptStorage.HasBlock(_blockTree.SyncPivot.BlockNumber, _blockTree.SyncPivot.BlockHash);
 
-        private FastBlocksAllocationStrategy _approximateAllocationStrategy = new FastBlocksAllocationStrategy(TransferSpeedType.Receipts, 0, true);
+        private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.Receipts, 0, true);
 
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
@@ -44,6 +46,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISyncPointers _syncPointers;
         private readonly ISyncPeerPool _syncPeerPool;
+        private readonly IHistoryPruner _historyPruner;
         private readonly ReceiptDownloadStrategy _receiptDownloadStrategy;
 
         private SyncStatusList _syncStatusList;
@@ -63,6 +66,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
+            IHistoryPruner historyPruner,
             [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             ILogManager logManager)
             : base(metadataDb, specProvider, logManager?.GetClassLogger() ?? default)
@@ -73,7 +77,8 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncConfig = syncConfig;
             _syncReport = syncReport;
             _blockTree = blockTree;
-            _receiptDownloadStrategy = new(_receiptStorage, _syncReport);
+            _historyPruner = historyPruner;
+            _receiptDownloadStrategy = new(_receiptStorage, _syncReport, _historyPruner);
 
             if (!_syncConfig.FastSync)
             {
@@ -311,13 +316,17 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.FastBlocksReceipts.CurrentQueued = _syncStatusList.QueueSize;
         }
 
-        private class ReceiptDownloadStrategy(IReceiptStorage receiptStorage, ISyncReport syncReport) : IBlockDownloadStrategy
+        private class ReceiptDownloadStrategy(IReceiptStorage receiptStorage, ISyncReport syncReport, IHistoryPruner historyPruner) : IBlockDownloadStrategy
         {
             public bool ShouldDownloadBlock(BlockInfo info)
             {
                 bool hasReceipt = receiptStorage.HasBlock(info.BlockNumber, info.BlockHash);
-                if (hasReceipt) syncReport.FastBlocksReceipts.IncrementSkipped();
-                return !hasReceipt;
+                long? cutoff = historyPruner?.CutoffBlockNumber;
+                // needed?
+                // cutoff = cutoff is null ? null : long.Max(cutoff.Value, blockTree.BestSuggestedHeader.Number);
+                bool shouldDownload = hasReceipt && (cutoff is null || info.BlockNumber >= cutoff);
+                if (shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
+                return !shouldDownload;
             }
         }
     }

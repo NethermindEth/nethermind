@@ -82,9 +82,9 @@ public class BodiesSyncFeedTests
             _syncPeerPool,
             _syncConfig,
             new NullSyncReport(),
+            _historyPruner,
             _blocksDb,
             _metadataDb,
-            _historyPruner,
             LimboLogs.Instance,
             flushDbInterval: 10
         );

@@ -62,9 +62,9 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
+            IHistoryPruner historyPruner,
             [KeyFilter(DbNames.Blocks)] IDb blocksDb,
             [KeyFilter(DbNames.Metadata)] IDb metadataDb,
-            IHistoryPruner historyPruner,
             ILogManager logManager,
             long flushDbInterval = DefaultFlushDbInterval)
             : base(metadataDb, specProvider, logManager.GetClassLogger())
@@ -310,7 +310,8 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 bool hasBlock = blockTree.HasBlock(info.BlockNumber, info.BlockHash);
                 long? cutoff = historyPruner?.CutoffBlockNumber;
-                cutoff = cutoff is null ? null : long.Max(cutoff.Value, blockTree.BestSuggestedHeader.Number);
+                // needed?
+                // cutoff = cutoff is null ? null : long.Max(cutoff.Value, blockTree.BestSuggestedHeader.Number);
                 bool shouldDownload = hasBlock && (cutoff is null || info.BlockNumber >= cutoff);
                 if (shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
                 return !shouldDownload;
