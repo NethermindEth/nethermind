@@ -97,7 +97,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         // Compute the gas cost to post a batch on L1
         UInt256 costWithCallData = _surgeConfig.BatchPostingGasWithCallData * l1BaseFee;
-        UInt256 costWithBlobs = (_surgeConfig.BatchPostingGasWithoutCallData * l1BaseFee) + (BlobSize * l1BlobBaseFee);
+        UInt256 costWithBlobs = _surgeConfig.BatchPostingGasWithoutCallData * l1BaseFee + BlobSize * l1BlobBaseFee;
         UInt256 minProposingCost = UInt256.Min(costWithCallData, costWithBlobs);
 
         UInt256 proofPostingCost = _surgeConfig.ProofPostingGas * UInt256.Max(l1BaseFee, l1AverageBaseFee);
@@ -106,8 +106,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
                                    Math.Max(averageGasUsage, _surgeConfig.L2GasPerL2Batch);
 
         // Adjust the gas price estimate with the config values.
-        UInt256 adjustedGasPriceEstimate = gasPriceEstimate;
-        adjustedGasPriceEstimate += gasPriceEstimate * (UInt256)_surgeConfig.BoostBaseFeePercentage / 100;
+        UInt256 adjustedGasPriceEstimate = gasPriceEstimate + gasPriceEstimate * (UInt256)_surgeConfig.BoostBaseFeePercentage / 100;
         adjustedGasPriceEstimate = adjustedGasPriceEstimate * 100 / (UInt256)_surgeConfig.SharingPercentage;
 
         // Update the cache and timestamp
@@ -131,7 +130,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
     /// </summary>
     private bool ForceRefreshGasPrice()
     {
-        return (DateTime.UtcNow - _lastGasPriceCalculation) >= TimeSpan.FromSeconds(_surgeConfig.GasPriceRefreshTimeoutSeconds);
+        return DateTime.UtcNow - _lastGasPriceCalculation >= TimeSpan.FromSeconds(_surgeConfig.GasPriceRefreshTimeoutSeconds);
     }
 
     private async ValueTask<L1FeeHistoryResults?> GetL1FeeHistory()
@@ -210,12 +209,12 @@ public class SurgeGasPriceOracle : GasPriceOracle
     /// </summary>
     private async ValueTask<ulong?> GetNumBatches()
     {
-        var response = await CallTaikoInboxFunction(GetStats2HexData);
+        string? response = await CallTaikoInboxFunction(GetStats2HexData);
 
         if (string.IsNullOrEmpty(response) || response.Length < 66) return null;
 
         // Extract the first 32 bytes (64 hex chars) after "0x" which contains NumBatches
-        return ulong.Parse(response[2..66], System.Globalization.NumberStyles.HexNumber);
+        return ulong.Parse(response[2..66], NumberStyles.HexNumber);
     }
 
     /// <summary>
@@ -223,13 +222,13 @@ public class SurgeGasPriceOracle : GasPriceOracle
     /// </summary>
     private async ValueTask<ulong?> GetLastBlockId(ulong batchId)
     {
-        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetBatchSignature, batchId);
-        var response = await CallTaikoInboxFunction("0x" + Convert.ToHexString(encodedData));
+        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetBatchSignature, batchId);
+        string? response = await CallTaikoInboxFunction("0x" + Convert.ToHexString(encodedData));
 
         if (string.IsNullOrEmpty(response) || response.Length < 130) return null;
 
         // Extract the second 32 bytes (64 hex chars) after "0x" which contains LastBlockId
-        return ulong.Parse(response[66..130], System.Globalization.NumberStyles.HexNumber);
+        return ulong.Parse(response[66..130], NumberStyles.HexNumber);
     }
 
     /// <summary>
@@ -262,22 +261,14 @@ public class SurgeGasPriceOracle : GasPriceOracle
     /// insertAt = 1 (next insert location)
     /// average = (A + B + C + D) / 4
     /// </summary>
-    private sealed class GasUsageRingBuffer
+    private sealed class GasUsageRingBuffer(int capacity)
     {
-        private readonly ulong[] _buffer;
+        private readonly ulong[] _buffer = new ulong[capacity];
         private int _insertAt;
         private int _numItems;
         private ulong _sum;
 
         public ulong Average => _numItems == 0 ? 0 : _sum / (ulong)_numItems;
-
-        public GasUsageRingBuffer(int capacity)
-        {
-            _buffer = new ulong[capacity];
-            _insertAt = 0;
-            _numItems = 0;
-            _sum = 0;
-        }
 
         public void Add(ulong gasUsed)
         {
