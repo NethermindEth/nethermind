@@ -19,9 +19,13 @@ using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Facade.Find;
+using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Facade.Simulate;
+using NSubstitute.Core;
 
 namespace Nethermind.Facade.Test;
 
@@ -585,5 +589,31 @@ public class BlockchainBridgeTests
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
         Assert.That(callOutput.Error, Is.Null);
+    }
+
+    [Test]
+    public void Eth_simulate_is_lazy()
+    {
+        ISimulateReadOnlyBlocksProcessingEnvFactory testFactory = Substitute.For<ISimulateReadOnlyBlocksProcessingEnvFactory>();
+        testFactory.Create().Returns(Substitute.For<ISimulateReadOnlyBlocksProcessingEnv>());
+
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISimulateReadOnlyBlocksProcessingEnvFactory>(testFactory)
+            .Build();
+
+        IBlockchainBridge blockchainBridge = container.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
+        testFactory.DidNotReceive().Create();
+
+        try
+        {
+            blockchainBridge.Simulate(Build.A.EmptyBlockHeader, new SimulatePayload<TransactionWithSourceDetails>(),
+                Substitute.For<ISimulateBlockTracerFactory<GethStyleTracer>>(), default);
+        }
+        catch (Exception)
+        {
+        }
+
+        testFactory.Received().Create();
     }
 }
