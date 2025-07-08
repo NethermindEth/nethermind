@@ -35,7 +35,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
 
     protected TxDecoder(Func<T>? transactionFactory = null)
     {
-        Func<T> factory = transactionFactory ?? (static () => new T());
+        Func<T> factory = transactionFactory ?? ObjectCreator<T>.Create;
         RegisterDecoder(new LegacyTxDecoder<T>(factory));
         RegisterDecoder(new AccessListTxDecoder<T>(factory));
         RegisterDecoder(new EIP1559TxDecoder<T>(factory));
@@ -130,7 +130,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
 
         if (rlpBehaviors.HasFlag(RlpBehaviors.OnlyHashes) && !rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {
-            BaseTxDecoder<Transaction>.CalculateHash(transaction ??= new T(), transactionSequence, forceHashes: true);
+            BaseTxDecoder<Transaction>.CalculateHash(transaction ??= ObjectCreator<T>.Create(), transactionSequence, forceHashes: true);
             decoderContext.Position = txSequenceStart + transactionSequence.Length;
         }
         else

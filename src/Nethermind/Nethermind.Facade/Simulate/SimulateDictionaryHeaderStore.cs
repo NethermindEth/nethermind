@@ -76,5 +76,5 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
         return !requiresCanonical && _headerDict.TryGetValue(blockHash, out header);
     }
 
-    public void ClearCanonicalCache(Hash256 blockHash) { }
+    public void DeleteCanonicalCache(Hash256 blockHash) { }
 }

@@ -20,15 +20,13 @@ public class HeaderStore : IHeaderStore
 {
     // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
     public const int CacheSize = 256 + 16;
-    // Numbers mapping is smaller keep 4 times more
+    // Go a bit further back for numbers as smaller
     public const int NumberCacheSize = CacheSize * 4;
+    private static readonly HeaderDecoder _headerDecoder = new();
 
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
-    private static readonly HeaderDecoder _headerDecoder = new();
-    private readonly ClockCache<Hash256AsKey, BlockHeader> _headerCache = new(CacheSize);
-    private readonly ClockCache<Hash256AsKey, BlockHeader> _headerCanonicalCache = new(CacheSize);
-    private readonly ClockCache<Hash256AsKey, BlockHeader> _headerWithoutDifficultyCache = new(CacheSize);
+    private readonly HeaderCache _headerCache = new();
     private readonly ClockCache<Hash256AsKey, long> _numberCache = new(NumberCacheSize);
 
     public HeaderStore([KeyFilter(DbNames.Headers)] IDb headerDb, [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb)
@@ -74,45 +72,16 @@ public class HeaderStore : IHeaderStore
     }
 
     public bool TryGetCache(Hash256 blockHash, bool needsDifficulty, bool requiresCanonical, [NotNullWhen(true)] out BlockHeader? header)
-    {
-        if (_headerCanonicalCache.TryGet(blockHash, out header))
-        {
-            return true;
-        }
-
-        if (requiresCanonical)
-        {
-            return false;
-        }
-
-        if (!needsDifficulty && _headerWithoutDifficultyCache.TryGet(blockHash, out header))
-        {
-            return true;
-        }
-
-        return _headerCache.TryGet(blockHash, out header);
-    }
+        => _headerCache.TryGet(blockHash, needsDifficulty, requiresCanonical, out header);
 
     public bool Cache(BlockHeader header, bool hasDifficulty, bool isCanonical = false)
     {
         CacheNumber(header.Hash, header.Number);
-        if (hasDifficulty)
-        {
-            if (isCanonical)
-            {
-                return _headerCanonicalCache.Set(header.Hash, header);
-            }
-            else
-            {
-                return _headerCache.Set(header.Hash, header);
-            }
-        }
-        else
-        {
-            return _headerWithoutDifficultyCache.Set(header.Hash, header);
-        }
+        return _headerCache.Set(header.Hash, header, hasDifficulty, isCanonical);
     }
-    public void ClearCanonicalCache(Hash256 blockHash) => _headerCanonicalCache.Delete(blockHash);
+
+    public void DeleteCanonicalCache(Hash256 blockHash) => _headerCache.DeleteCanonicalCache(blockHash);
+
     public void Delete(Hash256 blockHash)
     {
         long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
@@ -120,8 +89,6 @@ public class HeaderStore : IHeaderStore
         _blockNumberDb.Delete(blockHash);
         _headerDb.Delete(blockHash);
         _headerCache.Delete(blockHash);
-        _headerCanonicalCache.Delete(blockHash);
-        _headerWithoutDifficultyCache.Delete(blockHash);
         _numberCache.Delete(blockHash);
     }
 
@@ -191,5 +158,85 @@ public class HeaderStore : IHeaderStore
         {
             _blockNumberDb.DangerousReleaseMemory(numberSpan);
         }
+    }
+
+    private class HeaderCache : IClockCache<Hash256AsKey, BlockHeader>
+    {
+        private readonly ClockCache<Hash256AsKey, BlockHeader> _headerCache = new(CacheSize);
+        private readonly ClockCache<Hash256AsKey, BlockHeader> _headerCanonicalCache = new(CacheSize);
+        private readonly ClockCache<Hash256AsKey, BlockHeader> _headerWithoutDifficultyCache = new(CacheSize);
+
+        public BlockHeader? Get(Hash256AsKey blockHash)
+        {
+            TryGet(blockHash, out BlockHeader? header);
+            return header;
+        }
+
+        public bool Set(Hash256AsKey key, BlockHeader header)
+            => Set(key, header, hasDifficulty: true);
+
+        public bool Set(Hash256AsKey key, BlockHeader header, bool hasDifficulty, bool isCanonical = false)
+        {
+            if (hasDifficulty)
+            {
+                if (isCanonical)
+                {
+                    bool wasSet = _headerCanonicalCache.Set(header.Hash, header);
+                    // clear other caches as canonical covers all types
+                    _headerCache.Delete(header.Hash);
+                    _headerWithoutDifficultyCache.Delete(header.Hash);
+                    return wasSet;
+                }
+                else if (!_headerCanonicalCache.Contains(header.Hash))
+                {
+                    bool wasSet = _headerCache.Set(header.Hash, header);
+                    // clear without difficulty regular covers it
+                    _headerWithoutDifficultyCache.Delete(header.Hash);
+                    return wasSet;
+                }
+                return false;
+            }
+            else if (!_headerCanonicalCache.Contains(header.Hash) && !_headerCache.Contains(header.Hash))
+            {
+                return _headerWithoutDifficultyCache.Set(header.Hash, header);
+            }
+            return false;
+        }
+
+        public bool TryGet(Hash256AsKey blockHash, [NotNullWhen(true)] out BlockHeader? header)
+            => TryGet(blockHash, needsDifficulty: true, requiresCanonical: false, out header);
+
+        public bool TryGet(Hash256AsKey blockHash, bool needsDifficulty, bool requiresCanonical, [NotNullWhen(true)] out BlockHeader? header)
+        {
+            if (_headerCanonicalCache.TryGet(blockHash, out header))
+            {
+                return true;
+            }
+
+            if (requiresCanonical)
+            {
+                return false;
+            }
+
+            if (_headerCache.TryGet(blockHash, out header))
+            {
+                return true;
+            }
+
+            if (needsDifficulty)
+            {
+                return false;
+            }
+
+            return _headerWithoutDifficultyCache.TryGet(blockHash, out header);
+        }
+
+        public void Delete(Hash256AsKey blockHash)
+        {
+            _headerCache.Delete(blockHash);
+            _headerCanonicalCache.Delete(blockHash);
+            _headerWithoutDifficultyCache.Delete(blockHash);
+        }
+        public void DeleteCanonicalCache(Hash256 blockHash) => _headerCanonicalCache.Delete(blockHash);
     }
 }

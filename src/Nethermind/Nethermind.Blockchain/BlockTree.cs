@@ -1078,7 +1078,7 @@ namespace Nethermind.Blockchain
                     for (int i = 0; i < level.BlockInfos.Length; ++i)
                     {
                         level.BlockInfos[i].Metadata &= ~BlockMetadata.BeaconMainChain;
-                        _headerStore.ClearCanonicalCache(level.BlockInfos[i].BlockHash);
+                        _headerStore.DeleteCanonicalCache(level.BlockInfos[i].BlockHash);
                     }
 
                     _chainLevelInfoRepository.PersistLevel(j, level, batch);
@@ -1101,7 +1101,7 @@ namespace Nethermind.Blockchain
                         else
                         {
                             level.BlockInfos[i].Metadata &= ~BlockMetadata.BeaconMainChain;
-                            _headerStore.ClearCanonicalCache(blockHash);
+                            _headerStore.DeleteCanonicalCache(blockHash);
                         }
                     }
 

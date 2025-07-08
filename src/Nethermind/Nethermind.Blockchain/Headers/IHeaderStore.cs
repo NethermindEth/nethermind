@@ -16,7 +16,7 @@ public interface IHeaderStore
     BlockHeader? Get(Hash256 blockHash, long? blockNumber = null);
     bool Cache(BlockHeader header, bool hasDifficulty, bool isCanonical = false);
     bool TryGetCache(Hash256 blockHash, bool needsDifficulty, bool requiresCanonical, [NotNullWhen(true)] out BlockHeader? header);
-    void ClearCanonicalCache(Hash256 blockHash);
+    void DeleteCanonicalCache(Hash256 blockHash);
     void Delete(Hash256 blockHash);
     void InsertBlockNumber(Hash256 blockHash, long blockNumber);
     long? GetBlockNumber(Hash256 blockHash);

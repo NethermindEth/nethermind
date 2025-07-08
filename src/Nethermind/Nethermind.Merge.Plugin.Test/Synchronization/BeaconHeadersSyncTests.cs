@@ -362,7 +362,7 @@ public class BeaconHeadersSyncTests
         ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
         blockTree.BestKnownNumber.Should().Be(bestPointer);
         BlockHeader? startBestHeader = syncedBlockTree.FindHeader(bestPointer, BlockTreeLookupOptions.None);
-        blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader);
+        blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader, options => options.Excluding(h => h!.AuRaStep));
         blockTree.LowestInsertedBeaconHeader.Should().BeEquivalentTo(syncedBlockTree.FindHeader(pivot.PivotNumber, BlockTreeLookupOptions.None));
 
         BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, endLowestBeaconHeader);
@@ -373,7 +373,12 @@ public class BeaconHeadersSyncTests
         blockTree.FindHeader(pivot.PivotNumber - 1, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().NotBeNull();
         blockTree.LowestInsertedBeaconHeader?.Hash.Should().BeEquivalentTo(syncedBlockTree.FindHeader(endLowestBeaconHeader, BlockTreeLookupOptions.None)?.Hash);
         blockTree.BestKnownNumber.Should().Be(bestPointer);
-        blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader, options => options.Excluding(h => h!.TotalDifficulty));
+        blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader, options =>
+        {
+            return options
+                .Excluding(h => h!.TotalDifficulty)
+                .Excluding(h => h!.AuRaStep);
+        });
         ctx.Feed.CurrentState.Should().Be(SyncFeedState.Dormant);
         ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
     }

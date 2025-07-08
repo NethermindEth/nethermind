@@ -12,7 +12,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
     : ITxDecoder where T : Transaction, new()
 {
     private const int MaxDelayedHashTxnSize = 32768;
-    private readonly Func<T> _createTransaction = transactionFactory ?? (static () => new T());
+    private readonly Func<T> _createTransaction = transactionFactory ?? ObjectCreator<T>.Create;
 
     public TxType Type => txType;
 
