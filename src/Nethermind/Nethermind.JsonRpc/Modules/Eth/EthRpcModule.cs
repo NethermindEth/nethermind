@@ -18,6 +18,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.Precompiles.Bls;
+using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -32,6 +35,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization.ParallelSync;
@@ -61,6 +65,7 @@ public partial class EthRpcModule(
     IEthSyncingInfo ethSyncingInfo,
     IFeeHistoryOracle feeHistoryOracle,
     IProtocolsManager protocolsManager,
+    IForkInfo forkInfo,
     ulong? secondsPerSlot) : IEthRpcModule
 {
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
@@ -770,6 +775,72 @@ public partial class EthRpcModule(
             { IsError: true } => ResultWrapper<ReceiptForRpc[]?>.Success(null),
             _ => _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider)
         };
+    }
+
+    public ResultWrapper<EthConfig> eth_config()
+    {
+        BlockHeader head = _blockFinder.Head?.Header;
+        ForkActivation[] activations = _specProvider.TransitionActivations.Where(x => x.Timestamp is not null)
+            .SkipWhile(x => x.Timestamp < head?.Timestamp).Take(2).ToArray();
+
+        ForkConfig[] specs = activations.Select(x=>
+        {
+            var spec = _specProvider.GetSpec(x.BlockNumber, x.Timestamp);
+            Dictionary<Address, string> precompiles = new();
+            precompiles[EcRecoverPrecompile.Address] = "ECREC";
+            precompiles[Sha256Precompile.Address] = "SHA256";
+            precompiles[Ripemd160Precompile.Address] = "RIPEMD160";
+            precompiles[IdentityPrecompile.Address] = "ID";
+            precompiles[ModExpPrecompile.Address] = "MODEXP";
+            precompiles[Bn254AddPrecompile.Address] = "BN256_ADD";
+            precompiles[Bn254MulPrecompile.Address] = "BN256_MUL";
+            precompiles[Bn254PairingPrecompile.Address] = "BN256_PAIRING";
+            precompiles[Blake2FPrecompile.Address] = "BLAKE2F";
+
+            if (spec.IsEip4844Enabled) precompiles[PointEvaluationPrecompile.Address] = "PointEvaluationPrecompile";
+            if (spec.Bls381Enabled)
+            {
+                precompiles[G1AddPrecompile.Address] = "BLS12_G1ADD";
+                precompiles[G1MSMPrecompile.Address] = "BLS12_G1MSM";
+                precompiles[G2AddPrecompile.Address] = "BLS12_G2ADD";
+                precompiles[G2MSMPrecompile.Address] = "BLS12_G2MSM";
+                precompiles[PairingCheckPrecompile.Address] = "BLS12_PAIRING_CHECK";
+                precompiles[MapFpToG1Precompile.Address] = "BLS12_MAP_FP_TO_G1";
+                precompiles[MapFp2ToG2Precompile.Address] = "BLS12_MAP_FP2_TO_G2";
+            }
+
+            if (spec.IsEip7951Enabled) precompiles[Secp256r1Precompile.Address] = "SECP_256R1";
+
+            Dictionary<Address, string> systemContracts = new();
+            if (spec.IsEip4788Enabled) systemContracts[Eip4788Constants.BeaconRootsAddress] = "BEACON_ROOTS_ADDRESS";
+            if (spec.IsEip7251Enabled) systemContracts[Eip7251Constants.ConsolidationRequestPredeployAddress] = "CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS";
+            if (spec.IsEip6110Enabled) systemContracts[spec.DepositContractAddress] = "DEPOSIT_CONTRACT_ADDRESS";
+            //if (spec.XXXX) systemContracts[XXXX] = "HISTORY_STORAGE_ADDRESS";
+            if (spec.IsEip7002Enabled) systemContracts[Eip7002Constants.WithdrawalRequestPredeployAddress] = "WITHDRAWAL_REQUEST_PREDEPLOY_ADDRESS";
+
+            return new ForkConfig
+            {
+                ActivationTime = x.Timestamp!.Value,
+                BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettings()
+                {
+                    Timestamp = x.Timestamp.Value,
+                    BaseFeeUpdateFraction = (ulong)spec.BlobBaseFeeUpdateFraction,
+                    Max = spec.MaxBlobCount,
+                    Target = spec.TargetBlobCount,
+                } : null,
+                ChainId = _specProvider.ChainId,
+                Precompiles = precompiles,
+                SystemContracts = systemContracts,
+            };
+        }).Take(2).ToArray();
+
+        return ResultWrapper<EthConfig>.Success(new EthConfig
+        {
+            Current = specs[0],
+            CurrentHash = forkInfo.GetForkId(activations[0].BlockNumber, activations[0].Timestamp!.Value).ForkHash.ToString("x"),
+            Next = specs.Skip(1).FirstOrDefault(),
+            NextHash = specs.Length != 2 ? null : forkInfo.GetForkId(activations[1].BlockNumber, activations[0].Timestamp!.Value).ForkHash.ToString("x"),
+        });
     }
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
