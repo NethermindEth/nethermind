@@ -51,6 +51,7 @@ partial class LogIndexStorage
             _compactionTask = DoCompactAsync();
             _completedOnceSource.SetResult();
         }
+
         public CompactingStats GetAndResetStats() => Interlocked.Exchange(ref _stats, new());
 
         public bool TryEnqueue()

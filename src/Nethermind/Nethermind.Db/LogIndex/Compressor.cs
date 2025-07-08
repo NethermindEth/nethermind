@@ -47,6 +47,11 @@ partial class LogIndexStorage
 
         public bool TryEnqueue(ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue)
         {
+            // Storage may not initialized yet, compression can be enqueued from the constructor
+            // TODO: add to queue, but start processing later?
+            if (_storage._columnsDb is null)
+                return false;
+
             if (dbValue.Length < MinLengthToCompress)
                 return false;
 
