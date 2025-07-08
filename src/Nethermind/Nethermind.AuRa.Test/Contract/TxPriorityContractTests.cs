@@ -308,9 +308,6 @@ namespace Nethermind.AuRa.Test.Contract
                         TxPriorityContract.SetSendersWhitelist(TestItem.AddressA, TestItem.AddressB))
                 );
 
-                // ContractDataStore track item from block async.
-                await Task.Delay(100);
-
                 await AddBlock(
                     SignTransactions(ecdsa, TestItem.PrivateKeyA, StateReader.GetNonce(BlockTree.Head!.Header, TestItem.PrivateKeyA.Address),
                         // overrides for some of previous block values:
@@ -320,6 +317,14 @@ namespace Nethermind.AuRa.Test.Contract
 
                         TxPriorityContract.SetSendersWhitelist(TestItem.AddressA, TestItem.AddressC))
                 );
+            }
+
+            public override async Task AddBlock(params Transaction[] transactions)
+            {
+                await base.AddBlock(transactions);
+
+                // ContractDataStore track item from block async.
+                await Task.Delay(100);
             }
 
             private Transaction[] SignTransactions(IEthereumEcdsa ecdsa, PrivateKey key, UInt256 baseNonce, params Transaction[] transactions)

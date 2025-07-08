@@ -31,9 +31,9 @@ public record AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposab
     {
 
         var mainWorldState = worldStateManager.GlobalWorldState;
-        ILifetimeScope innerScope = rootLifetimeScope.BeginLifetimeScope((processingCtxBuilder) =>
+        ILifetimeScope innerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
-            processingCtxBuilder
+            builder
                 // These are main block processing specific
                 .AddScoped<ICodeInfoRepository>(mainCodeInfoRepository)
                 .AddSingleton<IVisitingWorldState>(mainWorldState).AddSingleton<IWorldState>(mainWorldState)
@@ -52,7 +52,7 @@ public record AutoMainProcessingContext : IMainProcessingContext, IAsyncDisposab
 
             if (blocksConfig.PreWarmStateOnBlockProcessing)
             {
-                processingCtxBuilder
+                builder
                     .AddScoped<PreBlockCaches>((mainWorldState as IPreBlockCaches)!.Caches)
                     .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
                     ;

@@ -408,7 +408,7 @@ public class TestBlockchain : IDisposable
             (e) => predicate(e.Block));
     }
 
-    public async Task AddBlock(params Transaction[] transactions)
+    public virtual async Task AddBlock(params Transaction[] transactions)
     {
         await TestUtil.AddBlockAndWaitForHead(false, _cts.Token, transactions);
     }
