@@ -17,6 +17,7 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     int? GetMaxBlockNumber();
     int? GetMinBlockNumber();
     IEnumerable<int> GetBlockNumbersFor(Address address, int from, int to);
+    Task FirstBlockAdded { get; }
 
     IEnumerable<int> GetBlockNumbersFor(Hash256 topic, int from, int to);
     Task CheckMigratedData();

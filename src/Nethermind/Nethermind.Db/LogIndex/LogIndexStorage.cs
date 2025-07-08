@@ -68,6 +68,9 @@ namespace Nethermind.Db
         private int? _addressMinBlock;
         private int? _topicMinBlock;
 
+        private readonly TaskCompletionSource _firstBlockAddedSource = new();
+        public Task FirstBlockAdded => _firstBlockAddedSource.Task;
+
         // TODO: ensure class is singleton
         // TODO: take parameters from log-index/chain config
         public LogIndexStorage(IDbFactory dbFactory, ILogger logger,
@@ -91,6 +94,9 @@ namespace Nethermind.Db
             _topicMaxBlock = LoadBlockNumber(_topicsDb, SpecialKey.MaxBlockNum);
             _addressMinBlock = LoadBlockNumber(_addressDb, SpecialKey.MinBlockNum);
             _topicMinBlock = LoadBlockNumber(_topicsDb, SpecialKey.MinBlockNum);
+
+            if ((_addressMinBlock ?? _addressMaxBlock ?? _topicMinBlock ?? _topicMaxBlock) is not null)
+                _firstBlockAddedSource.SetResult();
         }
 
         // TODO: remove if unused
@@ -115,11 +121,11 @@ namespace Nethermind.Db
 
             await _setReceiptsSemaphore.WaitAsync();
 
-            if (_stopped)
-                return;
-
             try
             {
+                if (_stopped)
+                    return;
+
                 await _compactor.StopAsync(); // Need to wait, as releasing RocksDB during compaction will cause 0xC0000005
                 await _compressor.StopAsync(); // TODO: consider not waiting for compression queue to finish
 
@@ -557,7 +563,7 @@ namespace Nethermind.Db
             return counter;
         }
 
-        // batch is expected to be sorted
+        // batch is expected to be sorted, TODO: validate this is the case
         public async Task<LogIndexUpdateStats> SetReceiptsAsync(
             BlockReceipts[] batch, bool isBackwardSync
         )
@@ -596,6 +602,10 @@ namespace Nethermind.Db
                 UpdateTopicBlockNumbers(dbBatches[Hash256.Size], batch, isBackwardSync);
                 stats.UpdatingMeta.Include(Stopwatch.GetElapsedTime(timestamp));
 
+                // Notify we have the first block
+                if (batch.Length != 0)
+                    _firstBlockAddedSource.TrySetResult();
+
                 // Submit batches
                 // TODO: return batches in case of an error without writing anything
                 timestamp = Stopwatch.GetTimestamp();
@@ -626,7 +636,7 @@ namespace Nethermind.Db
         // TODO: optimize allocations
         private static void SaveBlockNumbersByKey(IWriteBatch dbBatch, byte[] key, IReadOnlyList<int> blockNums, bool isBackwardSync, LogIndexUpdateStats stats)
         {
-            var dbKeyArray = _arrayPool.Rent(key.Length + SpecialPostfix.BackwardMergeLength);
+            var dbKeyArray = _arrayPool.Rent(key.Length + SpecialPostfix.ForwardMergeLength);
 
             try
             {
