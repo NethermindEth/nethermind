@@ -7,23 +7,16 @@ using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Abi;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Evm.State;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract;
@@ -83,30 +76,30 @@ public class AuRaContractGasLimitOverrideTests
 
     public class TestGasLimitContractBlockchain : TestContractBlockchain
     {
-        private IGasLimitCalculator? _gasLimitCalculator = null;
-        public IGasLimitCalculator GasLimitCalculator => _gasLimitCalculator ??= CreateGasLimitCalculator();
+        public AuRaContractGasLimitOverride GasLimitCalculator => Container.Resolve<AuRaContractGasLimitOverride>();
         public AuRaContractGasLimitOverride.Cache GasLimitOverrideCache => Container.Resolve<AuRaContractGasLimitOverride.Cache>();
 
-        private AuRaContractGasLimitOverride CreateGasLimitCalculator()
+        private AuRaContractGasLimitOverride CreateGasLimitCalculator(
+            ChainSpec chainSpec,
+            AuRaContractGasLimitOverride.Cache gasLimitOverrideCache,
+            ISpecProvider specProvider,
+            IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory
+        )
         {
-            KeyValuePair<long, Address> blockGasLimitContractTransition = ChainSpec.EngineChainSpecParametersProvider
+            KeyValuePair<long, Address> blockGasLimitContractTransition = chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>().BlockGasLimitContractTransitions
                 .First();
             BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value,
                 blockGasLimitContractTransition.Key,
-                ReadOnlyTxProcessingEnvFactory.Create());
+                txProcessingEnvFactory.Create());
 
-            return new AuRaContractGasLimitOverride(new[] { gasLimitContract }, GasLimitOverrideCache, false, new FollowOtherMiners(SpecProvider), LimboLogs.Instance);
+            return new AuRaContractGasLimitOverride(new[] { gasLimitContract }, gasLimitOverrideCache, false, new FollowOtherMiners(specProvider), LimboLogs.Instance);
         }
 
-        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
-        {
-            builder = base.ConfigureContainer(builder, configProvider);
-
-            builder.AddScoped<IBlockProcessor, AuRaBlockProcessor>();
-
-            return builder;
-        }
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
+            base.ConfigureContainer(builder, configProvider)
+                .AddModule(new AuRaModule(CreateChainSpec()))
+                .AddSingleton<AuRaContractGasLimitOverride, ChainSpec, AuRaContractGasLimitOverride.Cache, ISpecProvider, IReadOnlyTxProcessingEnvFactory>(CreateGasLimitCalculator);
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
     }

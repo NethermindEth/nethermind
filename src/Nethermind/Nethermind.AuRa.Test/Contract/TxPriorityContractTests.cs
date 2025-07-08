@@ -251,9 +251,14 @@ namespace Nethermind.AuRa.Test.Contract
 
             public ContractDataStoreWithLocalData<Address> SendersWhitelist { get; private set; }
 
-            protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
+            protected virtual ILocalDataSource<IEnumerable<Address>> GetWhitelistLocalDataStore() => new EmptyLocalDataSource<IEnumerable<Address>>();
+
+            protected virtual ILocalDataSource<IEnumerable<TxPriorityContract.Destination>> GetMinGasPricesLocalDataStore() => null;
+
+            protected virtual ILocalDataSource<IEnumerable<TxPriorityContract.Destination>> GetPrioritiesLocalDataStore() => null;
+
+            protected override Task AddBlocksOnStart()
             {
-                TestBlockchain bc = await base.Build(configurer);
 
                 TxPriorityContract = new TxPriorityContract(AbiEncoder.Instance, TestItem.AddressA,
                     ReadOnlyTxProcessingEnvFactory.Create());
@@ -280,23 +285,16 @@ namespace Nethermind.AuRa.Test.Contract
                     ReceiptStorage,
                     LimboLogs.Instance,
                     GetWhitelistLocalDataStore());
-
-                return bc;
+                return Task.CompletedTask;
             }
-
-            protected virtual ILocalDataSource<IEnumerable<Address>> GetWhitelistLocalDataStore() => new EmptyLocalDataSource<IEnumerable<Address>>();
-
-            protected virtual ILocalDataSource<IEnumerable<TxPriorityContract.Destination>> GetMinGasPricesLocalDataStore() => null;
-
-            protected virtual ILocalDataSource<IEnumerable<TxPriorityContract.Destination>> GetPrioritiesLocalDataStore() => null;
-
-            protected override Task AddBlocksOnStart() => Task.CompletedTask;
         }
 
         public class TxPermissionContractBlockchainWithBlocks : TxPermissionContractBlockchain
         {
             protected override async Task AddBlocksOnStart()
             {
+                await base.AddBlocksOnStart();
+
                 EthereumEcdsa ecdsa = new(ChainSpec.ChainId);
 
                 await AddBlock(
@@ -309,6 +307,9 @@ namespace Nethermind.AuRa.Test.Contract
                         TxPriorityContract.SetMinGasPrice(TestItem.AddressB, FnSignature2, 4),
                         TxPriorityContract.SetSendersWhitelist(TestItem.AddressA, TestItem.AddressB))
                 );
+
+                // ContractDataStore track item from block async.
+                await Task.Delay(100);
 
                 await AddBlock(
                     SignTransactions(ecdsa, TestItem.PrivateKeyA, StateReader.GetNonce(BlockTree.Head!.Header, TestItem.PrivateKeyA.Address),
