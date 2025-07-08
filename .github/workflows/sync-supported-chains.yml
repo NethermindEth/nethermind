@@ -75,6 +75,7 @@ jobs:
           tags: "core, self-hosted, dynamic"
           organization: "NethermindEth"
           repo_name: "nethermind"
+          blocked_ports: "8545,8546,8547,8551,8552,8553"
 
   sync-chain:
     needs: [setup-matrix, create_a_runner]
@@ -292,4 +293,120 @@ jobs:
           fi
 
           echo 'Running sedge...'
+          
+      - name: Wait for ${{ matrix.config.network }} to sync
+        id: wait
+        env:
+          NETWORK: ${{ matrix.config.network }}
+        run: |
+          python scripts/wait-for-sync.py
+      - name: Get Nethermind Debug Logs
+        if: ${{ failure() || cancelled() }}
+        id: find-and-upload
+        run: |
+          target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
+          cd "$target_dir"
+          cd logs
+          ls
+          log_file=$(find . -type f -name "*.log" | head -n 1)
+          echo "Found log file: $log_file"
+          artifact_name=$(basename "$log_file")-${{ github.run_id }}
+          zip "${artifact_name}.zip" "$log_file"
+          echo "Compressed log file into ${artifact_name}.zip"
+          echo "artifact_name=$artifact_name" >> $GITHUB_ENV
+          echo "artifact_path=$(pwd)/${artifact_name}.zip" >> $GITHUB_ENV
+      - name: Upload Nethermind Debug logs artifact
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.artifact_name }}
+          path: ${{ env.artifact_path }}
+          retention-days: 7
+
+      - name: Get Consensus Logs
+        if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia' && matrix.config.network != 'energyweb' && matrix.config.network != 'volta'
+        run: |
+          network="${{ matrix.config.network }}"
+          if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
+            docker logs sedge-consensus-op-l2-client
+          elif [[ "$network" == taiko-* ]]; then
+            docker logs sedge-consensus-taikodriver-client
+          else
+            docker logs sedge-consensus-client
+          fi
+      - name: Check size of DB
+        run: |
+          du -h $GITHUB_WORKSPACE/sedge
+      - name: Destroy VM
+        if: always()
+        id: run-linode-action
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          action: "destroy-machine-async"
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          organization: "NethermindEth"
+          repo_name: "nethermind"
+
+  destroy_runner:
+    needs: [setup-matrix, create_a_runner, sync-chain]
+    if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Destroy VM (make sure is removed)
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        continue-on-error: true
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          action: "destroy-machine"
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          organization: "NethermindEth"
+          repo_name: "nethermind"
+
+      - name: Destroy Runner
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          action: "destroy-runner"
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          organization: "NethermindEth"
+          repo_name: "nethermind"
+  trigger_tests:
+    needs: [setup-matrix, create_a_runner, sync-chain, destroy_runner]
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: "nethermind,post-merge-smoke-tests"
+
+      - name: Trigger notification action on test repo
+        if: startsWith(github.event.workflow_run.head_branch, 'release/')
+        continue-on-error: true
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: receive-push-notification.yml
+          repo: NethermindEth/post-merge-smoke-tests
+          ref: "main"
+          token: "${{ steps.gh-app.outputs.token }}"
+          inputs: '{
+            "nethermind_branch": "refs/heads/${{ github.event.workflow_run.head_branch }}"
+          }'
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
