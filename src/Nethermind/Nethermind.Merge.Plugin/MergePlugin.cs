@@ -265,7 +265,7 @@ public class MergePluginModule : Module
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
             .AddDecorator<ISealValidator, MergeSealValidator>()
             .AddDecorator<ISealer, MergeSealer>()
-            .AddSingleton<IHeadTxValidator>(HeadTxValidator.Instance)
+            .AddKeyedSingleton(ITxValidator.HeadTxValidatorKey, new HeadTxValidator())
 
             .AddModule(new BaseMergePluginModule());
     }

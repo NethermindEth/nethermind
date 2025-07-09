@@ -21,6 +21,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
@@ -50,7 +51,7 @@ namespace Nethermind.TxPool
         private readonly IBlobTxStorage _blobTxStorage;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
-        private readonly IHeadTxValidator? _headTxValidator;
+        private readonly ITxValidator? _headTxValidator;
         private readonly bool _blobReorgsSupportEnabled;
         private readonly DelegationCache _pendingDelegations = new();
 
@@ -95,7 +96,6 @@ namespace Nethermind.TxPool
         /// <param name="incomingTxFilter"></param>
         /// <param name="thereIsPriorityContract"></param>
         /// <param name="headTxValidator"></param>
-        /// <param name="newSoftHeadTxValidator"></param>
         public TxPool(IEthereumEcdsa ecdsa,
             IBlobTxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
@@ -105,7 +105,7 @@ namespace Nethermind.TxPool
             IComparer<Transaction> comparer,
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter? incomingTxFilter = null,
-            IHeadTxValidator? headTxValidator = null,
+            [KeyFilter(ITxValidator.HeadTxValidatorKey)] ITxValidator? headTxValidator = null,
             bool thereIsPriorityContract = false)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -705,14 +705,12 @@ namespace Nethermind.TxPool
                 {
                     UInt256 gasBottleneck = 0;
 
-                    switch (_headTxValidator?.IsWellFormed(tx, headSpec))
+                    ValidationResult valid = _headTxValidator?.IsWellFormed(tx, headSpec) ?? ValidationResult.Success;
+
+                    if (!valid)
                     {
-                        case HeadTxValidatorResult.InvalidAllowReentrance:
-                            MarkForEviction(tx, true);
-                            continue;
-                        case HeadTxValidatorResult.Invalid:
-                            MarkForEviction(tx, false);
-                            continue;
+                        MarkForEviction(tx, valid.AllowReentrance);
+                        continue;
                     }
 
                     previousTxBottleneck ??= tx.CalculateAffordableGasPrice(
@@ -762,7 +760,7 @@ namespace Nethermind.TxPool
                 _broadcaster.StopBroadcast(tx.Hash!);
                 if (allowLaterPoolReentrance) _hashCache.DeleteFromLongTerm(tx.Hash!);
                 updateTx(transactions, tx, null, lastElement);
-                // no nonce gaps for blob transactions
+                // evict all following txs to prevent nonce gaps between blob tx
                 evictNextTxs |= tx.SupportsBlobs;
             }
         }

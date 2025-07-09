@@ -132,7 +132,7 @@ namespace Nethermind.Api
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
-        public IHeadTxValidator? HeadTxValidator => Context.ResolveOptional<IHeadTxValidator>();
+        public ITxValidator? HeadTxValidator => Context.ResolveOptionalKeyed<ITxValidator>(ITxValidator.HeadTxValidatorKey);
         public IBlockFinalizationManager? FinalizationManager { get; set; }
 
         public IBlockProducerEnvFactory BlockProducerEnvFactory => Context.Resolve<IBlockProducerEnvFactory>();

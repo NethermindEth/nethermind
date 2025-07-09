@@ -246,7 +246,6 @@ public class StartBlockProducerAuRa(
         ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(logManager)
             .WithCustomTxFilter(txSourceFilter)
             .WithBaseFeeFilter()
-            .WithCustomTxFilter(HeadTxValidator.Instance)
             .Build;
 
         return new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline, blocksConfig);

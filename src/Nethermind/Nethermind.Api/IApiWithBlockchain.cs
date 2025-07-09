@@ -55,7 +55,7 @@ namespace Nethermind.Api
         TxValidator? TxValidator { get; }
 
         [SkipServiceCollection]
-        IHeadTxValidator? HeadTxValidator { get; }
+        ITxValidator? HeadTxValidator { get; }
 
         /// <summary>
         /// Manager of block finalization

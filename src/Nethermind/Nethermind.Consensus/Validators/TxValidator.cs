@@ -95,7 +95,7 @@ public sealed class TxValidator : ITxValidator
             : TxErrorMessages.InvalidTxType(releaseSpec.Name);
 }
 
-public sealed class CompositeTxValidator(params ITxValidator[] validators) : ITxValidator
+public class CompositeTxValidator(params ITxValidator[] validators) : ITxValidator
 {
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
@@ -297,7 +297,7 @@ public sealed class MempoolBlobTxProofVersionValidator : ITxValidator
         };
 
         static ValidationResult ValidateProofVersion(ProofVersion txProofVersion, IReleaseSpec spec) =>
-            txProofVersion != spec.BlobProofVersion ? TxErrorMessages.InvalidProofVersion : ValidationResult.Success;
+            txProofVersion != spec.BlobProofVersion ? new ValidationResult(TxErrorMessages.InvalidProofVersion, true) : ValidationResult.Success;
     }
 }
 

@@ -16,8 +16,14 @@ namespace Nethermind.Consensus.Transactions
             return new TxFilterPipelineBuilder(logManager)
                 .WithMinGasPriceFilter(blocksConfig)
                 .WithBaseFeeFilter()
-                .WithCustomTxFilter(HeadTxValidator.Instance)
+                .WithHeadTxFilter()
                 .Build;
+        }
+
+        private TxFilterPipelineBuilder WithHeadTxFilter()
+        {
+            _filterPipeline.AddTxFilter(new HeadTxValidator().AsTxFilter());
+            return this;
         }
 
         public TxFilterPipelineBuilder WithMinGasPriceFilter(IBlocksConfig blocksConfig)

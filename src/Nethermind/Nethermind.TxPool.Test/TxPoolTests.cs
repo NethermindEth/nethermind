@@ -2206,7 +2206,7 @@ namespace Nethermind.TxPool.Test
                 transactionComparerProvider.GetDefaultComparer(),
                 ShouldGossip.Instance,
                 incomingTxFilter,
-                HeadTxValidator.Instance,
+                new HeadTxValidator(),
                 thereIsPriorityContract);
         }
 
