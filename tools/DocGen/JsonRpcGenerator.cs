@@ -13,7 +13,7 @@ namespace Nethermind.DocGen;
 
 internal static class JsonRpcGenerator
 {
-    private const string _objectTypeName = "*object*";
+    private const string _objectTypeName = "_object_";
 
     internal static void Generate(string path)
     {
@@ -283,28 +283,28 @@ internal static class JsonRpcGenerator
             return GetJsonTypeName(underlyingType);
 
         if (type.IsEnum)
-            return "*integer*";
+            return "_integer_";
 
         if (TryGetEnumerableItemType(type, out var itemType, out var isDictionary))
             return $"{(isDictionary ? "map" : "array")} of {GetJsonTypeName(itemType!)}";
 
         return type.Name switch
         {
-            "Address" => "*string* (address)",
+            "Address" => "_string_ (address)",
             "BigInteger"
                 or "Int32"
                 or "Int64"
                 or "Int64&"
                 or "UInt64"
-                or "UInt256" => "*string* (hex integer)",
-            "BlockParameter" => "*string* (block number or hash or either of `earliest`, `finalized`, `latest`, `pending`, or `safe`)",
+                or "UInt256" => "_string_ (hex integer)",
+            "BlockParameter" => "_string_ (block number or hash or either of `earliest`, `finalized`, `latest`, `pending`, or `safe`)",
             "Bloom"
                 or "Byte"
-                or "Byte[]" => "*string* (hex data)",
-            "Boolean" => "*boolean*",
-            "Hash256" => "*string* (hash)",
-            "String" => "*string*",
-            "TxType" => "*string* (transaction type)",
+                or "Byte[]" => "_string_ (hex data)",
+            "Boolean" => "_boolean_",
+            "Hash256" => "_string_ (hash)",
+            "String" => "_string_",
+            "TxType" => "_string_ (transaction type)",
             _ => _objectTypeName
         };
     }
