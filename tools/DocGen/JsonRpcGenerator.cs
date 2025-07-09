@@ -297,7 +297,7 @@ internal static class JsonRpcGenerator
         }
         catch (Exception)
         {
-            Console.WriteLine($"Failed copying from {fileName}");
+            AnsiConsole.WriteLine($"[red]Failed copying from[/] {fileName}");
         }
     }
 
