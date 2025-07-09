@@ -67,6 +67,7 @@ public sealed unsafe partial class VirtualMachine
         public bool ShouldRevert { get; }
         public bool? PrecompileSuccess { get; }
         public bool IsReturn => StateToExecute is null;
+        //EvmExceptionType.Revert is returned when the top frame encounters a REVERT opcode, which is not an exception.
         public bool IsException => ExceptionType != EvmExceptionType.None && ExceptionType != EvmExceptionType.Revert;
         public int FromVersion { get; }
     }
