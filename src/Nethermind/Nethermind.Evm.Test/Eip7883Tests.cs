@@ -63,28 +63,20 @@ public class Eip7883Tests
         { Lp = 7, FusakaEnabled = true, BaseLength = 1024, ExpLength = 10000, ModulusLength = 1024, Result = long.MaxValue };
         yield return new Eip7883TestCase
         { Lp = 8, FusakaEnabled = true, BaseLength = 1024, ExpLength = 1024, ModulusLength = 10000, Result = long.MaxValue };
-        // testing exponent >32bytes
-        yield return new Eip7883TestCase
+        yield return new Eip7883TestCase        // testing exponent >32bytes
         { Lp = 9, FusakaEnabled = true, BaseLength = 8, ExpLength = 81, ModulusLength = 8, Result = 16624L };
-        // testing base/modulo below 32 bytes
-        yield return new Eip7883TestCase
+        yield return new Eip7883TestCase        // testing base/modulo below 32 bytes
         { Lp = 10, FusakaEnabled = true, BaseLength = 8, ExpLength = 8, ModulusLength = 8, Result = 1008L };
-        // testing 3x general pricing mechanism
-        yield return new Eip7883TestCase
+        yield return new Eip7883TestCase        // testing 3x general pricing mechanism
         { Lp = 11, FusakaEnabled = true, BaseLength = 32, ExpLength = 5, ModulusLength = 32, Result = 624L };
-        // testing bump of min price
-        yield return new Eip7883TestCase
+        yield return new Eip7883TestCase        // testing bump of min price
         { Lp = 12, FusakaEnabled = true, BaseLength = 32, ExpLength = 1, ModulusLength = 32, Result = 500L };
-        // testing base >32bytes
-        yield return new Eip7883TestCase
+        yield return new Eip7883TestCase        // testing base >32bytes
         { Lp = 13, FusakaEnabled = true, BaseLength = 40, ExpLength = 8, ModulusLength = 32, Result = 3150L };
-        // testing modulo >32bytes
-        yield return new Eip7883TestCase
+        yield return new Eip7883TestCase        // testing modulo >32bytes
         { Lp = 14, FusakaEnabled = true, BaseLength = 32, ExpLength = 8, ModulusLength = 40, Result = 3150L };
-        // testing base&modulo >32bytes
-        yield return new Eip7883TestCase
+        yield return new Eip7883TestCase        // testing base&modulo >32bytes
         { Lp = 15, FusakaEnabled = true, BaseLength = 40, ExpLength = 8, ModulusLength = 40, Result = 3150L };
-
 
         // eip disabled test cases
         yield return new Eip7883TestCase
