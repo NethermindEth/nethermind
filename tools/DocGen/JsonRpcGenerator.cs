@@ -13,6 +13,13 @@ namespace Nethermind.DocGen;
 
 internal static class JsonRpcGenerator
 {
+    private static readonly string[] _assemblies = [
+        "Nethermind.Consensus.Clique",
+        "Nethermind.Era1",
+        "Nethermind.Flashbots",
+        "Nethermind.HealthChecks",
+        "Nethermind.JsonRpc"
+    ];
     private const string _objectTypeName = "_object_";
 
     internal static void Generate(string path)
@@ -26,8 +33,7 @@ internal static class JsonRpcGenerator
             typeof(IRpcRpcModule).FullName,
             typeof(ISubscribeRpcModule).FullName
         };
-        var types = new[] { "Nethermind.JsonRpc", "Nethermind.Consensus.Clique" }
-            .SelectMany(a => Assembly.Load(a).GetTypes())
+        var types = _assemblies.SelectMany(a => Assembly.Load(a).GetTypes())
             .Where(t => t.IsInterface && typeof(IRpcModule).IsAssignableFrom(t) &&
                 !excluded.Any(x => x is not null && (t.FullName?.Contains(x, StringComparison.Ordinal) ?? false)))
             .OrderBy(t => t.Name);
@@ -42,16 +48,44 @@ internal static class JsonRpcGenerator
             }
         }
 
-        var i = 0;
+        var methodMap = new Dictionary<string, IEnumerable<MethodInfo>>();
 
         foreach (var type in types)
-            WriteMarkdown(path, type, i++);
+        {
+            var attr = type.GetCustomAttribute<RpcModuleAttribute>();
+
+            if (attr is null)
+            {
+                AnsiConsole.MarkupLine($"[yellow]{type.Name} module type is missing[/]");
+                continue;
+            }
+
+            var ns = attr.ModuleType.ToLowerInvariant();
+            var methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Public);
+
+            if (!methodMap.TryAdd(ns, methods))
+                methodMap[ns] = methodMap[ns].Concat(methods);
+        }
+
+        var i = 0;
+
+        foreach (var (ns, methods) in methodMap)
+        {
+            methodMap[ns] = (ns.Equals("eth", StringComparison.Ordinal)
+                // Inject the `subscribe` methods into `eth`
+                ? methods
+                    .Concat(typeof(ISubscribeRpcModule)
+                    .GetMethods(BindingFlags.Instance | BindingFlags.Public))
+                : methods)
+                .OrderBy(m => m.Name);
+
+            WriteMarkdown(path, ns, methodMap[ns], i++);
+        }
     }
 
-    private static void WriteMarkdown(string path, Type rpcType, int sidebarIndex)
+    private static void WriteMarkdown(string path, string ns, IEnumerable<MethodInfo> methods, int sidebarIndex)
     {
-        var rpcName = rpcType.Name[1..].Replace("RpcModule", null).ToLowerInvariant();
-        var fileName = Path.Join(path, $"{rpcName}.md");
+        var fileName = Path.Join(path, $"{ns}.md");
 
         using var stream = File.Open(fileName, FileMode.Create);
         using var file = new StreamWriter(stream);
@@ -59,8 +93,8 @@ internal static class JsonRpcGenerator
 
         file.WriteLine($"""
             ---
-            title: {rpcName} namespace
-            sidebar_label: {rpcName}
+            title: {ns} namespace
+            sidebar_label: {ns}
             sidebar_position: {sidebarIndex}
             ---
 
@@ -68,15 +102,6 @@ internal static class JsonRpcGenerator
             import TabItem from "@theme/TabItem";
 
             """);
-
-        IEnumerable<MethodInfo> methods = rpcType
-            .GetMethods(BindingFlags.Instance | BindingFlags.Public);
-
-        // Inject the `subscribe` methods into `eth`
-        if (rpcName.Equals("eth", StringComparison.Ordinal))
-            methods = methods.Concat(typeof(ISubscribeRpcModule).GetMethods(BindingFlags.Instance | BindingFlags.Public));
-
-        methods = methods.OrderBy(m => m.Name);
 
         foreach (var method in methods)
         {
