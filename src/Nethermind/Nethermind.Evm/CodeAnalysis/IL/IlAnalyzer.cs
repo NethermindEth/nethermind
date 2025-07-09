@@ -212,6 +212,7 @@ public static class IlAnalyzer
 
         bool notStart = true;
         bool lastOpcodeIsAjumpdest = false;
+        bool lastOpcodeIsCallOrCreate = false;
 
         bool requiresAvailabilityCheck = false;
         bool requiresStaticEnvCheck = false;
@@ -234,12 +235,16 @@ public static class IlAnalyzer
                     subSegment.Instructions = instructionsIncluded;
                     subSegment.RequiresOpcodeCheck = requiresAvailabilityCheck;
                     subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;
-
                     gasOffsets[costStart] = coststack;
                     subSegmentData[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
 
                     subsegmentStart = pc;
                     subSegment = new();
+                    if (lastOpcodeIsCallOrCreate)
+                    {
+                        subSegment.IsEntryPoint = true;
+                    }
+
                     instructionsIncluded = [op];
                     subSegment.Start = subsegmentStart;
 
@@ -340,6 +345,15 @@ public static class IlAnalyzer
                     break;
             }
             notStart = false;
+
+            if (op.IsCall() || op.IsCreate())
+            {
+                lastOpcodeIsCallOrCreate = true;
+            }
+            else
+            {
+                lastOpcodeIsCallOrCreate = false;
+            }
         }
 
         if ((subsegmentStart < segmentRange.End.Value && !subSegmentData.ContainsKey(subsegmentStart)) || lastOpcodeIsAjumpdest)
