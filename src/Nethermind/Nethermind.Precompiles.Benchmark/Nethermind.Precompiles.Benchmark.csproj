@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
+    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
   </ItemGroup>
 
   <ItemGroup>

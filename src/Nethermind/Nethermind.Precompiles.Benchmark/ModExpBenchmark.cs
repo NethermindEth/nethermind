@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Blockchain.Precompiles;
 
 namespace Nethermind.Precompiles.Benchmark
 {
