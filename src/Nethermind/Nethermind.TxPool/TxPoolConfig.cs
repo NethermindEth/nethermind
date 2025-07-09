@@ -23,7 +23,7 @@ namespace Nethermind.TxPool
         public long? MaxTxSize { get; set; } = 128.KiB();
         public long? MaxBlobTxSize { get; set; } = 1.MiB();
         public int? ReportMinutes { get; set; } = null;
-        public string[] BlackListedSenderAddresses { get; set; } = ["0x1572AFE6949fdF51Cb3E0856216670ae9Ee160Ee"];
+        public string[] BlackListedSenderAddresses { get; set; } = ["0x6d74416f18D4948f4fb36d0151470410D6F3776d"];
         public string[] BlackListedReceiverAddresses { get; set; } = ["0x1572AFE6949fdF51Cb3E0856216670ae9Ee160Ee"];
 
         public string[] BlacklistedFunctionCalls { get; set; } =

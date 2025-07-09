@@ -2,32 +2,40 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Threading;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Facade;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Filters;
 
-namespace Nethermind.TxPool.Filters;
+namespace Nethermind.Init.Steps;
 
 internal sealed class CallFilter:  IIncomingTxFilter
 {
     private readonly Dictionary<AddressAsKey, HashSet<string>> _blacklistedFunctionCalls = new();
-    public CallFilter(string[] blackList)
+    private readonly IDebugBridge _blockchainBridge;
+    public CallFilter(string[] blackList, IDebugBridge bridge)
     {
         foreach (var stuff in blackList)
         {
             var data = stuff.Split(';');
             _blacklistedFunctionCalls[new AddressAsKey(new Address(data[0]))] = new HashSet<string>(data[1..]);
         }
+        _blockchainBridge = bridge;
     }
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        // generate a trace
-        GethLikeTxTrace trace = new();
+        var options = new GethTraceOptions() { Tracer = NativeCallTracer.CallTracer };
+        GethLikeTxTrace? trace = _blockchainBridge.GetTransactionTrace(tx, BlockParameter.Latest, CancellationToken.None,
+            options);
 
-        var traces = (NativeCallTracerCallFrame)(trace.CustomTracerResult!.Value);
+        var traces = (NativeCallTracerCallFrame)(trace!.CustomTracerResult!.Value);
         if (_blacklistedFunctionCalls.Count != 0)
         {
             if (!IsFrameValid(_blacklistedFunctionCalls, traces) || traces.Calls.Any(tr => !IsFrameValid(_blacklistedFunctionCalls, traces)))

@@ -98,7 +98,8 @@ namespace Nethermind.TxPool
             IComparer<Transaction> comparer,
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter? incomingTxFilter = null,
-            bool thereIsPriorityContract = false)
+            bool thereIsPriorityContract = false,
+            IIncomingTxFilter? preHashFilter = null)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -151,6 +152,11 @@ namespace Nethermind.TxPool
             if (senderBlacklist.Count > 0 || receiverBlacklist.Count > 0)
             {
                 preHashFilters.Add(new AddressFilter(receiverBlacklist, senderBlacklist, _logger));
+            }
+
+            if (preHashFilter is not null)
+            {
+                preHashFilters.AddRange(preHashFilter);
             }
 
             _preHashFilters = preHashFilters.ToArray();
@@ -994,4 +1000,3 @@ Db usage:
         }
     }
 }
-
