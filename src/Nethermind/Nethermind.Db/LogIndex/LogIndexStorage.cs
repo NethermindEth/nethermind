@@ -359,7 +359,7 @@ namespace Nethermind.Db
         }
 
         // TODO: optimize allocations
-        private (Dictionary<Address, LinkedList<int>> address, Dictionary<Hash256, LinkedList<int>> topic)? Aggregate(
+        private (Dictionary<Address, List<int>> address, Dictionary<Hash256, List<int>> topic)? Aggregate(
             BlockReceipts[] batch, LogIndexUpdateStats stats, bool isBackwardSync
         )
         {
@@ -368,7 +368,7 @@ namespace Nethermind.Db
 
             var timestamp = Stopwatch.GetTimestamp();
 
-            var maps = (address: new Dictionary<Address, LinkedList<int>>(), topic: new Dictionary<Hash256, LinkedList<int>>());
+            var maps = (address: new Dictionary<Address, List<int>>(), topic: new Dictionary<Hash256, List<int>>());
             foreach ((var blockNumber, TxReceipt[] receipts) in batch)
             {
                 if (!IsBlockNewer(blockNumber, isBackwardSync))
@@ -387,10 +387,13 @@ namespace Nethermind.Db
                     {
                         stats.LogsAdded++;
 
-                        var addressNums = maps.address.GetOrAdd(log.Address, _ => new());
+                        List<int> addressNums = maps.address.GetOrAdd(log.Address, _ => new(1));
 
-                        if (IsAddressBlockNewer(blockNumber, isBackwardSync) && addressNums.Last?.Value != blockNumber)
-                            addressNums.AddLast(blockNumber);
+                        if (IsAddressBlockNewer(blockNumber, isBackwardSync) &&
+                            (addressNums.Count == 0 || addressNums[^1] != blockNumber))
+                        {
+                            addressNums.Add(blockNumber);
+                        }
 
                         if (IsTopicBlockNewer(blockNumber, isBackwardSync))
                         {
@@ -398,9 +401,9 @@ namespace Nethermind.Db
                             {
                                 stats.TopicsAdded++;
 
-                                var topicNums = maps.topic.GetOrAdd(log.Topics[i], _ => new());
-                                if (topicNums.Last?.Value != blockNumber)
-                                    topicNums.AddLast(blockNumber);
+                                var topicNums = maps.topic.GetOrAdd(log.Topics[i], _ => new(1));
+                                if (topicNums.Count == 0 || topicNums[^1] != blockNumber)
+                                    topicNums.Add(blockNumber);
                             }
                         }
                     }
@@ -624,7 +627,7 @@ namespace Nethermind.Db
         }
 
         // TODO: optimize allocations
-        private static void SaveBlockNumbersByKey(IWriteBatch dbBatch, ReadOnlySpan<byte> key, LinkedList<int> blockNums, bool isBackwardSync, LogIndexUpdateStats stats)
+        private static void SaveBlockNumbersByKey(IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<int> blockNums, bool isBackwardSync, LogIndexUpdateStats stats)
         {
             var dbKeyArray = _arrayPool.Rent(key.Length + SpecialPostfix.ForwardMergeLength);
 
@@ -751,7 +754,7 @@ namespace Nethermind.Db
             return result;
         }
 
-        private static byte[] CreateDbValue(LinkedList<int> blockNums)
+        private static byte[] CreateDbValue(IReadOnlyList<int> blockNums)
         {
             var value = new byte[blockNums.Count * BlockNumSize];
             SetValBlockNums(value, blockNums);
