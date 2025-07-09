@@ -69,7 +69,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             logManager,
             _mainCancellationTokenSource.Token);
 
-        TaskFactory factory = new (_scheduler);
+        TaskFactory factory = new(_scheduler);
         _tasksExecutors = [.. Enumerable.Range(0, concurrency).Select(_ => factory.StartNew(StartChannel).Unwrap())];
     }
 
@@ -139,8 +139,8 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
             continue;
 
-            Throttle:
-                await Task.Delay(millisecondsDelay: 1);
+        Throttle:
+            await Task.Delay(millisecondsDelay: 1);
         }
     }
 
@@ -246,7 +246,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         public BelowNormalPriorityTaskScheduler(int maxDegreeOfParallelism, ManualResetEventSlim restartQueueSignal, ILogManager logManager, CancellationToken cancellationToken)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(maxDegreeOfParallelism, 1);
-            
+
             _logger = logManager.GetClassLogger();
             _restartQueueSignal = restartQueueSignal;
             _cancellationToken = cancellationToken;
