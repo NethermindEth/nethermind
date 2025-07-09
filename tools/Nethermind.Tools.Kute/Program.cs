@@ -1,6 +1,7 @@
 using App.Metrics.Formatters;
 using App.Metrics.Formatters.Ascii;
 using App.Metrics.Formatters.Json;
+using App.Metrics.Formatters.Prometheus;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Tools.Kute.Auth;
 using Nethermind.Tools.Kute.FlowManager;
@@ -140,6 +141,7 @@ static class Program
             {
                 MetricsOutputFormatter.Report => new MetricsTextOutputFormatter(),
                 MetricsOutputFormatter.Json => new MetricsJsonOutputFormatter(),
+                MetricsOutputFormatter.Prometheus => new MetricsPrometheusTextOutputFormatter(),
                 _ => throw new ArgumentOutOfRangeException(),
             }
         );
