@@ -359,7 +359,7 @@ namespace Nethermind.Db
         }
 
         // TODO: optimize allocations
-        private Dictionary<byte[], List<int>>? BuildProcessingDictionary(
+        private (Dictionary<Address, List<int>> address, Dictionary<Hash256, List<int>> topic)? Aggregate(
             BlockReceipts[] batch, LogIndexUpdateStats stats, bool isBackwardSync
         )
         {
@@ -368,7 +368,7 @@ namespace Nethermind.Db
 
             var timestamp = Stopwatch.GetTimestamp();
 
-            var blockNumsByKey = new Dictionary<byte[], List<int>>(Bytes.EqualityComparer);
+            var maps = (address: new Dictionary<Address, List<int>>(), topic: new Dictionary<Hash256, List<int>>());
             foreach ((var blockNumber, TxReceipt[] receipts) in batch)
             {
                 if (!IsBlockNewer(blockNumber, isBackwardSync))
@@ -387,7 +387,7 @@ namespace Nethermind.Db
                     {
                         stats.LogsAdded++;
 
-                        List<int> addressNums = blockNumsByKey.GetOrAdd(log.Address.Bytes, _ => new(1));
+                        List<int> addressNums = maps.address.GetOrAdd(log.Address, _ => new(1));
 
                         if (IsAddressBlockNewer(blockNumber, isBackwardSync) &&
                             (addressNums.Count == 0 || addressNums[^1] != blockNumber))
@@ -401,10 +401,7 @@ namespace Nethermind.Db
                             {
                                 stats.TopicsAdded++;
 
-                                var topic = log.Topics[i];
-                                var topicKey = BuildTopicKey(topic, i);
-
-                                var topicNums = blockNumsByKey.GetOrAdd(topicKey, _ => new(1));
+                                var topicNums = maps.topic.GetOrAdd(log.Topics[i], _ => new(1));
                                 if (topicNums.Count == 0 || topicNums[^1] != blockNumber)
                                     topicNums.Add(blockNumber);
                             }
@@ -413,10 +410,10 @@ namespace Nethermind.Db
                 }
             }
 
-            stats.KeysCount.Include(blockNumsByKey.Count);
+            stats.KeysCount.Include(maps.address.Count + maps.topic.Count);
             stats.BuildingDictionary.Include(Stopwatch.GetElapsedTime(timestamp));
 
-            return blockNumsByKey;
+            return maps;
         }
 
         public Task CheckMigratedData()
@@ -578,28 +575,26 @@ namespace Nethermind.Db
 
             try
             {
-                Dictionary<int, IWriteBatch> dbBatches = new(2)
-                {
-                    [Address.Size] = _addressDb.StartWriteBatch(),
-                    [Hash256.Size] = _topicsDb.StartWriteBatch()
-                };
+                var dbBatch = (address: _addressDb.StartWriteBatch(), topic: _topicsDb.StartWriteBatch());
 
-                if (BuildProcessingDictionary(batch, stats, isBackwardSync) is { Count: > 0 } dictionary)
+                // Add values to batches
+                if (Aggregate(batch, stats, isBackwardSync) is {} aggregate)
                 {
-                    // Add values to batches
                     timestamp = Stopwatch.GetTimestamp();
-                    foreach (var (key, blockNums) in dictionary)
-                    {
-                        var dbBatch = dbBatches[key.Length];
-                        SaveBlockNumbersByKey(dbBatch, key, blockNums, isBackwardSync, stats);
-                    }
+
+                    foreach (var (address, blockNums) in aggregate.address)
+                        SaveBlockNumbersByKey(dbBatch.address, address.Bytes, blockNums, isBackwardSync, stats);
+
+                    foreach (var (topic, blockNums) in aggregate.topic)
+                        SaveBlockNumbersByKey(dbBatch.topic, topic.Bytes, blockNums, isBackwardSync, stats);
+
                     stats.Processing.Include(Stopwatch.GetElapsedTime(timestamp));
                 }
 
                 // Update block numbers
                 timestamp = Stopwatch.GetTimestamp();
-                UpdateAddressBlockNumbers(dbBatches[Address.Size], batch, isBackwardSync);
-                UpdateTopicBlockNumbers(dbBatches[Hash256.Size], batch, isBackwardSync);
+                UpdateAddressBlockNumbers(dbBatch.address, batch, isBackwardSync);
+                UpdateTopicBlockNumbers(dbBatch.address, batch, isBackwardSync);
                 stats.UpdatingMeta.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 // Notify we have the first block
@@ -609,10 +604,8 @@ namespace Nethermind.Db
                 // Submit batches
                 // TODO: return batches in case of an error without writing anything
                 timestamp = Stopwatch.GetTimestamp();
-                foreach (var dbBatch in dbBatches.Values)
-                {
-                    dbBatch.Dispose();
-                }
+                dbBatch.address.Dispose();
+                dbBatch.topic.Dispose();
                 stats.WaitingBatch.Include(Stopwatch.GetElapsedTime(timestamp));
 
                 // Enqueue compaction if needed
@@ -634,7 +627,7 @@ namespace Nethermind.Db
         }
 
         // TODO: optimize allocations
-        private static void SaveBlockNumbersByKey(IWriteBatch dbBatch, byte[] key, IReadOnlyList<int> blockNums, bool isBackwardSync, LogIndexUpdateStats stats)
+        private static void SaveBlockNumbersByKey(IWriteBatch dbBatch, ReadOnlySpan<byte> key, IReadOnlyList<int> blockNums, bool isBackwardSync, LogIndexUpdateStats stats)
         {
             var dbKeyArray = _arrayPool.Rent(key.Length + SpecialPostfix.ForwardMergeLength);
 
