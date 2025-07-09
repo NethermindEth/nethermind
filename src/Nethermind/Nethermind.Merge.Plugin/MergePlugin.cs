@@ -1,11 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
@@ -17,16 +12,21 @@ using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
+using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
@@ -36,9 +36,15 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
+using System.Threading.Tasks;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -53,6 +59,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     private IBlockCacheService _blockCacheService = null!;
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
     private PayloadPreparationService? _payloadPreparationService = null;
+    private IJsonRpcConfig _jsonRpcConfig = null!;
 
     protected ManualBlockFinalizationManager _blockFinalizationManager = null!;
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
@@ -71,6 +78,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         _syncConfig = nethermindApi.Config<ISyncConfig>();
         _blocksConfig = nethermindApi.Config<IBlocksConfig>();
         _txPoolConfig = nethermindApi.Config<ITxPoolConfig>();
+        _jsonRpcConfig = nethermindApi.Config<IJsonRpcConfig>();
 
         MigrateSecondsPerSlot(_blocksConfig, mergeConfig);
 
@@ -160,23 +168,22 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, wwe can skip this check, but we can still working with MergePlugin
             return;
 
-        IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
-        if (!jsonRpcConfig.Enabled)
+        if (!_jsonRpcConfig.Enabled)
         {
             if (_logger.IsInfo)
                 _logger.Info("JsonRpc not enabled. Turning on JsonRpc URL with engine API.");
 
-            jsonRpcConfig.Enabled = true;
+            _jsonRpcConfig.Enabled = true;
 
             EnsureEngineModuleIsConfigured();
 
-            if (!jsonRpcConfig.EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase))
+            if (!_jsonRpcConfig.EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase))
             {
                 // Disable it
-                jsonRpcConfig.EnabledModules = [];
+                _jsonRpcConfig.EnabledModules = [];
             }
 
-            jsonRpcConfig.AdditionalRpcUrls = jsonRpcConfig.AdditionalRpcUrls
+            _jsonRpcConfig.AdditionalRpcUrls = _jsonRpcConfig.AdditionalRpcUrls
                 .Where(static (url) => JsonRpcUrl.Parse(url).EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
         }
@@ -361,6 +368,11 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
     }
+    protected virtual void RegisterDebugRpcModule(IEngineDebugRpcModule debugRpcModule)
+    {
+        ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
+        _api.RpcModuleProvider.RegisterSingle(debugRpcModule);
+    }
 
     public ValueTask DisposeAsync()
     {
@@ -388,6 +400,12 @@ public class MergePluginModule : Module
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
             .AddDecorator<ISealValidator, MergeSealValidator>()
             .AddDecorator<ISealer, MergeSealer>()
+            .AddSingleton<IRpcModuleFactory<IEngineDebugRpcModule>, EngineDebugModuleFactory>()
+                .AddScoped<GethStyleTracer.BlockProcessingComponents>()
+                .AddScoped<IDebugBridge, DebugBridge>()
+                .AddScoped<IEngineDebugRpcModule, EngineDebugRpcModule>()
+                .AddScoped<IGethStyleTracer, GethStyleTracer>()
+                .AddScoped<IReceiptsMigration, ReceiptMigration>()
 
             .AddModule(new BaseMergePluginModule());
     }

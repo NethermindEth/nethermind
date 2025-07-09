@@ -250,7 +250,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         return error is null ? ValidationResult.Success : ValidationResult.Fail;
     }
 
-    protected virtual int GetExecutionPayloadVersion() => this switch
+    public virtual int GetExecutionPayloadVersion() => this switch
     {
         { ExecutionRequests: not null } => 4,
         { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
