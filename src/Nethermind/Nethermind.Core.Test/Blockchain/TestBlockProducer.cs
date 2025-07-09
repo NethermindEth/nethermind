@@ -12,7 +12,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Core.Test.Blockchain
 {

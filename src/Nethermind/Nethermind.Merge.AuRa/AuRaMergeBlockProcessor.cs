@@ -16,7 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Consensus.ExecutionRequests;
 
 namespace Nethermind.Merge.AuRa;

@@ -20,19 +20,9 @@ namespace Nethermind.Merge.Plugin
         {
             if (MergeEnabled)
             {
-                ArgumentNullException.ThrowIfNull(_api.EngineSigner);
-                ArgumentNullException.ThrowIfNull(_api.ChainSpec);
                 ArgumentNullException.ThrowIfNull(_api.BlockTree);
-                ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
                 ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-                ArgumentNullException.ThrowIfNull(_api.BlockValidator);
-                ArgumentNullException.ThrowIfNull(_api.RewardCalculatorSource);
-                ArgumentNullException.ThrowIfNull(_api.ReceiptStorage);
-                ArgumentNullException.ThrowIfNull(_api.TxPool);
-                ArgumentNullException.ThrowIfNull(_api.DbProvider);
-                ArgumentNullException.ThrowIfNull(_api.HeaderValidator);
                 ArgumentNullException.ThrowIfNull(_mergeBlockProductionPolicy);
-                ArgumentNullException.ThrowIfNull(_api.SealValidator);
                 ArgumentNullException.ThrowIfNull(_api.BlockProducerEnvFactory);
 
                 if (_logger.IsInfo) _logger.Info("Starting Merge block producer & sealer");
@@ -42,7 +32,7 @@ namespace Nethermind.Merge.Plugin
                     : null;
                 _manualTimestamper ??= new ManualTimestamper();
 
-                BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create();
+                IBlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create();
 
                 PostMergeBlockProducer postMergeBlockProducer = CreateBlockProducerFactory().Create(blockProducerEnv);
                 _api.BlockProducer = new MergeBlockProducer(blockProducer, postMergeBlockProducer, _poSSwitcher);

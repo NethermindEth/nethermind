@@ -23,7 +23,7 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
         DelayMs = delayMs;
     }
 
-    public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
+    public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
     {
         if (DelayMs > 0)
         {
@@ -35,7 +35,7 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
             throw ExceptionToThrow;
         }
 
-        return _blockProcessorImplementation.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer, token);
+        return _blockProcessorImplementation.Process(baseBlock, suggestedBlocks, processingOptions, blockTracer, token);
     }
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing

@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.IO;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -28,8 +29,8 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.TxPool;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -52,8 +53,9 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
-        IRlpStreamDecoder<Transaction> txDecoder) :
+        IShareableTxProcessorSource txProcessorSource,
+        IRlpStreamDecoder<Transaction> txDecoder,
+        IL1OriginStore l1OriginStore) :
             EngineRpcModule(getPayloadHandlerV1,
                 getPayloadHandlerV2,
                 getPayloadHandlerV3,
@@ -118,15 +120,12 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         IEnumerable<Transaction> allTxs = pendingTxs.SelectMany(txs => txs.Value).Where(tx => !tx.SupportsBlobs && tx.CanPayBaseFee(baseFee));
 
-        IEnumerable<Transaction> filteredTx =
-            allTxs.Where(tx => (tx.Supports1559 ? tx.MaxFeePerGas : tx.GasPrice) >= baseFee);
-
         if (minTip is not 0)
         {
-            filteredTx = filteredTx.Where(tx => tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas) && premiumPerGas >= minTip);
+            allTxs = allTxs.Where(tx => tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas) && premiumPerGas >= minTip);
         }
 
-        Transaction[] txQueue = filteredTx.ToArray();
+        Transaction[] txQueue = allTxs.ToArray();
 
         BlockHeader? head = blockFinder.Head?.Header;
 
@@ -135,8 +134,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             return ResultWrapper<PreBuiltTxList[]?>.Success([]);
         }
 
-        IReadOnlyTxProcessorSource readonlyTxProcessingEnv = readOnlyTxProcessingEnvFactory.Create();
-        using IReadOnlyTxProcessingScope scope = readonlyTxProcessingEnv.Build(head.StateRoot);
+        using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(head);
 
         return ResultWrapper<PreBuiltTxList[]?>.Success(ProcessTransactions(scope.TransactionProcessor, scope.WorldState, new BlockHeader(
                 head.Hash!,
@@ -174,7 +172,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         }
 
         BlockExecutionContext blkCtx = new(blockHeader, _specProvider.GetSpec(blockHeader));
-        worldState.StateRoot = blockHeader.StateRoot;
+        worldState.SetBaseBlock(blockHeader);
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
 
@@ -336,5 +334,17 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         {
             Transactions.Dispose();
         }
+    }
+
+    public ResultWrapper<UInt256> taikoAuth_setHeadL1Origin(UInt256 blockId)
+    {
+        l1OriginStore.WriteHeadL1Origin(blockId);
+        return ResultWrapper<UInt256>.Success(blockId);
+    }
+
+    public ResultWrapper<L1Origin> taikoAuth_updateL1Origin(L1Origin l1Origin)
+    {
+        l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
+        return ResultWrapper<L1Origin>.Success(l1Origin);
     }
 }

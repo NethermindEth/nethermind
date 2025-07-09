@@ -6,27 +6,23 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Flashbots.Data;
 using Nethermind.Consensus;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.State;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
+using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Flashbots.Handlers;
 
@@ -44,14 +40,13 @@ public class ValidateSubmissionHandler
     private readonly IFlashbotsConfig _flashbotsConfig;
     private readonly ISpecProvider _specProvider;
     private readonly IEthereumEcdsa _ethereumEcdsa;
-    private readonly IReadOnlyTxProcessingScope _processingScope;
-    private readonly BlockProcessor _blockProcessor;
+    private readonly IOverridableEnv<ProcessingEnv> _blockProcessorEnv;
 
     public ValidateSubmissionHandler(
         IHeaderValidator headerValidator,
         IBlockTree blockTree,
         IBlockValidator blockValidator,
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
+        IOverridableEnv<ProcessingEnv> blockProcessorEnv,
         ILogManager logManager,
         ISpecProvider specProvider,
         IFlashbotsConfig flashbotsConfig,
@@ -64,24 +59,7 @@ public class ValidateSubmissionHandler
         _headerValidator = headerValidator;
         _logger = logManager!.GetClassLogger();
         _specProvider = specProvider;
-
-        _processingScope = readOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
-        var worldState = _processingScope.WorldState;
-        ITransactionProcessor transactionProcessor = _processingScope.TransactionProcessor;
-        IBlockCachePreWarmer preWarmer = new BlockCachePreWarmer(readOnlyTxProcessingEnvFactory, worldState, 0, logManager);
-        _blockProcessor = new BlockProcessor(
-            _specProvider,
-            _blockValidator,
-            new Consensus.Rewards.RewardCalculator(_specProvider),
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), worldState),
-            worldState,
-            NullReceiptStorage.Instance,
-            new BeaconBlockRootHandler(transactionProcessor, worldState),
-            new BlockhashStore(_specProvider, worldState),
-            logManager: logManager,
-            withdrawalProcessor: new WithdrawalProcessor(worldState, logManager!),
-            preWarmer: preWarmer,
-            executionRequestsProcessor: new ExecutionRequestsProcessor(transactionProcessor));
+        _blockProcessorEnv = blockProcessorEnv;
     }
 
     public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
@@ -217,14 +195,14 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        using var scope = _processingScope;
-        IWorldState worldState = _processingScope.WorldState;
-        Hash256 stateRoot = parentHeader.StateRoot!;
-        worldState.StateRoot = stateRoot;
+        using var scope = _blockProcessorEnv.BuildAndOverride(parentHeader);
+        IWorldState worldState = scope.Component.WorldState;
+        IBlockProcessor blockProcessor = scope.Component.BlockProcessor;
+
         IReleaseSpec spec = _specProvider.GetSpec(parentHeader);
 
         RecoverSenderAddress(block, spec);
-        UInt256 feeRecipientBalanceBefore = worldState.HasStateForRoot(stateRoot) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
+        UInt256 feeRecipientBalanceBefore = worldState.HasStateForBlock(parentHeader) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
 
         List<Block> suggestedBlocks = [block];
         BlockReceiptsTracer blockReceiptsTracer = new();
@@ -235,7 +213,7 @@ public class ValidateSubmissionHandler
             {
                 ValidateSubmissionProcessingOptions |= ProcessingOptions.NoValidation;
             }
-            _ = _blockProcessor.Process(stateRoot, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
+            _ = blockProcessor.Process(parentHeader, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
         }
         catch (Exception e)
         {
@@ -417,4 +395,6 @@ public class ValidateSubmissionHandler
         error = null;
         return true;
     }
+
+    public record ProcessingEnv(IBlockProcessor BlockProcessor, IWorldState WorldState);
 }

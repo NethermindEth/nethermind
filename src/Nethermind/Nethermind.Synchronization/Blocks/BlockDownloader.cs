@@ -119,6 +119,15 @@ namespace Nethermind.Synchronization.Blocks
             {
                 return await DoPrepareRequest(options, fastSyncLag, cancellation);
             }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"Unhandled exception in {nameof(BlockDownloader)}: {ex}");
+#if DEBUG
+                throw;
+#else
+                return null;
+#endif
+            }
             finally
             {
                 _requestLock.Release();
