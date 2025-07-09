@@ -9,8 +9,8 @@ public class LogIndexUpdateStats : IFormattable
 {
     public long BlocksAdded { get; set; }
     public long TxAdded { get; set; }
-    public long LogsAdded;
-    public long TopicsAdded;
+    public long LogsAdded { get; set; }
+    public long TopicsAdded { get; set; }
 
     public long MaxBlockNumber { get; set; } = int.MinValue;
     public long MinBlockNumber { get; set; } = int.MaxValue;
