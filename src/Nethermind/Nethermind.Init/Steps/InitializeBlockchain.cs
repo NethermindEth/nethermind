@@ -23,7 +23,9 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -243,8 +245,24 @@ namespace Nethermind.Init.Steps
 
         protected virtual ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository)
         {
-            var callFilter = new CallFilter(_api.Config<ITxPoolConfig>().BlacklistedFunctionCalls,
-                _api.CreateBlockchainBridge());
+            DebugModuleFactory debugModuleFactory = new(
+                _api.WorldStateManager!,
+                _api.DbProvider!,
+                _api.BlockTree!,
+                _api.ConfigProvider.GetConfig<JsonRpcConfig>(),
+                _api.BlockValidator!,
+                _api.BlockPreprocessor,
+                _api.RewardCalculatorSource!,
+                _api.ReceiptStorage!,
+                new ReceiptMigration(_api),
+                _api.ConfigProvider,
+                _api.SpecProvider!,
+                _api.SyncModeSelector,
+                _api.BadBlocksStore!,
+                _api.FileSystem,
+                _api.LogManager);
+
+            var callFilter = new CallFilter(_api.Config<ITxPoolConfig>().BlacklistedFunctionCalls, debugModuleFactory.CreateDebugBridge());
             return new TxPool.TxPool(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!, codeInfoRepository),
