@@ -65,10 +65,12 @@ public static class Metrics
     [Description("Difficulty of the last block")]
     public static UInt256 LastDifficulty { get; set; }
 
-    [GaugeMetric] [Description("Indicator if blocks can be produced")]
+    [GaugeMetric]
+    [Description("Indicator if blocks can be produced")]
     public static long CanProduceBlocks;
 
-    [GaugeMetric] [Description("Number of ms to process the last processed block.")]
+    [GaugeMetric]
+    [Description("Number of ms to process the last processed block.")]
     public static long LastBlockProcessingTimeInMs;
 
     //EIP-2159: Common Prometheus Metrics Names for Clients
@@ -83,10 +85,12 @@ public static class Metrics
     [DataMember(Name = "ethereum_best_known_block_number")]
     public static long BestKnownBlockNumber { get; set; }
 
-    [GaugeMetric] [Description("Number of invalid blocks.")]
+    [GaugeMetric]
+    [Description("Number of invalid blocks.")]
     public static long BadBlocks;
 
-    [GaugeMetric] [Description("Number of invalid blocks with extra data set to 'Nethermind'.")]
+    [GaugeMetric]
+    [Description("Number of invalid blocks with extra data set to 'Nethermind'.")]
     public static long BadBlocksByNethermindNodes;
 
     [GaugeMetric]
