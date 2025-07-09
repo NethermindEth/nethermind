@@ -4,6 +4,7 @@
 using System;
 using System.Numerics;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Precompiles;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -70,7 +71,7 @@ public abstract class VirtualMachineTestsBase
         TestState = worldStateManager.GlobalWorldState;
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        CodeInfoRepository = new CodeInfoRepository();
+        CodeInfoRepository = new EthereumCodeInfoRepository();
         Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
         _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }

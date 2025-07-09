@@ -5,6 +5,7 @@ using System.Threading;
 using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Precompiles;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -52,7 +53,7 @@ public class DevBlockProducerTests
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
         IStateReader stateReader = worldStateManager.GlobalStateReader;
         BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
-        CodeInfoRepository codeInfoRepository = new();
+        EthereumCodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,

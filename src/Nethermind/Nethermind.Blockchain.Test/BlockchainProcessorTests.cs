@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
+using Nethermind.Blockchain.Precompiles;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -524,7 +525,7 @@ public class BlockchainProcessorTests
                     new FixedForkActivationChainHeadSpecProvider(specProvider, fixedBlock: 10_000_000),
                     blockTree,
                     readOnlyState,
-                    new CodeInfoRepository())
+                    new EthereumCodeInfoRepository())
                 {
                     HasSynced = true
                 };

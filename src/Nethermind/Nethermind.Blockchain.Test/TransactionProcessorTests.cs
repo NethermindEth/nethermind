@@ -26,6 +26,7 @@ using NUnit.Framework;
 using Nethermind.Config;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Precompiles;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core.Test;
 using Nethermind.State;
@@ -61,7 +62,7 @@ public class TransactionProcessorTests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        CodeInfoRepository codeInfoRepository = new();
+        EthereumCodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);

@@ -10,11 +10,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.ClearScript.JavaScript;
 using Microsoft.ClearScript.V8;
-using Nethermind.Blockchain.Precompiles;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Logging;
 #pragma warning disable CS0162 // Unreachable code detected
 

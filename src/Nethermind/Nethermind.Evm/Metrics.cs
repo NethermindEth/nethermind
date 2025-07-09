@@ -13,6 +13,13 @@ namespace Nethermind.Evm;
 public class Metrics
 {
     [CounterMetric]
+    [Description("Number of Code DB cache reads.")]
+    public static long CodeDbCache => _codeDbCache.GetTotalValue();
+    private static readonly ZeroContentionCounter _codeDbCache = new();
+    [Description("Number of Code DB cache reads on thread.")]
+    internal static long ThreadLocalCodeDbCache => _codeDbCache.ThreadLocalValue;
+    internal static void IncrementCodeDbCache() => _codeDbCache.Increment();
+    [CounterMetric]
     [Description("Number of EVM exceptions thrown by contracts.")]
     public static long EvmExceptions { get; set; }
 

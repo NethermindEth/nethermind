@@ -36,6 +36,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Precompiles;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.State;
@@ -122,7 +123,7 @@ public class CliqueBlockProducerTests
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
 
-            CodeInfoRepository codeInfoRepository = new();
+            EthereumCodeInfoRepository codeInfoRepository = new();
             TxPool.TxPool txPool = new(_ethereumEcdsa,
                 new BlobTxStorage(),
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SepoliaSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),

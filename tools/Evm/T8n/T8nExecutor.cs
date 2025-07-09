@@ -40,7 +40,7 @@ public static class T8nExecutor
 
         IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
         IWorldState stateProvider = worldStateManager.GlobalWorldState;
-        CodeInfoRepository codeInfoRepository = new();
+        EthereumCodeInfoRepository codeInfoRepository = new();
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
 
         IVirtualMachine virtualMachine = new VirtualMachine(

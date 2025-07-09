@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Blockchain.Precompiles;
+namespace Nethermind.Evm.Precompiles;
 
 public static class AddressExtensions
 {
