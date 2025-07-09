@@ -165,8 +165,7 @@ namespace Nethermind.Facade
             {
                 Error = error,
                 GasSpent = estimate,
-                InputError = !tryCallResult.TransactionExecuted || err is not null,
-                OutputData = estimateGasTracer.ReturnValue,
+                InputError = !tryCallResult.TransactionExecuted || err is not null
             };
         }
 
