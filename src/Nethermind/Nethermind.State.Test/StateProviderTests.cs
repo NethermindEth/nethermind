@@ -12,7 +12,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.State;
@@ -39,7 +39,7 @@ public class StateProviderTests
         frontierProvider.CommitTree(0);
 
         IWorldState provider = worldStateManager.GlobalWorldState;
-        provider.StateRoot = frontierProvider.StateRoot;
+        provider.SetBaseBlock(Build.A.BlockHeader.WithStateRoot(frontierProvider.StateRoot).TestObject);
 
         provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
         provider.Commit(SpuriousDragon.Instance);

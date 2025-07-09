@@ -17,7 +17,26 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing.CensorshipDetector;
 
-public class CensorshipDetector : IDisposable
+public interface ICensorshipDetector
+{
+    IEnumerable<BlockNumberHash> GetCensoredBlocks();
+    bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash);
+}
+
+public class NoopCensorshipDetector : ICensorshipDetector
+{
+    public IEnumerable<BlockNumberHash> GetCensoredBlocks()
+    {
+        return [];
+    }
+
+    public bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash)
+    {
+        return false;
+    }
+}
+
+public class CensorshipDetector : IDisposable, ICensorshipDetector
 {
     private readonly IBlockTree _blockTree;
     private readonly ITxPool _txPool;

@@ -30,6 +30,7 @@ using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Evm;
 using System.Text.Json;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.State;
 
@@ -72,14 +73,14 @@ public class ContractBasedValidatorTests
             Addresses = new[] { _contractAddress },
             ValidatorType = AuRaParameters.ValidatorType.Contract
         };
-        _block = new Block(Build.A.BlockHeader.WithNumber(1).WithAura(1, []).TestObject, new BlockBody());
+        _block = new Block(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).WithAura(1, []).TestObject, new BlockBody());
 
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
         _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         _stateProvider.IsContract(_contractAddress).Returns(true);
 
         _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        _readOnlyTxProcessorSource.Build(Arg.Any<Hash256>()).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider, Keccak.EmptyTreeHash));
+        _readOnlyTxProcessorSource.Build(Arg.Any<BlockHeader>()).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider));
         _blockTree.Head.Returns(_block);
 
         _abiEncoder

@@ -177,6 +177,18 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
         public readonly int Offset = offset;
 
         public bool Equals(LruCacheItem other)
-            => other.Offset == Offset && EqualityComparer<TValue>.Default.Equals(other.Value, Value);
+        {
+            if (other.Offset != Offset)
+            {
+                return false;
+            }
+
+            if (typeof(TValue).IsValueType)
+            {
+                return EqualityComparer<TValue>.Default.Equals(other.Value, Value);
+            }
+
+            return ReferenceEquals(other.Value, Value);
+        }
     }
 }

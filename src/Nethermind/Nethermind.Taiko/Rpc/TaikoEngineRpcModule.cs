@@ -120,15 +120,12 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         IEnumerable<Transaction> allTxs = pendingTxs.SelectMany(txs => txs.Value).Where(tx => !tx.SupportsBlobs && tx.CanPayBaseFee(baseFee));
 
-        IEnumerable<Transaction> filteredTx =
-            allTxs.Where(tx => (tx.Supports1559 ? tx.MaxFeePerGas : tx.GasPrice) >= baseFee);
-
         if (minTip is not 0)
         {
-            filteredTx = filteredTx.Where(tx => tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas) && premiumPerGas >= minTip);
+            allTxs = allTxs.Where(tx => tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas) && premiumPerGas >= minTip);
         }
 
-        Transaction[] txQueue = filteredTx.ToArray();
+        Transaction[] txQueue = allTxs.ToArray();
 
         BlockHeader? head = blockFinder.Head?.Header;
 
@@ -175,7 +172,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         }
 
         BlockExecutionContext blkCtx = new(blockHeader, _specProvider.GetSpec(blockHeader));
-        worldState.StateRoot = blockHeader.StateRoot;
+        worldState.SetBaseBlock(blockHeader);
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
 

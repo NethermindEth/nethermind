@@ -61,12 +61,25 @@ public class SurgeGasPriceOracle : GasPriceOracle
         }
 
         Hash256 headBlockHash = headBlock.Hash!;
+        bool forceRefresh = ForceRefreshGasPrice();
+        ulong averageGasUsage;
 
-        // Use the cached price if it exists and the timeout hasn't elapsed
-        if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price) && !ForceRefreshGasPrice())
+        // Check if the cached price exists.
+        if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price))
         {
-            if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Using cached gas price estimate: {price}");
-            return price!.Value;
+            // Use the cached price only if the timeout hasn't elapsed.
+            if (!forceRefresh)
+            {
+                if (_logger.IsTrace) _logger.Trace($"[{ClassName}] Using cached gas price estimate: {price}");
+                return price!.Value;
+            }
+
+            // Since the head block has not changed, we can reuse the existing average gas usage (even with force refresh)
+            averageGasUsage = _gasUsageBuffer.Average;
+        }
+        else
+        {
+            averageGasUsage = await GetAverageGasUsageAcrossBatches();
         }
 
         // Get the fee history from the L1 client with RPC
@@ -84,16 +97,17 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         // Compute the gas cost to post a batch on L1
         UInt256 costWithCallData = _surgeConfig.BatchPostingGasWithCallData * l1BaseFee;
-        UInt256 costWithBlobs = (_surgeConfig.BatchPostingGasWithoutCallData * l1BaseFee) + (BlobSize * l1BlobBaseFee);
+        UInt256 costWithBlobs = _surgeConfig.BatchPostingGasWithoutCallData * l1BaseFee + BlobSize * l1BlobBaseFee;
         UInt256 minProposingCost = UInt256.Min(costWithCallData, costWithBlobs);
 
         UInt256 proofPostingCost = _surgeConfig.ProofPostingGas * UInt256.Max(l1BaseFee, l1AverageBaseFee);
 
-        ulong averageGasUsage = await GetAverageGasUsageAcrossBatches();
-
         UInt256 gasPriceEstimate = (minProposingCost + proofPostingCost + _surgeConfig.ProvingCostPerL2Batch) /
                                    Math.Max(averageGasUsage, _surgeConfig.L2GasPerL2Batch);
-        UInt256 adjustedGasPriceEstimate = gasPriceEstimate * 100 / (UInt256)_surgeConfig.SharingPercentage;
+
+        // Adjust the gas price estimate with the config values.
+        UInt256 adjustedGasPriceEstimate = gasPriceEstimate + gasPriceEstimate * (UInt256)_surgeConfig.BoostBaseFeePercentage / 100;
+        adjustedGasPriceEstimate = adjustedGasPriceEstimate * 100 / (UInt256)_surgeConfig.SharingPercentage;
 
         // Update the cache and timestamp
         _gasPriceEstimation.Set(headBlockHash, adjustedGasPriceEstimate);
@@ -102,8 +116,10 @@ public class SurgeGasPriceOracle : GasPriceOracle
         if (_logger.IsTrace)
         {
             _logger.Trace($"[{ClassName}] Calculated new gas price estimate: {adjustedGasPriceEstimate}, " +
-                          $"L1 Base Fee: {l1BaseFee}, L1 Blob Base Fee: {l1BlobBaseFee}, L1 Average Base Fee: {l1AverageBaseFee}, " +
-                          $"Average Gas Usage: {averageGasUsage}, Adjusted with a sharing percentage of {_surgeConfig.SharingPercentage}");
+                          $"L1 Base Fee: {l1BaseFee}, L1 Blob Base Fee: {l1BlobBaseFee}, " +
+                          $"L1 Average Base Fee: {l1AverageBaseFee}, Average Gas Usage: {averageGasUsage}, " +
+                          $"Adjusted with boost base fee percentage of {_surgeConfig.BoostBaseFeePercentage}% " +
+                          $"and sharing percentage of {_surgeConfig.SharingPercentage}%");
         }
 
         return adjustedGasPriceEstimate;
@@ -114,7 +130,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
     /// </summary>
     private bool ForceRefreshGasPrice()
     {
-        return (DateTime.UtcNow - _lastGasPriceCalculation) >= TimeSpan.FromSeconds(_surgeConfig.GasPriceRefreshTimeoutSeconds);
+        return DateTime.UtcNow - _lastGasPriceCalculation >= TimeSpan.FromSeconds(_surgeConfig.GasPriceRefreshTimeoutSeconds);
     }
 
     private async ValueTask<L1FeeHistoryResults?> GetL1FeeHistory()
@@ -173,6 +189,18 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         // Record the batch's gas usage and compute the average
         _gasUsageBuffer.Add(totalGasUsed);
+
+        if (_logger.IsTrace)
+        {
+            _logger.Trace($"[{ClassName}] Total gas used: {totalGasUsed}, " +
+                          $"startBlockId: {startBlockId}, endBlockId: {endBlockId}, " +
+                          $"Average gas usage: {_gasUsageBuffer.Average}, " +
+                          $"L2GasUsageWindowSize: {_surgeConfig.L2GasUsageWindowSize}, " +
+                          $"numBatches: {numBatches}, " +
+                          $"startBlockId: {startBlockId}, " +
+                          $"endBlockId: {endBlockId}");
+        }
+
         return _gasUsageBuffer.Average;
     }
 
@@ -181,12 +209,12 @@ public class SurgeGasPriceOracle : GasPriceOracle
     /// </summary>
     private async ValueTask<ulong?> GetNumBatches()
     {
-        var response = await CallTaikoInboxFunction(GetStats2HexData);
+        string? response = await CallTaikoInboxFunction(GetStats2HexData);
 
         if (string.IsNullOrEmpty(response) || response.Length < 66) return null;
 
         // Extract the first 32 bytes (64 hex chars) after "0x" which contains NumBatches
-        return ulong.Parse(response[2..66], System.Globalization.NumberStyles.HexNumber);
+        return ulong.Parse(response[2..66], NumberStyles.HexNumber);
     }
 
     /// <summary>
@@ -194,13 +222,13 @@ public class SurgeGasPriceOracle : GasPriceOracle
     /// </summary>
     private async ValueTask<ulong?> GetLastBlockId(ulong batchId)
     {
-        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetBatchSignature, batchId);
-        var response = await CallTaikoInboxFunction("0x" + Convert.ToHexString(encodedData));
+        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetBatchSignature, batchId);
+        string? response = await CallTaikoInboxFunction("0x" + Convert.ToHexString(encodedData));
 
         if (string.IsNullOrEmpty(response) || response.Length < 130) return null;
 
         // Extract the second 32 bytes (64 hex chars) after "0x" which contains LastBlockId
-        return ulong.Parse(response[66..130], System.Globalization.NumberStyles.HexNumber);
+        return ulong.Parse(response[66..130], NumberStyles.HexNumber);
     }
 
     /// <summary>
@@ -225,39 +253,38 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
     /// <summary>
     /// A fixed-size ring buffer for tracking gas usage and computing moving averages.
+    ///
+    /// +----+----+----+----+
+    /// | A  | B  | C  | D  |
+    /// +----+----+----+----+
+    ///       ^
+    /// insertAt = 1 (next insert location)
+    /// average = (A + B + C + D) / 4
     /// </summary>
-    private sealed class GasUsageRingBuffer
+    private sealed class GasUsageRingBuffer(int capacity)
     {
-        private readonly ulong[] _buffer;
-        private int _index;
-        private int _count;
-        private ulong _total;
+        private readonly ulong[] _buffer = new ulong[capacity];
+        private int _insertAt;
+        private int _numItems;
+        private ulong _sum;
 
-        public ulong Average => _count == 0 ? 0 : _total / (ulong)_count;
-
-        public GasUsageRingBuffer(int capacity)
-        {
-            _buffer = new ulong[capacity];
-            _index = 0;
-            _count = 0;
-            _total = 0;
-        }
+        public ulong Average => _numItems == 0 ? 0 : _sum / (ulong)_numItems;
 
         public void Add(ulong gasUsed)
         {
-            // If the buffer is full, remove the oldest value
-            if (_count == _buffer.Length)
+            // If the buffer is full, overwrite the oldest value
+            if (_numItems == _buffer.Length)
             {
-                _total -= _buffer[_index];
+                _sum -= _buffer[_insertAt];
             }
             else
             {
-                _count++;
+                _numItems++;
             }
 
-            _buffer[_index] = gasUsed;
-            _total += _buffer[_index];
-            _index = (_index + 1) % _buffer.Length;
+            _buffer[_insertAt] = gasUsed;
+            _sum += _buffer[_insertAt];
+            _insertAt = (_insertAt + 1) % _buffer.Length;
         }
     }
 }

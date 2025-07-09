@@ -10,7 +10,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -44,7 +44,7 @@ public class DebugRpcModule(
 
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
-        return blockchainBridge.HasStateForRoot(header.StateRoot!);
+        return blockchainBridge.HasStateForBlock(header);
     }
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
