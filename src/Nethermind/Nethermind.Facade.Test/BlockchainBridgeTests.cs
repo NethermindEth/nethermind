@@ -263,7 +263,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: insufficient sender balance (supplied gas 100)"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance"));
     }
 
     [Test]
@@ -277,7 +277,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: insufficient sender balance (supplied gas 100)"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance"));
     }
 
     [Test]
@@ -291,7 +291,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: sender not specified (supplied gas 123)"));
+        Assert.That(callOutput.Error, Is.EqualTo("sender not specified"));
     }
 
     [Test]
@@ -305,7 +305,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: sender not specified (supplied gas 123)"));
+        Assert.That(callOutput.Error, Is.EqualTo("sender not specified"));
     }
 
     [Test]
@@ -319,7 +319,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: malformed (supplied gas 0)"));
+        Assert.That(callOutput.Error, Is.EqualTo("malformed"));
     }
 
     [Test]
@@ -333,7 +333,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: malformed (supplied gas 0)"));
+        Assert.That(callOutput.Error, Is.EqualTo("malformed"));
     }
 
     [Test]
@@ -347,7 +347,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: wrong transaction nonce (supplied gas 456)"));
+        Assert.That(callOutput.Error, Is.EqualTo("wrong transaction nonce"));
     }
 
     [Test]
@@ -361,7 +361,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: wrong transaction nonce (supplied gas 456)"));
+        Assert.That(callOutput.Error, Is.EqualTo("wrong transaction nonce"));
     }
 
     [Test]
@@ -375,7 +375,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: nonce overflow (supplied gas 0)"));
+        Assert.That(callOutput.Error, Is.EqualTo("nonce overflow"));
     }
 
     [Test]
@@ -389,7 +389,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: nonce overflow (supplied gas 0)"));
+        Assert.That(callOutput.Error, Is.EqualTo("nonce overflow"));
     }
 
     [Test]
@@ -403,7 +403,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: miner premium is negative (supplied gas 1)"));
+        Assert.That(callOutput.Error, Is.EqualTo("miner premium is negative"));
     }
 
     [Test]
@@ -417,7 +417,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: miner premium is negative (supplied gas 1)"));
+        Assert.That(callOutput.Error, Is.EqualTo("miner premium is negative"));
     }
 
     [Test]
@@ -431,7 +431,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: Block gas limit exceeded (supplied gas 1)"));
+        Assert.That(callOutput.Error, Is.EqualTo("Block gas limit exceeded"));
     }
 
     [Test]
@@ -445,7 +445,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: Block gas limit exceeded (supplied gas 1)"));
+        Assert.That(callOutput.Error, Is.EqualTo("Block gas limit exceeded"));
     }
 
 
@@ -460,7 +460,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: sender has deployed code (supplied gas 1)"));
+        Assert.That(callOutput.Error, Is.EqualTo("sender has deployed code"));
     }
 
     [Test]
@@ -474,7 +474,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: sender has deployed code (supplied gas 1)"));
+        Assert.That(callOutput.Error, Is.EqualTo("sender has deployed code"));
     }
 
     [Test]
@@ -488,7 +488,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: EIP-3860 - transaction size over max init code size (supplied gas 0)"));
+        Assert.That(callOutput.Error, Is.EqualTo("EIP-3860 - transaction size over max init code size"));
     }
 
     [Test]
@@ -502,7 +502,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: EIP-3860 - transaction size over max init code size (supplied gas 0)"));
+        Assert.That(callOutput.Error, Is.EqualTo("EIP-3860 - transaction size over max init code size"));
     }
 
     [Test]
@@ -516,7 +516,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: gas limit below intrinsic gas (supplied gas 0)"));
+        Assert.That(callOutput.Error, Is.EqualTo("gas limit below intrinsic gas"));
     }
 
     [Test]
@@ -530,7 +530,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: gas limit below intrinsic gas (supplied gas 0)"));
+        Assert.That(callOutput.Error, Is.EqualTo("gas limit below intrinsic gas"));
     }
 
     [Test]
@@ -544,7 +544,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: insufficient MaxFeePerGas for sender balance (supplied gas 0)"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient MaxFeePerGas for sender balance"));
     }
 
     [Test]
@@ -558,7 +558,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("err: insufficient MaxFeePerGas for sender balance (supplied gas 0)"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient MaxFeePerGas for sender balance"));
     }
 
     [Test]
