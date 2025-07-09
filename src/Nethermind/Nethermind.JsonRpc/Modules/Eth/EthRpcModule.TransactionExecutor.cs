@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 if (inputError)
                     return ResultWrapper<TResult>.Fail(errorMessage, ErrorCodes.InvalidInput);
                 if (errorMessage is not null)
-                    return ResultWrapper<TResult>.Fail(errorMessage, ErrorCodes.ExecutionError, bodyData);
+                    return ResultWrapper<TResult>.Fail(errorMessage, ErrorCodes.InvalidInput, bodyData);
 
                 return ResultWrapper<TResult>.Success(bodyData);
             }
@@ -106,7 +106,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, token);
 
-                return CreateResultWrapper(result.InputError, result.Error, (UInt256)result.GasSpent);
+                return CreateResultWrapper(result.InputError, result.Error, result.InputError || result.Error is not null ? null : (UInt256)result.GasSpent);
             }
         }
 
