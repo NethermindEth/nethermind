@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Reflection;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Newtonsoft.Json;
 using Spectre.Console;
+using System.Reflection;
 
 namespace Nethermind.DocGen;
 
@@ -67,17 +67,18 @@ internal static class JsonRpcGenerator
                 methodMap[ns] = methodMap[ns].Concat(methods);
         }
 
+        if (methodMap.TryGetValue("eth", out IEnumerable<MethodInfo>? ethMethods))
+        {
+            // Inject the `subscribe` methods into `eth`
+            methodMap["eth"] = ethMethods!
+                .Concat(typeof(ISubscribeRpcModule).GetMethods(BindingFlags.Instance | BindingFlags.Public));
+        }
+
         var i = 0;
 
         foreach (var (ns, methods) in methodMap)
         {
-            methodMap[ns] = (ns.Equals("eth", StringComparison.Ordinal)
-                // Inject the `subscribe` methods into `eth`
-                ? methods
-                    .Concat(typeof(ISubscribeRpcModule)
-                    .GetMethods(BindingFlags.Instance | BindingFlags.Public))
-                : methods)
-                .OrderBy(m => m.Name);
+            methodMap[ns] = methods.OrderBy(m => m.Name);
 
             WriteMarkdown(path, ns, methodMap[ns], i++);
         }
