@@ -898,10 +898,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
     public readonly struct TransactionResult(string? error, EvmExceptionType evmException = EvmExceptionType.None) : IEquatable<TransactionResult>
     {
-        [MemberNotNullWhen(true, nameof(Fail))]
         [MemberNotNullWhen(false, nameof(TransactionExecuted))]
         public string? Error { get; } = error;
-        public bool Fail => Error is not null;
         public bool TransactionExecuted => Error is null;
         public EvmExceptionType EvmExceptionType { get; } = evmException;
 

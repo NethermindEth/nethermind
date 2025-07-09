@@ -63,7 +63,7 @@ public class TransactionProcessorEip7623Tests
             .WithGasLimit(10000000).TestObject;
 
         TransactionResult result = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
-        Assert.That(result.Fail, Is.EqualTo(isFail));
+        Assert.That(result.TransactionExecuted, Is.EqualTo(!isFail));
     }
 
     [Test]
