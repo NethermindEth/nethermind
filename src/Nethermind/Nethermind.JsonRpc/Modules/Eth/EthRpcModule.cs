@@ -363,7 +363,7 @@ public partial class EthRpcModule(
 
     protected virtual ResultWrapper<BlockForRpc?> GetBlock(BlockParameter blockParameter, bool returnFullTransactionObjects)
     {
-        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, true);
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, allowNulls: true, onlyTxHashes: !returnFullTransactionObjects);
         if (searchResult.IsError)
         {
             return ResultWrapper<BlockForRpc?>.Success(null);
