@@ -22,7 +22,7 @@ public class ForkConfig
     public ulong ChainId { get; init; }
     public Dictionary<Address, string> Precompiles { get; init; }
 
-    public Dictionary<string, string> SystemContracts { get; init; }
+    public Dictionary<Address, string> SystemContracts { get; init; }
 }
 
 public class ForkIdForRpc

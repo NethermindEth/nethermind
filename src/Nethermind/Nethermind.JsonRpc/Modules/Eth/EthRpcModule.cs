@@ -826,14 +826,14 @@ public partial class EthRpcModule(
                 precompiles[MapFp2ToG2Precompile.Address] = "BLS12_MAP_FP2_TO_G2";
             }
 
-            if (spec.IsEip7951Enabled) precompiles[Secp256r1Precompile.Address] = "SEC_P256_R1";
+            if (spec.IsEip7951Enabled) precompiles[Secp256r1Precompile.Address] = "P256VERIFY";
 
-            Dictionary<string, Address> systemContracts = new();
-            if (spec.IsBeaconBlockRootAvailable) systemContracts["BEACON_ROOTS_ADDRESS"] = Eip4788Constants.BeaconRootsAddress;
-            if (spec.ConsolidationRequestsEnabled) systemContracts["CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS"] = Eip7251Constants.ConsolidationRequestPredeployAddress;
-            if (spec.DepositsEnabled) systemContracts["DEPOSIT_CONTRACT_ADDRESS"] = spec.DepositContractAddress;
-            if (spec.IsEip2935Enabled) systemContracts["HISTORY_STORAGE_ADDRESS"] = Eip2935Constants.BlockHashHistoryAddress;
-            if (spec.WithdrawalRequestsEnabled) systemContracts["WITHDRAWAL_REQUEST_PREDEPLOY_ADDRESS"] = Eip7002Constants.WithdrawalRequestPredeployAddress;
+            Dictionary<Address, string> systemContracts = new();
+            if (spec.IsBeaconBlockRootAvailable) systemContracts[Eip4788Constants.BeaconRootsAddress] = "BEACON_ROOTS_ADDRESS";
+            if (spec.ConsolidationRequestsEnabled) systemContracts[Eip7251Constants.ConsolidationRequestPredeployAddress] = "CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS";
+            if (spec.DepositsEnabled) systemContracts[spec.DepositContractAddress] = "DEPOSIT_CONTRACT_ADDRESS";
+            if (spec.IsEip2935Enabled) systemContracts[Eip2935Constants.BlockHashHistoryAddress] = "HISTORY_STORAGE_ADDRESS";
+            if (spec.WithdrawalRequestsEnabled) systemContracts[Eip7002Constants.WithdrawalRequestPredeployAddress] = "WITHDRAWAL_REQUEST_PREDEPLOY_ADDRESS";
 
             return new ForkConfig
             {
@@ -846,17 +846,14 @@ public partial class EthRpcModule(
                 } : null,
                 ChainId = _specProvider.ChainId,
                 Precompiles = precompiles,
-                SystemContracts = systemContracts.ToDictionary(x => x.Key, x => x.Value.ToString()),
+                SystemContracts = systemContracts,
             };
         }).Take(2).ToArray();
 
         ForkId genesisForkId = forkInfo.GetForkId(0, 0);
 
-        JsonSerializerOptions defaultOptions = new(EthereumJsonSerializer.JsonOptionsIndented)
-        {
-            DictionaryKeyPolicy = null
-        };
-        string[] serialized = specs.Select(x => JsonSerializer.Serialize(x, defaultOptions)).ToArray();
+        EthereumJsonSerializer serializer = new();
+        string[] serialized = specs.Select(fc => serializer.Serialize(fc)).ToArray();
         uint[] crc = serialized.Select(x =>
             Crc32Algorithm.Compute(
                 Encoding.UTF8.GetBytes(
