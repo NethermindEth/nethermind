@@ -11,7 +11,7 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactory = null)
     : ITxDecoder where T : Transaction, new()
 {
-    private const int MaxDelayedHashTxnSize = 32768;
+    private const int MaxDelayedHashTxnSize = 1024;
     private readonly Func<T> _createTransaction = transactionFactory ?? ObjectCreator<T>.Create;
 
     public TxType Type => txType;
