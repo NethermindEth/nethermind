@@ -14,6 +14,8 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using NonBlocking;
+
 #pragma warning disable CS0162 // Unreachable code detected
 
 namespace Nethermind.Db
@@ -359,7 +361,7 @@ namespace Nethermind.Db
         }
 
         // TODO: optimize allocations
-        private (Dictionary<Address, List<int>> address, Dictionary<Hash256, List<int>> topic)? Aggregate(
+        private (IDictionary<Address, List<int>> address, IDictionary<Hash256, List<int>> topic)? Aggregate(
             BlockReceipts[] batch, LogIndexUpdateStats stats, bool isBackwardSync
         )
         {
@@ -368,46 +370,38 @@ namespace Nethermind.Db
 
             var timestamp = Stopwatch.GetTimestamp();
 
-            var maps = (address: new Dictionary<Address, List<int>>(), topic: new Dictionary<Hash256, List<int>>());
+            var maps = (address: new ConcurrentDictionary<Address, List<int>>(), topic: new ConcurrentDictionary<Hash256, List<int>>());
             foreach ((var blockNumber, TxReceipt[] receipts) in batch)
             {
                 if (!IsBlockNewer(blockNumber, isBackwardSync))
                     continue;
 
-                stats.BlocksAdded++;
-
-                foreach (TxReceipt receipt in receipts)
+                receipts.SelectMany(static r => r.Logs ?? []).Select(static l => l.Address).AsParallel().ForAll(address =>
                 {
-                    stats.TxAdded++;
+                    //Interlocked.Increment(ref stats.LogsAdded);
 
-                    if (receipt.Logs == null)
-                        continue;
-
-                    foreach (LogEntry log in receipt.Logs)
+                    List<int> addressNums = maps.address.GetOrAdd(address, static _ => new(1));
+                    lock (addressNums)
                     {
-                        stats.LogsAdded++;
-
-                        List<int> addressNums = maps.address.GetOrAdd(log.Address, _ => new(1));
-
-                        if (IsAddressBlockNewer(blockNumber, isBackwardSync) &&
-                            (addressNums.Count == 0 || addressNums[^1] != blockNumber))
-                        {
+                        if (IsAddressBlockNewer(blockNumber, isBackwardSync) && (addressNums.Count == 0 || addressNums[^1] != blockNumber))
                             addressNums.Add(blockNumber);
-                        }
-
-                        if (IsTopicBlockNewer(blockNumber, isBackwardSync))
-                        {
-                            for (byte i = 0; i < log.Topics.Length; i++)
-                            {
-                                stats.TopicsAdded++;
-
-                                var topicNums = maps.topic.GetOrAdd(log.Topics[i], _ => new(1));
-                                if (topicNums.Count == 0 || topicNums[^1] != blockNumber)
-                                    topicNums.Add(blockNumber);
-                            }
-                        }
                     }
-                }
+                });
+
+                receipts.SelectMany(static r => r.Logs ?? []).SelectMany(static l => l.Topics).AsParallel().ForAll(topic =>
+                {
+                    //Interlocked.Increment(ref stats.TopicsAdded);
+
+                    List<int> topicNums = maps.topic.GetOrAdd(topic, static _ => new(1));
+                    lock (topicNums)
+                    {
+                        if (topicNums.Count == 0 || topicNums[^1] != blockNumber)
+                            topicNums.Add(blockNumber);
+                    }
+                });
+
+                stats.BlocksAdded++;
+                stats.TxAdded += receipts.Length;
             }
 
             stats.KeysCount.Include(maps.address.Count + maps.topic.Count);
