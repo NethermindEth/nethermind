@@ -265,7 +265,6 @@ public class MergePluginModule : Module
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
             .AddDecorator<ISealValidator, MergeSealValidator>()
             .AddDecorator<ISealer, MergeSealer>()
-            .AddKeyedSingleton(ITxValidator.HeadTxValidatorKey, new HeadTxValidator())
 
             .AddModule(new BaseMergePluginModule());
     }
@@ -307,6 +306,8 @@ public class BaseMergePluginModule : Module
             .AddDecorator<ISealValidator, InvalidHeaderSealInterceptor>()
 
             .AddDecorator<IHealthHintService, MergeHealthHintService>()
+
+            .AddKeyedSingleton<ITxValidator>(ITxValidator.HeadTxValidatorKey, new HeadTxValidator())
 
             // Engine rpc related
             .RegisterSingletonJsonRpcModule<IEngineRpcModule, EngineRpcModule>()
