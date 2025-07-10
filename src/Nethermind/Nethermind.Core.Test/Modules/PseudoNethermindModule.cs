@@ -102,6 +102,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
         public ProofVersion CurrentProofVersion { get; }
         public bool IsSyncing { get => false; }
         public bool IsProcessingBlock { get; }
-        public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
+        public event EventHandler<BlockReplacementEventArgs> HeadChanged { add { } remove { } }
     }
 }
