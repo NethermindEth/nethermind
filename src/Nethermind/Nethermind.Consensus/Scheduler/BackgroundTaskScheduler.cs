@@ -240,6 +240,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         private readonly BlockingCollection<Task> _tasks = [];
         private readonly Thread[] workerThreads;
         private readonly ManualResetEventSlim _restartQueueSignal;
+        private readonly int _maxDegreeOfParallelism;
         private readonly ILogger _logger;
         private readonly CancellationToken _cancellationToken;
 
@@ -249,6 +250,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
             _logger = logManager.GetClassLogger();
             _restartQueueSignal = restartQueueSignal;
+            _maxDegreeOfParallelism = maxDegreeOfParallelism;
             _cancellationToken = cancellationToken;
             workerThreads = [.. Enumerable.Range(0, maxDegreeOfParallelism)
                             .Select(i =>
@@ -294,7 +296,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             }
         }
 
-        public override int MaximumConcurrencyLevel => maxDegreeOfParallelism;
+        public override int MaximumConcurrencyLevel => _maxDegreeOfParallelism;
         protected override void QueueTask(Task task) => _tasks.Add(task);
 
         // Attempts to execute the task synchronously on the current thread.
