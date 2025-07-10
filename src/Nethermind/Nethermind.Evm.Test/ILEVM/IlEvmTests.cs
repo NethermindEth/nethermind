@@ -1126,14 +1126,14 @@ namespace Nethermind.Evm.Test.ILEVM
                 yield return ([Instruction.SGT], Prepare.EvmCode
                     .PushData(UInt256.MaxValue - 1)
                     .PushSingle(UInt256.MaxValue - 2)
-                    .SLT()
+                    .SGT()
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None);
                 yield return ([Instruction.SGT], Prepare.EvmCode
                     .PushSingle(UInt256.MaxValue - 2)
                     .PushData(UInt256.MaxValue - 1)
-                    .SLT()
+                    .SGT()
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None);
