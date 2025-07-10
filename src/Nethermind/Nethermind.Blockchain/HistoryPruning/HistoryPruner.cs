@@ -11,7 +11,9 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 
 namespace Nethermind.Blockchain.HistoryPruning;
@@ -27,11 +29,12 @@ public class HistoryPruner : IHistoryPruner
     private readonly IReceiptStorage _receiptStorage;
     private readonly IBlockStore _blockStore;
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
+    private readonly IDb _metadataDb;
     private readonly IHistoryConfig _historyConfig;
     private readonly bool _enabled;
     private readonly long _epochLength;
     private readonly long _minHistoryRetentionEpochs;
-    private long _deletePointer;
+    private long _deletePointer = 1;
 
     public class HistoryPrunerException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -41,6 +44,7 @@ public class HistoryPruner : IHistoryPruner
         ISpecProvider specProvider,
         IBlockStore blockStore,
         IChainLevelInfoRepository chainLevelInfoRepository,
+        IDb metadataDb,
         IHistoryConfig historyConfig,
         long secondsPerSlot,
         ILogManager logManager)
@@ -51,6 +55,7 @@ public class HistoryPruner : IHistoryPruner
         _receiptStorage = receiptStorage;
         _blockStore = blockStore;
         _chainLevelInfoRepository = chainLevelInfoRepository;
+        _metadataDb = metadataDb;
         _historyConfig = historyConfig;
         _enabled = historyConfig.Enabled;
         _epochLength = secondsPerSlot * 32;
@@ -252,11 +257,13 @@ public class HistoryPruner : IHistoryPruner
 
     private void LoadDeletePointer()
     {
-        _deletePointer = 1;
+        byte[]? val = _metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
+        if (val is not null)
+        {
+            _deletePointer = val.AsRlpStream().DecodeLong();
+        }
     }
 
     private void SaveDeletePointer()
-    {
-
-    }
+        => _metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(_deletePointer).Bytes);
 }
