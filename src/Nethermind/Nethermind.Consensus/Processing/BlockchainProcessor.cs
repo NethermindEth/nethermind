@@ -277,6 +277,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
+    private bool IsProcessingBlock { get => _isProcessingBlock; set { _isProcessingBlock = value; _blockTree.IsProcessingBlock = value; } }
+
     private async Task RunProcessingLoop()
     {
         if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Reader.Count} blocks waiting in the queue.");
@@ -296,7 +298,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             finally
             {
-                IsProcessingBlock = false;
+                _isProcessingBlock = false;
             }
 
             if (_logger.IsTrace) Trace();

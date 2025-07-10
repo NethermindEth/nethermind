@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO.Abstractions;
 using System.Reflection;
 using Autofac;
@@ -11,12 +12,20 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Init.Modules;
+using Nethermind.Int256;
+using Nethermind.JsonRpc;
+using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
+using Nethermind.TxPool;
+using Nethermind.Wallet;
+using NSubstitute;
 using Module = Autofac.Module;
 
 namespace Nethermind.Core.Test.Modules;
@@ -47,6 +56,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<ITimerFactory, TimerFactory>()
             .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext>((blockProcessingContext) => new BackgroundTaskScheduler(
                 blockProcessingContext.BlockProcessor,
+                new ChainHeadInfoMock(),
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
                 logManager))
@@ -71,5 +81,20 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
                 Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: true);
             }
         });
+    }
+
+    private class ChainHeadInfoMock : IChainHeadInfoProvider
+    {
+        public IChainHeadSpecProvider SpecProvider { get; } = null!;
+        public ICodeInfoRepository CodeInfoRepository { get; } = null!;
+        public IReadOnlyStateProvider ReadOnlyStateProvider { get; } = null!;
+        public long HeadNumber { get; }
+        public long? BlockGasLimit { get; }
+        public UInt256 CurrentBaseFee { get; }
+        public UInt256 CurrentFeePerBlobGas { get; }
+        public bool IsSyncing { get => false; }
+        public bool IsProcessingBlock { get; }
+
+        public event EventHandler<BlockReplacementEventArgs> HeadChanged { add { } remove { } }
     }
 }

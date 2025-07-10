@@ -9,6 +9,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using TaskCompletionSource = DotNetty.Common.Concurrency.TaskCompletionSource;
@@ -18,18 +19,21 @@ namespace Nethermind.Consensus.Test.Scheduler;
 public class BackgroundTaskSchedulerTests
 {
     private IBlockProcessor _blockProcessor;
+    private IChainHeadInfoProvider _chainHeadInfo;
 
     [SetUp]
     public void Setup()
     {
         _blockProcessor = Substitute.For<IBlockProcessor>();
+        _chainHeadInfo = Substitute.For<IChainHeadInfoProvider>();
+        _chainHeadInfo.IsSyncing.Returns(false);
     }
 
     [Test]
     public async Task Test_task_will_execute()
     {
         TaskCompletionSource tcs = new TaskCompletionSource();
-        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, 1, 65536, LimboLogs.Instance);
+        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
 
         scheduler.ScheduleTask(1, (_, token) =>
         {
@@ -43,7 +47,7 @@ public class BackgroundTaskSchedulerTests
     [Test]
     public async Task Test_task_will_execute_concurrently_when_configured_so()
     {
-        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, 2, 65536, LimboLogs.Instance);
+        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
 
         int counter = 0;
 
@@ -68,7 +72,7 @@ public class BackgroundTaskSchedulerTests
     [Test]
     public async Task Test_task_will_cancel_on_block_processing()
     {
-        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, 2, 65536, LimboLogs.Instance);
+        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
 
         bool wasCancelled = false;
 
@@ -96,7 +100,7 @@ public class BackgroundTaskSchedulerTests
     [Test]
     public async Task Test_task_that_is_scheduled_during_block_processing_will_continue_after()
     {
-        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, 2, 65536, LimboLogs.Instance);
+        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
         _blockProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
 
         int executionCount = 0;
@@ -119,7 +123,7 @@ public class BackgroundTaskSchedulerTests
     [Test]
     public async Task Test_task_that_is_scheduled_during_block_processing_but_deadlined_will_get_called_and_cancelled()
     {
-        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, 2, 65536, LimboLogs.Instance);
+        await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
         _blockProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
 
         bool wasCancelled = false;

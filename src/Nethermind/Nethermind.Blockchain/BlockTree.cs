@@ -1740,6 +1740,7 @@ namespace Nethermind.Blockchain
                 TryUpdateSyncPivot();
             }
         }
+        public bool IsProcessingBlock { get; set; }
 
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
