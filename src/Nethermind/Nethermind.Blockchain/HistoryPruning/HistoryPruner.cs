@@ -31,6 +31,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly bool _enabled;
     private readonly long _epochLength;
     private readonly long _minHistoryRetentionEpochs;
+    private long _deletePointer;
 
     public class HistoryPrunerException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -56,6 +57,7 @@ public class HistoryPruner : IHistoryPruner
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
 
         CheckConfig();
+        LoadDeletePointer();
     }
 
     public void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
@@ -88,14 +90,15 @@ public class HistoryPruner : IHistoryPruner
         {
             ulong cutoffTimestamp = CalculateCutoffTimestamp();
             long? cutoffBlockNumber = null;
-            IEnumerable<Block> block = GetBlocksByNumber(HighestDeletedBlockNumber, b => {
+            IEnumerable<Block> block = GetBlocksByNumber(_deletePointer, b =>
+            {
                 bool afterCutoff = b.Timestamp >= cutoffTimestamp;
                 if (afterCutoff)
                 {
                     cutoffBlockNumber = b.Number;
                 }
                 return afterCutoff;
-            });
+            }, _ => { });
             return cutoffBlockNumber;
         }
     }
@@ -169,27 +172,34 @@ public class HistoryPruner : IHistoryPruner
                 if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}.");
                 _blockTree.DeleteBlock(number, hash, null, batch, null, true);
                 _receiptStorage.RemoveReceipts(block);
-                HighestDeletedBlockNumber = number;
+                _deletePointer = number;
                 deletedBlocks++;
             }
         }
         finally
         {
+            SaveDeletePointer();
             if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
         }
     }
 
     private IEnumerable<Block> GetBlocksBeforeTimestamp(ulong cutoffTimestamp)
-        => GetBlocksByNumber(HighestDeletedBlockNumber, b => b.Timestamp >= cutoffTimestamp);
+        => GetBlocksByNumber(_deletePointer, b => b.Timestamp >= cutoffTimestamp, i => _deletePointer = i);
 
-    private IEnumerable<Block> GetBlocksByNumber(long from, Predicate<Block> endSearch)
+    private IEnumerable<Block> GetBlocksByNumber(long from, Predicate<Block> endSearch, Action<long> onFirstBlock)
     {
+        bool firstBlock = true;
         for (long i = from; i < _blockTree.Head!.Number; i++)
         {
             ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
             if (chainLevelInfo is null)
             {
                 continue;
+            }
+            else if (firstBlock)
+            {
+                onFirstBlock(i);
+                firstBlock = false;
             }
 
             bool finished = false;
@@ -240,16 +250,13 @@ public class HistoryPruner : IHistoryPruner
         return cutoffTimestamp;
     }
 
-    // store in db
-    private long HighestDeletedBlockNumber
+    private void LoadDeletePointer()
     {
-        get
-        {
-            return 0;
-        }
-        set
-        {
+        _deletePointer = 1;
+    }
 
-        }
+    private void SaveDeletePointer()
+    {
+
     }
 }

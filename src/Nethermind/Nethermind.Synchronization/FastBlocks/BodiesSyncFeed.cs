@@ -26,6 +26,7 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedBodyNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BodiesBarrierWhenStarted;
+        // get once!
         protected override long SyncConfigBarrierCalc => _historyPruner.CutoffBlockNumber is null ? _syncConfig.AncientBodiesBarrierCalc : long.Max(_syncConfig.AncientBodiesBarrierCalc, _historyPruner.CutoffBlockNumber.Value);
         protected override Func<bool> HasPivot =>
             () => _syncPointers.LowestInsertedBodyNumber is not null && _syncPointers.LowestInsertedBodyNumber <= _blockTree.SyncPivot.BlockNumber;
