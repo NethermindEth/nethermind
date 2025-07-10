@@ -52,20 +52,14 @@ namespace Nethermind.Merge.Plugin
 
         public ResultWrapper<Hash256> debug_calculateBlockHash(ExecutionPayload executionPayload)
         {
-            if (executionPayload == null)
+            try
             {
-                return ResultWrapper<Hash256>.Fail("Execution payload cannot be null", ErrorCodes.InvalidRequest);
-            }
-            // Assuming we have a method to calculate the block hash from the execution payload
-            BlockDecodingResult result = executionPayload.TryGetBlock();
-            if(result.Block is not null)
-            {
-                Hash256 blockHash = result.Block.Header.GetOrCalculateHash();
+                Hash256 blockHash = _mergeDebugBridge.CalculateBlockHash(executionPayload);
                 return ResultWrapper<Hash256>.Success(blockHash);
             }
-            else
+            catch
             {
-                return ResultWrapper<Hash256>.Fail("Invalid execution payload", ErrorCodes.InvalidRequest);
+                return ResultWrapper<Hash256>.Fail("Failed to calculate block hash", ErrorCodes.InternalError);
             }
         }
 

@@ -10,8 +10,10 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -146,6 +148,23 @@ namespace Nethermind.Merge.Plugin
             };
 
             return new ExecutionPayloadForDebugRpc(engineEndpointVersion, executionPayload);
+        }
+
+        public Hash256 CalculateBlockHash(ExecutionPayload executionPayload)
+        {
+            if (executionPayload == null)
+            {
+                throw new ArgumentNullException(nameof(executionPayload), "Execution payload cannot be null");
+            }
+
+            // Assuming we have a method to calculate the block hash from the execution payload
+            BlockDecodingResult result = executionPayload.TryGetBlock();
+            if (result.Block is null)
+            {
+                throw new InvalidDataException(result.Error);
+            }
+            Block block = result.Block;
+            return block.Header.CalculateHash(); // Return the hash of the block header
         }
     }
 }
