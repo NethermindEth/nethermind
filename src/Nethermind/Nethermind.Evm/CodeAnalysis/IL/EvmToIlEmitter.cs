@@ -561,8 +561,8 @@ internal static class OpcodeEmitters
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
 
         using Local byteMatrix = method.DeclareLocal(typeof(byte[][]), locals.GetLocalName());
-        envLoader.LoadTxContext(method, locals, true);
-        method.LoadFieldAddress(GetFieldInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes)));
+        envLoader.LoadTxContext(method, locals, false);
+        method.LoadField(GetFieldInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes)));
         method.StoreLocal(byteMatrix);
 
         method.LoadLocal(byteMatrix);
