@@ -4,8 +4,8 @@
 using System.Collections.Generic;
 using System.Text.Json;
 using FluentAssertions;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.GethStyle.Custom;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 

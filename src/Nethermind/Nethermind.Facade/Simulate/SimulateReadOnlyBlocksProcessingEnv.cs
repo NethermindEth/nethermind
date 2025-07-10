@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -11,63 +11,8 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 
 namespace Nethermind.Facade.Simulate;
-
-public class SimulateRequestState
-{
-    public bool Validate { get; set; }
-    public UInt256? BlobBaseFeeOverride { get; set; }
-}
-
-public class SimulateBlockValidationTransactionsExecutor(
-    IBlockProcessor.IBlockTransactionsExecutor baseTransactionExecutor,
-    SimulateRequestState simulateState)
-    : IBlockProcessor.IBlockTransactionsExecutor
-{
-    private IReleaseSpec _spec;
-    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-    {
-        _spec = blockExecutionContext.Spec;
-        baseTransactionExecutor.SetBlockExecutionContext(in blockExecutionContext);
-    }
-
-    public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,
-        CancellationToken token = default)
-    {
-        if (!simulateState.Validate)
-        {
-            processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce | ProcessingOptions.NoValidation;
-        }
-
-        if (simulateState.BlobBaseFeeOverride is not null)
-        {
-            SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec, simulateState.BlobBaseFeeOverride.Value));
-        }
-
-        return baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);
-    }
-
-    public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
-    {
-        add => baseTransactionExecutor.TransactionProcessed += value;
-        remove => baseTransactionExecutor.TransactionProcessed -= value;
-    }
-}
-
-public class SimulateTransactionProcessorAdapter(ITransactionProcessor transactionProcessor, SimulateRequestState simulateRequestState) : ITransactionProcessorAdapter
-{
-    public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
-    {
-        return simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
-    }
-
-    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-        => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
-}
 
 /// <summary>
 /// This is an env for eth simulater. It is constructed by <see cref="SimulateReadOnlyBlocksProcessingEnvFactory"/>.
@@ -84,7 +29,7 @@ public class SimulateReadOnlyBlocksProcessingEnv(
     BlockTreeOverlay blockTreeOverlay,
     IOverridableEnv overridableEnv,
     IReadOnlyDbProvider readOnlyDbProvider
-)
+) : ISimulateReadOnlyBlocksProcessingEnv
 {
     public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
     {
