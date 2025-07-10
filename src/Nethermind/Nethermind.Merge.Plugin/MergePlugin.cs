@@ -274,7 +274,7 @@ public class MergePluginModule : Module
 
             .RegisterBoundedJsonRpcModule<IEngineDebugRpcModule, EngineDebugModuleFactory>(Environment.ProcessorCount, Int32.MaxValue)
                 .AddScoped<GethStyleTracer.BlockProcessingComponents>()
-                .AddScoped<IDebugBridge, DebugBridge>()
+                .AddScoped<IEngineDebugBridge, EngineDebugBridge>()
                 .AddScoped<IEngineDebugRpcModule, EngineDebugRpcModule>()
                 .AddScoped<IGethStyleTracer, GethStyleTracer>()
                 .AddScoped<IReceiptsMigration, ReceiptMigration>()
