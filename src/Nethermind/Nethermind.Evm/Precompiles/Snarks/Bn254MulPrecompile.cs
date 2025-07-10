@@ -4,13 +4,9 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles.Snarks;
 
-/// <summary>
-/// https://github.com/herumi/mcl/blob/master/api.md
-/// </summary>
 public class Bn254MulPrecompile : IPrecompile<Bn254MulPrecompile>
 {
     public static readonly Bn254MulPrecompile Instance = new();
@@ -24,19 +20,23 @@ public class Bn254MulPrecompile : IPrecompile<Bn254MulPrecompile>
     public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254MulPrecompile++;
-        return inputData.Length == 96 ? RunInternal(inputData.Span) : RunInternal(inputData);
+        return RunInternal(inputData);
     }
 
     private static (byte[], bool) RunInternal(ReadOnlyMemory<byte> inputData)
     {
         Span<byte> inputDataSpan = stackalloc byte[96];
-        inputData.PrepareEthInput(inputDataSpan);
+
+        if (inputData.Length == inputDataSpan.Length)
+            inputData.Span.CopyTo(inputDataSpan);
+        else
+            inputData.PrepareEthInput(inputDataSpan);
         return RunInternal(inputDataSpan);
     }
 
-    private static (byte[], bool) RunInternal(ReadOnlySpan<byte> inputDataSpan)
+    private static (byte[], bool) RunInternal(Span<byte> inputDataSpan)
     {
         byte[] output = GC.AllocateUninitializedArray<byte>(64);
-        return Pairings.Bn254Mul(inputDataSpan, output) ? (output, true) : IPrecompile.Failure;
+        return BN254.Mul(inputDataSpan, output) ? (output, true) : IPrecompile.Failure;
     }
 }
