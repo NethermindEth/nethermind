@@ -200,10 +200,12 @@ public class BlockchainBridgeTests
                 .WithType(TxType.Blob)
                 .WithMaxFeePerBlobGas(2)
                 .WithBlobVersionedHashes(2)
+                .WithHash(txHash)
                 .TestObject
             : Build.A.Transaction
                 .WithGasPrice(effectiveGasPrice)
                 .WithMaxFeePerGas(effectiveGasPrice)
+                .WithHash(txHash)
                 .TestObject;
         Block block = postEip4844
             ? Build.A.Block
@@ -225,7 +227,7 @@ public class BlockchainBridgeTests
         _blockTree.FindBlock(blockHash, Arg.Is(BlockTreeLookupOptions.RequireCanonical)).Returns(isCanonical ? block : null);
         _blockTree.FindBlock(blockHash, Arg.Is(BlockTreeLookupOptions.TotalDifficultyNotNeeded)).Returns(block);
         _receiptStorage.FindBlockHash(txHash).Returns(blockHash);
-        _receiptStorage.Get(block).Returns(new[] { receipt });
+        _receiptStorage.Get(block).Returns([receipt]);
 
         (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) result = postEip4844
             ? (receipt, new(effectiveGasPrice, 1, 262144), 0)
