@@ -294,7 +294,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             }
         }
 
-        public override int MaximumConcurrencyLevel => workerThreads.Length;
+        public override int MaximumConcurrencyLevel => maxDegreeOfParallelism;
         protected override void QueueTask(Task task) => _tasks.Add(task);
 
         // Attempts to execute the task synchronously on the current thread.
