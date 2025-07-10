@@ -786,12 +786,20 @@ public partial class EthRpcModule(
     public ResultWrapper<EthConfig> eth_config()
     {
         BlockHeader head = _blockFinder.Head?.Header;
-        ForkActivation[] activations = [
-            new ForkActivation(0,0),
-            .._specProvider.TransitionActivations.Where(x => x.Timestamp is not null)
-            .SkipWhile(x => x.Timestamp < head?.Timestamp)
+        ForkActivation[] activations =
+        [
+            new ForkActivation(0, 0),
+            .._specProvider.TransitionActivations
         ];
-        activations = activations.Take(2).ToArray();
+        activations = activations.Where(x => x.Timestamp is not null).ToArray();
+
+        int indexOfNext = activations.TakeWhile(ta => ta.Timestamp < head?.Timestamp).Count();
+        if (indexOfNext == activations.Length && indexOfNext > 0)
+        {
+            indexOfNext--;
+        }
+
+        activations = activations.Skip(indexOfNext).ToArray();
 
         ForkConfig[] specs = activations.Select(x =>
         {
@@ -828,12 +836,12 @@ public partial class EthRpcModule(
 
             if (spec.IsEip7951Enabled) precompiles[Secp256r1Precompile.Address] = "P256VERIFY";
 
-            Dictionary<Address, string> systemContracts = new();
-            if (spec.IsBeaconBlockRootAvailable) systemContracts[Eip4788Constants.BeaconRootsAddress] = "BEACON_ROOTS_ADDRESS";
-            if (spec.ConsolidationRequestsEnabled) systemContracts[Eip7251Constants.ConsolidationRequestPredeployAddress] = "CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS";
-            if (spec.DepositsEnabled) systemContracts[spec.DepositContractAddress] = "DEPOSIT_CONTRACT_ADDRESS";
-            if (spec.IsEip2935Enabled) systemContracts[Eip2935Constants.BlockHashHistoryAddress] = "HISTORY_STORAGE_ADDRESS";
-            if (spec.WithdrawalRequestsEnabled) systemContracts[Eip7002Constants.WithdrawalRequestPredeployAddress] = "WITHDRAWAL_REQUEST_PREDEPLOY_ADDRESS";
+            Dictionary<string, Address> systemContracts = new();
+            if (spec.IsBeaconBlockRootAvailable) systemContracts["BEACON_ROOTS_ADDRESS"] = Eip4788Constants.BeaconRootsAddress;
+            if (spec.ConsolidationRequestsEnabled) systemContracts["CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS"] = Eip7251Constants.ConsolidationRequestPredeployAddress;
+            if (spec.DepositsEnabled) systemContracts["DEPOSIT_CONTRACT_ADDRESS"] = spec.DepositContractAddress;
+            if (spec.IsEip2935Enabled) systemContracts["HISTORY_STORAGE_ADDRESS"] = Eip2935Constants.BlockHashHistoryAddress;
+            if (spec.WithdrawalRequestsEnabled) systemContracts["WITHDRAWAL_REQUEST_PREDEPLOY_ADDRESS"] = Eip7002Constants.WithdrawalRequestPredeployAddress;
 
             return new ForkConfig
             {
@@ -846,14 +854,15 @@ public partial class EthRpcModule(
                 } : null,
                 ChainId = _specProvider.ChainId,
                 Precompiles = precompiles,
-                SystemContracts = systemContracts,
+                SystemContracts = systemContracts.ToDictionary(x => x.Key, x => x.Value.ToString()),
             };
-        }).Take(2).ToArray();
+        }).Where((f,i)=> i is 0 or 1 || i == activations.Length - 1).ToArray();;
 
-        ForkId genesisForkId = forkInfo.GetForkId(0, 0);
-
-        EthereumJsonSerializer serializer = new();
-        string[] serialized = specs.Select(fc => serializer.Serialize(fc)).ToArray();
+        JsonSerializerOptions defaultOptions = new(EthereumJsonSerializer.JsonOptionsIndented)
+        {
+            DictionaryKeyPolicy = null
+        };
+        string[] serialized = specs.Select(x => JsonSerializer.Serialize(x, defaultOptions)).ToArray();
         uint[] crc = serialized.Select(x =>
             Crc32Algorithm.Compute(
                 Encoding.UTF8.GetBytes(
@@ -865,15 +874,12 @@ public partial class EthRpcModule(
             Current = JsonNode.Parse(serialized[0]),
             CurrentHash = crc[0],
             CurrentForkId = forkInfo.GetForkId(activations[0].BlockNumber, activations[0].Timestamp!.Value).HashBytes,
-            Next = JsonNode.Parse(serialized.Skip(1).FirstOrDefault()),
-            NextHash = crc.Skip(1).FirstOrDefault(),
+            Next = serialized.Skip(1).FirstOrDefault() is null ? null: JsonNode.Parse(serialized.Skip(1).FirstOrDefault()),
+            NextHash = crc.Skip(1).Any() ? crc.Skip(1).FirstOrDefault() : null,
             NextForkId = specs.Length != 2 ? null : forkInfo.GetForkId(activations[0].BlockNumber == activations[1].BlockNumber ? activations[0].BlockNumber + 1 : activations[1].BlockNumber, activations[1].Timestamp!.Value).HashBytes,
-            Forks = [new ForkIdForRpc { ForkHash = genesisForkId.HashBytes, Next = (int)genesisForkId.Next },
-                .._specProvider.TransitionActivations.Select(a =>
-            {
-                ForkId forkId = forkInfo.GetForkId(a.BlockNumber+1, a.Timestamp ?? 0);
-                return new ForkIdForRpc { ForkHash = forkId.HashBytes, Next = (int)forkId.Next };
-            })]
+            Last = serialized.LastOrDefault() is null ? null: JsonNode.Parse(serialized.LastOrDefault()),
+            LastHash = crc.LastOrDefault(),
+            LastForkId = specs.Length == 0 ? null : forkInfo.GetForkId(activations[0].BlockNumber == activations.Last().BlockNumber ? activations[0].BlockNumber + 1 : activations.Last().BlockNumber, activations.Last().Timestamp!.Value).HashBytes
         });
     }
 

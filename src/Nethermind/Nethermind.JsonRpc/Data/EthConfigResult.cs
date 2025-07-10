@@ -9,10 +9,14 @@ public class EthConfig
     public JsonNode Current { get; init; }
     public ulong CurrentHash { get; init; }
     public byte[] CurrentForkId { get; init; }
+
     public JsonNode? Next { get; init; }
     public ulong? NextHash { get; init; }
     public byte[]? NextForkId { get; init; }
-    public ForkIdForRpc[] Forks { get; init; }
+
+    public JsonNode? Last { get; init; }
+    public ulong? LastHash { get; init; }
+    public byte[]? LastForkId { get; init; }
 }
 
 public class ForkConfig
@@ -22,13 +26,7 @@ public class ForkConfig
     public ulong ChainId { get; init; }
     public Dictionary<Address, string> Precompiles { get; init; }
 
-    public Dictionary<Address, string> SystemContracts { get; init; }
-}
-
-public class ForkIdForRpc
-{
-    public required byte[] ForkHash { get; init; }
-    public required int Next { get; init; }
+    public Dictionary<string, string> SystemContracts { get; init; }
 }
 
 public class BlobScheduleSettingsForRpc
