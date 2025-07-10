@@ -182,7 +182,7 @@ internal static partial class EvmInstructions
         // If contract is large, charge for access
         if (spec.IsEip7907Enabled)
         {
-            uint excessContractSize = (uint)Math.Max(0, codeInfo.CodeSpan.Length - CodeSizeConstants.MaxCodeSizeEip170);
+            uint excessContractSize = codeInfo.ExcessCodeSize();
             if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, codeSource, in vm.EvmState.AccessTracker, ref gasAvailable))
                 goto OutOfGas;
         }
@@ -304,7 +304,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.OutOfGas;
     }
 
-    private static bool ChargeForLargeContractAccess(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref long gasAvailable)
+    public static bool ChargeForLargeContractAccess(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref long gasAvailable)
     {
         if (accessTracer.WarmUpLargeContract(codeAddress))
         {
