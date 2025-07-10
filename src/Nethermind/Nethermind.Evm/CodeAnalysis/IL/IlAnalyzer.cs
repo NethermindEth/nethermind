@@ -208,9 +208,8 @@ public static class IlAnalyzer
 
         long coststack = 0;
 
-        bool notStart = true;
         bool lastOpcodeIsAjumpdest = false;
-        bool lastOpcodeIsCallOrCreate = false;
+        bool resolvePreviousSegment = false;
 
         bool requiresAvailabilityCheck = false;
         bool requiresStaticEnvCheck = false;
@@ -219,28 +218,26 @@ public static class IlAnalyzer
 
         foreach (var (pc, op, opcodeMetadata) in EnumerateOpcodes(fullcode, segmentRange))
         {
-            lastOpcodeIsAjumpdest = op is Instruction.JUMPDEST;
             stackOffsets[pc] = currentStackSize;
             subSegment.End = pc;
             switch (op)
             {
-                case Instruction.JUMPDEST when !notStart:
-                    subSegment.Start = subsegmentStart;
-                    subSegment.RequiredStack = -subSegment.RequiredStack;
-                    subSegment.End = pc - 1;
-                    subSegment.IsFailing = hasInvalidOpcode;
-                    subSegment.IsReachable = hasJumpdest;
-                    subSegment.Instructions = instructionsIncluded;
-                    subSegment.RequiresOpcodeCheck = requiresAvailabilityCheck;
-                    subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;
-                    gasOffsets[costStart] = coststack;
-                    subSegmentData[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
-
-                    subsegmentStart = pc;
-                    subSegment = new();
-                    if (lastOpcodeIsCallOrCreate)
+                case Instruction.JUMPDEST:
+                    if(resolvePreviousSegment)
                     {
-                        subSegment.IsEntryPoint = true;
+                        subSegment.Start = subsegmentStart;
+                        subSegment.RequiredStack = -subSegment.RequiredStack;
+                        subSegment.End = pc - 1;
+                        subSegment.IsFailing = hasInvalidOpcode;
+                        subSegment.IsReachable = hasJumpdest;
+                        subSegment.Instructions = instructionsIncluded;
+                        subSegment.RequiresOpcodeCheck = requiresAvailabilityCheck;
+                        subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;
+                        gasOffsets[costStart] = coststack;
+                        subSegmentData[subSegment.Start] = subSegment; // remember the stackHeadRef chain of opcodes
+
+                        subsegmentStart = pc;
+                        subSegment = new();
                     }
 
                     instructionsIncluded = [op];
@@ -306,9 +303,6 @@ public static class IlAnalyzer
                         coststack = 0;
                         requiresAvailabilityCheck = false;
                         requiresStaticEnvCheck = false;
-
-                        notStart = true;
-                        continue;
                     }
                     else if (op.IsCreate() || op.IsCall())
                     {
@@ -337,14 +331,12 @@ public static class IlAnalyzer
                         coststack = 0;
                         requiresAvailabilityCheck = false;
                         requiresStaticEnvCheck = false;
-
-                        notStart = true;
                     }
                     break;
             }
-            notStart = false;
 
-            lastOpcodeIsCallOrCreate = op.IsCall() || op.IsCreate();
+            lastOpcodeIsAjumpdest = op is Instruction.JUMPDEST;
+            resolvePreviousSegment = !(op.IsCall() || op.IsCreate() || op.IsJump() || IlvmInstructionExtensions.IsTerminating(op));
         }
 
         if ((subsegmentStart < segmentRange.End.Value && !subSegmentData.ContainsKey(subsegmentStart)) || lastOpcodeIsAjumpdest)
