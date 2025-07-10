@@ -243,8 +243,14 @@ public class Metrics
     public static void IncrementContractsAnalysed() => _contractsAnalysed.Increment();
 
     [GaugeMetric]
-    [Description("The number of tasks scheduled in the background.")]
+    [Description("The number of tasks currently scheduled in the background.")]
     public static long NumberOfBackgroundTasksScheduled { get; set; }
+
+    private static long _totalBackgroundTasksQueued;
+    [GaugeMetric]
+    [Description("Total number of tasks queued for background execution.")]
+    public static long TotalBackgroundTasksQueued => _totalBackgroundTasksQueued;
+    public static void IncrementTotalBackgroundTasksQueued() => Interlocked.Increment(ref _totalBackgroundTasksQueued);
 
     internal static long BlockTransactions { get; set; }
 

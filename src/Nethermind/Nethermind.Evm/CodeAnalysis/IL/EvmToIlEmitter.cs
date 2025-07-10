@@ -11,12 +11,12 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Config;
 using Nethermind.Int256;
-using Nethermind.State;
 using Sigil;
 using static Nethermind.Evm.CodeAnalysis.IL.WordEmit;
 using static Nethermind.Evm.CodeAnalysis.IL.UnsafeEmit;
 using static Nethermind.Evm.CodeAnalysis.IL.EmitExtensions;
 using static Nethermind.Evm.CodeAnalysis.IL.OpcodeEmitters;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 

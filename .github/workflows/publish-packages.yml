@@ -60,6 +60,7 @@ jobs:
     needs: publish-ppa
     steps:
       - name: Wait for PPA package to be published
+        if: github.run_attempt == 1
         run: sleep 2h
       - name: Install PPA dependencies
         run: |
@@ -87,11 +88,13 @@ jobs:
     if: ${{ !github.event.release.prerelease }}
     steps:
       - name: Submit package
+        env:
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: |
           $releaseInfo = curl -sL ${{ github.event.release.assets_url }} | ConvertFrom-Json
           $releaseUrl = $releaseInfo | Where-Object -Property name -match 'windows' | Select -ExpandProperty browser_download_url
           curl -sL https://aka.ms/wingetcreate/latest -o wingetcreate.exe
-          ./wingetcreate update Nethermind.Nethermind -s -v ${{ github.event.release.tag_name }} -u $releaseUrl -t ${{ secrets.WINGET_TOKEN }}
+          ./wingetcreate update Nethermind.Nethermind -s -v ${{ github.event.release.tag_name }} -u $releaseUrl
 
   publish-homebrew:
     name: Publish on Homebrew

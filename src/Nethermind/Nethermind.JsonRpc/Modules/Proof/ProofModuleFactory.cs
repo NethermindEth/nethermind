@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -10,6 +10,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
@@ -24,7 +25,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         public override IProofRpcModule Create()
         {
             // Note: No overridable world scope here. So there aren't any risk of leaking KV store.
-            IReadOnlyTxProcessingScope txProcessingEnv = readOnlyTxProcessingEnvFactory.Create().Build(Keccak.EmptyTreeHash);
+            IReadOnlyTxProcessingScope txProcessingEnv = readOnlyTxProcessingEnvFactory.Create().Build(null);
 
             ILifetimeScope tracerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             {
@@ -40,8 +41,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     // Specific for proof rpc
                     .AddScoped<IReceiptStorage>(new InMemoryReceiptStorage()) // Umm.... not `NullReceiptStorage`?
                     .AddScoped<IRewardCalculator>(NoBlockRewards.Instance)
+                    .AddScoped<IVisitingWorldState>(txProcessingEnv.WorldState).AddScoped<IWorldState>(txProcessingEnv.WorldState)
 
-                    .AddScoped<IWorldState>(txProcessingEnv.WorldState)
                     .AddScoped<ITracer, Tracer>()
                     ;
             });

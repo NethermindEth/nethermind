@@ -243,6 +243,27 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder AddScoped<T, TArg0, TArg1, TArg2, TArg3>(this ContainerBuilder builder, Func<TArg0, TArg1, TArg2, TArg3, T> factoryMethod) where T : class where TArg0 : notnull where TArg1 : notnull where TArg2 : notnull where TArg3 : notnull
+    {
+        Func<IComponentContext, TArg0> param0 = CreateArgResolver<TArg0>(factoryMethod.Method, 0);
+        Func<IComponentContext, TArg1> param1 = CreateArgResolver<TArg1>(factoryMethod.Method, 1);
+        Func<IComponentContext, TArg2> param2 = CreateArgResolver<TArg2>(factoryMethod.Method, 2);
+        Func<IComponentContext, TArg3> param3 = CreateArgResolver<TArg3>(factoryMethod.Method, 3);
+
+        builder
+            .Register((ctx) => factoryMethod(
+                param0(ctx),
+                param1(ctx),
+                param2(ctx),
+                param3(ctx)
+            ))
+            .As<T>()
+            .AsSelf()
+            .InstancePerLifetimeScope();
+
+        return builder;
+    }
+
     public static ContainerBuilder AddScoped<T, TImpl>(this ContainerBuilder builder) where TImpl : T where T : notnull
     {
         builder.RegisterType<TImpl>()
@@ -336,6 +357,15 @@ public static class ContainerBuilderExtensions
         builder.RegisterDecorator<T>((ctx, _param, before) => decoratorFunc(ctx, before));
 
         return builder;
+    }
+
+    public static ContainerBuilder Intercept<T>(this ContainerBuilder builder, Action<T> interceptor) where T : class
+    {
+        return builder.AddDecorator<T>((ctx, service) =>
+        {
+            interceptor(service);
+            return service;
+        });
     }
 
     /// <summary>

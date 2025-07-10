@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -15,9 +14,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -32,11 +29,11 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.CodeAnalysis.IL.Delegates;
 using Nethermind.Evm.Config;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.JsonRpc;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -76,7 +73,7 @@ namespace Nethermind.Init.Steps
                 "- binary data -");
 
             IStateReader stateReader = setApi.StateReader!;
-            IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
+            IVisitingWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
             PreBlockCaches? preBlockCaches = (mainWorldState as IPreBlockCaches)?.Caches;
             CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
             IChainHeadInfoProvider chainHeadInfoProvider =
@@ -91,7 +88,7 @@ namespace Nethermind.Init.Steps
 
             SetupAndLoadWhiteListedContracts(vmConfig);
 
-            VirtualMachine.WarmUpEvmInstructions(vmConfig);
+            WarmupEvm(vmConfig);
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository, mainWorldState, vmConfig);
             ITransactionProcessor transactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine, mainWorldState);
 
@@ -168,7 +165,14 @@ namespace Nethermind.Init.Steps
             return Task.CompletedTask;
         }
 
-        protected virtual ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
+        private void WarmupEvm(IVMConfig vmConfig)
+        {
+            IWorldState state = _api.WorldStateManager!.CreateResettableWorldState();
+            state.SetBaseBlock(null);
+            VirtualMachine.WarmUpEvmInstructions(state, new CodeInfoRepository(), vmConfig);
+        }
+
+        protected virtual ITransactionProcessor CreateTransactionProcessor(ICodeInfoRepository codeInfoRepository, IVirtualMachine virtualMachine, IWorldState worldState)
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 

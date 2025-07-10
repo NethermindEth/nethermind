@@ -8,9 +8,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.State.Proofs;
 
 namespace Evm.T8n.JsonTypes;

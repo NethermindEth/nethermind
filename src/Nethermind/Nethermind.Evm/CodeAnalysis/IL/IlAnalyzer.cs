@@ -7,8 +7,6 @@ using Nethermind.Evm.CodeAnalysis.IL.Delegates;
 using Nethermind.Evm.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.Trie;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Concurrent;

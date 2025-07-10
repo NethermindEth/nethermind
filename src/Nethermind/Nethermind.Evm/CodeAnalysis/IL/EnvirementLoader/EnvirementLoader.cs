@@ -10,7 +10,6 @@ using Nethermind.Core;
 
 using CallData = System.ReadOnlyMemory<byte>;
 using Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle;
-using Nethermind.State;
 using Nethermind.Evm.Tracing;
 using Microsoft.Extensions.Logging.Abstractions;
 

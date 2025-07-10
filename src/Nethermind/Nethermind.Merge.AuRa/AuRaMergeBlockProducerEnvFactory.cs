@@ -14,6 +14,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Withdrawals;
@@ -39,7 +40,7 @@ public class AuRaMergeBlockProducerEnvFactory(
 
     protected override ContainerBuilder ConfigureBuilder(ContainerBuilder builder) =>
         base.ConfigureBuilder(builder)
-            .AddScoped(CreateBlockProcessor);
+            .AddScoped<IBlockProcessor, ITransactionProcessor, IWorldState, IBlockProcessor.IBlockTransactionsExecutor, IExecutionRequestsProcessor>(CreateBlockProcessor);
 
     private IBlockProcessor CreateBlockProcessor(
         ITransactionProcessor txProcessor,

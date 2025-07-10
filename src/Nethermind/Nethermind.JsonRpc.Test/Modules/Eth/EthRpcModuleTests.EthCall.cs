@@ -20,7 +20,7 @@ using Nethermind.Init;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Trie.Pruning;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;

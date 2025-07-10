@@ -3,9 +3,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis.IL.Delegates;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Logging;
-using Nethermind.State;
 using static Nethermind.Evm.VirtualMachine;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Tests")]

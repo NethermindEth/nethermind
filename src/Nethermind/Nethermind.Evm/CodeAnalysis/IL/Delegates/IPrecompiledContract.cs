@@ -5,7 +5,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis.IL.ArgumentBundle;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
 using System;
 
 namespace Nethermind.Evm.CodeAnalysis.IL.Delegates;

@@ -4,7 +4,6 @@
 using Nethermind.Core.Specs;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
-using Nethermind.State;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,6 +17,7 @@ using static System.Runtime.CompilerServices.Unsafe;
 using Nethermind.Core.Extensions;
 using static Nethermind.Evm.EvmInstructions;
 using Nethermind.Evm.EvmObjectFormat;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.CodeAnalysis.IL
 {

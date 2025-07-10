@@ -12,12 +12,13 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core.Test.Builders;
 using FluentAssertions;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Evm.Test;

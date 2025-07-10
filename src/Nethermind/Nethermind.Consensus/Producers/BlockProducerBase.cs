@@ -7,16 +7,17 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
@@ -131,7 +132,7 @@ namespace Nethermind.Consensus.Producers
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
-            if (TrySetState(parent.StateRoot))
+            if (TrySetState(parent))
             {
                 Block block = PrepareBlock(parent, payloadAttributes, flags);
                 if (PreparedBlockCanBeMined(block))
@@ -191,11 +192,11 @@ namespace Nethermind.Consensus.Producers
         /// <param name="parentStateRoot">Parent block state</param>
         /// <returns>True if succeeded, false otherwise</returns>
         /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
-        protected bool TrySetState(Hash256? parentStateRoot)
+        protected bool TrySetState(BlockHeader? parent)
         {
-            if (parentStateRoot is not null && StateProvider.HasStateForRoot(parentStateRoot))
+            if (parent is not null && StateProvider.HasStateForBlock(parent))
             {
-                StateProvider.StateRoot = parentStateRoot;
+                StateProvider.SetBaseBlock(parent);
                 return true;
             }
 

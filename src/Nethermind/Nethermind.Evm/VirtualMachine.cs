@@ -18,7 +18,7 @@ using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 using static System.Runtime.CompilerServices.Unsafe;
 using static Nethermind.Evm.EvmObjectFormat.EofValidator;

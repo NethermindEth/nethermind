@@ -1,23 +1,24 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Frozen;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Evm.Precompiles.Snarks;
+using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.Evm.EvmObjectFormat;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Evm;
 
@@ -74,7 +75,7 @@ public class TestCodeInfoRepository : ICodeInfoRepository
 
         ICodeInfo cachedCodeInfo = InternalGetCachedCode(worldState, codeSource, vmSpec);
 
-        if (!cachedCodeInfo.IsEmpty && TryGetDelegatedAddress(cachedCodeInfo.Code.Span, out delegationAddress))
+        if (!cachedCodeInfo.IsEmpty && TryGetDelegatedAddress(cachedCodeInfo.CodeSpan, out delegationAddress))
         {
             if (followDelegation)
                 cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress, vmSpec);
@@ -197,19 +198,11 @@ public class TestCodeInfoRepository : ICodeInfoRepository
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (byte[], bool)> cache) =>
         new PrecompileInfo(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
 
-    public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress)
-    {
-        var tempQualifier = InternalGetCachedCode(worldState, address, spec);
-        return TryGetDelegatedAddress(tempQualifier.Code.Span,
-            out delegatedAddress);
-    }
+    public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
+        TryGetDelegatedAddress(InternalGetCachedCode(worldState, address, spec).CodeSpan, out delegatedAddress);
 
-    public bool TryGetDelegation(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress)
-    {
-        var tempQualifier = InternalGetCachedCode(worldState, in codeHash, spec);
-        return TryGetDelegatedAddress(tempQualifier.Code.Span,
-            out delegatedAddress);
-    }
+    public bool TryGetDelegation(IReadOnlyStateProvider worldState, in ValueHash256 codeHash, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
+        TryGetDelegatedAddress(InternalGetCachedCode(worldState, in codeHash, spec).CodeSpan, out delegatedAddress);
 
     private class CachedPrecompile(
         Address address,

@@ -15,7 +15,6 @@ using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.CodeAnalysis.IL.Delegates;
 using Nethermind.Evm.Config;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;

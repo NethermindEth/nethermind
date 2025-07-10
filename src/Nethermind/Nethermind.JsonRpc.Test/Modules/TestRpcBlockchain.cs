@@ -25,7 +25,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Config;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;

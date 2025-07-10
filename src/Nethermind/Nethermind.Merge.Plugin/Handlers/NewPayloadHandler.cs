@@ -65,8 +65,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         IMergeSyncController mergeSyncController,
         IMergeConfig mergeConfig,
         IReceiptConfig receiptConfig,
-        ILogManager logManager,
-        int cacheSize = 50)
+        ILogManager logManager)
     {
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -81,8 +80,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _logger = logManager.GetClassLogger();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromSeconds(mergeConfig.NewPayloadTimeout);
-        if (cacheSize > 0)
-            _latestBlocks = new(cacheSize, 0, "LatestBlocks");
+        if (mergeConfig.NewPayloadCacheSize > 0)
+            _latestBlocks = new(mergeConfig.NewPayloadCacheSize, 0, "LatestBlocks");
         _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
     }
 
@@ -230,7 +229,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
         _mergeSyncController.StopSyncing();
 
-        using var handle = Thread.CurrentThread.BoostPriority();
+        using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block
         (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
 
@@ -333,7 +332,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
-        TaskCompletionSource<ValidationResult?> blockProcessed = new();
+        TaskCompletionSource<ValidationResult?> blockProcessed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
         {
