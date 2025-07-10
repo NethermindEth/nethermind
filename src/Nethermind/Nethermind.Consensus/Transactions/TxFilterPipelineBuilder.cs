@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Transactions
                 .Build;
         }
 
-        private TxFilterPipelineBuilder WithHeadTxFilter()
+        public TxFilterPipelineBuilder WithHeadTxFilter()
         {
             _filterPipeline.AddTxFilter(new HeadTxValidator().AsTxFilter());
             return this;
