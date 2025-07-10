@@ -380,9 +380,10 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         bool isSuccess = localErrorResponse is null;
         if (!isSuccess)
         {
-            if (localErrorResponse?.Error?.SuppressWarning == false)
+            int code = localErrorResponse?.Error?.Code ?? 0;
+            if (localErrorResponse?.Error?.SuppressWarning == false && ShouldWarn(code))
             {
-                if (_logger.IsWarn) _logger.Warn($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {localErrorResponse.Error.Code} Message: {localErrorResponse.Error.Message}");
+                if (_logger.IsWarn) _logger.Warn($"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {code} Message: {localErrorResponse.Error.Message}");
                 if (_logger.IsTrace) _logger.Trace($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
             }
             Metrics.JsonRpcErrors++;
@@ -397,6 +398,17 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
         if (_logger.IsTrace) TraceResult(result);
         return result;
+    }
+
+    private bool _hasWarnedAbout4444 = false;
+    private bool ShouldWarn(int code)
+    {
+        if (code == 4444)
+        {
+            return !Interlocked.Exchange(ref _hasWarnedAbout4444, true);
+        }
+
+        return true;
     }
 
     private static bool TryParseJson(ref ReadOnlySequence<byte> buffer, [NotNullWhen(true)] out JsonDocument? jsonDocument)

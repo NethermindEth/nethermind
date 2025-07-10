@@ -118,7 +118,7 @@ namespace Nethermind.JsonRpc
         public const int ClientLimitExceededError = -38026;
 
         /// <summary>
-        /// Block is not available due to history expirty policy
+        /// Block is not available due to history expiry policy
         /// </summary>
         public const int PrunedHistoryUnavailable = 4444;
     }
