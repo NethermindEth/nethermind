@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO.Abstractions;
 using System.Reflection;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -13,7 +13,10 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
@@ -39,9 +42,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 {
     protected override void Load(ContainerBuilder builder)
     {
-        IChainHeadInfoProvider chainHeadInfo = Substitute.For<IChainHeadInfoProvider>();
-        chainHeadInfo.IsSyncing.Returns(false);
-
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
 
         base.Load(builder);
@@ -56,7 +56,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<ITimerFactory, TimerFactory>()
             .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext>((blockProcessingContext) => new BackgroundTaskScheduler(
                 blockProcessingContext.BlockProcessor,
-                chainHeadInfo,
+                new ChainHeadInfoMock(),
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
                 logManager))
@@ -88,5 +88,20 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
                 Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: true);
             }
         });
+    }
+
+    private class ChainHeadInfoMock : IChainHeadInfoProvider
+    {
+        public IChainHeadSpecProvider SpecProvider { get; } = null!;
+        public IReadOnlyStateProvider ReadOnlyStateProvider { get; } = null!;
+        public ICodeInfoRepository CodeInfoRepository { get; } = null!;
+        public long HeadNumber { get; }
+        public long? BlockGasLimit { get; }
+        public UInt256 CurrentBaseFee { get; }
+        public UInt256 CurrentFeePerBlobGas { get; }
+        public ProofVersion CurrentProofVersion { get; }
+        public bool IsSyncing { get => false; }
+        public bool IsProcessingBlock { get; }
+        public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
     }
 }
