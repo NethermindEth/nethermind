@@ -77,4 +77,28 @@ public static class Config
     {
         Description = "If true then each batched request will be unwraped to single requests"
     };
+
+    public static Option<IEnumerable<(string, string)>> Tags { get; } = new("--tags", "-t")
+    {
+        DefaultValueFactory = r => [],
+        CustomParser = r =>
+        {
+            var tags = new List<(string, string)>();
+            foreach (var token in r.Tokens)
+            {
+                foreach (var tag in token.Value.Split(','))
+                {
+                    var parts = tag.Split('=', 2);
+                    if (parts.Length == 2)
+                    {
+                        tags.Add((parts[0], parts[1]));
+                    }
+                }
+            }
+
+            return tags;
+        },
+        Description = "A comma separated list of additional tags to be added to the metrics in the format of key=value",
+        HelpName = "value",
+    };
 }

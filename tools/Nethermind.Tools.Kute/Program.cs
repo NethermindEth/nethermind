@@ -35,7 +35,8 @@ static class Program
             Config.MethodFilters,
             Config.ResponsesTraceFile,
             Config.RequestsPerSecond,
-            Config.UnwrapBatch
+            Config.UnwrapBatch,
+            Config.Tags
         ];
         rootCommand.SetAction((parseResult, cancellationToken) =>
         {
@@ -57,7 +58,19 @@ static class Program
         string? responsesTraceFile = parseResult.GetValue(Config.ResponsesTraceFile);
         IServiceCollection collection = new ServiceCollection();
 
-        collection.AddSingleton<Application>();
+        collection.AddSingleton(
+            provider => new Application(
+                provider.GetRequiredService<IMessageProvider<JsonRpc?>>(),
+                provider.GetRequiredService<IJsonRpcSubmitter>(),
+                provider.GetRequiredService<IJsonRpcValidator>(),
+                provider.GetRequiredService<IResponseTracer>(),
+                provider.GetRequiredService<IProgressReporter>(),
+                provider.GetRequiredService<IMetricsConsumer>(),
+                provider.GetRequiredService<IJsonRpcMethodFilter>(),
+                provider.GetRequiredService<IJsonRpcFlowManager>(),
+                parseResult.GetValue(Config.Tags)
+            )
+        );
         collection.AddSingleton<ISystemClock, RealSystemClock>();
         collection.AddSingleton<HttpClient>();
         collection.AddSingleton<ISecretProvider>(new FileSecretProvider(parseResult.GetValue(Config.JwtSecretFilePath)!));
@@ -141,7 +154,12 @@ static class Program
             {
                 MetricsOutputFormatter.Report => new MetricsTextOutputFormatter(),
                 MetricsOutputFormatter.Json => new MetricsJsonOutputFormatter(),
-                MetricsOutputFormatter.Prometheus => new MetricsPrometheusTextOutputFormatter(),
+                MetricsOutputFormatter.Prometheus => new MetricsPrometheusTextOutputFormatter(
+                    new MetricsPrometheusOptions()
+                    {
+
+                    }
+                ),
                 _ => throw new ArgumentOutOfRangeException(),
             }
         );

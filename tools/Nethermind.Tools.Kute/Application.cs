@@ -17,7 +17,7 @@ namespace Nethermind.Tools.Kute;
 
 class Application
 {
-    private readonly Metrics _metrics = new();
+    private readonly Metrics _metrics;
 
     private readonly IMessageProvider<JsonRpc?> _msgProvider;
     private readonly IJsonRpcSubmitter _submitter;
@@ -36,7 +36,8 @@ class Application
         IProgressReporter progressReporter,
         IMetricsConsumer metricsConsumer,
         IJsonRpcMethodFilter methodFilter,
-        IJsonRpcFlowManager flowManager
+        IJsonRpcFlowManager flowManager,
+        IEnumerable<(string, string)>? tags = null
     )
     {
         _msgProvider = msgProvider;
@@ -47,6 +48,7 @@ class Application
         _metricsConsumer = metricsConsumer;
         _methodFilter = methodFilter;
         _flowManager = flowManager;
+        _metrics = new Metrics(tags: tags);
     }
 
     public async Task Run()
