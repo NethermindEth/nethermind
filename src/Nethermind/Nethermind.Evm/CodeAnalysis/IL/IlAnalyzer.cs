@@ -203,7 +203,7 @@ public static class IlAnalyzer
         subSegment.Start = subsegmentStart;
         short currentStackSize = 0;
 
-        bool hasJumpdest = true;
+        bool hasJumpdest = false;
         bool hasInvalidOpcode = false;
 
         long coststack = 0;
@@ -229,7 +229,7 @@ public static class IlAnalyzer
                         subSegment.RequiredStack = -subSegment.RequiredStack;
                         subSegment.End = pc - 1;
                         subSegment.IsFailing = hasInvalidOpcode;
-                        subSegment.IsReachable = hasJumpdest;
+                        subSegment.IsJumpableTo = hasJumpdest;
                         subSegment.Instructions = instructionsIncluded;
                         subSegment.RequiresOpcodeCheck = requiresAvailabilityCheck;
                         subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;
@@ -284,7 +284,7 @@ public static class IlAnalyzer
                         subSegment.Start = subsegmentStart;
                         subSegment.RequiredStack = -subSegment.RequiredStack;
                         subSegment.IsFailing = hasInvalidOpcode;
-                        subSegment.IsReachable = hasJumpdest;
+                        subSegment.IsJumpableTo = hasJumpdest;
                         subSegment.Instructions = instructionsIncluded;
                         subSegment.RequiresOpcodeCheck = requiresAvailabilityCheck;
                         subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;
@@ -295,9 +295,10 @@ public static class IlAnalyzer
                         subsegmentStart = pc + 1;
                         subSegment = new();
 
+                        subSegment.IsContinuation = op is Instruction.JUMPI;
                         instructionsIncluded = [];
                         currentStackSize = 0;
-                        hasJumpdest = op is Instruction.JUMPI;
+                        hasJumpdest = false;
                         hasInvalidOpcode = false;
                         costStart = pc + 1;             // start with the next again
                         coststack = 0;
@@ -311,7 +312,7 @@ public static class IlAnalyzer
                         subSegment.Start = subsegmentStart;
                         subSegment.RequiredStack = -subSegment.RequiredStack;
                         subSegment.IsFailing = hasInvalidOpcode;
-                        subSegment.IsReachable = hasJumpdest;
+                        subSegment.IsJumpableTo = hasJumpdest;
                         subSegment.Instructions = instructionsIncluded;
                         subSegment.RequiresOpcodeCheck = requiresAvailabilityCheck;
                         subSegment.RequiresStaticEnvCheck = requiresStaticEnvCheck;
@@ -325,7 +326,7 @@ public static class IlAnalyzer
                         subSegment.IsEntryPoint = true; // create is not an entry point
                         instructionsIncluded = [];
                         currentStackSize = 0;
-                        hasJumpdest = true;
+                        hasJumpdest = false;
                         hasInvalidOpcode = false;
                         costStart = pc + 1;             // start with the next again
                         coststack = 0;
@@ -342,7 +343,7 @@ public static class IlAnalyzer
         if ((subsegmentStart < segmentRange.End.Value && !subSegmentData.ContainsKey(subsegmentStart)) || lastOpcodeIsAjumpdest)
         {
             subSegment.Start = subsegmentStart;
-            subSegment.IsReachable = hasJumpdest;
+            subSegment.IsJumpableTo = hasJumpdest;
             subSegment.IsFailing = hasInvalidOpcode;
             subSegment.RequiredStack = -subSegment.RequiredStack;
             subSegment.End = segmentRange.End.Value - 1;

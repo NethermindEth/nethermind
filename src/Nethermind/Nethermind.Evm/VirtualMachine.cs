@@ -1075,6 +1075,8 @@ public sealed unsafe partial class VirtualMachine(
                 _worldState.IncrementNonce(env.ExecutingAccount);
             }
 
+            // IlAnalyzer.Analyse(env.CodeInfo as CodeInfo, ILMode.AOT_MODE, _vmConfig, _logger);
+
             if (_vmConfig.IlEvmEnabledMode is ILMode.AOT_MODE)
             {
                 env.CodeInfo.NoticeExecution(_vmConfig, _logger, Spec);

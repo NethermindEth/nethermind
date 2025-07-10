@@ -20,12 +20,20 @@ public struct ContractCompilerMetadata
 
 public class SubSegmentMetadata
 {
+    // entry point or segment after a call or create
     public bool IsEntryPoint { get; set; }
+
+    // segment that can be jumped to, e.g segment starting with jumpdest
+    public bool IsJumpableTo { get; set; }
+
+    // segment that is a continuation of the previous segment, e.g. segment after a jumpi
+    public bool IsContinuation { get; set; }
+
+    public bool IsReachable => IsEntryPoint || IsJumpableTo || IsContinuation;
 
     public int Start { get; set; }
     public int End { get; set; }
 
-    public bool IsReachable { get; set; }
     public bool IsFailing { get; set; }
 
     public int RequiredStack { get; set; }

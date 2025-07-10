@@ -221,7 +221,6 @@ public static class Precompiler
         {
             (Instruction Instruction, OpcodeMetadata Metadata) opcodeInfo = ((Instruction)machineCodeAsSpan[pc], OpcodeMetadata.GetMetadata((Instruction)machineCodeAsSpan[pc]));
 
-
             if (contractMetadata.StaticGasSubSegmentes.TryGetValue(pc, out var gasCost) && gasCost > 0)
             {
                 method.EmitStaticGasCheck(locals.gasAvailable, gasCost, evmExceptionLabels);
@@ -294,27 +293,20 @@ public static class Precompiler
 
         foreach (var (programCounter, currentSubsegment) in contractMetadata.SubSegments)
         {
-            string methodName = $"Segment[{currentSubsegment.Start}::{currentSubsegment.End}]";
-            var internalMethod = Sigil.Emit<ILEmittedMethod>.BuildMethod(
-                typeBuilder,
-                methodName,
-                MethodAttributes.Private | MethodAttributes.Static,
-                CallingConventions.Standard,
-                allowUnverifiableCode: true, doVerify: false);
-
-            EmitInternalMethod(internalMethod, currentSubsegment.Start, codeInfo, contractMetadata, config)
-                .CreateMethod(out string ilCode, OptimizationOptions.All);
+            if(!currentSubsegment.IsReachable)
+            {
+                continue; // skip unreachable segments
+            }
 
             if (currentSubsegment.IsEntryPoint)
             {
                 method.MarkLabel(entryPoints[currentSubsegment.Start] = method.DefineLabel(locals.GetLabelName()));
             }
 
-            if (currentSubsegment.IsReachable)
+            if (currentSubsegment.IsJumpableTo)
             {
                 method.MarkLabel(jumpDestinations[currentSubsegment.Start] = method.DefineLabel(locals.GetLabelName()));
             }
-            else continue;
 
             if (currentSubsegment.IsFailing)
             {
@@ -331,6 +323,17 @@ public static class Precompiler
             {
                 method.EmitAmortizedOpcodeCheck(envLoader, currentSubsegment, locals, evmExceptionLabels);
             }
+
+            string methodName = $"Segment[{currentSubsegment.Start}::{currentSubsegment.End}]";
+            var internalMethod = Sigil.Emit<ILEmittedMethod>.BuildMethod(
+                typeBuilder,
+                methodName,
+                MethodAttributes.Private | MethodAttributes.Static,
+                CallingConventions.Standard,
+                allowUnverifiableCode: true, doVerify: false);
+
+            EmitInternalMethod(internalMethod, currentSubsegment.Start, codeInfo, contractMetadata, config)
+                .CreateMethod(out string ilCode, OptimizationOptions.All);
             // and we emit failure for failing jumpless segment at start
             envLoader.LoadArguments(method, locals, true);
             envLoader.LoadResult(method, locals, true);
