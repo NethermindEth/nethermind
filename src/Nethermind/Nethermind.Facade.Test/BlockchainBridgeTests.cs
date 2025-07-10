@@ -83,21 +83,28 @@ public class BlockchainBridgeTests
     public void get_transaction_returns_receipt_and_transaction_when_found()
     {
         int index = 5;
-        var receipt = Build.A.Receipt
-            .WithBlockHash(TestItem.KeccakB)
-            .WithTransactionHash(TestItem.KeccakA)
-            .WithIndex(index)
-            .TestObject;
-        IEnumerable<Transaction> transactions = Enumerable.Range(0, 10)
-            .Select(static i => Build.A.Transaction.WithNonce((UInt256)i).TestObject);
-        var block = Build.A.Block
+        Transaction[] transactions = Enumerable.Range(0, 10)
+            .Select(static i => Build.A.Transaction.WithNonce((UInt256)i).WithHash(TestItem.Keccaks[i]).TestObject)
+            .ToArray();
+        Block block = Build.A.Block
             .WithTransactions(transactions.ToArray())
             .TestObject;
+        TxReceipt[] receipts = block.Transactions.Select((t, i) => Build.A.Receipt
+            .WithBlockHash(TestItem.KeccakB)
+            .WithIndex(i)
+            .WithTransactionHash(t.Hash)
+            .TestObject
+        ).ToArray();
+;
         _blockTree.FindBlock(TestItem.KeccakB, Arg.Any<BlockTreeLookupOptions>()).Returns(block);
-        _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
-        _receiptStorage.Get(block).Returns(new[] { receipt });
-        _blockchainBridge.GetTransaction(TestItem.KeccakA).Should()
-            .BeEquivalentTo((receipt, Build.A.Transaction.WithNonce((UInt256)index).TestObject, UInt256.Zero));
+        foreach (TxReceipt receipt in receipts)
+        {
+            _receiptStorage.FindBlockHash(receipt.TxHash!).Returns(TestItem.KeccakB);
+        }
+        _receiptStorage.Get(block).Returns(receipts);
+        var expectation = (receipts[index], Build.A.Transaction.WithNonce((UInt256)index).WithHash(TestItem.Keccaks[index]).TestObject, UInt256.Zero);
+        var result = _blockchainBridge.GetTransaction(transactions[index].Hash!);
+        result.Should().BeEquivalentTo(expectation);
     }
 
     [Test]
