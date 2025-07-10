@@ -88,6 +88,8 @@ public class BackgroundTaskSchedulerTests
 
         await waitSignal.WaitOneAsync(CancellationToken.None);
         _blockProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
+        await Task.Delay(10);
+        _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
         Assert.That(() => wasCancelled, Is.EqualTo(true).After(10, 1));
     }
 
@@ -129,6 +131,8 @@ public class BackgroundTaskSchedulerTests
             return Task.CompletedTask;
         }, TimeSpan.FromMilliseconds(1));
 
+        await Task.Delay(10);
+        _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
         (await waitSignal.WaitOneAsync(CancellationToken.None)).Should().BeTrue();
 
         wasCancelled.Should().BeTrue();

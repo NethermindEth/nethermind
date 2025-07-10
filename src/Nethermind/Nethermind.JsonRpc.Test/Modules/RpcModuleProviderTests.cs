@@ -4,6 +4,8 @@
 using System.IO.Abstractions;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Core;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Era1.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
