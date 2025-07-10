@@ -39,6 +39,9 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 {
     protected override void Load(ContainerBuilder builder)
     {
+        IChainHeadInfoProvider chainHeadInfo = Substitute.For<IChainHeadInfoProvider>();
+        chainHeadInfo.IsSyncing.Returns(false);
+
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
 
         base.Load(builder);
@@ -53,6 +56,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<ITimerFactory, TimerFactory>()
             .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext>((blockProcessingContext) => new BackgroundTaskScheduler(
                 blockProcessingContext.BlockProcessor,
+                chainHeadInfo,
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
                 logManager))

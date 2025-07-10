@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Scheduler;
 
@@ -38,11 +39,12 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private readonly Task[] _tasksExecutors;
     private readonly ILogger _logger;
     private readonly IBlockProcessor _blockProcessor;
+    private readonly IChainHeadInfoProvider _headInfo;
 
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
     private bool _disposed = false;
 
-    public BackgroundTaskScheduler(IBlockProcessor blockProcessor, int concurrency, int capacity, ILogManager logManager)
+    public BackgroundTaskScheduler(IBlockProcessor blockProcessor, IChainHeadInfoProvider headInfo, int concurrency, int capacity, ILogManager logManager)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
@@ -55,6 +57,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _taskQueue = Channel.CreateUnboundedPrioritized<IActivity>();
         _logger = logManager.GetClassLogger();
         _blockProcessor = blockProcessor;
+        _headInfo = headInfo;
         _restartQueueSignal = new ManualResetEventSlim(initialState: true);
         // As channel is unbounded (to be prioritized) we gate capacity with a semaphore
         _capacity = new SemaphoreSlim(initialCount: capacity);
@@ -75,10 +78,15 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
     private void BlockProcessorOnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
     {
-        // Reset background queue processing signal, causing it to wait
-        _restartQueueSignal.Reset();
-        // On block processing, we cancel the block process cts, causing current task to get cancelled.
-        _blockProcessorCancellationTokenSource.Cancel();
+        // If we are syncing we don't block background task processing
+        // as there are potentially no gaps between blocks
+        if (!_headInfo.IsSyncing)
+        {
+            // Reset background queue processing signal, causing it to wait
+            _restartQueueSignal.Reset();
+            // On block processing, we cancel the block process cts, causing current task to get cancelled.
+            _blockProcessorCancellationTokenSource.Cancel();
+        }
     }
 
     private void BlockProcessorOnBlockProcessed(object? sender, BlockProcessedEventArgs e)
