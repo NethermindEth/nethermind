@@ -8,9 +8,10 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Tracing;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -24,7 +25,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class WorldState : IWorldState, IPreBlockCaches
+    public class WorldState : IVisitingWorldState, IPreBlockCaches
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
@@ -184,6 +185,11 @@ namespace Nethermind.State
 
         public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);
 
+        public void SetBaseBlock(BlockHeader? header)
+        {
+            StateRoot = header?.StateRoot ?? Keccak.EmptyTreeHash;
+        }
+
         public ref readonly UInt256 GetBalance(Address address) => ref _stateProvider.GetBalance(address);
 
         UInt256 IAccountStateProvider.GetBalance(Address address) => _stateProvider.GetBalance(address);
@@ -216,9 +222,9 @@ namespace Nethermind.State
             return _stateProvider.IsEmptyAccount(address);
         }
 
-        public bool HasStateForRoot(Hash256 stateRoot)
+        public bool HasStateForBlock(BlockHeader? header)
         {
-            return _trieStore.HasRoot(stateRoot);
+            return _trieStore.HasRoot(header?.StateRoot ?? Keccak.EmptyTreeHash);
         }
 
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)

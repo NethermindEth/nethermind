@@ -4,7 +4,6 @@
 using System;
 using System.IO.Abstractions;
 using System.Linq;
-using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
@@ -19,6 +18,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Evm.State;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
@@ -66,7 +66,7 @@ public class PruningTrieStateFactory(
         }
 
         IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
-        IWorldState worldState = syncConfig.TrieHealing
+        IVisitingWorldState worldState = syncConfig.TrieHealing
             ? new HealingWorldState(
                 mainWorldTrieStore,
                 mainNodeStorage,
@@ -82,13 +82,6 @@ public class PruningTrieStateFactory(
                 preBlockCaches,
                 // Main thread should only read from prewarm caches, not spend extra time updating them.
                 populatePreBlockCache: false);
-
-        // Init state if we need system calls before actual processing starts
-        worldState.StateRoot = blockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-        if (blockTree!.Head?.StateRoot is not null)
-        {
-            worldState.StateRoot = blockTree.Head.StateRoot;
-        }
 
         IWorldStateManager stateManager = new WorldStateManager(
             worldState,
@@ -123,6 +116,9 @@ public class PruningTrieStateFactory(
             stateManager.GlobalStateReader,
             verifyTrieStarter!
         );
+
+        // Init state if we need system calls before actual processing starts
+        worldState.SetBaseBlock(blockTree.Head?.Header);
 
         return (stateManager, adminRpcModule);
     }

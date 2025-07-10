@@ -21,16 +21,17 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Newtonsoft.Json.Linq;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -55,10 +56,10 @@ public class TraceRpcModuleTests
                 {
                     transactions.Add(Core.Test.Builders.Build.A.Transaction
                         .WithTo(Address.Zero)
-                        .WithNonce(Blockchain.StateReader.GetNonce(stateRoot, TestItem.AddressB) + (UInt256)j)
+                        .WithNonce(Blockchain.StateReader.GetNonce(Blockchain.BlockTree.Head.Header, TestItem.AddressB) + (UInt256)j)
                         .SignedAndResolved(Blockchain.EthereumEcdsa, TestItem.PrivateKeyB).TestObject);
                 }
-                await Blockchain.AddBlock(transactions.ToArray());
+                await Blockchain.AddBlockMayMissTx(transactions.ToArray());
 
                 stateRoot = Blockchain.BlockTree.Head!.StateRoot!;
             }
@@ -262,7 +263,7 @@ public class TraceRpcModuleTests
         await context.Build();
         TestRpcBlockchain blockchain = context.Blockchain;
         UInt256 currentNonceAddressA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
-        await context.Blockchain.AddBlock(
+        await context.Blockchain.AddBlockMayMissTx(
             new[]
             {
                 Build.A.Transaction.WithNonce(currentNonceAddressA + 1).WithTo(TestItem.AddressD)
@@ -609,7 +610,7 @@ public class TraceRpcModuleTests
             .WithGasPrice(875000000)
             .SignedAndResolved(TestItem.PrivateKeyC)
             .WithIsServiceTransaction(true).TestObject;
-        await blockchain.AddBlock(serviceTransaction);
+        await blockchain.AddBlockMayMissTx(serviceTransaction);
         BlockParameter blockParameter = new BlockParameter(BlockParameterType.Latest);
         string[] traceTypes = { "trace" };
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(blockParameter, traceTypes);

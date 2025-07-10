@@ -11,7 +11,6 @@ using Nethermind.Config;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
-using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Simulate;
@@ -83,7 +82,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                     .AddSingleton<IFeeHistoryOracle, FeeHistoryOracle>()
                     .AddSingleton<IFilterStore, ITimerFactory, IJsonRpcConfig>((timerFactory, rpcConfig) => new FilterStore(timerFactory, rpcConfig.FiltersTimeout))
                     .AddSingleton<IFilterManager, IFilterStore, IMainProcessingContext, ITxPool, ILogManager>((store, processingContext, txPool, logManager) => new FilterManager(store, processingContext.BlockProcessor, txPool, logManager))
-                    .AddSingleton<SimulateReadOnlyBlocksProcessingEnvFactory>()
+                    .AddSingleton<ISimulateReadOnlyBlocksProcessingEnvFactory, SimulateReadOnlyBlocksProcessingEnvFactory>()
 
             // Proof
             .RegisterBoundedJsonRpcModule<IProofRpcModule, ProofModuleFactory>(2, jsonRpcConfig.Timeout)

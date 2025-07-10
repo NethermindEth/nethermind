@@ -8,9 +8,9 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
-using Nethermind.State.Tracing;
-using Nethermind.Trie;
 
 namespace Nethermind.State;
 
@@ -51,11 +51,7 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
         StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
     }
 
-    public Hash256 StateRoot
-    {
-        get => innerState.StateRoot;
-        set => innerState.StateRoot = value;
-    }
+    public Hash256 StateRoot => innerState.StateRoot;
 
     public double StateMerkleizationTime { get; private set; }
 
@@ -120,16 +116,15 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
 
     public bool IsContract(Address address) => innerState.IsContract(address);
 
-    public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx> =>
-        innerState.Accept(visitor, stateRoot, visitingOptions);
-
     public bool AccountExists(Address address) => innerState.AccountExists(address);
 
     public bool IsDeadAccount(Address address) => innerState.IsDeadAccount(address);
 
     public bool IsEmptyAccount(Address address) => innerState.IsEmptyAccount(address);
 
-    public bool HasStateForRoot(Hash256 stateRoot) => innerState.HasStateForRoot(stateRoot);
+    public bool HasStateForBlock(BlockHeader? stateRoot) => innerState.HasStateForBlock(stateRoot);
+
+    public void SetBaseBlock(BlockHeader? header) => innerState.SetBaseBlock(header);
 
     public ref readonly UInt256 GetBalance(Address account) => ref innerState.GetBalance(account);
 

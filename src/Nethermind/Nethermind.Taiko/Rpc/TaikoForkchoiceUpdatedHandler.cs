@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -21,7 +22,8 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Taiko.Rpc;
 
-internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
+internal class TaikoForkchoiceUpdatedHandler(
+    IBlockTree blockTree,
     IManualBlockFinalizationManager manualBlockFinalizationManager,
     IPoSSwitcher poSSwitcher,
     IPayloadPreparationService payloadPreparationService,
@@ -33,24 +35,26 @@ internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
     IPeerRefresher peerRefresher,
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
-    ILogManager logManager,
-    bool simulateBlockProduction = false) : ForkchoiceUpdatedHandler(blockTree,
-          manualBlockFinalizationManager,
-          poSSwitcher,
-          payloadPreparationService,
-          processingQueue,
-          blockCacheService,
-          invalidChainTracker,
-          mergeSyncController,
-          beaconPivot,
-          peerRefresher,
-          specProvider,
-          syncPeerPool,
-          logManager,
-          simulateBlockProduction)
+    IMergeConfig mergeConfig,
+    ILogManager logManager
+) : ForkchoiceUpdatedHandler(
+    blockTree,
+    manualBlockFinalizationManager,
+    poSSwitcher,
+    payloadPreparationService,
+    processingQueue,
+    blockCacheService,
+    invalidChainTracker,
+    mergeSyncController,
+    beaconPivot,
+    peerRefresher,
+    specProvider,
+    syncPeerPool,
+    mergeConfig,
+    logManager)
 {
     protected override bool IsOnMainChainBehindHead(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
-       [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
+        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
         errorResult = null;
         return true;

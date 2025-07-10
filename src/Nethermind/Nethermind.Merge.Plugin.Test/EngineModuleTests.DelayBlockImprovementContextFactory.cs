@@ -4,11 +4,11 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Test;

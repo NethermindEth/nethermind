@@ -23,9 +23,9 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) =>
         NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot), EngineApiVersions.Cancun);
 
-    public async Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId) =>
-        await _getPayloadHandlerV3.HandleAsync(payloadId);
+    public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId) =>
+        _getPayloadHandlerV3.HandleAsync(payloadId);
 
-    public async Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>> engine_getBlobsV1(byte[][] blobVersionedHashes) =>
-        await _getBlobsHandler.HandleAsync(blobVersionedHashes);
+    public Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>> engine_getBlobsV1(byte[][] blobVersionedHashes) =>
+        _getBlobsHandler.HandleAsync(blobVersionedHashes);
 }

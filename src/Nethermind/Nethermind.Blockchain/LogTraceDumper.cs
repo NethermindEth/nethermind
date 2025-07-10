@@ -5,13 +5,13 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -125,9 +125,9 @@ public static class BlockTraceDumper
             FileMode.Create,
             FileAccess.Write);
 
-    public static void LogTraceFailure(IBlockTracer blockTracer, Hash256 blockHash, Exception exception, ILogger logger)
+    public static void LogTraceFailure(IBlockTracer blockTracer, BlockHeader? parent, Exception exception, ILogger logger)
     {
         if (logger.IsError)
-            logger.Error($"Cannot create trace of blocks starting from {blockHash} of type {blockTracer.GetType().Name}", exception);
+            logger.Error($"Cannot create trace of blocks starting from {parent?.Hash} of type {blockTracer.GetType().Name}", exception);
     }
 }

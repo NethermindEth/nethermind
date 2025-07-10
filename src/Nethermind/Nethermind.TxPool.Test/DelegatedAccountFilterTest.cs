@@ -6,19 +6,18 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
+using Nethermind.Blockchain;
 using Nethermind.Core.Test;
+using Nethermind.State;
 
 namespace Nethermind.TxPool.Test;
 internal class DelegatedAccountFilterTest

@@ -64,8 +64,8 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         IPeerRefresher peerRefresher,
         ISpecProvider specProvider,
         ISyncPeerPool syncPeerPool,
-        ILogManager logManager,
-        bool simulateBlockProduction = false)
+        IMergeConfig mergeConfig,
+        ILogManager logManager)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
@@ -79,7 +79,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _peerRefresher = peerRefresher;
         _specProvider = specProvider;
         _syncPeerPool = syncPeerPool;
-        _simulateBlockProduction = simulateBlockProduction;
+        _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
         _logger = logManager.GetClassLogger();
     }
 

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Data;
@@ -18,10 +19,10 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 
@@ -33,12 +34,15 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     private INethermindApi NethermindApi => _api;
 
     private readonly IAuRaBlockProcessorFactory _auRaBlockProcessorFactory;
+    private IAbiEncoder _abiEncoder;
 
     public InitializeBlockchainAuRa(
         AuRaNethermindApi api,
+        IAbiEncoder abiEncoder,
         IAuRaBlockProcessorFactory auRaBlockProcessorFactory) : base(api)
     {
         _api = api;
+        _abiEncoder = abiEncoder;
         _auRaBlockProcessorFactory = auRaBlockProcessorFactory;
     }
 
@@ -86,7 +90,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
         IAuRaValidator validator = new AuRaValidatorFactory(
-                _api.AbiEncoder,
+                _abiEncoder,
                 worldState,
                 transactionProcessor,
                 _api.BlockTree,

@@ -41,6 +41,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
 
     public BlockHeaderBuilder WithParent(BlockHeader parentHeader)
     {
+        if (parentHeader is null) return this;
         TestObjectInternal.ParentHash = parentHeader.Hash;
         TestObjectInternal.Number = parentHeader.Number + 1;
         TestObjectInternal.GasLimit = parentHeader.GasLimit;
