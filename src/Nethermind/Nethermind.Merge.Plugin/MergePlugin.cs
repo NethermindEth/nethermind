@@ -307,6 +307,8 @@ public class BaseMergePluginModule : Module
 
             .AddDecorator<IHealthHintService, MergeHealthHintService>()
 
+            .AddKeyedSingleton<ITxValidator>(ITxValidator.HeadTxValidatorKey, new HeadTxValidator())
+
             // Engine rpc related
             .RegisterSingletonJsonRpcModule<IEngineRpcModule, EngineRpcModule>()
                 .AddSingleton<IPayloadPreparationService, PayloadPreparationService>()

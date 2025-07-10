@@ -23,7 +23,6 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -31,6 +30,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using Nethermind.Consensus.Validators;
 
 namespace Nethermind.Init.Steps
 {
@@ -205,7 +205,10 @@ namespace Nethermind.Init.Steps
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _api.TxGossipPolicy);
+                _api.TxGossipPolicy,
+                null,
+                _api.HeadTxValidator
+            );
 
             _api.DisposeStack.Push(txPool);
             return txPool;
