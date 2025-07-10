@@ -1077,10 +1077,7 @@ public sealed unsafe partial class VirtualMachine(
 
             if (_vmConfig.IlEvmEnabledMode is ILMode.AOT_MODE)
             {
-                if (vmState.Env.CodeInfo.IlMetadata.IsNotProcessed)
-                {
-                    env.CodeInfo.NoticeExecution(_vmConfig, _logger, Spec);
-                }
+                env.CodeInfo.NoticeExecution(_vmConfig, _logger, Spec);
             }
         }
 

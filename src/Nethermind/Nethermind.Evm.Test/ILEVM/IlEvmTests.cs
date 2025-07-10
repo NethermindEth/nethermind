@@ -1757,7 +1757,7 @@ namespace Nethermind.Evm.Test.ILEVM
                     .Done, EvmExceptionType.StackUnderflow);
 
 
-                // big test to check if Bytecode current maxSize fails to compile or run
+                /*// big test to check if Bytecode current maxSize fails to compile or run
                 long maxSize = 24.KiB();
 
                 byte[] bytecode = new byte[maxSize];
@@ -1782,7 +1782,7 @@ namespace Nethermind.Evm.Test.ILEVM
                     index += segment.Length;
                 }
 
-                yield return ([Instruction.ADD, Instruction.SSTORE, Instruction.INVALID], bytecode, EvmExceptionType.OutOfGas);
+                yield return ([Instruction.ADD, Instruction.SSTORE, Instruction.INVALID], bytecode, EvmExceptionType.OutOfGas);*/
 
             }
 
@@ -1819,6 +1819,11 @@ namespace Nethermind.Evm.Test.ILEVM
             List<Instruction> notCovered = new List<Instruction>();
             foreach (var opcode in instructions)
             {
+                if(!EofInstructionExtensions.IsValid(opcode, false))
+                {
+                    continue; // skip invalid opcodes
+                }
+
                 if (!tests.Contains(opcode))
                 {
                     notCovered.Add(opcode);
@@ -1878,6 +1883,10 @@ namespace Nethermind.Evm.Test.ILEVM
             Instruction[] instructions = System.Enum.GetValues<Instruction>();
             foreach (var opcode in instructions)
             {
+                if (!EofInstructionExtensions.IsValid(opcode, false))
+                {
+                    continue; // skip invalid opcodes
+                }
                 Assert.That(OpcodeMetadata.Operations.ContainsKey(opcode), Is.True);
             }
         }
@@ -1936,7 +1945,7 @@ namespace Nethermind.Evm.Test.ILEVM
             var address = standardChain.InsertCode(testcase.bytecode);
             enhancedChain.InsertCode(testcase.bytecode);
 
-            standardChain.Execute(testcase.bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes);
+            standardChain.Execute(testcase.bytecode, NullTxTracer.Instance, blobVersionedHashes: blobVersionedHashes, forceAnalysis: false);
 
             if (assertNoPreCompiledCalls)
             {

@@ -26,6 +26,6 @@ public sealed class PrecompileInfo(IPrecompile precompile) : ICodeInfo
 
     public void NoticeExecution(IVMConfig vmConfig, ILogger logger, IReleaseSpec spec)
     {
-        throw new NotImplementedException();
+        return;
     }
 }
