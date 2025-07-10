@@ -90,40 +90,4 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
 
     public void Cache(Block block)
         => _blockCache.Set(block.Hash, block);
-
-    // public IEnumerable<Block> GetBlocksOlderThan(ulong timestamp)
-    // {
-    //     IEnumerable<KeyValuePair<byte[], byte[]?>> blocks = blockDb.GetAll(true);
-    //     foreach ((byte[] _, byte[]? value) in blocks)
-    //     {
-    //         Block block = _blockDecoder.Decode(value.AsRlpStream());
-    //         if (block.Timestamp >= timestamp)
-    //         {
-    //             continue;
-    //         }
-
-    //         yield return block;
-    //     }
-    // }
-
-    // public Block? GetBlockByTimestamp(ulong timestamp)
-    // {
-    //     // todo: check if block aligns exactly with timestamp
-    //     int i = 0;
-    //     IEnumerable<KeyValuePair<byte[], byte[]?>> blocks = blockDb.GetAll(true);
-    //     foreach ((byte[] _, byte[]? value) in blocks)
-    //     {
-    //         Block block = _blockDecoder.Decode(value.AsRlpStream());
-    //         if (block.Timestamp == timestamp)
-    //         {
-    //             return block;
-    //         }
-
-    //         if (++i > MaxBlockSearch)
-    //         {
-    //             return null;
-    //         }
-    //     }
-    //     return null;
-    // }
 }

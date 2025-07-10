@@ -23,7 +23,6 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Stats.SyncLimits;
 using Nethermind.Blockchain.HistoryPruning;
-using ZstdSharp.Unsafe;
 
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 
