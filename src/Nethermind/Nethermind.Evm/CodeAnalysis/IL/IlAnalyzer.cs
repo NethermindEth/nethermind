@@ -346,14 +346,7 @@ public static class IlAnalyzer
             }
             notStart = false;
 
-            if (op.IsCall() || op.IsCreate())
-            {
-                lastOpcodeIsCallOrCreate = true;
-            }
-            else
-            {
-                lastOpcodeIsCallOrCreate = false;
-            }
+            lastOpcodeIsCallOrCreate = op.IsCall() || op.IsCreate();
         }
 
         if ((subsegmentStart < segmentRange.End.Value && !subSegmentData.ContainsKey(subsegmentStart)) || lastOpcodeIsAjumpdest)
