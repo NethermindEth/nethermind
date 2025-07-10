@@ -87,8 +87,16 @@ public class HistoryPruner : IHistoryPruner
         get
         {
             ulong cutoffTimestamp = CalculateCutoffTimestamp();
-            Block? block = _blockStore.GetBlockByTimestamp(cutoffTimestamp);
-            return block?.Number;
+            long? cutoffBlockNumber = null;
+            IEnumerable<Block> block = GetBlocksByNumber(HighestDeletedBlockNumber, b => {
+                bool afterCutoff = b.Timestamp >= cutoffTimestamp;
+                if (afterCutoff)
+                {
+                    cutoffBlockNumber = b.Number;
+                }
+                return afterCutoff;
+            });
+            return cutoffBlockNumber;
         }
     }
 
@@ -128,25 +136,21 @@ public class HistoryPruner : IHistoryPruner
 
         if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
 
-        await Task.Run(() =>
-        {
-            IEnumerable<Block> deletedBlocks = DeleteBlocksBeforeTimestamp(cutoffTimestamp, cancellationToken);
-            PruneReceipts(deletedBlocks);
-        }, cancellationToken);
+        await Task.Run(() => PruneBlocksAndReceipts(cutoffTimestamp, cancellationToken), cancellationToken);
 
         _lastPrunedTimestamp = cutoffTimestamp;
         if (_logger.IsInfo) _logger.Info($"Pruned historical blocks up to timestamp {cutoffTimestamp}");
     }
 
-    public IEnumerable<Block> DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken)
+    public void PruneBlocksAndReceipts(ulong cutoffTimestamp, CancellationToken cancellationToken)
     {
         int deletedBlocks = 0;
         try
         {
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
 
-            IEnumerable<Block> oldBlocks = _blockStore.GetBlocksOlderThan(cutoffTimestamp);
-            foreach (Block block in oldBlocks)
+            IEnumerable<Block> blocks = GetBlocksBeforeTimestamp(cutoffTimestamp);
+            foreach (Block block in blocks)
             {
                 long number = block.Number;
                 Hash256 hash = block.Hash;
@@ -164,8 +168,9 @@ public class HistoryPruner : IHistoryPruner
 
                 if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}.");
                 _blockTree.DeleteBlock(number, hash, null, batch, null, true);
+                _receiptStorage.RemoveReceipts(block);
+                HighestDeletedBlockNumber = number;
                 deletedBlocks++;
-                yield return block;
             }
         }
         finally
@@ -174,11 +179,43 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    private void PruneReceipts(IEnumerable<Block> blocks)
+    private IEnumerable<Block> GetBlocksBeforeTimestamp(ulong cutoffTimestamp)
+        => GetBlocksByNumber(HighestDeletedBlockNumber, b => b.Timestamp >= cutoffTimestamp);
+
+    private IEnumerable<Block> GetBlocksByNumber(long from, Predicate<Block> endSearch)
     {
-        foreach (Block block in blocks)
+        for (long i = from; i < _blockTree.Head!.Number; i++)
         {
-            _receiptStorage.RemoveReceipts(block);
+            ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
+            if (chainLevelInfo is null)
+            {
+                continue;
+            }
+
+            bool finished = false;
+            foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
+            {
+                Block? block = _blockStore.Get(blockInfo.BlockNumber, blockInfo.BlockHash);
+                if (block is null)
+                {
+                    continue;
+                }
+
+                // search entire chain level before finishing
+                if (endSearch(block))
+                {
+                    finished = true;
+                }
+                else
+                {
+                    yield return block;
+                }
+            }
+
+            if (finished)
+            {
+                break;
+            }
         }
     }
 
@@ -201,5 +238,18 @@ public class HistoryPruner : IHistoryPruner
         }
 
         return cutoffTimestamp;
+    }
+
+    // store in db
+    private long HighestDeletedBlockNumber
+    {
+        get
+        {
+            return 0;
+        }
+        set
+        {
+
+        }
     }
 }

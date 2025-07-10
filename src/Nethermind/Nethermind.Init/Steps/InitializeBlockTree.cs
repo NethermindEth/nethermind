@@ -126,6 +126,7 @@ namespace Nethermind.Init.Steps
                     blockStore,
                     chainLevelInfoRepository,
                     historyConfig,
+                    // _get.DbProvider.BlockInfosDb,
                     (long)blocksConfig.SecondsPerSlot,
                     logManager);
                 _set.HistoryPruner = historyPruner;

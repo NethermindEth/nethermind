@@ -23,7 +23,6 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
