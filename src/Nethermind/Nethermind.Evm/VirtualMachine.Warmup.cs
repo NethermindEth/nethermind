@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Config;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -22,11 +23,11 @@ using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int,
 
 public unsafe partial class VirtualMachine
 {
-    public static void WarmUpEvmInstructions(IWorldState state, ICodeInfoRepository codeInfoRepository)
+    public static void WarmUpEvmInstructions(IWorldState state, ICodeInfoRepository codeInfoRepository, IVMConfig vmConfig)
     {
         IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
-        VirtualMachine vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
+        VirtualMachine vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance, vmConfig);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
 
         byte[] bytecode = new byte[64];

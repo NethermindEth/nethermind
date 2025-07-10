@@ -9,7 +9,7 @@ namespace Nethermind.Evm;
 
 using Word = Vector256<byte>;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Represents a bitwise operation on 256-bit vectors.

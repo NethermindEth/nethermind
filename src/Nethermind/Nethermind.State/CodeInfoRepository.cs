@@ -114,7 +114,7 @@ public class CodeInfoRepository : ICodeInfoRepository
                 MissingCode(in codeHash);
             }
 
-            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec, ValidationStrategy.ExtractHeader);
+            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec, ValidationStrategy.ExtractHeader, codeHash);
             _codeCache.Set(in codeHash, cachedCodeInfo);
         }
         else
@@ -138,7 +138,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         if (state.InsertCode(codeOwner, in codeHash, code, spec) &&
             _codeCache.Get(in codeHash) is null)
         {
-            ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExtractHeader);
+            ICodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code, spec, ValidationStrategy.ExtractHeader, codeHash);
             _codeCache.Set(in codeHash, codeInfo);
         }
     }
