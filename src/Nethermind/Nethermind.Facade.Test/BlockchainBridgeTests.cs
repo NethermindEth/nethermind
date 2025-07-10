@@ -95,7 +95,7 @@ public class BlockchainBridgeTests
             .WithTransactionHash(t.Hash)
             .TestObject
         ).ToArray();
-;
+        ;
         _blockTree.FindBlock(TestItem.KeccakB, Arg.Any<BlockTreeLookupOptions>()).Returns(block);
         foreach (TxReceipt receipt in receipts)
         {
