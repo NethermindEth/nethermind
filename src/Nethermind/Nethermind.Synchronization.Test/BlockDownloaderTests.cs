@@ -519,7 +519,7 @@ public partial class BlockDownloaderTests
         await using IContainer node = CreateNode(builder => builder
             .AddDecorator<ISyncConfig>((_, syncConfig) =>
             {
-                syncConfig.ForwardSyncBlockProcessingQueueMemoryBudget = 3200000;
+                syncConfig.ForwardSyncDownloadBufferMemoryBudget = 3200000;
                 return syncConfig;
             })
             .AddSingleton<IBlockValidator>(Always.Invalid));
