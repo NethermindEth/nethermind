@@ -267,6 +267,7 @@ public abstract partial class BaseEngineModuleTests
                 SpecProvider,
                 BlockStore,
                 ChainLevelInfoRepository,
+                DbProvider.MetadataDb,
                 new HistoryConfig(),
                 (long)MergeConfig.SecondsPerSlot,
                 LogManager);

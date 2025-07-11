@@ -12,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
 using NSubstitute;
@@ -56,6 +57,7 @@ public class HistoryPrunerTests
             specProvider,
             testBlockchain.BlockStore,
             testBlockchain.ChainLevelInfoRepository,
+            testBlockchain.DbProvider.MetadataDb,
             historyConfig,
             SecondsPerSlot,
             LimboLogs.Instance);
@@ -136,6 +138,7 @@ public class HistoryPrunerTests
             specProvider,
             testBlockchain.BlockStore,
             testBlockchain.ChainLevelInfoRepository,
+            testBlockchain.DbProvider.MetadataDb,
             historyConfig,
             SecondsPerSlot,
             LimboLogs.Instance);
@@ -212,6 +215,7 @@ public class HistoryPrunerTests
             specProvider,
             testBlockchain.BlockStore,
             testBlockchain.ChainLevelInfoRepository,
+            testBlockchain.DbProvider.MetadataDb,
             historyConfig,
             SecondsPerSlot,
             LimboLogs.Instance);
@@ -251,6 +255,7 @@ public class HistoryPrunerTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlockStore>(),
             Substitute.For<IChainLevelInfoRepository>(),
+            Substitute.For<IDb>(),
             validHistoryConfig,
             SecondsPerSlot,
             LimboLogs.Instance));
@@ -271,6 +276,7 @@ public class HistoryPrunerTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlockStore>(),
             Substitute.For<IChainLevelInfoRepository>(),
+            Substitute.For<IDb>(),
             invalidHistoryConfig,
             SecondsPerSlot,
             LimboLogs.Instance));
