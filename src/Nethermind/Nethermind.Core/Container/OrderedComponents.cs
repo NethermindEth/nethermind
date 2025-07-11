@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Core.Container;
 
-public class OrderedComponents<T>: List<T>
+public class OrderedComponents<T>
 {
     private IList<T> _components = new List<T>();
     public IEnumerable<T> Components => _components;
