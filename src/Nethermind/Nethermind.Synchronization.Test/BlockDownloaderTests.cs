@@ -217,9 +217,9 @@ public partial class BlockDownloaderTests
         blockProcessingQueue.Count.Returns(10000);
 
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
-            {
-                FastSync = true
-            }),
+        {
+            FastSync = true
+        }),
             configurer: (builder) => builder
                 .AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider)
                 .AddSingleton<IBlockProcessingQueue>(blockProcessingQueue));
