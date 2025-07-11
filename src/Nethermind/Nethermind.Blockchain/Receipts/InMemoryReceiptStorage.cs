@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain.Receipts
             TxReceipt[] txReceipts = Get(block);
             for (int i = 0; i < txReceipts.Length; i++)
             {
-                var txReceipt = txReceipts[i];
+                TxReceipt txReceipt = txReceipts[i];
                 txReceipt.BlockHash = block.Hash;
                 _transactions[txReceipt.TxHash] = txReceipt;
             }
@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Receipts
         public void RemoveReceipts(Block block)
         {
             _receipts.TryRemove(block.Hash, out _);
-            foreach (var tx in block.Transactions)
+            foreach (Transaction tx in block.Transactions)
             {
                 _transactions.TryRemove(tx.Hash, out _);
             }
