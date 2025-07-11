@@ -308,7 +308,7 @@ internal static partial class EvmInstructions
     {
         if (accessTracer.WarmUpLargeContract(codeAddress))
         {
-            long largeContractCost = GasCostOf.InitCodeWord * Div32Ceiling(excessContractSize, out bool outOfGas);
+            long largeContractCost = GasCostOf.LargeContractCodeWord * Div32Ceiling(excessContractSize, out bool outOfGas);
             if (outOfGas || !UpdateGas(largeContractCost, ref gasAvailable)) return false;
         }
 
