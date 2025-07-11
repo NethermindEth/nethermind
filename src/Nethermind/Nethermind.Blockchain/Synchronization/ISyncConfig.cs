@@ -173,4 +173,7 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ Max tx in forward sync buffer.", DefaultValue = "200000", HiddenFromDocs = true)]
     int MaxTxInForwardSyncBuffer { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Max tx waiting for processing before stopping.", DefaultValue = "400000", HiddenFromDocs = true)]
+    int MaxTxInProcessingQueue { get; set; }
 }

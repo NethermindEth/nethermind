@@ -5,6 +5,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -30,6 +31,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         IForwardHeaderProvider forwardHeaderProvider,
         ISyncPeerPool syncPeerPool,
         IReceiptsRecovery receiptsRecovery,
+        IBlockProcessingQueue blockProcessingQueue,
         ISyncConfig syncConfig,
         ILogManager logManager)
         : BlockDownloader(
@@ -43,6 +45,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             forwardHeaderProvider,
             syncPeerPool,
             receiptsRecovery,
+            blockProcessingQueue,
             syncConfig,
             logManager)
     {
