@@ -132,6 +132,7 @@ namespace Nethermind.Init.Steps
 
             BackgroundTaskScheduler backgroundTaskScheduler = new(
                 mainBlockProcessor,
+                chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
                 _api.LogManager);

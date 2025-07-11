@@ -333,8 +333,8 @@ public class BaseMergePluginModule : Module
                     IInitConfig initConfig = ctx.Resolve<IInitConfig>();
                     return new GCKeeper(
                         initConfig.DisableGcOnNewPayload
-                            ? NoGCStrategy.Instance
-                            : ctx.Resolve<NoSyncGcRegionStrategy>(),
+                            ? ctx.Resolve<NoSyncGcRegionStrategy>()
+                            : NoGCStrategy.Instance,
                         ctx.Resolve<ILogManager>());
                 })
             ;
