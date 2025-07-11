@@ -76,9 +76,7 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         public bool HasBlock(long blockNumber, Hash256 hash)
-        {
-            return _receipts.ContainsKey(hash);
-        }
+            => _receipts.ContainsKey(hash);
 
         public void EnsureCanonical(Block block)
         {

@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain.Receipts
                     Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
                     if (newOldTx is not null)
                     {
-                        RemoveBlockTx(newOldTx);
+                        RemoveReceipts(newOldTx);
                     }
                 }
             });
@@ -330,6 +330,16 @@ namespace Nethermind.Blockchain.Receipts
             EnsureCanonical(block, null);
         }
 
+        public void RemoveReceipts(Block block)
+        {
+            _receiptsCache.Delete(block.Hash);
+            using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
+            foreach (Transaction tx in block.Transactions)
+            {
+                writeBatch[tx.Hash.Bytes] = null;
+            }
+        }
+
         private void EnsureCanonical(Block block, long? lastBlockNumber)
         {
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
@@ -357,15 +367,6 @@ namespace Nethermind.Blockchain.Receipts
                     Hash256 hash = tx.Hash;
                     writeBatch[hash.Bytes] = blockHash;
                 }
-            }
-        }
-
-        private void RemoveBlockTx(Block block)
-        {
-            using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
-            foreach (Transaction tx in block.Transactions)
-            {
-                writeBatch[tx.Hash.Bytes] = null;
             }
         }
     }
