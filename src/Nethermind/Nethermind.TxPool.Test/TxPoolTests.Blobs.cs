@@ -937,7 +937,7 @@ namespace Nethermind.TxPool.Test
             {
                 Params = new ChainSpecParamsJson
                 {
-                    Eip4844TransitionTimestamp = _blockTree.Head.Timestamp,
+                    Eip4844TransitionTimestamp = _blockTree.Head!.Timestamp,
                     Eip7002TransitionTimestamp = _blockTree.Head.Timestamp,
                     Eip7594TransitionTimestamp = _blockTree.Head.Timestamp + 1,
                 }
@@ -1029,7 +1029,7 @@ namespace Nethermind.TxPool.Test
                 {
                     Eip4844TransitionTimestamp = 0,
                     BlobSchedule = {
-                         initial with { Timestamp = _blockTree.Head.Timestamp  },
+                         initial with { Timestamp = _blockTree.Head!.Timestamp  },
                          updated with { Timestamp = _blockTree.Head.Timestamp + 1 },
                     },
                 },
