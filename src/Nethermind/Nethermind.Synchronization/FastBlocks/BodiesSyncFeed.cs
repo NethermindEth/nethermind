@@ -18,6 +18,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Stats.SyncLimits;
+using Nethermind.Blockchain.HistoryPruning;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
@@ -25,7 +26,15 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         protected override long? LowestInsertedNumber => _syncPointers.LowestInsertedBodyNumber;
         protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BodiesBarrierWhenStarted;
-        protected override long SyncConfigBarrierCalc => _syncConfig.AncientBodiesBarrierCalc;
+        protected override long SyncConfigBarrierCalc
+        {
+            get
+            {
+                // could take a long time to return, safe to do?
+                long? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
+                return cutoffBlockNumber is null ? _syncConfig.AncientBodiesBarrierCalc : long.Max(_syncConfig.AncientBodiesBarrierCalc, cutoffBlockNumber.Value);
+            }
+        }
         protected override Func<bool> HasPivot =>
             () => _syncPointers.LowestInsertedBodyNumber is not null && _syncPointers.LowestInsertedBodyNumber <= _blockTree.SyncPivot.BlockNumber;
 
@@ -41,6 +50,8 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncPointers _syncPointers;
         private readonly IDb _blocksDb;
+        private readonly IHistoryPruner _historyPruner;
+        private readonly BodiesDownloadStrategy _bodiesDownloadStrategy;
 
         private SyncStatusList _syncStatusList;
 
@@ -59,6 +70,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
+            IHistoryPruner historyPruner,
             [KeyFilter(DbNames.Blocks)] IDb blocksDb,
             [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             ILogManager logManager,
@@ -72,7 +84,9 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncConfig = syncConfig;
             _syncReport = syncReport;
             _blocksDb = blocksDb;
+            _historyPruner = historyPruner;
             _flushDbInterval = flushDbInterval;
+            _bodiesDownloadStrategy = new(_blockTree, _syncReport, _historyPruner);
 
             if (!_syncConfig.FastSync)
             {
@@ -136,19 +150,14 @@ namespace Nethermind.Synchronization.FastBlocks
             BodiesSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
             {
-                BlockInfo?[] infos = null;
+                BlockInfo?[] infos;
 
                 // Set the request size depending on the approximate allocation strategy.
                 int requestSize =
                     (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, _approximateAllocationStrategy, AllocationContexts.Bodies, token))
                     ?? GethSyncLimits.MaxBodyFetch;
 
-                while (!_syncStatusList.TryGetInfosForBatch(requestSize, (info) =>
-                       {
-                           bool hasBlock = _blockTree.HasBlock(info.BlockNumber, info.BlockHash);
-                           if (hasBlock) _syncReport.FastBlocksBodies.IncrementSkipped();
-                           return hasBlock;
-                       }, out infos))
+                while (!_syncStatusList.TryGetInfosForBatch(requestSize, _bodiesDownloadStrategy, out infos))
                 {
                     token.ThrowIfCancellationRequested();
 
@@ -301,6 +310,20 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             _syncReport.FastBlocksBodies.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
             _syncReport.FastBlocksBodies.CurrentQueued = _syncStatusList.QueueSize;
+        }
+
+        private class BodiesDownloadStrategy(IBlockTree blockTree, ISyncReport syncReport, IHistoryPruner? historyPruner) : IBlockDownloadStrategy
+        {
+            public bool ShouldDownloadBlock(BlockInfo info)
+            {
+                bool hasBlock = blockTree.HasBlock(info.BlockNumber, info.BlockHash);
+                long? cutoff = historyPruner?.CutoffBlockNumber;
+                // needed?
+                // cutoff = cutoff is null ? null : long.Max(cutoff.Value, blockTree.BestSuggestedHeader.Number);
+                bool shouldDownload = hasBlock && (cutoff is null || info.BlockNumber >= cutoff);
+                if (shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
+                return !shouldDownload;
+            }
         }
     }
 }

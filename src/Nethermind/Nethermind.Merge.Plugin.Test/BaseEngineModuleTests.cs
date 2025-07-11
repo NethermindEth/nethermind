@@ -12,6 +12,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -182,6 +183,8 @@ public abstract partial class BaseEngineModuleTests
         public Lazy<IEngineRpcModule> _lazyEngineRpcModule = null!;
         public IEngineRpcModule EngineRpcModule => _lazyEngineRpcModule.Value;
 
+        public IHistoryPruner? HistoryPruner { get; set; }
+
         protected int _blockProcessingThrottle = 0;
 
         public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
@@ -258,6 +261,16 @@ public abstract partial class BaseEngineModuleTests
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             BlockProducer = postMergeBlockProducer;
 
+            HistoryPruner = new HistoryPruner(
+                BlockTree,
+                ReceiptStorage,
+                SpecProvider,
+                BlockStore,
+                ChainLevelInfoRepository,
+                DbProvider.MetadataDb,
+                new HistoryConfig(),
+                (long)MergeConfig.SecondsPerSlot,
+                LogManager);
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 
