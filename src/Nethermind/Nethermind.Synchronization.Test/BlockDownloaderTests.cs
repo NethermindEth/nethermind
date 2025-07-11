@@ -39,6 +39,7 @@ using Autofac;
 using Autofac.Features.AttributeFilters;
 using Humanizer;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Events;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
@@ -206,6 +207,32 @@ public partial class BlockDownloaderTests
             CancellationToken.None);
 
         await act.Should().NotThrowAsync();
+    }
+
+    [Test]
+    public async Task Skit_spawning_request_when_block_processing_queue_is_high()
+    {
+        IForwardHeaderProvider mockForwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
+        IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+        blockProcessingQueue.Count.Returns(10000);
+
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
+            {
+                FastSync = true
+            }),
+            configurer: (builder) => builder
+                .AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider)
+                .AddSingleton<IBlockProcessingQueue>(blockProcessingQueue));
+
+        Context ctx = node.Resolve<Context>();
+        var request = await ctx.FastSyncFeedComponent.BlockDownloader.PrepareRequest(
+            DownloaderOptions.Insert,
+            0,
+            CancellationToken.None);
+
+        request.Should().BeNull();
+        await mockForwardHeaderProvider.DidNotReceive()
+            .GetBlockHeaders(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
