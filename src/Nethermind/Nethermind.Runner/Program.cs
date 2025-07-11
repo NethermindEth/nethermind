@@ -118,12 +118,7 @@ async Task<int> ConfigureAsync(string[] args)
         parseResult.GetValue(BasicOptions.PluginsDirectory) ?? "plugins",
         new FileSystem(),
         silent ? NullLogger.Instance : logger,
-        typeof(AuRaPlugin),
-        typeof(CliquePlugin),
-        typeof(EthashPlugin),
-        typeof(NethDevPlugin),
-        typeof(HivePlugin),
-        typeof(UPnPPlugin)
+        NethermindPlugins.EmbeddedPlugins
     );
     pluginLoader.Load();
 

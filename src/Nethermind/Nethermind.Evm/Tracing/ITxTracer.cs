@@ -5,9 +5,9 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.State.Tracing;
 
 namespace Nethermind.Evm.Tracing;
 
@@ -431,7 +431,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="accessedAddresses">address</param>
     /// <param name="accessedStorageCells">cell</param>
     /// <remarks>Depends on <see cref="IsTracingAccess"/></remarks>
-    void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells);
+    void ReportAccess(IReadOnlyCollection<Address> accessedAddresses, IReadOnlyCollection<StorageCell> accessedStorageCells);
 
     /// <summary>
     /// Reports fees of a transaction

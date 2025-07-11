@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -325,6 +325,11 @@ namespace Nethermind.Core.Specs
         bool IsEip7823Enabled { get; }
 
         /// <summary>
+        /// Blob base fee bounded by execution cost
+        /// </summary>
+        bool IsEip7918Enabled { get; }
+
+        /// <summary>
         /// Blob base fee collection for Gnosis
         /// </summary>
         bool IsEip4844FeeCollectorEnabled { get; }
@@ -333,6 +338,7 @@ namespace Nethermind.Core.Specs
         /// Secp256r1 precompile
         /// </summary>
         bool IsRip7212Enabled { get; }
+        bool IsEip7951Enabled { get; }
 
         /// OP Granite
         bool IsOpGraniteEnabled { get; }
@@ -354,6 +360,17 @@ namespace Nethermind.Core.Specs
         bool IsEip7825Enabled { get; }
 
         /// <summary>
+        ///  Increase ModExp Gas Cost
+        /// </summary>
+        bool IsEip7883Enabled { get; }
+
+        /// <summary>
+        ///  RLP Execution Block Size Limit
+        /// </summary>
+        bool IsEip7934Enabled { get; }
+        int Eip7934MaxRlpBlockSize { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -364,6 +381,7 @@ namespace Nethermind.Core.Specs
         /// </summary>
         public ulong TargetBlobCount { get; }
         public ulong MaxBlobCount { get; }
+        public ulong MaxBlobsPerTx { get; }
         public UInt256 BlobBaseFeeUpdateFraction { get; }
 
         public ulong WithdrawalTimestamp { get; }
@@ -448,15 +466,17 @@ namespace Nethermind.Core.Specs
 
         public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
 
+        public bool IsEip7594Enabled { get; }
+
         /// <summary>
         /// This property holds an array that, at runtime, is actually an array of function pointers
         /// with the signature:
         /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
-        /// The array is lazily populated with JIT-optimized instructions for an EVM without tracing, 
+        /// The array is lazily populated with JIT-optimized instructions for an EVM without tracing,
         /// but it cannot be explicitly typed as such due to cross-project layering constraints.
         /// </summary>
         /// <remarks>
-        /// Because of these layering issues, the property is declared as <see cref="System.Array"/> 
+        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
         /// even though it internally represents a typed array of function pointers.
         /// </remarks>
         public Array? EvmInstructionsNoTrace { get; set; }
@@ -465,14 +485,28 @@ namespace Nethermind.Core.Specs
         /// This property holds an array that, at runtime, is actually an array of function pointers
         /// with the signature:
         /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
-        /// The array is lazily populated with JIT-optimized instructions for an EVM, 
+        /// The array is lazily populated with JIT-optimized instructions for an EVM,
         /// capturing additional tracing data. It cannot be explicitly typed as such due to cross-project
         /// layering constraints.
         /// </summary>
         /// <remarks>
-        /// Because of these layering issues, the property is declared as <see cref="System.Array"/> 
+        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
         /// even though it internally represents a typed array of function pointers.
         /// </remarks>
         public Array? EvmInstructionsTraced { get; set; }
+
+        public ProofVersion BlobProofVersion => IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
+
+        /// <summary>
+        /// EIP-7939 - CLZ - Count leading zeros instruction
+        /// </summary>
+        public bool IsEip7939Enabled { get; }
+
+        public bool CLZEnabled => IsEip7939Enabled;
+
+        /// <summary>
+        /// EIP-7907: Meter Contract Code Size And Increase Limit
+        /// </summary>
+        public bool IsEip7907Enabled { get; }
     }
 }

@@ -12,8 +12,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.Proofs;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Tracing.Proofs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
@@ -207,7 +207,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index)
         {
-            return ReceiptTrie<TxReceipt>.CalculateReceiptProofs(_specProvider.GetSpec(blockHeader), receipts, index, _receiptDecoder);
+            return ReceiptTrie.CalculateReceiptProofs(_specProvider.GetSpec(blockHeader), receipts, index, _receiptDecoder);
         }
     }
 }

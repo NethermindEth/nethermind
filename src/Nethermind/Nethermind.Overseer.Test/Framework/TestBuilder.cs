@@ -15,7 +15,7 @@ namespace Nethermind.Overseer.Test.Framework;
 /// <summary>
 /// https://stackoverflow.com/questions/32112418/how-to-make-a-fluent-async-inferface-in-c-sharp
 /// </summary>
-public class TestBuilder
+public abstract class TestBuilder
 {
     [TearDown]
     public void TearDown()

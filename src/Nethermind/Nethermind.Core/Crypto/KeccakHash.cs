@@ -582,6 +582,13 @@ namespace Nethermind.Core.Crypto
             return output;
         }
 
+        public ValueHash256 GenerateValueHash()
+        {
+            Unsafe.SkipInit(out ValueHash256 output);
+            UpdateFinalTo(output.BytesAsSpan);
+            return output;
+        }
+
         public void UpdateFinalTo(Span<byte> output)
         {
             if (_hash is not null)

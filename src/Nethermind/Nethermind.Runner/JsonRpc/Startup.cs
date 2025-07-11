@@ -41,11 +41,13 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Runner.JsonRpc;
 
-public class Startup
+public class Startup : IStartup
 {
     private static ReadOnlySpan<byte> _jsonOpeningBracket => [(byte)'['];
     private static ReadOnlySpan<byte> _jsonComma => [(byte)','];
     private static ReadOnlySpan<byte> _jsonClosingBracket => [(byte)']'];
+
+    IServiceProvider IStartup.ConfigureServices(IServiceCollection services) => Build(services);
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -80,6 +82,19 @@ public class Startup
     }
 
     private static ServiceProvider Build(IServiceCollection services) => services.BuildServiceProvider();
+
+
+    public void Configure(IApplicationBuilder app)
+    {
+        var services = app.ApplicationServices;
+        Configure(
+            app,
+            services.GetRequiredService<IWebHostEnvironment>(),
+            services.GetRequiredService<IJsonRpcProcessor>(),
+            services.GetRequiredService<IJsonRpcService>(),
+            services.GetRequiredService<IJsonRpcLocalStats>(),
+            services.GetRequiredService<IJsonSerializer>());
+    }
 
     public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer)
     {
@@ -327,7 +342,7 @@ public class Startup
     private static bool IsLocalhost(IPAddress remoteIp)
         => IPAddress.IsLoopback(remoteIp) || remoteIp.Equals(IPAddress.IPv6Loopback);
 
-    private static int GetStatusCode(JsonRpcResult result)
+    private static int GetStatusCode(in JsonRpcResult result)
     {
         if (result.IsCollection)
         {

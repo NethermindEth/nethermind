@@ -25,7 +25,7 @@ namespace Nethermind.Specs
         public UInt256? TerminalTotalDifficulty { get; private set; }
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) => Frontier.Instance;
+        IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) => Frontier.Instance;
 
         public long? DaoBlockNumber { get; } = null;
         public ulong? BeaconChainGenesisTimestamp => null;

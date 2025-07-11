@@ -12,6 +12,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Specs.Forks;
 using Nethermind.Logging;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -400,9 +401,9 @@ public class StorageProviderTests
 
         snapshots.Should().Equal(
             Snapshot.Empty,
-            new Snapshot(Snapshot.EmptyPosition, new Snapshot.Storage(0, Snapshot.EmptyPosition)),
-            new Snapshot(Snapshot.EmptyPosition, new Snapshot.Storage(1, 0)),
-            new Snapshot(Snapshot.EmptyPosition, new Snapshot.Storage(1, 1))
+            new Snapshot(new Snapshot.Storage(0, Snapshot.EmptyPosition), Snapshot.EmptyPosition),
+            new Snapshot(new Snapshot.Storage(1, 0), Snapshot.EmptyPosition),
+            new Snapshot(new Snapshot.Storage(1, 1), Snapshot.EmptyPosition)
         );
 
         _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray());

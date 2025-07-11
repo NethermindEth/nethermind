@@ -15,9 +15,8 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Consensus.ExecutionRequests;
 
 namespace Nethermind.Merge.AuRa;
@@ -33,13 +32,12 @@ public class AuRaMergeBlockProcessor(
     ILogManager logManager,
     IBlockFinder blockTree,
     IWithdrawalProcessor withdrawalProcessor,
-    ITransactionProcessor transactionProcessor,
+    IExecutionRequestsProcessor executionRequestsProcessor,
     IAuRaValidator? validator,
     ITxFilter? txFilter = null,
     AuRaContractGasLimitOverride? gasLimitOverride = null,
     ContractRewriter? contractRewriter = null,
-    IBlockCachePreWarmer? preWarmer = null,
-    IExecutionRequestsProcessor? executionRequestsProcessor = null)
+    IBlockCachePreWarmer? preWarmer = null)
     : AuRaBlockProcessor(specProvider,
         blockValidator,
         rewardCalculator,
@@ -50,16 +48,15 @@ public class AuRaMergeBlockProcessor(
         logManager,
         blockTree,
         withdrawalProcessor,
-        transactionProcessor,
+        executionRequestsProcessor,
         validator,
         txFilter,
         gasLimitOverride,
         contractRewriter,
-        preWarmer,
-        executionRequestsProcessor)
+        preWarmer)
 {
-    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, CancellationToken token) =>
+    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token) =>
         block.IsPostMerge
-            ? PostMergeProcessBlock(block, blockTracer, options, token)
-            : base.ProcessBlock(block, blockTracer, options, token);
+            ? PostMergeProcessBlock(block, blockTracer, options, spec, token)
+            : base.ProcessBlock(block, blockTracer, options, spec, token);
 }

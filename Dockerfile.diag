@@ -13,6 +13,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 RUN apt-get install -y nodejs
 
 COPY src/Nethermind src/Nethermind
+COPY Directory.*.props .
+COPY nuget.config .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
     dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.linux-$arch \

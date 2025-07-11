@@ -103,7 +103,7 @@ namespace Nethermind.Blockchain
         private int _canAcceptNewBlocksCounter;
         public bool CanAcceptNewBlocks => _canAcceptNewBlocksCounter == 0;
 
-        private TaskCompletionSource<bool>? _taskCompletionSource;
+        private TaskCompletionSource? _taskCompletionSource;
 
         public BlockTree(
             IBlockStore? blockStore,
@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain
             ISyncConfig? syncConfig,
             ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<BlockTree>() ?? throw new ArgumentNullException(nameof(logManager));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
             _headerStore = headerDb ?? throw new ArgumentNullException(nameof(headerDb));
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
@@ -1708,7 +1708,7 @@ namespace Nethermind.Blockchain
         {
             if (CanAcceptNewBlocks)
             {
-                _taskCompletionSource = new TaskCompletionSource<bool>();
+                Interlocked.CompareExchange(ref _taskCompletionSource, new TaskCompletionSource(), null);
             }
 
             Interlocked.Increment(ref _canAcceptNewBlocksCounter);
@@ -1719,8 +1719,8 @@ namespace Nethermind.Blockchain
             Interlocked.Decrement(ref _canAcceptNewBlocksCounter);
             if (CanAcceptNewBlocks)
             {
-                _taskCompletionSource.SetResult(true);
-                _taskCompletionSource = null;
+                TaskCompletionSource tcs = Interlocked.Exchange(ref _taskCompletionSource, null);
+                tcs?.SetResult();
             }
         }
 
@@ -1741,6 +1741,8 @@ namespace Nethermind.Blockchain
                 TryUpdateSyncPivot();
             }
         }
+
+        public bool IsProcessingBlock { get; set; }
 
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {

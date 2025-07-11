@@ -21,7 +21,11 @@ public class BlockTreeOverlay : IBlockTree
     {
         _baseTree = baseTree ?? throw new ArgumentNullException(nameof(baseTree));
         _overlayTree = overlayTree ?? throw new ArgumentNullException(nameof(overlayTree));
-        _overlayTree.UpdateMainChain(new[] { _baseTree.Head }, true, true);
+    }
+
+    public void ResetMainChain()
+    {
+        _overlayTree.UpdateMainChain(new[] { _baseTree.Head }, true, true); // Cannot be called until blocktree is ready.
     }
 
     public ulong NetworkId => _baseTree.NetworkId;
@@ -246,6 +250,7 @@ public class BlockTreeOverlay : IBlockTree
         get => _baseTree.SyncPivot;
         set => _baseTree.SyncPivot = value;
     }
+    public bool IsProcessingBlock { get => _baseTree.IsProcessingBlock; set => _baseTree.IsProcessingBlock = value; }
 
     public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
         _overlayTree.FindBlock(blockHash, options, blockNumber) ?? _baseTree.FindBlock(blockHash, options, blockNumber);

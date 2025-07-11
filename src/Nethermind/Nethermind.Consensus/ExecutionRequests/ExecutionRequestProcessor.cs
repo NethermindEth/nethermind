@@ -14,9 +14,10 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.State;
 using System;
 using System.Linq;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
@@ -67,13 +68,13 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         if (spec.WithdrawalRequestsEnabled)
         {
-            ReadRequests(block, state, spec, spec.Eip7002ContractAddress, requests, _withdrawalTransaction, ExecutionRequestType.WithdrawalRequest,
+            ReadRequests(block, state, spec.Eip7002ContractAddress, requests, _withdrawalTransaction, ExecutionRequestType.WithdrawalRequest,
                 BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
         }
 
         if (spec.ConsolidationRequestsEnabled)
         {
-            ReadRequests(block, state, spec, spec.Eip7251ContractAddress, requests, _consolidationTransaction, ExecutionRequestType.ConsolidationRequest,
+            ReadRequests(block, state, spec.Eip7251ContractAddress, requests, _consolidationTransaction, ExecutionRequestType.ConsolidationRequest,
                 BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
         }
 
@@ -147,7 +148,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         }
     }
 
-    private void ReadRequests(Block block, IWorldState state, IReleaseSpec spec, Address contractAddress, ArrayPoolList<byte[]> requests,
+    private void ReadRequests(Block block, IWorldState state, Address contractAddress, ArrayPoolList<byte[]> requests,
         Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError)
     {
         if (!state.HasCode(contractAddress))
@@ -157,7 +158,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         CallOutputTracer tracer = new();
 
-        _transactionProcessor.Execute(systemTx, new BlockExecutionContext(block.Header, spec), tracer);
+        _transactionProcessor.Execute(systemTx, tracer);
 
         if (tracer.StatusCode == StatusCode.Failure)
         {

@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs.Forks
 {
-    public class Olympic : ReleaseSpec
+    public class Olympic : ReleaseSpec, INamedReleaseSpec
     {
         private static IReleaseSpec _instance;
 
@@ -31,7 +31,10 @@ namespace Nethermind.Specs.Forks
             Eip7251ContractAddress = Eip7251Constants.ConsolidationRequestPredeployAddress;
             Eip7002ContractAddress = Eip7002Constants.WithdrawalRequestPredeployAddress;
             DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
+            Eip7934MaxRlpBlockSize = Eip7934Constants.DefaultMaxRlpBlockSize;
         }
+
+        public bool Released { get; protected set; } = true;
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Olympic());
     }

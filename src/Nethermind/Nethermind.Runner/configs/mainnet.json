@@ -10,10 +10,12 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 22505000,
-    "PivotHash": "0x7a350d7da41e7bdf53a45c3a5a9389e76913f3ff7cfa23857d089ba44879e940",
+    "PivotNumber": 22855000,
+    "PivotHash": "0x9505301da162536954c841dfe9e7b31f01e53a33a0f0ebf1986f708494e4219b",
     "PivotTotalDifficulty": "58750003716598352816469",
-    "FastSyncCatchUpHeightDelta": "10000000000"
+    "FastSyncCatchUpHeightDelta": "10000000000",
+    "AncientReceiptsBarrier": 15537394,
+    "AncientBodiesBarrier": 15537394
   },
   "EthStats": {
     "Server": "wss://ethstats.net/api"
@@ -22,7 +24,7 @@
     "NodeName": "Mainnet"
   },
   "Blocks": {
-    "TargetBlockGasLimit": 36000000
+    "TargetBlockGasLimit": 45000000
   },
   "JsonRpc": {
     "Enabled": true,

@@ -48,6 +48,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using NonBlocking;
+using NSubstitute.ExceptionExtensions;
 using IContainer = Autofac.IContainer;
 
 namespace Nethermind.Synchronization.Test;
@@ -154,6 +155,57 @@ public partial class BlockDownloaderTests
 
         List<long> expectedNewHeadSequence = Enumerable.Range(1, (int)(chainLength - fastSyncLag - 1)).Select((i) => (long)i).ToList();
         newHeadSequence.Should().BeEquivalentTo(expectedNewHeadSequence);
+    }
+
+    [Test]
+    public async Task ForwardHeaderProvider_ReturnedSameHeaders_EvenAfterSuggestion()
+    {
+        long headNumber = 200;
+        int fastSyncLag = 10;
+        bool withReceipts = true;
+        long chainLength = headNumber + 1;
+
+        IForwardHeaderProvider mockForwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
+
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
+        {
+            FastSync = true,
+            StateMinDistanceFromHead = fastSyncLag,
+        }),
+            configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
+
+        Context ctx = node.Resolve<Context>();
+        SyncPeerMock syncPeer = new(chainLength, withReceipts, Response.AllCorrect | Response.WithTransactions);
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        mockForwardHeaderProvider.GetBlockHeaders(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())!
+            .Returns((c) => syncPeer.GetBlockHeaders(0, 200, 0, default));
+
+        Func<Task> act = async () => await ctx.FastSyncUntilNoRequest(peerInfo);
+        await act.Should().NotThrowAsync();
+    }
+
+    [Test]
+    public async Task Catch_exception_from_forwardHeaderProvider()
+    {
+        IForwardHeaderProvider mockForwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
+        mockForwardHeaderProvider.GetBlockHeaders(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Throws(new Exception("test exception"));
+
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
+        {
+            FastSync = true
+        }),
+            configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
+
+        Context ctx = node.Resolve<Context>();
+        Func<Task<BlocksRequest?>> act = () => ctx.FastSyncFeedComponent.BlockDownloader.PrepareRequest(
+            DownloaderOptions.Insert,
+            0,
+            CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
     }
 
     [Test]
@@ -644,7 +696,7 @@ public partial class BlockDownloaderTests
         public byte ProtocolVersion { get; } = default;
         public Hash256 HeadHash { get; set; }
         public long HeadNumber { get; set; }
-        public UInt256 TotalDifficulty { get; set; }
+        public UInt256? TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
@@ -1114,7 +1166,7 @@ public partial class BlockDownloaderTests
         public Hash256 HeadHash { get; set; } = null!;
         public PublicKey Id => Node.Id;
         public long HeadNumber { get; set; }
-        public UInt256 TotalDifficulty { get; set; }
+        public UInt256? TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
@@ -1373,7 +1425,7 @@ public partial class BlockDownloaderTests
 
                 _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                     ? Keccak.EmptyTreeHash
-                    : ReceiptTrie<TxReceipt>.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamDecoder<TxReceipt>()!);
+                    : ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamDecoder<TxReceipt>()!);
             }
 
             using ReceiptsMessage message = new(receipts.ToPooledList());

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
@@ -10,6 +11,7 @@ using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Specs;
 
@@ -91,6 +93,14 @@ namespace Nethermind.Network.Test.Builders
         {
             return WithEth66()
                 .With(new Network.P2P.Subprotocols.Eth.V68.Messages.NewPooledTransactionHashesMessageSerializer());
+        }
+
+        public SerializationBuilder WithEth69(ISpecProvider specProvider)
+        {
+            return WithEth68()
+                .With<ReceiptsMessage69>(new ReceiptsMessageSerializer69(specProvider))
+                .With(new StatusMessageSerializer69())
+                .With(new BlockRangeUpdateMessageSerializer());
         }
 
         public SerializationBuilder WithNodeData()

@@ -2,17 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1;
+using Nethermind.Facade.Simulate;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
@@ -31,31 +35,37 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 {
     protected override void Load(ContainerBuilder builder)
     {
-        base.Load(builder);
-
         builder
+            .AddServiceStopper()
             .AddModule(new AppInputModule(chainSpec, configProvider, logManager))
             .AddModule(new NetworkModule(configProvider))
             .AddModule(new DiscoveryModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<INetworkConfig>()))
-            .AddModule(new WorldStateModule())
+            .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
             .AddModule(new BuiltInStepsModule())
-            .AddModule(new RpcModules())
+            .AddModule(new RpcModules(configProvider.GetConfig<IJsonRpcConfig>()))
             .AddModule(new EraModule())
             .AddSource(new ConfigRegistrationSource())
             .AddModule(new DbModule())
+            .AddModule(new BlockProcessingModule())
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
             .Bind<IBlockFinder, IBlockTree>()
-            .Bind<IEcdsa, IEthereumEcdsa>()
-            .AddSingleton<IReadOnlyTxProcessingEnvFactory, ReadOnlyTxProcessingEnvFactory>()
-
-            .AddSingleton<TxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
-            .Bind<ITxValidator, TxValidator>()
-            .AddSingleton<IBlockValidator, BlockValidator>()
-            .AddSingleton<IHeaderValidator, HeaderValidator>()
-            .AddSingleton<IUnclesValidator, UnclesValidator>()
+            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly())
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
+            .AddSingleton<IAbiEncoder>(Nethermind.Abi.AbiEncoder.Instance)
+            .AddSingleton<IEciesCipher, EciesCipher>()
+            .AddSingleton<ICryptoRandom, CryptoRandom>()
+
+            .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>
+                new ReceiptsRecovery(ecdsa, specProvider, !receiptConfig.CompactReceiptStore))
+            .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
+            .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
+            .Bind<IEcdsa, IEthereumEcdsa>()
+
+            .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
+            .AddSingleton<IChainHeadInfoProvider, ChainHeadInfoProvider>()
+            .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
             ;
     }
 

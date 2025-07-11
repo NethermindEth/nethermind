@@ -17,7 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
@@ -50,7 +50,7 @@ public class DebugModuleTests
             jsonRpcConfig,
             specProvider,
             blockchainBridge,
-            new BlocksConfig().SecondsPerSlot,
+            new BlocksConfig(),
             blockFinder
         );
     }
@@ -268,7 +268,7 @@ public class DebugModuleTests
         blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
         blockFinder.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>()).ReturnsForAnyArgs(Build.A.BlockHeader.WithNumber(1).TestObject);
         blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(Build.A.BlockHeader.WithNumber(1).TestObject);
-        blockchainBridge.HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
+        blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(debugBridge);
         ResultWrapper<GethLikeTxTrace> debugTraceCall = rpcModule.debug_traceCall(txForRpc, null, gtOptions);

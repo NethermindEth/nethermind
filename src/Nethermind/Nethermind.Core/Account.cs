@@ -16,6 +16,8 @@ namespace Nethermind.Core
 
         private readonly Hash256? _codeHash;
         private readonly Hash256? _storageRoot;
+        public readonly UInt256 Nonce;
+        public readonly UInt256 Balance;
 
         public Account(in UInt256 balance)
         {
@@ -77,8 +79,6 @@ namespace Nethermind.Core
 
         public bool HasStorage => _storageRoot is not null;
 
-        public UInt256 Nonce { get; }
-        public UInt256 Balance { get; }
         public Hash256 StorageRoot => _storageRoot ?? Keccak.EmptyTreeHash;
         public Hash256 CodeHash => _codeHash ?? Keccak.OfAnEmptyString;
         public bool IsTotallyEmpty => _storageRoot is null && IsEmpty;

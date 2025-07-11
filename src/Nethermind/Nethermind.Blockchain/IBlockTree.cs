@@ -203,5 +203,6 @@ namespace Nethermind.Blockchain
             public readonly long Safe => safe;
             public readonly long Finalized => finalized;
         }
+        bool IsProcessingBlock { get; set; }
     }
 }

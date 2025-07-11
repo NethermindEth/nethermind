@@ -54,18 +54,15 @@
     "eip1153TransitionTimestamp": "0x0",
     "eip5656TransitionTimestamp": "0x0",
     "eip6780TransitionTimestamp": "0x0",
-    "blobSchedule": {
-      "cancun": {
-        "target": 3,
-        "max": 6,
-        "baseFeeUpdateFraction": 3338477
-      },
-      "prague": {
+    "blobSchedule": [
+      {
+        "name": "prague",
+        "timestamp": "0x67e41118",
         "target": 6,
         "max": 9,
-        "baseFeeUpdateFraction": 5007716
+        "baseFeeUpdateFraction": "0x4c6964"
       }
-    },
+    ],
     "depositContractAddress": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
     "eip2537TransitionTimestamp": "0x67e41118",
     "eip2935TransitionTimestamp": "0x67e41118",

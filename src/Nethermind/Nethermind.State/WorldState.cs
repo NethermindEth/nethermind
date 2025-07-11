@@ -8,9 +8,10 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Tracing;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -24,7 +25,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class WorldState : IWorldState, IPreBlockCaches
+    public class WorldState : IVisitingWorldState, IPreBlockCaches
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
@@ -184,22 +185,24 @@ namespace Nethermind.State
 
         public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);
 
-        public UInt256 GetBalance(Address address) => _stateProvider.GetBalance(address);
+        public void SetBaseBlock(BlockHeader? header)
+        {
+            StateRoot = header?.StateRoot ?? Keccak.EmptyTreeHash;
+        }
+
+        public ref readonly UInt256 GetBalance(Address address) => ref _stateProvider.GetBalance(address);
+
+        UInt256 IAccountStateProvider.GetBalance(Address address) => _stateProvider.GetBalance(address);
 
         public ValueHash256 GetStorageRoot(Address address) => _stateProvider.GetStorageRoot(address);
 
         public byte[] GetCode(Address address) => _stateProvider.GetCode(address);
 
-        public byte[] GetCode(Hash256 codeHash) => _stateProvider.GetCode(codeHash);
+        public byte[] GetCode(in ValueHash256 codeHash) => _stateProvider.GetCode(in codeHash);
 
-        public byte[] GetCode(ValueHash256 codeHash) => _stateProvider.GetCode(codeHash);
+        public ref readonly ValueHash256 GetCodeHash(Address address) => ref _stateProvider.GetCodeHash(address);
 
-        public Hash256 GetCodeHash(Address address) => _stateProvider.GetCodeHash(address);
-
-        ValueHash256 IAccountStateProvider.GetCodeHash(Address address)
-        {
-            return _stateProvider.GetCodeHash(address);
-        }
+        ValueHash256 IAccountStateProvider.GetCodeHash(Address address) => _stateProvider.GetCodeHash(address);
 
         public void Accept<TContext>(ITreeVisitor<TContext> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TContext : struct, INodeContext<TContext>
         {
@@ -219,9 +222,9 @@ namespace Nethermind.State
             return _stateProvider.IsEmptyAccount(address);
         }
 
-        public bool HasStateForRoot(Hash256 stateRoot)
+        public bool HasStateForBlock(BlockHeader? header)
         {
-            return _trieStore.HasRoot(stateRoot);
+            return _trieStore.HasRoot(header?.StateRoot ?? Keccak.EmptyTreeHash);
         }
 
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
@@ -230,6 +233,7 @@ namespace Nethermind.State
             _transientStorageProvider.Commit(commitRoots);
             _stateProvider.Commit(releaseSpec, commitRoots, isGenesis);
         }
+
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
             _persistentStorageProvider.Commit(tracer, commitRoots);
@@ -243,7 +247,7 @@ namespace Nethermind.State
             int transientSnapshot = _transientStorageProvider.TakeSnapshot(newTransactionStart);
             Snapshot.Storage storageSnapshot = new Snapshot.Storage(persistentSnapshot, transientSnapshot);
             int stateSnapshot = _stateProvider.TakeSnapshot();
-            return new Snapshot(stateSnapshot, storageSnapshot);
+            return new Snapshot(storageSnapshot, stateSnapshot);
         }
 
         public void Restore(Snapshot snapshot)
@@ -255,7 +259,7 @@ namespace Nethermind.State
 
         internal void Restore(int state, int persistentStorage, int transientStorage)
         {
-            Restore(new Snapshot(state, new Snapshot.Storage(persistentStorage, transientStorage)));
+            Restore(new Snapshot(new Snapshot.Storage(persistentStorage, transientStorage), state));
         }
 
         public void SetNonce(Address address, in UInt256 nonce)

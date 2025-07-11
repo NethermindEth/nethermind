@@ -3,9 +3,6 @@
 
 #nullable enable
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.FullPruning;
-using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -17,8 +14,6 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Facade;
-using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -34,25 +29,18 @@ namespace Nethermind.Api
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
         IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         IBlockProducer? BlockProducer { get; set; }
-        IBlockProducerRunner? BlockProducerRunner { get; set; }
+        IBlockProducerRunner BlockProducerRunner { get; set; }
 
         [SkipServiceCollection]
-        IBlockValidator? BlockValidator { get; }
+        IBlockValidator BlockValidator { get; }
 
         IEnode? Enode { get; set; }
-        IFilterStore? FilterStore { get; set; }
-        IFilterManager? FilterManager { get; set; }
 
-        [SkipServiceCollection]
-        IUnclesValidator? UnclesValidator { get; }
-
-        [SkipServiceCollection]
-        IHeaderValidator? HeaderValidator { get; }
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
-        IRewardCalculatorSource? RewardCalculatorSource { get; set; }
-        ISealer? Sealer { get; set; }
-        ISealValidator? SealValidator { get; set; }
-        ISealEngine SealEngine { get; set; }
+        IRewardCalculatorSource RewardCalculatorSource { get; }
+        ISealer Sealer { get; }
+        ISealValidator SealValidator { get; }
+        ISealEngine SealEngine { get; }
         IStateReader? StateReader { get; }
 
         IWorldStateManager? WorldStateManager { get; }
@@ -60,10 +48,7 @@ namespace Nethermind.Api
         ITxSender? TxSender { get; set; }
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
-        ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         CompositeTxGossipPolicy TxGossipPolicy { get; }
-        IHealthHintService? HealthHintService { get; set; }
-        IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
 
         [SkipServiceCollection]
@@ -77,17 +62,13 @@ namespace Nethermind.Api
         /// </remarks>
         IBlockFinalizationManager? FinalizationManager { get; set; }
 
-        IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
-        IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
+        IBlockProducerEnvFactory BlockProducerEnvFactory { get; }
+        IReadOnlyTxProcessingEnvFactory ReadOnlyTxProcessingEnvFactory { get; }
 
-        IGasPriceOracle? GasPriceOracle { get; set; }
-
-        [SkipServiceCollection]
-        IEthSyncingInfo? EthSyncingInfo { get; }
-
+        IGasPriceOracle GasPriceOracle { get; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
-        CensorshipDetector CensorshipDetector { get; set; }
+        ICensorshipDetector CensorshipDetector { get; set; }
     }
 }

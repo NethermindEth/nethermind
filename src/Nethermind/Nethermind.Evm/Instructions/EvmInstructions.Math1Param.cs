@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using static System.Runtime.CompilerServices.Unsafe;
 using static Nethermind.Evm.VirtualMachine;
@@ -89,13 +92,26 @@ internal static partial class EvmInstructions
         public static Word Operation(Word value) => value == default ? OpBitwiseEq.One : default;
     }
 
+    /// <summary>
+    /// Implements the CLZ opcode.
+    /// Counts leading 0's of 256‐bit vector
+    /// </summary>
+    public struct OpCLZ : IOpMath1Param
+    {
+        static long GasCost => GasCostOf.Low;
+
+        public static Word Operation(Word value) => value == default
+            ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
+            : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();
+    }
 
     /// <summary>
     /// Implements the BYTE opcode.
     /// Extracts a byte from a 256-bit word at the position specified by the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionByte(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionByte<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TTracingInst : struct, IFlag
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -107,19 +123,19 @@ internal static partial class EvmInstructions
         // If the position is out-of-range, push zero.
         if (a >= BigInt32)
         {
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
         }
         else
         {
             int adjustedPosition = bytes.Length - 32 + (int)a;
             if (adjustedPosition < 0)
             {
-                stack.PushZero();
+                stack.PushZero<TTracingInst>();
             }
             else
             {
                 // Push the extracted byte.
-                stack.PushByte(bytes[adjustedPosition]);
+                stack.PushByte<TTracingInst>(bytes[adjustedPosition]);
             }
         }
 
@@ -134,7 +150,7 @@ internal static partial class EvmInstructions
     /// Performs sign extension on a 256-bit integer in-place based on a specified byte index.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSignExtend(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSignExtend<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Low;
 

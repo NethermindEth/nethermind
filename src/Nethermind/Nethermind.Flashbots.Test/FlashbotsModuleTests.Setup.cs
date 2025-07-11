@@ -4,16 +4,14 @@
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Crypto;
-using Nethermind.Flashbots.Handlers;
-using Nethermind.Flashbots.Modules.Flashbots;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
+using Nethermind.JsonRpc;
 
 namespace Nethermind.Flashbots.Test;
 
@@ -50,34 +48,11 @@ public partial class FlashbotsModuleTests
         }
     }
 
-    public ReadOnlyTxProcessingEnvFactory CreateReadOnlyTxProcessingEnvFactory(EngineModuleTests.MergeTestBlockchain chain)
-    {
-        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(
-            chain.WorldStateManager,
-            chain.BlockTree,
-            chain.SpecProvider,
-            chain.LogManager
-        );
-        return readOnlyTxProcessingEnvFactory;
-    }
-
     protected static async Task<EngineModuleTests.MergeTestBlockchain> CreateBlockChain(
         IReleaseSpec? releaseSpec = null)
-    => await new EngineModuleTests.MergeTestBlockchain().Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
-
-    private IFlashbotsRpcModule CreateFlashbotsModule(EngineModuleTests.MergeTestBlockchain chain, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory)
-    {
-        return new FlashbotsRpcModule(
-            new ValidateSubmissionHandler(
-                chain.HeaderValidator,
-                chain.BlockTree,
-                chain.BlockValidator,
-                readOnlyTxProcessingEnvFactory,
-                chain.LogManager,
-                chain.SpecProvider,
-                new FlashbotsConfig(),
-                chain.EthereumEcdsa
-            )
-        );
-    }
+        => await new EngineModuleTests.MergeTestBlockchain()
+            .BuildMergeTestBlockchain(configurer: (builder) => builder
+                .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance))
+                .AddModule(new FlashbotsModule(new FlashbotsConfig(), new JsonRpcConfig()))
+            );
 }

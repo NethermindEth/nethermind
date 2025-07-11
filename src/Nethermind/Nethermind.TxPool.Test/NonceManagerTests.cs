@@ -16,6 +16,7 @@ using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -34,11 +35,9 @@ public class NonceManagerTests
     [SetUp]
     public void Setup()
     {
-        ILogManager logManager = LimboLogs.Instance;
         _specProvider = MainnetSpecProvider.Instance;
-        var trieStore = TestTrieStoreFactory.Build(new MemDb(), logManager);
-        var codeDb = new MemDb();
-        _stateProvider = new WorldState(trieStore, codeDb, logManager);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
         _blockTree = Substitute.For<IBlockTree>();
         Block block = Build.A.Block.WithNumber(0).TestObject;
         _blockTree.Head.Returns(block);

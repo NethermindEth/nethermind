@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
+using Nethermind.Blockchain;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
@@ -9,20 +9,15 @@ namespace Nethermind.Consensus.Processing;
 
 public class ReadOnlyTxProcessingScope(
     ITransactionProcessor transactionProcessor,
-    IWorldState worldState,
-    Hash256 originalStateRoot
+    IVisitingWorldState worldState
 ) : IReadOnlyTxProcessingScope
 {
     public void Dispose()
     {
-        Reset();
+        worldState.Reset();
+        worldState.SetBaseBlock(null);
     }
 
     public ITransactionProcessor TransactionProcessor => transactionProcessor;
-    public IWorldState WorldState => worldState;
-    public void Reset()
-    {
-        worldState.StateRoot = originalStateRoot;
-        worldState.Reset();
-    }
+    public IVisitingWorldState WorldState => worldState;
 }

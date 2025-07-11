@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 
 namespace Nethermind.Evm;
 using Int256;
@@ -15,8 +16,9 @@ internal static partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath3Param<TOpMath>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMath3Param<TOpMath, TTracingInst>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpMath : struct, IOpMath3Param
+        where TTracingInst : struct, IFlag
     {
         gasAvailable -= TOpMath.GasCost;
 
@@ -24,12 +26,12 @@ internal static partial class EvmInstructions
 
         if (c.IsZero)
         {
-            stack.PushZero();
+            stack.PushZero<TTracingInst>();
         }
         else
         {
             TOpMath.Operation(in a, in b, in c, out UInt256 result);
-            stack.PushUInt256(in result);
+            stack.PushUInt256<TTracingInst>(in result);
         }
 
         return EvmExceptionType.None;
