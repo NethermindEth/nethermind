@@ -54,6 +54,7 @@ namespace Nethermind.Evm
         public const long ExtCodeHashEip1884 = 700;
         public const long SelfBalance = 5;
         public const long InitCodeWord = 2; //eip-3860 gas per word cost for init code size
+        public const long LargeContractCodeWord = 4; //eip-7907 gas per word cost over 24kB code size
 
         public const long ColdSLoad = 2100; // eip-2929
 
