@@ -4,13 +4,9 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles.Snarks;
 
-/// <summary>
-/// https://github.com/matter-labs/eip1962/blob/master/eip196_header.h
-/// </summary>
 public class Bn254AddPrecompile : IPrecompile<Bn254AddPrecompile>
 {
     public static readonly Bn254AddPrecompile Instance = new();
@@ -24,19 +20,12 @@ public class Bn254AddPrecompile : IPrecompile<Bn254AddPrecompile>
     public unsafe (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254AddPrecompile++;
-        return inputData.Length == 128 ? RunInternal(inputData.Span) : RunInternal(inputData);
-    }
 
-    private static (byte[], bool) RunInternal(ReadOnlyMemory<byte> inputData)
-    {
-        Span<byte> inputDataSpan = stackalloc byte[128];
-        inputData.PrepareEthInput(inputDataSpan);
-        return RunInternal(inputDataSpan);
-    }
+        Span<byte> input = stackalloc byte[128];
+        Span<byte> output = stackalloc byte[64];
 
-    private static (byte[], bool) RunInternal(ReadOnlySpan<byte> inputDataSpan)
-    {
-        byte[] output = GC.AllocateUninitializedArray<byte>(64);
-        return Pairings.Bn254Add(inputDataSpan, output) ? (output, true) : IPrecompile.Failure;
+        inputData.Span[0..Math.Min(inputData.Length, input.Length)].CopyTo(input);
+
+        return BN254.Add(input, output) ? (output.ToArray(), true) : IPrecompile.Failure;
     }
 }

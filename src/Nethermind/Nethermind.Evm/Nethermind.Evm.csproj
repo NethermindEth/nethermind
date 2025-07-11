@@ -11,9 +11,9 @@
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Nethermind.Crypto.Pairings" />
     <PackageReference Include="Nethermind.Crypto.Bls" />
     <PackageReference Include="Nethermind.Crypto.SecP256r1" />
     <PackageReference Include="Nethermind.GmpBindings" />
+    <PackageReference Include="Nethermind.MclBindings" />
   </ItemGroup>
 </Project>
