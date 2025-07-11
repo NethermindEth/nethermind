@@ -99,8 +99,9 @@ namespace Nethermind.Synchronization.Blocks
             _forwardHeaderProvider = forwardHeaderProvider;
             _syncPeerPool = syncPeerPool;
             _logger = logManager.GetClassLogger();
-            _maxTxInBuffer = syncConfig.MaxTxInForwardSyncBuffer;
-            _maxTxInInProcessingQueue = syncConfig.MaxTxInProcessingQueue;
+            // Assume that each tx cost about 1kb.
+            _maxTxInBuffer = (int)(syncConfig.ForwardSyncDownloadBufferMemoryBudget / 1000);
+            _maxTxInInProcessingQueue = (int)(syncConfig.ForwardSyncBlockProcessingQueueMemoryBudget / 1000);
             _receiptsRecovery = receiptsRecovery;
             _processingQueue = processingQueue;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
