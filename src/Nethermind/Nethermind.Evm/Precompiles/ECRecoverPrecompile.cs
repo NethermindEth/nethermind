@@ -11,11 +11,11 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class EcRecover1Precompile : IPrecompile<EcRecover1Precompile>
+    public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
     {
-        public static readonly EcRecover1Precompile Instance = new();
+        public static readonly ECRecoverPrecompile Instance = new();
 
-        private EcRecover1Precompile()
+        private ECRecoverPrecompile()
         {
         }
 

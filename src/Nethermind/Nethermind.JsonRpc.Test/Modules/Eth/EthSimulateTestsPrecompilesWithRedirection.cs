@@ -162,7 +162,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
                         {
-                            EcRecover1Precompile.Address,
+                            ECRecoverPrecompile.Address,
                             new AccountOverride
                             {
                                 Code = code,
