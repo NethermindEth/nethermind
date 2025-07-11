@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
