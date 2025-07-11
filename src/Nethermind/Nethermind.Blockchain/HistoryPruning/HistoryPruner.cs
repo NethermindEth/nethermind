@@ -150,7 +150,7 @@ public class HistoryPruner : IHistoryPruner
         if (_logger.IsInfo) _logger.Info($"Pruned historical blocks up to timestamp {cutoffTimestamp}");
     }
 
-    public void PruneBlocksAndReceipts(ulong cutoffTimestamp, CancellationToken cancellationToken)
+    private void PruneBlocksAndReceipts(ulong cutoffTimestamp, CancellationToken cancellationToken)
     {
         int deletedBlocks = 0;
         try
@@ -174,6 +174,7 @@ public class HistoryPruner : IHistoryPruner
                     continue;
                 }
 
+                // todo: change to debug after testing
                 if (_logger.IsInfo) _logger.Info($"Deleting old block {number} with hash {hash}.");
                 _blockTree.DeleteBlock(number, hash, null, batch, null, true);
                 _receiptStorage.RemoveReceipts(block);
@@ -184,7 +185,7 @@ public class HistoryPruner : IHistoryPruner
         finally
         {
             SaveDeletePointer();
-            if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks.");
+            if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks up to #{_deletePointer}.");
         }
     }
 
@@ -194,7 +195,8 @@ public class HistoryPruner : IHistoryPruner
     private IEnumerable<Block> GetBlocksByNumber(long from, Predicate<Block> endSearch, Action<long> onFirstBlock)
     {
         bool firstBlock = true;
-        for (long i = from; i < _blockTree.Head!.Number; i++)
+        long headNumber = _blockTree.Head!.Number;
+        for (long i = from; i <= headNumber; i++)
         {
             ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
             if (chainLevelInfo is null)

@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Test.HistoryPruning;
 
 public class HistoryPrunerTests
 {
-    private const long SecondsPerSlot = 12;
+    private const long SecondsPerSlot = 1;
     private const long BeaconGenesisBlockNumber = 50;
     private static readonly ulong BeaconGenesisTimestamp = (ulong)new DateTimeOffset(TestBlockchain.InitialTimestamp).ToUnixTimeSeconds() + (BeaconGenesisBlockNumber * SecondsPerSlot);
 
@@ -62,6 +62,8 @@ public class HistoryPrunerTests
             SecondsPerSlot,
             LimboLogs.Instance);
 
+        testBlockchain.BlockTree.SyncPivot = (1000, Hash256.Zero);
+
         await historyPruner.TryPruneHistory(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
@@ -93,10 +95,10 @@ public class HistoryPrunerTests
             {
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(block, Is.Not.Null, $"Block {i} should not be pruned (part of the last 64 blocks)");
-                    Assert.That(header, Is.Not.Null, $"Header {i} should not be pruned (part of the last 64 blocks)");
-                    Assert.That(blockInfo, Is.Not.Null, $"Block info {i} should not be pruned (part of the last 64 blocks)");
-                    Assert.That(hasReceipt, Is.True, $"Receipt for block {i} should not be pruned (part of the last 64 blocks)");
+                    Assert.That(block, Is.Not.Null, $"Block {i} should not be pruned");
+                    Assert.That(header, Is.Not.Null, $"Header {i} should not be pruned");
+                    Assert.That(blockInfo, Is.Not.Null, $"Block info {i} should not be pruned");
+                    Assert.That(hasReceipt, Is.True, $"Receipt for block {i} should not be pruned");
                 }
             }
         }
@@ -143,6 +145,8 @@ public class HistoryPrunerTests
             SecondsPerSlot,
             LimboLogs.Instance);
 
+        testBlockchain.BlockTree.SyncPivot = (1000, Hash256.Zero);
+
         await historyPruner.TryPruneHistory(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
@@ -173,10 +177,10 @@ public class HistoryPrunerTests
             {
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(block, Is.Not.Null, $"Block {i} should not be pruned (part of the last 64 blocks)");
-                    Assert.That(header, Is.Not.Null, $"Header {i} should not be pruned (part of the last 64 blocks)");
-                    Assert.That(blockInfo, Is.Not.Null, $"Block info {i} should not be pruned (part of the last 64 blocks)");
-                    Assert.That(hasReceipt, Is.True, $"Receipt for block {i} should not be pruned (part of the last 64 blocks)");
+                    Assert.That(block, Is.Not.Null, $"Block {i} should not be pruned");
+                    Assert.That(header, Is.Not.Null, $"Header {i} should not be pruned");
+                    Assert.That(blockInfo, Is.Not.Null, $"Block info {i} should not be pruned");
+                    Assert.That(hasReceipt, Is.True, $"Receipt for block {i} should not be pruned");
                 }
             }
         }
