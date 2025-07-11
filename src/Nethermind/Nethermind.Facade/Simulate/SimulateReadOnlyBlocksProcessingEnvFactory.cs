@@ -30,7 +30,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
     IDbProvider dbProvider,
     ISpecProvider specProvider,
     IReadOnlyList<IBlockValidationModule> validationModules,
-    ILogManager? logManager = null)
+    ILogManager? logManager = null) : ISimulateReadOnlyBlocksProcessingEnvFactory
 {
     public ISimulateReadOnlyBlocksProcessingEnv Create()
     {
