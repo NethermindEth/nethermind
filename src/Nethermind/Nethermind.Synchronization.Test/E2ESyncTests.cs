@@ -441,7 +441,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         IEthereumEcdsa ecdsa,
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
-        MainBlockProcessingContext mainBlockProcessingContext,
+        IBlockProcessingQueue blockProcessingQueue,
         ITestEnv testEnv,
         IRlpxHost rlpxHost,
         PseudoNethermindRunner runner,
@@ -494,12 +494,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         private async Task VerifyHeadWith(IContainer server, CancellationToken cancellationToken)
         {
-            IBlockProcessingQueue queue = mainBlockProcessingContext.BlockProcessingQueue;
-            if (!queue.IsEmpty)
+            if (!blockProcessingQueue.IsEmpty)
             {
                 await Wait.ForEvent(cancellationToken,
-                    e => queue.ProcessingQueueEmpty += e,
-                    e => queue.ProcessingQueueEmpty -= e);
+                    e => blockProcessingQueue.ProcessingQueueEmpty += e,
+                    e => blockProcessingQueue.ProcessingQueueEmpty -= e);
             }
 
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
