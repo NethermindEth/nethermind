@@ -356,7 +356,7 @@ public class DataFeed
                             Value = t.Value,
                             DataLength = t.DataLength,
                             Blobs = t.BlobVersionedHashes?.Length ?? 0,
-                            Method = t.Data.HasValue && t.DataLength >= 4 ? t.Data.Value.Span[..4].ToArray() : []
+                            Method = t.DataLength >= 4 ? t.Data.Span[..4].ToArray() : []
                         }).ToArray(),
                         Receipts = receipts.Select(r => new ReceiptForWeb
                         {
