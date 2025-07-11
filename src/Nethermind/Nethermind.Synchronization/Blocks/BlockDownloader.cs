@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -47,10 +48,12 @@ namespace Nethermind.Synchronization.Blocks
         private readonly IFullStateFinder _fullStateFinder;
         private readonly IForwardHeaderProvider _forwardHeaderProvider;
         private readonly ISyncPeerPool _syncPeerPool;
+        private readonly IBlockProcessingQueue _processingQueue;
         private readonly ILogger _logger;
 
         // Estimated maximum tx in buffer used to estimate memory limit. Each tx is on average about 1KB.
         private readonly int _maxTxInBuffer;
+        private readonly int _maxTxInInProcessingQueue;
         private const int MinEstimateTxPerBlock = 10;
 
         // Header lookup need to be limited, because `IForwardHeaderProvider.GetBlockHeaders` can be slow.
@@ -72,31 +75,35 @@ namespace Nethermind.Synchronization.Blocks
         private SemaphoreSlim _requestLock = new(1);
 
         public BlockDownloader(
-            IBlockTree? blockTree,
-            IBlockValidator? blockValidator,
-            ISyncReport? syncReport,
-            IReceiptStorage? receiptStorage,
-            ISpecProvider? specProvider,
+            IBlockTree blockTree,
+            IBlockValidator blockValidator,
+            ISyncReport syncReport,
+            IReceiptStorage receiptStorage,
+            ISpecProvider specProvider,
             IBetterPeerStrategy betterPeerStrategy,
             IFullStateFinder fullStateFinder,
             IForwardHeaderProvider forwardHeaderProvider,
             ISyncPeerPool syncPeerPool,
+            IReceiptsRecovery receiptsRecovery,
+            IBlockProcessingQueue processingQueue,
             ISyncConfig syncConfig,
-            ILogManager? logManager)
+            ILogManager logManager)
         {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-            _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
-            _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
+            _blockTree = blockTree;
+            _blockValidator = blockValidator;
+            _syncReport = syncReport;
+            _receiptStorage = receiptStorage;
+            _specProvider = specProvider;
+            _betterPeerStrategy = betterPeerStrategy;
+            _fullStateFinder = fullStateFinder;
             _forwardHeaderProvider = forwardHeaderProvider;
             _syncPeerPool = syncPeerPool;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _maxTxInBuffer = syncConfig.MaxTxInForwardSyncBuffer;
-
-            _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(_specProvider.ChainId), _specProvider);
+            _logger = logManager.GetClassLogger();
+            // Assume that each tx cost about 1kb.
+            _maxTxInBuffer = (int)(syncConfig.ForwardSyncDownloadBufferMemoryBudget / 1000);
+            _maxTxInInProcessingQueue = (int)(syncConfig.ForwardSyncBlockProcessingQueueMemoryBudget / 1000);
+            _receiptsRecovery = receiptsRecovery;
+            _processingQueue = processingQueue;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
@@ -145,6 +152,12 @@ namespace Nethermind.Synchronization.Blocks
 
             while (true)
             {
+                if (_processingQueue.Count > _maxTxInInProcessingQueue / _estimateTxPerBlock)
+                {
+                    if (_logger.IsTrace) _logger.Trace("Processing queue full");
+                    return null;
+                }
+
                 using IOwnedReadOnlyList<BlockHeader?>? headers = await _forwardHeaderProvider.GetBlockHeaders(fastSyncLag, HeaderLookupSize + 1, cancellation);
                 if (cancellation.IsCancellationRequested) return null; // check before every heavy operation
                 if (headers is null || headers.Count <= 1) return null;
