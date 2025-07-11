@@ -30,10 +30,14 @@ public class Metrics
         _metrics = new MetricsBuilder()
             .SampleWith.Reservoir<CompleteReservoir>()
             .Build();
-        _defaultMetricTags = tags is null ? MetricTags.Empty : new MetricTags(
+        _defaultMetricTags = MetricTags.Concat(new MetricTags(
+            ["job"],
+            ["kute"]
+        ),
+        tags is null ? MetricTags.Empty : new MetricTags(
             tags.Select(t => t.Item1).ToArray(),
             tags.Select(t => t.Item2).ToArray()
-        );
+        ));
 
         _totalRunningTime = new()
         {

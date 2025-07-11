@@ -101,4 +101,22 @@ public static class Config
         Description = "A comma separated list of additional tags to be added to the metrics in the format of key=value",
         HelpName = "value",
     };
+
+    public static Option<string> PrometheusEndpoint { get; } = new("--prometheus")
+    {
+        Description = "Endpoint to push metrics to Prometheus",
+        HelpName = "value",
+    };
+
+    public static Option<string> PrometheusBasicAuthUsername { get; } = new("--prometheus-auth-username")
+    {
+        Description = "Username for basic authentication to Prometheus",
+        HelpName = "value",
+    };
+
+    public static Option<string> PrometheusBasicAuthPassword { get; } = new("--prometheus-auth-password")
+    {
+        Description = "Password for basic authentication to Prometheus",
+        HelpName = "value",
+    };
 }
