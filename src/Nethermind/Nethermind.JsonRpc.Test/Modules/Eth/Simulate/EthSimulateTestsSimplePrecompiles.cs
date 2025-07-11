@@ -87,7 +87,7 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
                 {
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
-                        { EcRecoverPrecompile.Address, new AccountOverride { Code = code } }
+                        { EcRecover1Precompile.Address, new AccountOverride { Code = code } }
                     },
                     Calls = [txDetails]
                 }

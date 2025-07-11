@@ -31,7 +31,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         return new Dictionary<AddressAsKey, PrecompileInfo>
         {
-            [EcRecoverPrecompile.Address] = new PrecompileInfo(EcRecoverPrecompile.Instance),
+            [EcRecover1Precompile.Address] = new PrecompileInfo(EcRecover1Precompile.Instance),
             [Sha256Precompile.Address] = new PrecompileInfo(Sha256Precompile.Instance),
             [Ripemd160Precompile.Address] = new PrecompileInfo(Ripemd160Precompile.Instance),
             [IdentityPrecompile.Address] = new PrecompileInfo(IdentityPrecompile.Instance),
