@@ -3,13 +3,12 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class BnAddPrecompileTests
+public class ECAddPrecompileTests
 {
     [Test]
     public void Test()
@@ -30,7 +29,7 @@ public class BnAddPrecompileTests
 
         for (int i = 0; i < inputs.Length; i++)
         {
-            IPrecompile precompile = Bn254AddPrecompile.Instance;
+            IPrecompile precompile = ECAddPrecompile.Instance;
             _ = precompile.Run(inputs[i], MuirGlacier.Instance);
         }
     }

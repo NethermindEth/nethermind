@@ -3,13 +3,12 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class BnPairPrecompileTests
+public class ECPairingPrecompileTests
 {
     [Test]
     public void Test()
@@ -61,7 +60,7 @@ public class BnPairPrecompileTests
         for (int i = 0; i < inputs.Length; i++)
         {
             byte[] cloned = inputs[i].Clone() as byte[];
-            IPrecompile precompile = Bn254PairingPrecompile.Instance;
+            IPrecompile precompile = ECPairingPrecompile.Instance;
             _ = precompile.Run(cloned, MuirGlacier.Instance);
         }
     }
