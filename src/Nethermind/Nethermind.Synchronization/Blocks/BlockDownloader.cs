@@ -72,31 +72,31 @@ namespace Nethermind.Synchronization.Blocks
         private SemaphoreSlim _requestLock = new(1);
 
         public BlockDownloader(
-            IBlockTree? blockTree,
-            IBlockValidator? blockValidator,
-            ISyncReport? syncReport,
-            IReceiptStorage? receiptStorage,
-            ISpecProvider? specProvider,
+            IBlockTree blockTree,
+            IBlockValidator blockValidator,
+            ISyncReport syncReport,
+            IReceiptStorage receiptStorage,
+            ISpecProvider specProvider,
             IBetterPeerStrategy betterPeerStrategy,
             IFullStateFinder fullStateFinder,
             IForwardHeaderProvider forwardHeaderProvider,
             ISyncPeerPool syncPeerPool,
+            IReceiptsRecovery receiptsRecovery,
             ISyncConfig syncConfig,
-            ILogManager? logManager)
+            ILogManager logManager)
         {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-            _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
-            _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
+            _blockTree = blockTree;
+            _blockValidator = blockValidator;
+            _syncReport = syncReport;
+            _receiptStorage = receiptStorage;
+            _specProvider = specProvider;
+            _betterPeerStrategy = betterPeerStrategy;
+            _fullStateFinder = fullStateFinder;
             _forwardHeaderProvider = forwardHeaderProvider;
             _syncPeerPool = syncPeerPool;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _maxTxInBuffer = syncConfig.MaxTxInForwardSyncBuffer;
-
-            _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(_specProvider.ChainId), _specProvider);
+            _receiptsRecovery = receiptsRecovery;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
