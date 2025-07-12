@@ -9,8 +9,10 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
@@ -27,7 +29,10 @@ public class JsonRpcService : IJsonRpcService
     private readonly ILogger _logger;
     private readonly IRpcModuleProvider _rpcModuleProvider;
     private readonly HashSet<string> _methodsLoggingFiltering;
+    private readonly Lock _propertyInfoModificationLock = new();
     private readonly int _maxLoggedRequestParametersCharacters;
+
+    private Dictionary<TypeAsKey, PropertyInfo?> _propertyInfoCache = [];
 
     public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
     {
@@ -196,7 +201,7 @@ public class JsonRpcService : IJsonRpcService
                     break;
                 case Task task:
                     await task;
-                    resultWrapper = task.GetType().GetProperty("Result")?.GetValue(task) as IResultWrapper;
+                    resultWrapper = GetResultProperty(task)?.GetValue(task) as IResultWrapper;
                     break;
             }
         }
@@ -242,6 +247,42 @@ public class JsonRpcService : IJsonRpcService
         return result.ResultType != ResultType.Success
             ? GetErrorResponse(methodName, resultWrapper.ErrorCode, result.Error, resultWrapper.Data, request.Id, returnAction, resultWrapper.IsTemporary)
             : GetSuccessResponse(methodName, resultWrapper.Data, request.Id, returnAction);
+    }
+
+    private PropertyInfo? GetResultProperty(Task task)
+    {
+        Type type = task.GetType();
+        if (_propertyInfoCache.TryGetValue(type, out PropertyInfo? value))
+        {
+            return value;
+        }
+
+        return GetResultPropertySlow(type);
+    }
+
+    private PropertyInfo? GetResultPropertySlow(Type type)
+    {
+        lock (_propertyInfoModificationLock)
+        {
+            Dictionary<TypeAsKey, PropertyInfo?> current = _propertyInfoCache;
+            // Re-check inside the lock in case another thread already added it
+            if (current.TryGetValue(type, out PropertyInfo? value))
+            {
+                return value;
+            }
+
+            // Copy-on-write: create a new dictionary so we don't mutate
+            // the one other threads may be reading without locks.
+            Dictionary<TypeAsKey, PropertyInfo?> propertyInfoCache = new(current);
+            PropertyInfo? propertyInfo = type.GetProperty("Result");
+            propertyInfoCache[type] = propertyInfo;
+
+            // Publish the new cache instance atomically by swapping the reference.
+            // Readers grabbing _propertyInfoCache will now see the updated dictionary.
+            _propertyInfoCache = propertyInfoCache;
+
+            return propertyInfo;
+        }
     }
 
     private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)
