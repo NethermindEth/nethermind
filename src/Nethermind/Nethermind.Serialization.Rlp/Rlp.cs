@@ -17,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Pooling;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
@@ -241,7 +242,23 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            return span.ToArray();
+            byte[] array;
+            if (span.Length == ByteBufferPool.ProofSize)
+            {
+                array = ByteBufferPool.RentProof();
+                span.CopyTo(array);
+            }
+            else if (span.Length == ByteBufferPool.BlobSize)
+            {
+                array = ByteBufferPool.RentBlob();
+                span.CopyTo(array);
+            }
+            else
+            {
+                array = span.ToArray();
+            }
+
+            return array;
         }
 
         internal static ArrayPoolList<byte> ByteSpanToArrayPool(ReadOnlySpan<byte> span)

@@ -12,16 +12,21 @@ namespace Nethermind.Serialization.Rlp;
 [Rlp.SkipGlobalRegistration]
 public sealed class TxDecoder : TxDecoder<Transaction>
 {
-    public static readonly ObjectPool<Transaction> TxObjectPool;
-
+    private const int PooledTxCount = 1024;
+    public static readonly DefaultObjectPool<Transaction> TxObjectPool;
     public static readonly TxDecoder Instance;
 
     private TxDecoder(Func<Transaction> transactionFactory) : base(transactionFactory) { }
 
     static TxDecoder()
     {
-        TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
-        Instance = new TxDecoder(static () => TxObjectPool.Get());
+        TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), PooledTxCount);
+        Instance = new TxDecoder(static () =>
+        {
+            Transaction tx = TxObjectPool.Get();
+            tx.Reset();
+            return tx;
+        });
         Rlp.RegisterDecoder(typeof(Transaction), Instance);
     }
 }
