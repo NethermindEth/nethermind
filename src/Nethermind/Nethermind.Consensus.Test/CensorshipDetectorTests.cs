@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Precompiles;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
@@ -259,7 +260,7 @@ public class CensorshipDetectorTests
         return new(
             _ethereumEcdsa,
             new BlobTxStorage(),
-            new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider, new CodeInfoRepository()),
+            new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider, new EthereumCodeInfoRepository()),
             new TxPoolConfig(),
             new TxValidator(_specProvider.ChainId),
             _logManager,

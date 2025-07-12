@@ -6,13 +6,12 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm;
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
 
-internal static unsafe partial class EvmInstructions
+public static unsafe partial class EvmInstructions
 {
     /// <summary>
     /// Generates the opcode lookup table for the Ethereum Virtual Machine.
@@ -366,7 +365,7 @@ internal static unsafe partial class EvmInstructions
             }
 
             // If the account is cold (and not a precompile), charge the cold access cost.
-            if (vmState.AccessTracker.IsCold(address) && !address.IsPrecompile(spec))
+            if (vmState.AccessTracker.IsCold(address) && !vm.CodeInfoRepository.IsPrecompile(address, spec))
             {
                 result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
                 vmState.AccessTracker.WarmUp(address);

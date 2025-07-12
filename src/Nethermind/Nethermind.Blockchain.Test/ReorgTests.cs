@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Precompiles;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
@@ -72,7 +73,7 @@ public class ReorgTests
             .WithSpecProvider(specProvider)
             .TestObject;
 
-        CodeInfoRepository codeInfoRepository = new();
+        EthereumCodeInfoRepository codeInfoRepository = new();
         TxPool.TxPool txPool = new(
             ecdsa,
             new BlobTxStorage(),

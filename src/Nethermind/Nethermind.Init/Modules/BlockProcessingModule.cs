@@ -40,7 +40,7 @@ public class BlockProcessingModule : Module
 
             // Block processing components common between rpc, validation and production
             .AddScoped<ITransactionProcessor, TransactionProcessor>()
-            .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
+            .AddScoped<ICodeInfoRepository, EthereumCodeInfoRepository>()
             .AddScoped<IVirtualMachine, VirtualMachine>()
             .AddScoped<IBlockhashProvider, BlockhashProvider>()
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()

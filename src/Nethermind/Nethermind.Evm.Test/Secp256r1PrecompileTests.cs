@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using Nethermind.Core.Extensions;
+using Nethermind.Blockchain.Precompiles;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;

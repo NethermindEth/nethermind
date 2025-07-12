@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Precompiles;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -38,7 +39,7 @@ public class TestBlockProcessingModule : Module
             {
                 IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
                 PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
-                return new CodeInfoRepository(preBlockCaches?.PrecompileCache);
+                return new EthereumCodeInfoRepository(preBlockCaches?.PrecompileCache);
             })
 
             .AddSingleton<ITxPool, TxPool.TxPool>()

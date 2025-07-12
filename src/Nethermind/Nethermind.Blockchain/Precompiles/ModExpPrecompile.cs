@@ -3,14 +3,15 @@
 
 using System;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.GmpBindings;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm.Precompiles;
+namespace Nethermind.Blockchain.Precompiles;
 
 /// <summary>
 ///     https://github.com/ethereum/EIPs/blob/vbuterin-patch-2/EIPS/bigint_modexp.md

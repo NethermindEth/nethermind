@@ -9,7 +9,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.Evm.Precompiles;
+using Nethermind.Blockchain.Precompiles;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.State;

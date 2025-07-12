@@ -5,8 +5,9 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.Precompiles;
 
-namespace Nethermind.Evm.Precompiles.Snarks;
+namespace Nethermind.Blockchain.Precompiles.Snarks;
 
 /// <summary>
 /// https://github.com/matter-labs/eip1962/blob/master/eip196_header.h
