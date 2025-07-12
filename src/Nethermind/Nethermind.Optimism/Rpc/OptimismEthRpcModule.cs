@@ -54,6 +54,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
         IProtocolsManager protocolsManager,
+        IForkInfo forkInfo,
         ulong? secondsPerSlot,
 
         IJsonRpcClient? sequencerRpcClient,
@@ -74,6 +75,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
        ethSyncingInfo,
        feeHistoryOracle,
        protocolsManager,
+       forkInfo,
        secondsPerSlot)
     {
         _sequencerRpcClient = sequencerRpcClient;

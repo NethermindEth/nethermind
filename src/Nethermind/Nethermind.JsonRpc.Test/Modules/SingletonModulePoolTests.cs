@@ -54,7 +54,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IEthSyncingInfo>(),
                 Substitute.For<IFeeHistoryOracle>(),
                 Substitute.For<IProtocolsManager>(),
-                new BlocksConfig());
+                new BlocksConfig(),
+                Substitute.For<IForkInfo>());
             return Task.CompletedTask;
         }
 
