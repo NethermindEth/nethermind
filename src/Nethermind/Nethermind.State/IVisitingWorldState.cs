@@ -18,13 +18,3 @@ public interface IVisitingWorldState : IWorldState
     void Accept<TCtx>(ITreeVisitor<TCtx> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null)
         where TCtx : struct, INodeContext<TCtx>;
 }
-
-public static class VisitingWorldStateExtensions
-{
-    public static string DumpState(this IVisitingWorldState stateProvider)
-    {
-        TreeDumper dumper = new();
-        stateProvider.Accept(dumper, stateProvider.StateRoot);
-        return dumper.ToString();
-    }
-}

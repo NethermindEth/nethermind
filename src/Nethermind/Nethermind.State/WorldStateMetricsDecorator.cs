@@ -109,6 +109,7 @@ public class WorldStateMetricsDecorator(IWorldState innerState) : IWorldState
     public ArrayPoolList<AddressAsKey>? GetAccountChanges() => innerState.GetAccountChanges();
 
     public void ResetTransient() => innerState.ResetTransient();
+    public string DumpState() => innerState.DumpState();
 
     public byte[]? GetCode(Address address) => innerState.GetCode(address);
 

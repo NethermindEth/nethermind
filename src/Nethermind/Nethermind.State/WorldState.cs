@@ -278,6 +278,13 @@ namespace Nethermind.State
             _transientStorageProvider.Reset();
         }
 
+        public string DumpState()
+        {
+            TreeDumper dumper = new();
+            Accept(dumper, StateRoot);
+            return dumper.ToString();
+        }
+
         PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
     }
 }
