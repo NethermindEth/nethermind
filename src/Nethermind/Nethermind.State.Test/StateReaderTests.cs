@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -361,6 +362,19 @@ namespace Nethermind.Store.Test
             bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
 
             Assert.That(result, Is.False);
+        }
+
+        [Test]
+        public void Can_accepts_visitors()
+        {
+            WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            IVisitingWorldState provider = worldStateManager.GlobalWorldState;
+            provider.CreateAccount(TestItem.AddressA, 1.Ether());
+            provider.Commit(MuirGlacier.Instance);
+            provider.CommitTree(0);
+
+            TrieStatsCollector visitor = new(new MemDb(), LimboLogs.Instance);
+            worldStateManager.GlobalStateReader.RunTreeVisitor(visitor, provider.StateRoot);
         }
     }
 }
