@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -93,7 +94,7 @@ namespace Nethermind.Init.Steps
         /// If <paramref name="expectedGenesisHash"/> is <value>null</value> then it means that we do not care about the genesis hash (e.g. in some quick testing of private chains)/>
         /// </summary>
         /// <param name="expectedGenesisHash"></param>
-        private void ValidateGenesisHash(Hash256? expectedGenesisHash, IVisitingWorldState worldState)
+        private void ValidateGenesisHash(Hash256? expectedGenesisHash, IWorldState worldState)
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 

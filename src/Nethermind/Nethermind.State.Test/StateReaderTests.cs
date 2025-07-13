@@ -368,7 +368,7 @@ namespace Nethermind.Store.Test
         public void Can_accepts_visitors()
         {
             WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-            IVisitingWorldState provider = worldStateManager.GlobalWorldState;
+            IWorldState provider = worldStateManager.GlobalWorldState;
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);

@@ -66,7 +66,7 @@ public class PruningTrieStateFactory(
         }
 
         IKeyValueStoreWithBatching codeDb = dbProvider.CodeDb;
-        IVisitingWorldState worldState = syncConfig.TrieHealing
+        IWorldState worldState = syncConfig.TrieHealing
             ? new HealingWorldState(
                 mainWorldTrieStore,
                 mainNodeStorage,
