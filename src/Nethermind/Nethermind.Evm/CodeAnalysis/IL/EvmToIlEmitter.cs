@@ -2056,7 +2056,7 @@ internal static class OpcodeEmitters
 
 
         envLoader.LoadSpec(method, locals);
-        method.CallVirtual(typeof(IReleaseSpec).GetProperty(nameof(IReleaseSpec.UseNetGasMeteringWithAStipendFix)).GetGetMethod());
+        method.CallVirtual(typeof(IReleaseSpec).GetProperty(nameof(IReleaseSpec.UseNetGasMetering)).GetGetMethod());
         method.BranchIfTrue(metered);
 
         envLoader.LoadVmState(method, locals, false);
