@@ -85,14 +85,9 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private static int GetAddressesLength(Address[] addresses)
         {
-            if (addresses.Length == 0) return 0;
+            const int AddressLengthWithRlpLengthPrefix = 1 + 20;
 
-            int sum = 0;
-            foreach (Address address in addresses)
-            {
-                sum += Rlp.LengthOf(address);
-            }
-            return sum;
+            return addresses.Length * AddressLengthWithRlpLengthPrefix;
         }
     }
 }
