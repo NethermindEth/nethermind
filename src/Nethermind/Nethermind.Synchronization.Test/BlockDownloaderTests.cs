@@ -32,6 +32,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using System.Diagnostics.CodeAnalysis;
