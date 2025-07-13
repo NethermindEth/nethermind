@@ -376,5 +376,18 @@ namespace Nethermind.Store.Test
             TrieStatsCollector visitor = new(new MemDb(), LimboLogs.Instance);
             worldStateManager.GlobalStateReader.RunTreeVisitor(visitor, provider.StateRoot);
         }
+
+        [Test]
+        public void Can_dump_state()
+        {
+            WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            IWorldState provider = worldStateManager.GlobalWorldState;
+            provider.CreateAccount(TestItem.AddressA, 1.Ether());
+            provider.Commit(MuirGlacier.Instance);
+            provider.CommitTree(0);
+
+            string state = worldStateManager.GlobalStateReader.DumpState(provider.StateRoot);
+            state.Should().NotBeEmpty();
+        }
     }
 }
