@@ -137,9 +137,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 env.SimulateRequestState.Validate = payload.Validation;
                 env.SimulateRequestState.BlobBaseFeeOverride = spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null;
 
-                IBlockProcessor processor = env.BlockProcessor;
                 // Note: Weird behaviour where the call header is the same as the suggested blocks.
-                Block processedBlock = processor.Process(callHeader, suggestedBlocks, processingFlags, cancellationBlockTracer, cancellationToken)[0];
+                Block processedBlock = env.BranchProcessor.Process(callHeader, suggestedBlocks, processingFlags, cancellationBlockTracer, cancellationToken)[0];
 
                 FinalizeStateAndBlock(stateProvider, processedBlock, spec, callBlock, blockTree);
 

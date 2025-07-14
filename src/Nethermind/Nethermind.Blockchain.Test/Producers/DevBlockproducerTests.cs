@@ -75,13 +75,22 @@ public class DevBlockProducerTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(txProcessor));
+
+        BranchProcessor branchProcessor = new BranchProcessor(
+            blockProcessor,
+            specProvider,
+            stateProvider,
+            new BeaconBlockRootHandler(txProcessor, stateProvider),
+            LimboLogs.Instance);
+
         BlockchainProcessor blockchainProcessor = new(
             blockTree,
-            blockProcessor,
+            branchProcessor,
             NullRecoveryStep.Instance,
             stateReader,
             LimboLogs.Instance,
             BlockchainProcessor.Options.Default);
+
         BuildBlocksWhenRequested trigger = new();
         ManualTimestamper timestamper = new ManualTimestamper();
         DevBlockProducer devBlockProducer = new(
