@@ -62,7 +62,7 @@ internal static unsafe class BN254
         return SerializeG1(x, output);
     }
 
-    internal static bool Pairing(Span<byte> input, Span<byte> output)
+    internal static bool CheckPairing(Span<byte> input, Span<byte> output)
     {
         if (input.Length == 0)
         {

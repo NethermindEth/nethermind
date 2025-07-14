@@ -38,7 +38,7 @@ public class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
 
         inputData.CopyTo(input);
 
-        var result = BN254.Pairing(input.AsSpan(0, inputData.Length), output);
+        var result = BN254.CheckPairing(input.AsSpan(0, inputData.Length), output);
 
         ArrayPool<byte>.Shared.Return(input);
 
