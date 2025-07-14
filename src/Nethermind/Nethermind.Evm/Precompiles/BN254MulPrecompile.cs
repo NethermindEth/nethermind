@@ -5,14 +5,16 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Evm.Precompiles.Snarks;
+namespace Nethermind.Evm.Precompiles;
 
-public class Bn254MulPrecompile : IPrecompile<Bn254MulPrecompile>
+/// <see href="https://eips.ethereum.org/EIPS/eip-196" />
+public class BN254MulPrecompile : IPrecompile<BN254MulPrecompile>
 {
-    public static readonly Bn254MulPrecompile Instance = new();
+    public static readonly BN254MulPrecompile Instance = new();
 
     public static Address Address { get; } = Address.FromNumber(7);
 
+    /// <see href="https://eips.ethereum.org/EIPS/eip-1108" />
     public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 6_000L : 40_000L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;

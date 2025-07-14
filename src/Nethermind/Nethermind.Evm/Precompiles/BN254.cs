@@ -5,7 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.MclBindings;
 
-namespace Nethermind.Evm.Precompiles.Snarks;
+namespace Nethermind.Evm.Precompiles;
 
 using static Mcl;
 
@@ -91,7 +91,7 @@ internal static unsafe class BN254
 
         for (int i = 0, count = input.Length; i < count; i += PairSize)
         {
-            int i64 = i + 64;
+            var i64 = i + 64;
 
             if (!DeserializeG1(input[i..i64], out mclBnG1 g1))
                 return false;
@@ -190,7 +190,7 @@ internal static unsafe class BN254
 
         fixed (byte* ptr = x)
         {
-            nuint length = mclBnFp_getLittleEndian((nint)ptr, 32, point.x);
+            var length = mclBnFp_getLittleEndian((nint)ptr, 32, point.x);
 
             if (length == nuint.Zero)
                 return false;
@@ -200,7 +200,7 @@ internal static unsafe class BN254
 
         fixed (byte* ptr = y)
         {
-            nuint length = mclBnFp_getLittleEndian((nint)ptr, 32, point.y);
+            var length = mclBnFp_getLittleEndian((nint)ptr, 32, point.y);
 
             if (length == nuint.Zero)
                 return false;
