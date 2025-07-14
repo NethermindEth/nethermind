@@ -54,5 +54,12 @@ namespace Nethermind.State
             });
             return collector.Stats;
         }
+
+        public static string DumpState(this IStateReader stateReader, Hash256 root)
+        {
+            TreeDumper dumper = new();
+            stateReader.RunTreeVisitor(dumper, root);
+            return dumper.ToString();
+        }
     }
 }
