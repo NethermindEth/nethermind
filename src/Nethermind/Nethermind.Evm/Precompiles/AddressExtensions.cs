@@ -53,9 +53,9 @@ public static class AddressExtensions
 
 public static class ReleaseSpecExtensions
 {
-    public static Dictionary<Address, string> ListPrecompiles(this IReleaseSpec spec)
+    public static OrderedDictionary<Address, string> ListPrecompiles(this IReleaseSpec spec)
     {
-        Dictionary<Address, string> precompiles = [];
+        OrderedDictionary<Address, string> precompiles = [];
 
         AddPrecompile<EcRecoverPrecompile>();
         AddPrecompile<Sha256Precompile>();
@@ -105,9 +105,9 @@ public static class ReleaseSpecExtensions
         void AddPrecompile<T>() where T : IPrecompile<T> => precompiles[T.Address] = T.Name;
     }
 
-    public static Dictionary<string, Address> ListSystemContracts(this IReleaseSpec spec)
+    public static OrderedDictionary<string, Address> ListSystemContracts(this IReleaseSpec spec)
     {
-        Dictionary<string, Address> systemContracts = [];
+        OrderedDictionary<string, Address> systemContracts = [];
 
         if (spec.IsBeaconBlockRootAvailable) systemContracts[Eip4788Constants.ContractAddressKey] = Eip4788Constants.BeaconRootsAddress;
         if (spec.ConsolidationRequestsEnabled) systemContracts[Eip7251Constants.ContractAddressKey] = Eip7251Constants.ConsolidationRequestPredeployAddress;

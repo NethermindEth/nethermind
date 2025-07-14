@@ -157,9 +157,17 @@ namespace Nethermind.Network
 
             bool isNextPresent = indexOfActive < Forks.Length - 1;
 
+            // The fix for post-merge genesis
+            ForkActivation currentForkActivation = Forks[indexOfActive].Activation;
+
+            if (currentForkActivation.BlockNumber is 0)
+            {
+                currentForkActivation = new ForkActivation(0, 0);
+            }
+
             return new ForkActivationsSummary
             {
-                Current = Forks[indexOfActive].Activation,
+                Current = currentForkActivation,
                 CurrentForkId = Forks[indexOfActive].Id,
 
                 Next = isNextPresent ? Forks[indexOfActive + 1].Activation : null,

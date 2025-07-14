@@ -86,6 +86,7 @@ public partial class EthRpcModule(
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
+    readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
     public ResultWrapper<string> eth_protocolVersion()
     {
@@ -787,12 +788,9 @@ public partial class EthRpcModule(
         ForkConfig? next = GetForkConfig(forks.Next, _specProvider);
         ForkConfig? last = GetForkConfig(forks.Last, _specProvider);
 
-        // Fix address as key
-        JsonSerializerOptions defaultOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
-
-        string serializedCurrent = JsonSerializer.Serialize(current, defaultOptions);
-        string? serializedNext = JsonSerializer.Serialize(next, defaultOptions);
-        string? serializedLast = JsonSerializer.Serialize(last, defaultOptions);
+        string serializedCurrent = JsonSerializer.Serialize(current, UnchangedDictionaryKeyOptions);
+        string? serializedNext = JsonSerializer.Serialize(next, UnchangedDictionaryKeyOptions);
+        string? serializedLast = JsonSerializer.Serialize(last, UnchangedDictionaryKeyOptions);
 
         return ResultWrapper<EthConfig>.Success(new EthConfig
         {
@@ -840,6 +838,6 @@ public partial class EthRpcModule(
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         _rpcConfig.BuildTimeoutCancellationToken();
 
-    [GeneratedRegex("\\s")]
+    [GeneratedRegex("\\s", RegexOptions.Compiled)]
     private static partial Regex RemoveWhitespace();
 }
