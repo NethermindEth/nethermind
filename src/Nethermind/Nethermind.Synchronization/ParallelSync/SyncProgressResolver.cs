@@ -50,10 +50,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _snapSyncFeed = snapSyncFeed;
         }
 
-        public long FindBestFullState()
-        {
-            return _fullStateFinder.FindBestFullState();
-        }
+        public long FindBestFullState() => _fullStateFinder.FindBestFullState();
 
         public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
         public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
