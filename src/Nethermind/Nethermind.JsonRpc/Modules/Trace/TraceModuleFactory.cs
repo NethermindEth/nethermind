@@ -44,8 +44,8 @@ public class TraceModuleFactory(IOverridableEnvFactory overridableEnvFactory, IL
 
         ILifetimeScope tracerLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddModule(env)
-            .AddScoped<ITracer, IVisitingWorldState>((worldState) => new Tracer(
-                worldState,
+            .AddScoped<ITracer, IStateReader>((stateReader) => new Tracer(
+                stateReader,
                 rpcProcessingScope.Resolve<IBlockchainProcessor>(),
                 validationProcessingScope.Resolve<IBlockchainProcessor>(),
                 traceOptions: ProcessingOptions.TraceTransactions)));
