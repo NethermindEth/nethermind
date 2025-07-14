@@ -21,7 +21,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;

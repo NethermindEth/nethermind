@@ -35,15 +35,11 @@ public struct StackAccessTracker : IDisposable
 
     public readonly bool IsCold(in StorageCell storageCell) => !_trackingState.AccessedStorageCells.Contains(storageCell);
 
-    public readonly void WarmUp(Address address)
-    {
-        _trackingState.AccessedAddresses.Add(address);
-    }
+    public readonly bool WarmUp(Address address)
+        => _trackingState.AccessedAddresses.Add(address);
 
-    public readonly void WarmUp(in StorageCell storageCell)
-    {
-        _trackingState.AccessedStorageCells.Add(storageCell);
-    }
+    public readonly bool WarmUp(in StorageCell storageCell)
+        => _trackingState.AccessedStorageCells.Add(storageCell);
 
     public readonly bool WarmUpLargeContract(Address address)
         => _trackingState.LargeContractList.Add(address);

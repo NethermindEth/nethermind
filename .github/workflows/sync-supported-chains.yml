@@ -75,7 +75,7 @@ jobs:
           tags: "core, self-hosted, dynamic"
           organization: "NethermindEth"
           repo_name: "nethermind"
-          blocked_ports: "8545,8546,8551,8552"
+          blocked_ports: "8545,8546,8547,8551,8552,8553"
 
   sync-chain:
     needs: [setup-matrix, create_a_runner]
@@ -142,6 +142,7 @@ jobs:
         run: |
           docker_image=""
           network="${{ matrix.config.network }}"
+          node_name="SyncSupportedChains-${network}-${GITHUB_RUN_ID}"
 
           if [ -z "${{ inputs.nethermind_image }}" ]; then
             REF_NAME=${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
@@ -159,6 +160,32 @@ jobs:
           echo 'Generating sedge docker...'
           ./build/sedge deps install
 
+          # Define metrics flags
+          GENERIC_METRICS_FLAGS=(
+            --el-extra-flag "Metrics.NodeName=${node_name}" \
+            --el-extra-flag Metrics.Enabled=true \
+            --el-extra-flag "Seq.ServerUrl=https://seq.nethermind.io" \
+            --el-extra-flag "Seq.ApiKey=${{ secrets.SEQ_API_KEY }}" \
+            --el-extra-flag Seq.MinLevel=Info \
+            --el-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}"
+          )
+          OP_METRICS_FLAGS=(
+            --el-op-extra-flag "Metrics.NodeName=${node_name}" \
+            --el-op-extra-flag Metrics.Enabled=true \
+            --el-op-extra-flag "Seq.ServerUrl=https://seq.nethermind.io" \
+            --el-op-extra-flag "Seq.ApiKey=${{ secrets.SEQ_API_KEY }}" \
+            --el-op-extra-flag Seq.MinLevel=Info \
+            --el-op-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}"
+          )
+          L2_METRICS_FLAGS=(
+            --el-l2-extra-flag "Metrics.NodeName=${node_name}" \
+            --el-l2-extra-flag Metrics.Enabled=true \
+            --el-l2-extra-flag "Seq.ServerUrl=https://seq.nethermind.io" \
+            --el-l2-extra-flag "Seq.ApiKey=${{ secrets.SEQ_API_KEY }}" \
+            --el-l2-extra-flag Seq.MinLevel=Info \
+            --el-l2-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}"
+          )
+
           if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
             if [[ "$network" == *mainnet* ]]; then
               CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
@@ -174,7 +201,6 @@ jobs:
             if [[ "$network" == base-* ]]; then
               extra_param="--chain base ${{ secrets.BASE_MAINNET_EXTRA_BOOTNODES }}"
             fi
-
             if [[ "$network" == world-* ]]; then
               extra_param="--chain worldchain"
             fi
@@ -187,21 +213,23 @@ jobs:
             mv ../tests/predefined_configs/customNLog.config execution-data-op/logs/configs/customNLog.config
 
             ./build/sedge generate \
-            --logging none \
-            -p $GITHUB_WORKSPACE/sedge \
-            op-full-node \
-            --op-execution opnethermind:$docker_image \
-            --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:latest \
-            --map-all \
-            --network $stripped_network \
-            --consensus-url $CONSENSUS_URL \
-            --execution-api-url $EXECUTION_URL \
-            --el-op-extra-flag Sync.NonValidatorNode=true \
-            --el-op-extra-flag Sync.DownloadBodiesInFastSync=false \
-            --el-op-extra-flag Sync.DownloadReceiptsInFastSync=false \
-            --el-op-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
-            --el-op-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
-            $extra_param
+              --logging none \
+              -p $GITHUB_WORKSPACE/sedge \
+              op-full-node \
+              --op-execution opnethermind:$docker_image \
+              --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:latest \
+              --map-all \
+              --network $stripped_network \
+              --consensus-url $CONSENSUS_URL \
+              --execution-api-url $EXECUTION_URL \
+              --el-op-extra-flag Sync.NonValidatorNode=true \
+              --el-op-extra-flag Sync.DownloadBodiesInFastSync=false \
+              --el-op-extra-flag Sync.DownloadReceiptsInFastSync=false \
+              --el-op-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
+              --el-op-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
+              "${OP_METRICS_FLAGS[@]}" \
+              $extra_param
+
           elif [[ "$network" == taiko-* ]]; then
             if [[ "$network" == *alethia* ]]; then
               CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
@@ -222,55 +250,57 @@ jobs:
             mv ../tests/predefined_configs/customNLog.config execution-data-taiko/logs/configs/customNLog.config
 
             ./build/sedge generate \
-            --logging none \
-            -p $GITHUB_WORKSPACE/sedge \
-            taiko-full-node \
-            --l2-execution taiko-nethermind:$docker_image \
-            --taiko-image taiko:us-docker.pkg.dev/evmchain/images/taiko-client:$taiko_client_version \
-            --map-all \
-            --network $stripped_network \
-            --consensus-url $CONSENSUS_URL \
-            --execution-api-url $EXECUTION_URL \
-            --el-l2-extra-flag Sync.NonValidatorNode=true \
-            --el-l2-extra-flag Sync.DownloadBodiesInFastSync=false \
-            --el-l2-extra-flag Sync.DownloadReceiptsInFastSync=false \
-            --el-l2-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
-            --el-l2-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
-            $extra_param
+              --logging none \
+              -p $GITHUB_WORKSPACE/sedge \
+              taiko-full-node \
+              --l2-execution taiko-nethermind:$docker_image \
+              --taiko-image taiko:us-docker.pkg.dev/evmchain/images/taiko-client:$taiko_client_version \
+              --map-all \
+              --network $stripped_network \
+              --consensus-url $CONSENSUS_URL \
+              --execution-api-url $EXECUTION_URL \
+              --el-l2-extra-flag Sync.NonValidatorNode=true \
+              --el-l2-extra-flag Sync.DownloadBodiesInFastSync=false \
+              --el-l2-extra-flag Sync.DownloadReceiptsInFastSync=false \
+              --el-l2-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
+              --el-l2-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
+              "${L2_METRICS_FLAGS[@]}" \
+              $extra_param
+
           else
             mkdir -p execution-data/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
 
             ./build/sedge generate \
-            --logging none \
-            -p $GITHUB_WORKSPACE/sedge \
-            full-node \
-            -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} \
-            -e nethermind:$docker_image \
-            --map-all \
-            --no-mev-boost \
-            --no-validator \
-            --network ${{ matrix.config.network }} \
-            --el-extra-flag Sync.NonValidatorNode=true \
-            --el-extra-flag Sync.DownloadBodiesInFastSync=false \
-            --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
-            --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
-            --el-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
-            --el-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
-            --el-extra-flag Sync.SnapSync=true \
-            --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
+              --logging none \
+              -p $GITHUB_WORKSPACE/sedge \
+              full-node \
+              -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} \
+              -e nethermind:$docker_image \
+              --map-all \
+              --no-mev-boost \
+              --no-validator \
+              --network ${{ matrix.config.network }} \
+              --el-extra-flag Sync.NonValidatorNode=true \
+              --el-extra-flag Sync.DownloadBodiesInFastSync=false \
+              --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
+              --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
+              --el-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
+              --el-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
+              --el-extra-flag Sync.SnapSync=true \
+              "${GENERIC_METRICS_FLAGS[@]}" \
+              --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
           fi
 
-          echo 'Running sedge...'
+          echo 'Running sedge...'          
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
-
+          
       - name: Wait for ${{ matrix.config.network }} to sync
         id: wait
         env:
           NETWORK: ${{ matrix.config.network }}
         run: |
           python scripts/wait-for-sync.py
-
       - name: Get Nethermind Debug Logs
         if: ${{ failure() || cancelled() }}
         id: find-and-upload
@@ -286,7 +316,6 @@ jobs:
           echo "Compressed log file into ${artifact_name}.zip"
           echo "artifact_name=$artifact_name" >> $GITHUB_ENV
           echo "artifact_path=$(pwd)/${artifact_name}.zip" >> $GITHUB_ENV
-
       - name: Upload Nethermind Debug logs artifact
         if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v4
@@ -306,11 +335,9 @@ jobs:
           else
             docker logs sedge-consensus-client
           fi
-
       - name: Check size of DB
         run: |
           du -h $GITHUB_WORKSPACE/sedge
-
       - name: Destroy VM
         if: always()
         id: run-linode-action

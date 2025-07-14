@@ -12,7 +12,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.State;
@@ -61,32 +61,6 @@ public class StateProviderTests
         provider.Commit(releaseSpec);
 
         ((WorldState)provider).GetAccount(systemUser).Should().NotBeNull();
-    }
-
-    [Test]
-    public void Can_dump_state()
-    {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IVisitingWorldState provider = worldStateManager.GlobalWorldState;
-        provider.CreateAccount(TestItem.AddressA, 1.Ether());
-        provider.Commit(MuirGlacier.Instance);
-        provider.CommitTree(0);
-
-        string state = provider.DumpState();
-        state.Should().NotBeEmpty();
-    }
-
-    [Test]
-    public void Can_accepts_visitors()
-    {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IVisitingWorldState provider = worldStateManager.GlobalWorldState;
-        provider.CreateAccount(TestItem.AddressA, 1.Ether());
-        provider.Commit(MuirGlacier.Instance);
-        provider.CommitTree(0);
-
-        TrieStatsCollector visitor = new(new MemDb(), LimboLogs.Instance);
-        provider.Accept(visitor, provider.StateRoot);
     }
 
     [Test]

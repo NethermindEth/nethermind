@@ -71,7 +71,14 @@ public class AdminModuleTests
         _networkConfig = new NetworkConfig();
         IPeerPool peerPool = Substitute.For<IPeerPool>();
         ConcurrentDictionary<PublicKeyAsKey, Peer> dict = new();
-        dict.TryAdd(TestItem.PublicKeyA, new Peer(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, true)));
+
+        // Create a peer with a validated session
+        Peer testPeer = new Peer(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, true));
+        ISession validatedSession = Substitute.For<ISession>();
+        validatedSession.IsNetworkIdMatched.Returns(true);
+        testPeer.OutSession = validatedSession;
+
+        dict.TryAdd(TestItem.PublicKeyA, testPeer);
         peerPool.ActivePeers.Returns(dict);
         _peerPool = peerPool;
         _existingSession1 = Substitute.For<ISession>();

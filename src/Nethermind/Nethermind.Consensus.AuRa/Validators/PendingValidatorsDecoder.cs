@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 
@@ -84,6 +83,11 @@ namespace Nethermind.Consensus.AuRa.Validators
             return (contentLength, addressesLength);
         }
 
-        private static int GetAddressesLength(Address[] addresses) => addresses.Sum(Rlp.LengthOf);
+        private static int GetAddressesLength(Address[] addresses)
+        {
+            const int AddressLengthWithRlpLengthPrefix = 1 + 20;
+
+            return addresses.Length * AddressLengthWithRlpLengthPrefix;
+        }
     }
 }
