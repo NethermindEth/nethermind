@@ -19,7 +19,7 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class BlockValidatorTests
 {
-    private static BlockValidator _blockValidator;
+    private static BlockValidator _blockValidator = null!;
 
     [SetUp]
     public void Setup()

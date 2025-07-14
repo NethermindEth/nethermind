@@ -16,11 +16,11 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
 {
     public IReadOnlyTxProcessorSource Create()
     {
-        IVisitingWorldState worldState = worldStateManager.CreateResettableWorldState();
+        IWorldState worldState = worldStateManager.CreateResettableWorldState();
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {
             builder
-                .AddSingleton<IVisitingWorldState>(worldState).AddSingleton<IWorldState>(worldState)
+                .AddSingleton<IWorldState>(worldState)
                 .AddSingleton<AutoReadOnlyTxProcessingEnv>();
         });
 
@@ -29,24 +29,23 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
 
     public IReadOnlyTxProcessorSource CreateForWarmingUp(IWorldState worldStateToWarmUp)
     {
-        IVisitingWorldState worldState = worldStateManager.CreateWorldStateForWarmingUp(worldStateToWarmUp);
+        IWorldState worldState = worldStateManager.CreateWorldStateForWarmingUp(worldStateToWarmUp);
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {
             builder
-                .AddSingleton<IVisitingWorldState>(worldState).AddSingleton<IWorldState>(worldState)
+                .AddSingleton<IWorldState>(worldState)
                 .AddSingleton<AutoReadOnlyTxProcessingEnv>();
         });
 
         return childScope.Resolve<AutoReadOnlyTxProcessingEnv>();
     }
 
-    private class AutoReadOnlyTxProcessingEnv(ITransactionProcessor transactionProcessor, IVisitingWorldState worldState, ILifetimeScope lifetimeScope) : IReadOnlyTxProcessorSource, IDisposable
+    private class AutoReadOnlyTxProcessingEnv(ITransactionProcessor transactionProcessor, IWorldState worldState, ILifetimeScope lifetimeScope) : IReadOnlyTxProcessorSource, IDisposable
     {
-        public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
+        public IReadOnlyTxProcessingScope Build(BlockHeader? header)
         {
-            Hash256 originalStateRoot = worldState.StateRoot;
-            worldState.StateRoot = stateRoot;
-            return new ReadOnlyTxProcessingScope(transactionProcessor, worldState, originalStateRoot);
+            worldState.SetBaseBlock(header);
+            return new ReadOnlyTxProcessingScope(transactionProcessor, worldState);
         }
 
         public void Dispose()

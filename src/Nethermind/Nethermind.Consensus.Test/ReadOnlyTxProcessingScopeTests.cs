@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Processing;
-using Nethermind.Core.Test.Builders;
+using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.State;
 using Nethermind.State;
@@ -14,16 +14,14 @@ namespace Nethermind.Consensus.Test;
 public class ReadOnlyTxProcessingScopeTests
 {
     [Test]
-    public void Test_WhenDispose_ThenStateRootWillRevert()
+    public void Test_WhenDispose_ThenStateRootWillReset()
     {
         ReadOnlyTxProcessingScope env = new ReadOnlyTxProcessingScope(
             Substitute.For<ITransactionProcessor>(),
-            Substitute.For<IVisitingWorldState>(),
-            TestItem.KeccakB
-        );
+            Substitute.For<IWorldState>());
 
         env.Dispose();
 
-        env.WorldState.Received().StateRoot = TestItem.KeccakB;
+        env.WorldState.Received().SetBaseBlock(null);
     }
 }

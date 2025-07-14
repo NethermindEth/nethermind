@@ -3,24 +3,23 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Flashbots.Data;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
+using Nethermind.Evm.State;
+using Nethermind.Flashbots.Data;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Flashbots.Handlers;
@@ -146,7 +145,15 @@ public class ValidateSubmissionHandler
     private bool ValidateBlobsBundle(Transaction[] transactions, BlobsBundleV1 blobsBundle, out string? error)
     {
         // get sum of length of blobs of each transaction
-        int totalBlobsLength = transactions.Sum(t => t.BlobVersionedHashes is not null ? t.BlobVersionedHashes.Length : 0);
+        int totalBlobsLength = 0;
+        foreach (Transaction tx in transactions)
+        {
+            byte[]?[]? versionedHashes = tx.BlobVersionedHashes;
+            if (versionedHashes is not null)
+            {
+                totalBlobsLength += versionedHashes.Length;
+            }
+        }
 
         if (totalBlobsLength != blobsBundle.Blobs.Length)
         {
@@ -194,16 +201,14 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        using var scope = _blockProcessorEnv.Build(parentHeader.StateRoot!);
+        using var scope = _blockProcessorEnv.BuildAndOverride(parentHeader);
         IWorldState worldState = scope.Component.WorldState;
         IBlockProcessor blockProcessor = scope.Component.BlockProcessor;
 
-        Hash256 stateRoot = parentHeader.StateRoot!;
-        worldState.StateRoot = stateRoot;
         IReleaseSpec spec = _specProvider.GetSpec(parentHeader);
 
         RecoverSenderAddress(block, spec);
-        UInt256 feeRecipientBalanceBefore = worldState.HasStateForRoot(stateRoot) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
+        UInt256 feeRecipientBalanceBefore = worldState.HasStateForBlock(parentHeader) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
 
         List<Block> suggestedBlocks = [block];
         BlockReceiptsTracer blockReceiptsTracer = new();
@@ -214,7 +219,7 @@ public class ValidateSubmissionHandler
             {
                 ValidateSubmissionProcessingOptions |= ProcessingOptions.NoValidation;
             }
-            _ = blockProcessor.Process(stateRoot, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
+            _ = blockProcessor.Process(parentHeader, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
         }
         catch (Exception e)
         {

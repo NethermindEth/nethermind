@@ -30,17 +30,16 @@ namespace Nethermind.AuRa.Test.Contract
         private readonly Address _contractAddress = Address.FromNumber(long.MaxValue);
         private ITransactionProcessor _transactionProcessor;
         private IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
-        private IVisitingWorldState _stateProvider;
+        private IWorldState _stateProvider;
 
         [SetUp]
         public void SetUp()
         {
-            _block = new Block(Build.A.BlockHeader.TestObject, new BlockBody());
+            _block = new Block(Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject, new BlockBody());
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
-            _stateProvider = Substitute.For<IVisitingWorldState>();
-            _stateProvider.StateRoot.Returns(TestItem.KeccakA);
+            _stateProvider = Substitute.For<IWorldState>();
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-            _readOnlyTxProcessorSource.Build(TestItem.KeccakA).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider, Keccak.EmptyTreeHash));
+            _readOnlyTxProcessorSource.Build(_block.Header).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider));
         }
 
         [Test]

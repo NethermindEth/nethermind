@@ -163,9 +163,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         [TestCase(true)]
         [TestCase(false)]
-        public async Task ModuleFactory_FromDI_IsLazy(bool preload)
+        public void ModuleFactory_FromDI_IsLazy(bool preload)
         {
-            await using IContainer container = new ContainerBuilder()
+            IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(new JsonRpcConfig()
                 {
                     PreloadRpcModules = preload

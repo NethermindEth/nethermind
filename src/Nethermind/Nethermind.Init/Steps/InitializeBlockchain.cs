@@ -66,7 +66,7 @@ namespace Nethermind.Init.Steps
                 "- binary data -");
 
             IStateReader stateReader = setApi.StateReader!;
-            IVisitingWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
+            IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
             PreBlockCaches? preBlockCaches = (mainWorldState as IPreBlockCaches)?.Caches;
             CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
             IChainHeadInfoProvider chainHeadInfoProvider =
@@ -132,6 +132,7 @@ namespace Nethermind.Init.Steps
 
             BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
                 mainBlockProcessor,
+                chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
                 _api.LogManager);
@@ -159,7 +160,7 @@ namespace Nethermind.Init.Steps
         private void WarmupEvm()
         {
             IWorldState state = _api.WorldStateManager!.CreateResettableWorldState();
-            state.StateRoot = Keccak.EmptyTreeHash;
+            state.SetBaseBlock(null);
             VirtualMachine.WarmUpEvmInstructions(state, new CodeInfoRepository());
         }
 

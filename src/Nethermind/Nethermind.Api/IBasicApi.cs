@@ -24,7 +24,6 @@ namespace Nethermind.Api
     {
         IDisposableStack DisposeStack { get; }
 
-        IAbiEncoder AbiEncoder { get; }
         [SkipServiceCollection]
         ChainSpec ChainSpec { get; }
 

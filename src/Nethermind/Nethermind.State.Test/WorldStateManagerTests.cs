@@ -25,7 +25,7 @@ public class WorldStateManagerTests
     [Test]
     public void ShouldProxyGlobalWorldState()
     {
-        IVisitingWorldState worldState = Substitute.For<IVisitingWorldState>();
+        IWorldState worldState = Substitute.For<IWorldState>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
@@ -36,7 +36,7 @@ public class WorldStateManagerTests
     [Test]
     public void ShouldProxyReorgBoundaryEvent()
     {
-        IVisitingWorldState worldState = Substitute.For<IVisitingWorldState>();
+        IWorldState worldState = Substitute.For<IWorldState>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
@@ -52,7 +52,7 @@ public class WorldStateManagerTests
     [TestCase(INodeStorage.KeyScheme.HalfPath, false)]
     public void ShouldNotSupportHashLookupOnHalfpath(INodeStorage.KeyScheme keyScheme, bool hashSupported)
     {
-        IVisitingWorldState worldState = Substitute.For<IVisitingWorldState>();
+        IWorldState worldState = Substitute.For<IWorldState>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
@@ -87,7 +87,7 @@ public class WorldStateManagerTests
 
             IWorldState worldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
 
-            worldState.StateRoot = Keccak.EmptyTreeHash;
+            worldState.SetBaseBlock(null);
 
             worldState.CreateAccount(TestItem.AddressA, 1, 2);
             worldState.Commit(Cancun.Instance);

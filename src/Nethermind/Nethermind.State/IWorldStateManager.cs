@@ -13,7 +13,7 @@ namespace Nethermind.State;
 
 public interface IWorldStateManager
 {
-    IVisitingWorldState GlobalWorldState { get; }
+    IWorldState GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
     ISnapServer? SnapServer { get; }
     IReadOnlyKeyValueStore? HashServer { get; }
@@ -22,20 +22,18 @@ public interface IWorldStateManager
     /// Used by read only tasks that need to execute blocks.
     /// </summary>
     /// <returns></returns>
-    IVisitingWorldState CreateResettableWorldState();
+    IWorldState CreateResettableWorldState();
 
     /// <summary>
     /// Create a read only world state to warm up another world state
     /// </summary>
     /// <param name="forWarmup">Specify a world state to warm up by the returned world state.</param>
     /// <returns></returns>
-    IVisitingWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup);
+    IWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup);
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-    // TODO: These two method can be combined
     IOverridableWorldScope CreateOverridableWorldScope();
-    IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStoreWithBatching overlayCode);
 
     void InitializeNetwork(IPathRecovery pathRecovery);
 
@@ -56,7 +54,7 @@ public interface IWorldStateManager
 
 public interface IOverridableWorldScope
 {
-    IVisitingWorldState WorldState { get; }
+    IDisposable BeginScope(BlockHeader? header);
+    IWorldState WorldState { get; }
     IStateReader GlobalStateReader { get; }
-    void ResetOverrides();
 }

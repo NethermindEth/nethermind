@@ -16,7 +16,7 @@ namespace Nethermind.State;
 
 public class WorldStateManager : IWorldStateManager
 {
-    private readonly IVisitingWorldState _worldState;
+    private readonly IWorldState _worldState;
     private readonly IPruningTrieStore _trieStore;
     private readonly IReadOnlyTrieStore _readOnlyTrieStore;
     private readonly ILogManager _logManager;
@@ -26,7 +26,7 @@ public class WorldStateManager : IWorldStateManager
     private readonly ILastNStateRootTracker _lastNStateRootTracker;
 
     public WorldStateManager(
-        IVisitingWorldState worldState,
+        IWorldState worldState,
         IPruningTrieStore trieStore,
         IDbProvider dbProvider,
         ILogManager logManager,
@@ -46,7 +46,7 @@ public class WorldStateManager : IWorldStateManager
         _lastNStateRootTracker = lastNStateRootTracker;
     }
 
-    public IVisitingWorldState GlobalWorldState => _worldState;
+    public IWorldState GlobalWorldState => _worldState;
 
     public IReadOnlyKeyValueStore? HashServer => _trieStore.Scheme != INodeStorage.KeyScheme.Hash ? null : _trieStore.TrieNodeRlpStore;
 
@@ -68,7 +68,7 @@ public class WorldStateManager : IWorldStateManager
 
     public ISnapServer? SnapServer => _trieStore.Scheme == INodeStorage.KeyScheme.Hash ? null : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, GlobalStateReader, _logManager, _lastNStateRootTracker);
 
-    public IVisitingWorldState CreateResettableWorldState()
+    public IWorldState CreateResettableWorldState()
     {
         return new WorldState(
             _readOnlyTrieStore,
@@ -76,7 +76,7 @@ public class WorldStateManager : IWorldStateManager
             _logManager);
     }
 
-    public IVisitingWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup)
+    public IWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup)
     {
         PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
         return preBlockCaches is not null
@@ -91,12 +91,6 @@ public class WorldStateManager : IWorldStateManager
     public IOverridableWorldScope CreateOverridableWorldScope()
     {
         return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
-    }
-
-    public IWorldState CreateOverlayWorldState(IKeyValueStoreWithBatching overlayState, IKeyValueStoreWithBatching overlayCode)
-    {
-        OverlayTrieStore overlayTrieStore = new(overlayState, _readOnlyTrieStore);
-        return new WorldState(overlayTrieStore, overlayCode, _logManager);
     }
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
