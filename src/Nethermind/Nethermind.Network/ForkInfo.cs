@@ -1,12 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.Numerics;
-using System.Runtime.CompilerServices;
-using System.Threading;
 using Force.Crc32;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -14,6 +8,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Synchronization;
+using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace Nethermind.Network
 {
@@ -137,6 +137,37 @@ namespace Nethermind.Network
             }
 
             return ValidationResult.Valid;
+        }
+
+        public ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head)
+        {
+            ForkActivation headActivation = new(head?.Number ?? 0, head.Number == 0 ? 0 : head?.Timestamp ?? 0);
+
+            int indexOfActive = 0;
+            for (; indexOfActive < Forks.Length; indexOfActive++)
+            {
+                ForkActivation fork = Forks[indexOfActive].Activation;
+
+                if (fork.Timestamp.HasValue ? fork.Timestamp >= headActivation.Timestamp :
+                                              fork.BlockNumber >= headActivation.BlockNumber)
+                {
+                    break;
+                }
+            }
+
+            bool isNextPresent = indexOfActive < Forks.Length - 1;
+
+            return new ForkActivationsSummary
+            {
+                Current = Forks[indexOfActive].Activation,
+                CurrentForkId = Forks[indexOfActive].Id,
+
+                Next = isNextPresent ? Forks[indexOfActive + 1].Activation : null,
+                NextForkId = isNextPresent ? Forks[indexOfActive + 1].Id : null,
+
+                Last = isNextPresent ? Forks[^1].Activation : null,
+                LastForkId = isNextPresent ? Forks[^1].Id : null,
+            };
         }
     }
 }

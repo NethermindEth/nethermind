@@ -1,17 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.Intrinsics.Arm;
-using System.Security;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
 using DotNetty.Buffers;
 using Force.Crc32;
 using Nethermind.Blockchain.Filters;
@@ -24,8 +13,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Bls;
-using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -41,13 +28,22 @@ using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using Block = Nethermind.Core.Block;
 using BlockHeader = Nethermind.Core.BlockHeader;
 using ResultType = Nethermind.Core.ResultType;
@@ -785,66 +781,60 @@ public partial class EthRpcModule(
 
     public ResultWrapper<EthConfig> eth_config()
     {
-        ForkActivation head = new (_blockFinder.Head?.Number ?? 0, _blockFinder.Head?.Number == 0 ? 0 : _blockFinder.Head?.Timestamp ?? 0);
+        ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
 
-        ForkActivation[] activations = [new(0, 0), .._specProvider.TransitionActivations];
+        ForkConfig current = GetForkConfig(forks.Current, _specProvider);
+        ForkConfig? next = GetForkConfig(forks.Next, _specProvider);
+        ForkConfig? last = GetForkConfig(forks.Last, _specProvider);
 
-        int indexOfActive = activations
-            .TakeWhile(ta => ta.Timestamp.HasValue ? ta.Timestamp < head.Timestamp : ta.BlockNumber < head.BlockNumber)
-            .Count();
+        // Fix address as key
+        JsonSerializerOptions defaultOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
-        if (indexOfActive == activations.Length && indexOfActive > 0)
+        string serializedCurrent = JsonSerializer.Serialize(current, defaultOptions);
+        string? serializedNext = JsonSerializer.Serialize(next, defaultOptions);
+        string? serializedLast = JsonSerializer.Serialize(last, defaultOptions);
+
+        return ResultWrapper<EthConfig>.Success(new EthConfig
         {
-            indexOfActive--;
-        }
+            Current = JsonNode.Parse(serializedCurrent),
+            CurrentHash = GetCrc32FromJson(serializedCurrent).Value,
+            CurrentForkId = forks.CurrentForkId.HashBytes,
 
-        activations = activations.Skip(indexOfActive).ToArray();
+            Next = JsonNode.Parse(serializedNext),
+            NextHash = GetCrc32FromJson(serializedNext),
+            NextForkId = forks.NextForkId?.HashBytes,
 
-        ForkConfig[] specs = activations.Select(x =>
+            Last = JsonNode.Parse(serializedLast),
+            LastHash = GetCrc32FromJson(serializedLast),
+            LastForkId = forks.LastForkId?.HashBytes,
+        });
+
+        static uint? GetCrc32FromJson(string? json) => json is null ? null : Crc32Algorithm.Compute(Encoding.UTF8.GetBytes(RemoveWhitespace().Replace(json, "")));
+
+        static ForkConfig? GetForkConfig(ForkActivation? forkActivation, ISpecProvider specProvider)
         {
-            IReleaseSpec? spec = _specProvider.GetSpec(x.BlockNumber, x.Timestamp);
+            if (forkActivation is null)
+            {
+                return null;
+            }
+
+            IReleaseSpec? spec = specProvider.GetSpec(forkActivation.Value.BlockNumber, forkActivation.Value.Timestamp);
 
             return new ForkConfig
             {
-                ActivationTime = x.Timestamp is not null ? (int)x.Timestamp : null,
-                ActivationBlock = x.Timestamp is null ? (int)x.BlockNumber : null,
+                ActivationTime = forkActivation.Value.Timestamp is not null ? (int)forkActivation.Value.Timestamp : null,
+                ActivationBlock = forkActivation.Value.Timestamp is null ? (int)forkActivation.Value.BlockNumber : null,
                 BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettingsForRpc
                 {
                     BaseFeeUpdateFraction = (int)spec.BlobBaseFeeUpdateFraction,
                     Max = (int)spec.MaxBlobCount,
                     Target = (int)spec.TargetBlobCount,
                 } : null,
-                ChainId = _specProvider.ChainId,
+                ChainId = specProvider.ChainId,
                 Precompiles = spec.ListPrecompiles(),
                 SystemContracts = spec.ListSystemContracts(),
             };
-        }).Where((f,i)=> i is 0 or 1 || i == activations.Length - 1).ToArray();;
-
-        JsonSerializerOptions defaultOptions = new(EthereumJsonSerializer.JsonOptionsIndented)
-        {
-            DictionaryKeyPolicy = null
-        };
-
-        string[] serialized = specs.Select(fc => JsonSerializer.Serialize(fc, defaultOptions)).ToArray();
-
-        uint[] crc = serialized.Select(fcStr =>
-            Crc32Algorithm.Compute(
-                Encoding.UTF8.GetBytes(
-                    RemoveWhitespace().Replace(fcStr, ""))
-                    )).ToArray();
-
-        return ResultWrapper<EthConfig>.Success(new EthConfig
-        {
-            Current = JsonNode.Parse(serialized[0])!,
-            CurrentHash = crc[0],
-            CurrentForkId = forkInfo.GetForkId(activations[0].BlockNumber, activations[0].Timestamp ?? 0).HashBytes,
-            Next = serialized.Skip(1).FirstOrDefault() is null ? null: JsonNode.Parse(serialized.Skip(1).FirstOrDefault()!),
-            NextHash = crc.Skip(1).Any() ? crc.Skip(1).FirstOrDefault() : null,
-            NextForkId = specs.Length != 2 ? null : forkInfo.GetForkId(activations[0].BlockNumber == activations[1].BlockNumber ? activations[0].BlockNumber + 1 : activations[1].BlockNumber, activations[1].Timestamp ?? 0).HashBytes,
-            Last = serialized.LastOrDefault() is null ? null: JsonNode.Parse(serialized.LastOrDefault()!),
-            LastHash = crc.LastOrDefault(),
-            LastForkId = specs.Length == 0 ? null : forkInfo.GetForkId(activations[0].BlockNumber == activations.Last().BlockNumber ? activations[0].BlockNumber + 1 : activations.Last().BlockNumber, activations.Last().Timestamp ?? 0).HashBytes
-        });
+        }
     }
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
