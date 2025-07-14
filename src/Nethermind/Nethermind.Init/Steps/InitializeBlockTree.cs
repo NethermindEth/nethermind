@@ -117,20 +117,16 @@ namespace Nethermind.Init.Steps
                 _ = new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
             }
 
-            if (historyConfig.Enabled)
-            {
-                HistoryPruner historyPruner = new(
-                    blockTree,
-                    receiptStorage,
-                    _get.SpecProvider!,
-                    blockStore,
-                    chainLevelInfoRepository,
-                    _get.DbProvider.MetadataDb,
-                    historyConfig,
-                    (long)blocksConfig.SecondsPerSlot,
-                    logManager);
-                _set.HistoryPruner = historyPruner;
-            }
+            _set.HistoryPruner = new HistoryPruner(
+                blockTree,
+                receiptStorage,
+                _get.SpecProvider!,
+                blockStore,
+                chainLevelInfoRepository,
+                _get.DbProvider.MetadataDb,
+                historyConfig,
+                (long)blocksConfig.SecondsPerSlot,
+                logManager);
 
             return Task.CompletedTask;
         }

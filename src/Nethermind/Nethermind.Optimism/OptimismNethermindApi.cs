@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Autofac;
 using Nethermind.Api;
-using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism;
 
