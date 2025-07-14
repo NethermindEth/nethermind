@@ -26,7 +26,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
     public static Address Address { get; } = Address.FromNumber(0x0c);
 
     public static string Name => "BLS12_G1MSM";
-    
+
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

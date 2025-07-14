@@ -24,7 +24,7 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
     public static Address Address { get; } = Address.FromNumber(0x0b);
 
     public static string Name => "BLS12_G1ADD";
-    
+
     public long BaseGasCost(IReleaseSpec releaseSpec) => 375L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
