@@ -116,6 +116,8 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
         private readonly int _index;
         private readonly int _count;
 
+        public int Count => _count;
+
         public StorageKeysEnumerable(AccessList accessList, int index, int count)
         {
             _accessList = accessList;

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using Autofac.Core;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -32,6 +31,6 @@ public interface IOverridableEnv : IModule
 /// <typeparam name="T"></typeparam>
 public interface IOverridableEnv<T>
 {
-    Scope<T> BuildAndOverride(BlockHeader header);
+    Scope<T> BuildAndOverride(BlockHeader? header);
     Scope<T> BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride);
 }

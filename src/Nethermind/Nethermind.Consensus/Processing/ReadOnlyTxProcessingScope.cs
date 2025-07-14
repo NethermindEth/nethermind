@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
@@ -9,7 +10,7 @@ namespace Nethermind.Consensus.Processing;
 
 public class ReadOnlyTxProcessingScope(
     ITransactionProcessor transactionProcessor,
-    IVisitingWorldState worldState
+    IWorldState worldState
 ) : IReadOnlyTxProcessingScope
 {
     public void Dispose()
@@ -19,5 +20,5 @@ public class ReadOnlyTxProcessingScope(
     }
 
     public ITransactionProcessor TransactionProcessor => transactionProcessor;
-    public IVisitingWorldState WorldState => worldState;
+    public IWorldState WorldState => worldState;
 }

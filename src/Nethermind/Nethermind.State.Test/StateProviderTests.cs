@@ -64,32 +64,6 @@ public class StateProviderTests
     }
 
     [Test]
-    public void Can_dump_state()
-    {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IVisitingWorldState provider = worldStateManager.GlobalWorldState;
-        provider.CreateAccount(TestItem.AddressA, 1.Ether());
-        provider.Commit(MuirGlacier.Instance);
-        provider.CommitTree(0);
-
-        string state = provider.DumpState();
-        state.Should().NotBeEmpty();
-    }
-
-    [Test]
-    public void Can_accepts_visitors()
-    {
-        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
-        IVisitingWorldState provider = worldStateManager.GlobalWorldState;
-        provider.CreateAccount(TestItem.AddressA, 1.Ether());
-        provider.Commit(MuirGlacier.Instance);
-        provider.CommitTree(0);
-
-        TrieStatsCollector visitor = new(new MemDb(), LimboLogs.Instance);
-        provider.Accept(visitor, provider.StateRoot);
-    }
-
-    [Test]
     public void Empty_commit_restore()
     {
         WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();

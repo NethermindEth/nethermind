@@ -18,7 +18,7 @@ public class ReadOnlyTxProcessingScopeTests
     {
         ReadOnlyTxProcessingScope env = new ReadOnlyTxProcessingScope(
             Substitute.For<ITransactionProcessor>(),
-            Substitute.For<IVisitingWorldState>());
+            Substitute.For<IWorldState>());
 
         env.Dispose();
 
