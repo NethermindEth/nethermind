@@ -292,7 +292,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             _fileSystem.File.WriteAllText(CorruptMarkerPath, "marker");
 
             // Don't kill tests checking corruption response
-            if (rocksDbException.Message != "Corruption: test corruption")
+            if (!rocksDbException.Message.Equals("Corruption: test corruption", StringComparison.Ordinal))
             {
                 Environment.FailFast("Fast shutdown due to DB corruption. Please restart.");
             }
