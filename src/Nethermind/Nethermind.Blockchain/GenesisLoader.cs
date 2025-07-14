@@ -29,7 +29,8 @@ namespace Nethermind.Blockchain
         ITransactionProcessor transactionProcessor,
         ILogManager logManager,
         Hash256? expectedGenesisHash = null
-    ) {
+    )
+    {
         ILogger _logger = logManager.GetClassLogger<GenesisLoader>();
 
         public Block Load()
