@@ -56,7 +56,7 @@ public class BoundedModulePoolTests
             Substitute.For<IFeeHistoryOracle>(),
             Substitute.For<IProtocolsManager>(),
             new BlocksConfig(),
-            Substitute.For<ForkInfo>()),
+            Substitute.For<IForkInfo>()),
              1, 1000);
 
         return Task.CompletedTask;
