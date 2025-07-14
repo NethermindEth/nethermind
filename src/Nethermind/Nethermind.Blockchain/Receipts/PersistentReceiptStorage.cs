@@ -333,6 +333,11 @@ namespace Nethermind.Blockchain.Receipts
         public void RemoveReceipts(Block block)
         {
             _receiptsCache.Delete(block.Hash);
+
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            GetBlockNumPrefixedKey(block.Number, block.Hash, blockNumPrefixed);
+            _blocksDb.Remove(blockNumPrefixed);
+
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
             foreach (Transaction tx in block.Transactions)
             {
