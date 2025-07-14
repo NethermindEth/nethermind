@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected override Func<bool> HasPivot =>
             () => _syncPointers.LowestInsertedBodyNumber is not null && _syncPointers.LowestInsertedBodyNumber <= _blockTree.SyncPivot.BlockNumber;
 
-        private FastBlocksAllocationStrategy _approximateAllocationStrategy = new FastBlocksAllocationStrategy(TransferSpeedType.Bodies, 0, true);
+        private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.Bodies, 0, true);
 
         private const long DefaultFlushDbInterval = 100000; // About every 10GB on mainnet
         private readonly long _flushDbInterval; // About every 10GB on mainnet
