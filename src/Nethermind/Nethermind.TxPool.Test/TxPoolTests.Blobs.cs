@@ -12,7 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -26,6 +26,7 @@ using NUnit.Framework;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.State;
 
 namespace Nethermind.TxPool.Test
 {
@@ -1019,59 +1020,55 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
         }
 
-        [TestCaseSource(nameof(EvictionAccordingToLimitsTestCaseSource))]
-        public async Task<int> should_evict_txs_with_too_many_blobs_after_fork(BlobScheduleSettings initial, BlobScheduleSettings updated, int[] blobTxBlobCounts)
+        [Test]
+        public async Task should_evict_txs_with_too_many_blobs_after_fork()
         {
-            ChainSpecBasedSpecProvider provider = new(new ChainSpec
+            const int regularMaxBlobCount = 9;
+
+            TestSpecProvider provider = new(new ReleaseSpec
             {
-                Parameters = new ChainParameters
+                IsEip4844Enabled = true,
+                MaxBlobCount = regularMaxBlobCount,
+            })
+            {
+                SpecToReturn = new ReleaseSpec
                 {
-                    Eip4844TransitionTimestamp = 0,
-                    BlobSchedule = {
-                         initial with { Timestamp = _blockTree.Head.Timestamp  },
-                         updated with { Timestamp = _blockTree.Head.Timestamp + 1 },
-                    },
+                    IsEip4844Enabled = true,
+                    IsEip7594Enabled = true,
+                    MaxBlobCount = regularMaxBlobCount,
                 },
-                EngineChainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>()
-            });
+                ForkOnBlockNumber = _blockTree.Head.Number + 1,
+            };
 
             Block head = _blockTree.Head;
             _blockTree.FindBestSuggestedHeader().Returns(head.Header);
 
-            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, Size = 10 };
-            _txPool = CreatePool(txPoolConfig, provider);
+            _txPool = CreatePool(specProvider: provider);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            UInt256 nonce = 0;
-
-            foreach (var blobCount in blobTxBlobCounts)
-            {
-                _txPool.SubmitTx(CreateBlobTx(TestItem.PrivateKeyA, nonce++, blobCount), TxHandlingOptions.None);
-            }
-
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(blobTxBlobCounts.Length));
+            _txPool.SubmitTx(CreateBlobTx(TestItem.PrivateKeyA, 0, regularMaxBlobCount), TxHandlingOptions.None);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
 
             await AddBlock();
 
-            return _txPool.GetPendingBlobTransactionsCount();
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
         }
 
-        public static IEnumerable EvictionAccordingToLimitsTestCaseSource
+        [Test]
+        public void max_blobs_per_tx_should_not_exceed_max_blobs_per_block()
         {
-            get
-            {
-                static TestCaseData MakeTestCase(string testName, BlobScheduleSettings initial, BlobScheduleSettings updated, int[] blobTxBlobCounts, int finalTxCount)
-                    => new(initial, updated, blobTxBlobCounts) { TestName = $"EvictionAccordingToBlobLimits: {testName}", ExpectedResult = finalTxCount };
+            const ulong regularMaxBlobCount = Eip7594Constants.MaxBlobsPerTx - 1;
 
-                yield return MakeTestCase("Evicts when per block limit is set",
-                    new BlobScheduleSettings { Max = 6 }, new BlobScheduleSettings { Max = 5 }, [6], 0);
-                yield return MakeTestCase("Evicts when per tx limit only is set",
-                    new BlobScheduleSettings { Max = 6 }, new BlobScheduleSettings { Max = 6, MaxBlobsPerTx = 3 }, [6], 0);
-                yield return MakeTestCase("Evicts when per tx limit only is changed",
-                    new BlobScheduleSettings { Max = 6, MaxBlobsPerTx = 3 }, new BlobScheduleSettings { Max = 6, MaxBlobsPerTx = 2 }, [2, 3, 2], 1);
-                yield return MakeTestCase("Evicts next txs too",
-                    new BlobScheduleSettings { Max = 6 }, new BlobScheduleSettings { Max = 6, MaxBlobsPerTx = 3 }, [6, 3, 3, 3], 0);
-            }
+            TestSpecProvider provider = new(new ReleaseSpec
+            {
+                IsEip4844Enabled = true,
+                IsEip7594Enabled = true,
+                MaxBlobCount = regularMaxBlobCount,
+            });
+
+            ulong maxBlobsPerTx = provider.GetSpec(_blockTree.Head!.Header).MaxBlobsPerTx;
+
+            Assert.That(maxBlobsPerTx, Is.EqualTo(regularMaxBlobCount));
         }
     }
 }

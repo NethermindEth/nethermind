@@ -16,10 +16,11 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Trie.Pruning;
 using FluentAssertions;
 using Nethermind.Core.Test;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -38,12 +39,12 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(int.MaxValue, int.MaxValue / 32 + 1)]
     public void Div32Ceiling(int input, int expectedResult)
     {
-        long result = EvmPooledMemory.Div32Ceiling((ulong)input);
+        long result = EvmInstructions.Div32Ceiling((ulong)input);
         TestContext.Out.WriteLine($"Memory cost (gas): {result}");
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    private const int MaxCodeSize = 24576;
+    private const int MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
 
     [TestCase(0, 0)]
     [TestCase(0, 32)]

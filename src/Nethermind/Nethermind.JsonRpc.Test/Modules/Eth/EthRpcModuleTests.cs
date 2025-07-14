@@ -73,7 +73,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_feeHistory", "0x1", "latest", "[20,50,90]");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x0\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0105],\"blobGasUsedRatio\":[0.0],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x1\",\"0x1\",\"0x1\"]]},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x0\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0105],\"blobGasUsedRatio\":[0],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x1\",\"0x1\",\"0x1\"]]},\"id\":67}"));
     }
 
     [Test]
@@ -1355,6 +1355,42 @@ public partial class EthRpcModuleTests
         JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result);
         Assert.That(actual.Error!.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
     }
+
+    [Test]
+    public async Task eth_getTransactionByHash_returns_correct_values_on_SetCode_tx()
+    {
+        TestSpecProvider specProvider = new TestSpecProvider(Prague.Instance);
+        specProvider.AllowTestChainOverride = false;
+
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
+
+        const int BadYparity = 229;
+        const int BadR = 123;
+        const int BadS = 123;
+        var authTuple = new AuthorizationTuple(0, Address.SystemUser, 0, BadYparity, BadR, BadS);
+        Transaction setCodeTx = Build.A.Transaction
+          .WithType(TxType.SetCode)
+          .WithNonce(test.ReadOnlyState.GetNonce(TestItem.AddressB))
+          .WithMaxFeePerGas(9.GWei())
+          .WithMaxPriorityFeePerGas(9.GWei())
+          .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount)
+          .WithAuthorizationCode(authTuple)
+          .WithTo(TestItem.AddressA)
+          .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+        await test.AddBlock(setCodeTx!);
+
+        string jsonFromRpc = await test.TestEthRpc("eth_getTransactionByHash", setCodeTx!.CalculateHash());
+
+        SetCodeTransactionForRpc actual = new EthereumJsonSerializer().Deserialize<JsonRpcResponse<SetCodeTransactionForRpc>>(jsonFromRpc).Result;
+
+        AuthorizationListForRpc.RpcAuthTuple result = actual.AuthorizationList!.First();
+
+        Assert.That(result.YParity, Is.EqualTo(BadYparity), "Y parity should match the one in the transaction");
+        Assert.That((int)result.R, Is.EqualTo(BadR), "R should match the one in the transaction");
+        Assert.That((int)result.S, Is.EqualTo(BadS), "S should match the one in the transaction");
+    }
+
 
 
     [Test]

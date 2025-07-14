@@ -7,16 +7,17 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
@@ -77,14 +78,14 @@ namespace Nethermind.Consensus.Producers
         }
 
         public async Task<Block?> BuildBlock(BlockHeader? parentHeader = null, IBlockTracer? blockTracer = null,
-            PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
+            PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None, CancellationToken token = default)
         {
             Block? block = null;
             if (await _producingBlockLock.WaitAsync(BlockProductionTimeoutMs, token))
             {
                 try
                 {
-                    block = await TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes);
+                    block = await TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes, flags);
                 }
                 catch (Exception e) when (e is not TaskCanceledException)
                 {
@@ -105,7 +106,7 @@ namespace Nethermind.Consensus.Producers
             return block;
         }
 
-        protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
+        protected virtual Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
             if (parentHeader is null)
             {
@@ -113,10 +114,11 @@ namespace Nethermind.Consensus.Producers
             }
             else
             {
-                if (Sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
+                bool dontSeal = (flags & IBlockProducer.Flags.DontSeal) != 0;
+                if (dontSeal || Sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
                 {
                     Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
-                    return ProduceNewBlock(parentHeader, token, blockTracer, payloadAttributes);
+                    return ProduceNewBlock(parentHeader, token, blockTracer, payloadAttributes, flags);
                 }
                 else
                 {
@@ -128,11 +130,11 @@ namespace Nethermind.Consensus.Producers
             return Task.FromResult((Block?)null);
         }
 
-        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null)
+        private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
-            if (TrySetState(parent.StateRoot))
+            if (TrySetState(parent))
             {
-                Block block = PrepareBlock(parent, payloadAttributes);
+                Block block = PrepareBlock(parent, payloadAttributes, flags);
                 if (PreparedBlockCanBeMined(block))
                 {
                     Block? processedBlock = ProcessPreparedBlock(block, blockTracer, token);
@@ -143,6 +145,8 @@ namespace Nethermind.Consensus.Producers
                     }
                     else
                     {
+                        if ((flags & IBlockProducer.Flags.DontSeal) != 0) return Task.FromResult(processedBlock);
+
                         return SealBlock(processedBlock, parent, token).ContinueWith((Func<Task<Block?>, Block?>)(t =>
                         {
                             if (t.IsCompletedSuccessfully)
@@ -188,11 +192,11 @@ namespace Nethermind.Consensus.Producers
         /// <param name="parentStateRoot">Parent block state</param>
         /// <returns>True if succeeded, false otherwise</returns>
         /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
-        protected bool TrySetState(Hash256? parentStateRoot)
+        protected bool TrySetState(BlockHeader? parent)
         {
-            if (parentStateRoot is not null && StateProvider.HasStateForRoot(parentStateRoot))
+            if (parent is not null && StateProvider.HasStateForBlock(parent))
             {
-                StateProvider.StateRoot = parentStateRoot;
+                StateProvider.SetBaseBlock(parent);
                 return true;
             }
 
@@ -247,11 +251,13 @@ namespace Nethermind.Consensus.Producers
             return header;
         }
 
-        protected virtual Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected virtual BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
-            IEnumerable<Transaction> transactions = TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: true);
+            IEnumerable<Transaction> transactions = (flags & IBlockProducer.Flags.EmptyBlock) != 0 ?
+                Array.Empty<Transaction>() :
+                TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: true);
 
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }

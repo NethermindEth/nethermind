@@ -25,7 +25,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Config;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
@@ -230,7 +230,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<IProtocolValidator>(),
                 Substitute.For<INetworkStorage>(),
-                new ForkInfo(SpecProvider, GetGenesisBlock(WorldStateManager.GlobalWorldState).Hash!),
+                Container.Resolve<IForkInfo>(),
                 Substitute.For<IGossipPolicy>(),
                 WorldStateManager,
                 LimboLogs.Instance,

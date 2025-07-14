@@ -6,16 +6,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Nethermind.Config;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
@@ -53,7 +53,7 @@ namespace Nethermind.Consensus.Processing
                 => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
-                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token = default)
+                BlockReceiptsTracer receiptsTracer, CancellationToken token = default)
             {
                 // We start with high number as don't want to resize too much
                 const int defaultTxCount = 512;

@@ -10,7 +10,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.Tracing;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 using static Nethermind.Evm.VirtualMachine;
 
@@ -103,7 +103,7 @@ internal static partial class EvmInstructions
         }
 
         // Deduct the fixed gas cost and the memory cost based on the size (rounded up to 32-byte words).
-        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size, out bool outOfGas);
+        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * Div32Ceiling(in size, out bool outOfGas);
         if (outOfGas) goto OutOfGas;
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
@@ -255,7 +255,7 @@ internal static partial class EvmInstructions
         }
 
         // Calculate memory expansion gas cost and deduct overall gas for data copy.
-        if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size, out bool outOfGas), ref gasAvailable)
+        if (!UpdateGas(GasCostOf.DataCopy + GasCostOf.Memory * Div32Ceiling(in size, out bool outOfGas), ref gasAvailable)
             || outOfGas)
         {
             goto OutOfGas;
@@ -524,11 +524,11 @@ internal static partial class EvmInstructions
         // Read the immediate operand.
         int imm = codeInfo.CodeSection.Span[programCounter];
         // Duplicate the (imm+1)th stack element.
-        stack.Dup<TTracingInst>(imm + 1);
+        EvmExceptionType result = stack.Dup<TTracingInst>(imm + 1);
 
         programCounter += 1;
 
-        return EvmExceptionType.None;
+        return result;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -553,15 +553,12 @@ internal static partial class EvmInstructions
 
         // Immediate operand determines the swap index.
         int n = 1 + (int)codeInfo.CodeSection.Span[programCounter];
-        if (!stack.Swap<TTracingInst>(n + 1))
-            goto StackUnderflow;
+        EvmExceptionType result = stack.Swap<TTracingInst>(n + 1);
 
         programCounter += 1;
 
-        return EvmExceptionType.None;
+        return result;
     // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     BadInstruction:
@@ -659,7 +656,7 @@ internal static partial class EvmInstructions
         }
 
         // 6. Deduct gas for keccak256 hashing of the init code.
-        long numberOfWordsInInitCode = EvmPooledMemory.Div32Ceiling((UInt256)initContainer.Length, out bool outOfGas);
+        long numberOfWordsInInitCode = Div32Ceiling((UInt256)initContainer.Length, out bool outOfGas);
         long hashCost = GasCostOf.Sha3Word * numberOfWordsInInitCode;
         if (outOfGas || !UpdateGas(hashCost, ref gasAvailable))
             goto OutOfGas;

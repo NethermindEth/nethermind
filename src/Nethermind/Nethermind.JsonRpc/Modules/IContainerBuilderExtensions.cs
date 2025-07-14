@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 
 namespace Nethermind.JsonRpc.Modules;
 
@@ -18,10 +20,13 @@ public static class IContainerBuilderExtensions
     public static ContainerBuilder RegisterSingletonJsonRpcModule<T>(this ContainerBuilder builder) where T : IRpcModule
     {
         return builder
-            .AddSingleton<RpcModuleInfo>((ctx) =>
+            .AddLast<RpcModuleInfo>((ctx) =>
             {
-                T instance = ctx.Resolve<T>();
-                return new RpcModuleInfo(typeof(T), new SingletonModulePool<T>(instance, true));
+                Lazy<T> instance = ctx.Resolve<Lazy<T>>();
+                return new RpcModuleInfo(typeof(T), new LazyModulePool<T>(new Lazy<IRpcModulePool<T>>(() =>
+                {
+                    return new SingletonModulePool<T>(instance.Value, true);
+                })));
             });
     }
 
@@ -35,10 +40,13 @@ public static class IContainerBuilderExtensions
         return builder
             .AddSingleton<TFactory>()
             .AddSingleton<IRpcModuleFactory<T>, TFactory>()
-            .AddSingleton<RpcModuleInfo>((ctx) =>
+            .AddLast<RpcModuleInfo>((ctx) =>
             {
-                IRpcModuleFactory<T> factory = ctx.Resolve<IRpcModuleFactory<T>>();
-                return new RpcModuleInfo(typeof(T), new BoundedModulePool<T>(factory, maxCount, timeout));
+                Lazy<IRpcModuleFactory<T>> factory = ctx.Resolve<Lazy<IRpcModuleFactory<T>>>();
+                return new RpcModuleInfo(typeof(T), new LazyModulePool<T>(new Lazy<IRpcModulePool<T>>(() =>
+                {
+                    return new BoundedModulePool<T>(factory.Value, maxCount, timeout);
+                })));
             });
     }
 }

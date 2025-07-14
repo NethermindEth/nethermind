@@ -4,7 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.AuRa;
 

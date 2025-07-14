@@ -1,25 +1,32 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO.Abstractions;
 using System.Reflection;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
+using Nethermind.Wallet;
+using NSubstitute;
 using Module = Autofac.Module;
 
 namespace Nethermind.Core.Test.Modules;
@@ -49,6 +56,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<ITimerFactory, TimerFactory>()
             .AddSingleton<IBackgroundTaskScheduler, MainBlockProcessingContext>((blockProcessingContext) => new BackgroundTaskScheduler(
                 blockProcessingContext.BlockProcessor,
+                new ChainHeadInfoMock(),
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
                 logManager))
@@ -60,10 +68,13 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             // Crypto
             .AddSingleton<ICryptoRandom>(new CryptoRandom())
 
-            .AddSingleton<IFilterStore, ITimerFactory, IJsonRpcConfig>((timerFactory, rpcConfig) => new FilterStore(timerFactory, rpcConfig.FiltersTimeout))
+            .AddSingleton<ISignerStore>(NullSigner.Instance)
+            .AddSingleton<IKeyStore>(Substitute.For<IKeyStore>())
+            .AddSingleton<IWallet, DevWallet>()
+            .AddSingleton<ITxSender>(Substitute.For<ITxSender>())
 
-            .AddSingleton<IFilterManager, IFilterStore, IMainProcessingContext, ITxPool, ILogManager>((store, processingContext, txPool, logManager) =>
-                    new FilterManager(store, processingContext.BlockProcessor, txPool, logManager))
+            // Rpc
+            .AddSingleton<IJsonRpcService, JsonRpcService>()
 
             ;
 
@@ -77,5 +88,20 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
                 Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: true);
             }
         });
+    }
+
+    private class ChainHeadInfoMock : IChainHeadInfoProvider
+    {
+        public IChainHeadSpecProvider SpecProvider { get; } = null!;
+        public IReadOnlyStateProvider ReadOnlyStateProvider { get; } = null!;
+        public ICodeInfoRepository CodeInfoRepository { get; } = null!;
+        public long HeadNumber { get; }
+        public long? BlockGasLimit { get; }
+        public UInt256 CurrentBaseFee { get; }
+        public UInt256 CurrentFeePerBlobGas { get; }
+        public ProofVersion CurrentProofVersion { get; }
+        public bool IsSyncing { get => false; }
+        public bool IsProcessingBlock { get; }
+        public event EventHandler<BlockReplacementEventArgs> HeadChanged { add { } remove { } }
     }
 }

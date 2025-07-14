@@ -80,7 +80,7 @@ namespace Nethermind.TxPool
             _headInfo = chainHeadInfoProvider;
             _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             // Allocate closure once
-            _gossipFilter = t => _txGossipPolicy.ShouldGossipTransaction(t);
+            _gossipFilter = _txGossipPolicy.ShouldGossipTransaction;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _persistentTxs = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
             _accumulatedTemporaryTxs = new ResettableList<Transaction>(512, 4);
@@ -186,7 +186,7 @@ namespace Nethermind.TxPool
 
                 if (transactionsToSend is not null)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Broadcasting {transactionsToSend.Count} persistent transactions to all peers.");
+                    if (_logger.IsTrace) _logger.Trace($"Broadcasting {transactionsToSend.Count} persistent transactions to all peers.");
 
                     foreach ((_, ITxPoolPeer peer) in _peers)
                     {
@@ -195,12 +195,12 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    if (_logger.IsDebug) _logger.Debug($"There are currently no transactions able to broadcast.");
+                    if (_logger.IsTrace) _logger.Trace($"There are currently no transactions able to broadcast.");
                 }
 
                 if (hashesToSend is not null)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Announcing {hashesToSend.Count} hashes of persistent transactions to all peers.");
+                    if (_logger.IsTrace) _logger.Trace($"Announcing {hashesToSend.Count} hashes of persistent transactions to all peers.");
 
                     foreach ((_, ITxPoolPeer peer) in _peers)
                     {
@@ -295,7 +295,7 @@ namespace Nethermind.TxPool
             {
                 _txsToSend = Interlocked.Exchange(ref _accumulatedTemporaryTxs, _txsToSend);
 
-                if (_logger.IsDebug) _logger.Debug($"Broadcasting transactions to all peers");
+                if (_logger.IsTrace) _logger.Trace($"Broadcasting transactions to all peers");
 
                 foreach ((_, ITxPoolPeer peer) in _peers)
                 {
@@ -305,7 +305,13 @@ namespace Nethermind.TxPool
                 _txsToSend.Reset();
             }
 
-            NotifyPeers();
+            // Don't broadcast txs while producing a block as it
+            // allocates a lot and we want to minimize GCs at this time
+            // also head about to change which could change the filter results
+            if (!_headInfo.IsProcessingBlock)
+            {
+                NotifyPeers();
+            }
             _timer.Enabled = true;
         }
 
@@ -330,7 +336,7 @@ namespace Nethermind.TxPool
         {
             if (!_txGossipPolicy.CanGossipTransactions || !_txGossipPolicy.ShouldGossipTransaction(tx)) return;
 
-            if (_logger.IsDebug) _logger.Debug($"Broadcasting new local transaction {tx.Hash} to all peers");
+            if (_logger.IsTrace) _logger.Trace($"Broadcasting new local transaction {tx.Hash} to all peers");
 
             foreach ((_, ITxPoolPeer peer) in _peers)
             {

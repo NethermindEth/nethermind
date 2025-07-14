@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain
             ISyncConfig? syncConfig,
             ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<BlockTree>() ?? throw new ArgumentNullException(nameof(logManager));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
             _headerStore = headerDb ?? throw new ArgumentNullException(nameof(headerDb));
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
@@ -1740,6 +1740,8 @@ namespace Nethermind.Blockchain
                 TryUpdateSyncPivot();
             }
         }
+
+        public bool IsProcessingBlock { get; set; }
 
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {

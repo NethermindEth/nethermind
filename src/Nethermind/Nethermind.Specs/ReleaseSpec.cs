@@ -84,6 +84,7 @@ namespace Nethermind.Specs
         public bool IsEip4895Enabled { get; set; }
         public bool IsEip4844Enabled { get; set; }
         public bool IsEip7951Enabled { get; set; }
+        public bool IsRip7212Enabled { get; set; }
         public bool IsOpGraniteEnabled { get; set; }
         public bool IsOpHoloceneEnabled { get; set; }
         public bool IsOpIsthmusEnabled { get; set; }
@@ -99,12 +100,13 @@ namespace Nethermind.Specs
         public bool IsEip7251Enabled { get; set; }
         public bool IsEip7825Enabled { get; set; }
         public bool IsEip7918Enabled { get; set; }
+        public bool IsEip7934Enabled { get; set; }
+        public int Eip7934MaxRlpBlockSize { get; set; }
+        public bool IsEip7907Enabled { get; set; }
 
         public ulong TargetBlobCount { get; set; }
         public ulong MaxBlobCount { get; set; }
-
-        private ulong? _maxBlobsPerTx;
-        public ulong MaxBlobsPerTx { get => _maxBlobsPerTx ?? MaxBlobCount; set => _maxBlobsPerTx = value; }
+        public ulong MaxBlobsPerTx => IsEip7594Enabled ? Math.Min(Eip7594Constants.MaxBlobsPerTx, MaxBlobCount) : MaxBlobCount;
         public UInt256 BlobBaseFeeUpdateFraction { get; set; }
 
 

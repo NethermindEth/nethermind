@@ -1,14 +1,16 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm;
 using unsafe OpCode = delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType>;
 using Int256;
-using Nethermind.Evm.Precompiles;
 
 internal static unsafe partial class EvmInstructions
 {
@@ -77,7 +79,7 @@ internal static unsafe partial class EvmInstructions
         // Environment opcodes.
         lookup[(int)Instruction.ADDRESS] = &InstructionEnvAddress<OpAddress, TTracingInst>;
         lookup[(int)Instruction.BALANCE] = &InstructionBalance<TTracingInst>;
-        lookup[(int)Instruction.ORIGIN] = &InstructionBlkAddress<OpOrigin, TTracingInst>;
+        lookup[(int)Instruction.ORIGIN] = &InstructionEnv32Bytes<OpOrigin, TTracingInst>;
         lookup[(int)Instruction.CALLER] = &InstructionEnvAddress<OpCaller, TTracingInst>;
         lookup[(int)Instruction.CALLVALUE] = &InstructionEnvUInt256<OpCallValue, TTracingInst>;
         lookup[(int)Instruction.CALLDATALOAD] = &InstructionCallDataLoad<TTracingInst>;
@@ -115,7 +117,7 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.GASLIMIT] = &InstructionBlkUInt64<OpGasLimit, TTracingInst>;
         if (spec.ChainIdOpcodeEnabled)
         {
-            lookup[(int)Instruction.CHAINID] = &InstructionChainId<TTracingInst>;
+            lookup[(int)Instruction.CHAINID] = &InstructionEnv32Bytes<OpChainId, TTracingInst>;
         }
         if (spec.SelfBalanceOpcodeEnabled)
         {
@@ -142,7 +144,12 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.MSTORE] = &InstructionMStore<TTracingInst>;
         lookup[(int)Instruction.MSTORE8] = &InstructionMStore8<TTracingInst>;
         lookup[(int)Instruction.SLOAD] = &InstructionSLoad<TTracingInst>;
-        lookup[(int)Instruction.SSTORE] = &InstructionSStore<TTracingInst>;
+        lookup[(int)Instruction.SSTORE] = spec.UseNetGasMetering ?
+            (spec.UseNetGasMeteringWithAStipendFix ?
+                &InstructionSStoreMetered<TTracingInst, OnFlag> :
+                &InstructionSStoreMetered<TTracingInst, OffFlag>
+            ) :
+            &InstructionSStoreUnmetered<TTracingInst>;
 
         // Jump instructions.
         lookup[(int)Instruction.JUMP] = &InstructionJump;
@@ -359,10 +366,9 @@ internal static unsafe partial class EvmInstructions
             }
 
             // If the account is cold (and not a precompile), charge the cold access cost.
-            if (vmState.AccessTracker.IsCold(address) && !address.IsPrecompile(spec))
+            if (!address.IsPrecompile(spec) && vmState.AccessTracker.WarmUp(address))
             {
                 result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
-                vmState.AccessTracker.WarmUp(address);
             }
             else if (chargeForWarm)
             {
@@ -408,10 +414,9 @@ internal static unsafe partial class EvmInstructions
             }
 
             // If the storage cell is still cold, apply the higher cold access cost and mark it as warm.
-            if (accessTracker.IsCold(in storageCell))
+            if (accessTracker.WarmUp(in storageCell))
             {
                 result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
-                accessTracker.WarmUp(in storageCell);
             }
             // For SLOAD operations on already warmed-up storage, apply a lower warm-read cost.
             else if (storageAccessType == StorageAccessType.SLOAD)
@@ -474,5 +479,55 @@ internal static unsafe partial class EvmInstructions
     private static void UpdateGasUp(long refund, ref long gasAvailable)
     {
         gasAvailable += refund;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static long Div32Ceiling(in UInt256 length, out bool outOfGas)
+    {
+        if (length.IsLargerThanULong())
+        {
+            outOfGas = true;
+            return 0;
+        }
+
+        return Div32Ceiling(length.u0, out outOfGas);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static long Div32Ceiling(ulong result, out bool outOfGas)
+    {
+        ulong rem = result & 31;
+        result >>= 5;
+        if (rem > 0)
+        {
+            result++;
+        }
+
+        if (result > uint.MaxValue)
+        {
+            outOfGas = true;
+            return 0;
+        }
+
+        outOfGas = false;
+        return (long)result;
+    }
+
+    public static long Div32Ceiling(in UInt256 length)
+    {
+        long result = Div32Ceiling(in length, out bool outOfGas);
+        if (outOfGas)
+        {
+            ThrowOutOfGasException();
+        }
+
+        return result;
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowOutOfGasException()
+        {
+            Metrics.EvmExceptions++;
+            throw new OutOfGasException();
+        }
     }
 }

@@ -11,6 +11,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -18,8 +19,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -61,6 +62,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private bool _recoveryComplete = false;
     private int _queueCount;
+    private bool _disposed;
 
     private readonly ProcessingStats _stats;
 
@@ -100,9 +102,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
         _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         _options = options;
-
-        _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
-        _blockTree.NewHeadBlock += OnNewHeadBlock;
 
         _stats = new ProcessingStats(stateReader, _logger);
         _loopCancellationSource = new CancellationTokenSource();
@@ -179,13 +178,34 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public void Start()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_processorTask is not null) ThrowAlreadyStarted();
+
+        _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
+        _blockTree.NewHeadBlock += OnNewHeadBlock;
+
         _loopCancellationSource ??= new CancellationTokenSource();
         _recoveryTask = RunRecovery();
         _processorTask = RunProcessing();
+
+        if (_logger.IsInfo) _logger.Info($"{nameof(BlockchainProcessor)} started.");
+
+        [StackTraceHidden, DoesNotReturn]
+        static void ThrowAlreadyStarted() => throw new InvalidOperationException($"{nameof(BlockchainProcessor)} already started");
     }
 
     public async Task StopAsync(bool processRemainingBlocks = false)
     {
+        if (_disposed) return;
+        _disposed = true;
+
+        bool isStarted = _processorTask is not null;
+        if (isStarted)
+        {
+            _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
+            _blockTree.NewHeadBlock -= OnNewHeadBlock;
+        }
+
         _recoveryComplete = true;
         if (processRemainingBlocks)
         {
@@ -201,7 +221,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         await Task.WhenAll(_recoveryTask ?? Task.CompletedTask, _processorTask ?? Task.CompletedTask);
-        if (_logger.IsInfo) _logger.Info("Blockchain Processor shutdown complete.. please wait for all components to close");
+        if (isStarted && _logger.IsInfo) _logger.Info($"{nameof(BlockchainProcessor)} shutdown complete.");
     }
 
     private async Task RunRecovery()
@@ -287,6 +307,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
+    private bool IsProcessingBlock { get => _isProcessingBlock; set { _isProcessingBlock = value; _blockTree.IsProcessingBlock = value; } }
+
     private async Task RunProcessingLoop()
     {
         if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Reader.Count} blocks waiting in the queue.");
@@ -294,54 +316,97 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         FireProcessingQueueEmpty();
 
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
-        await foreach (BlockRef blockRef in _blockQueue.Reader.ReadAllAsync(CancellationToken))
+        while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
         {
+            using var handle = Thread.CurrentThread.SetHighestPriority();
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
-            _isProcessingBlock = true;
+            IsProcessingBlock = true;
             try
             {
-                if (blockRef.IsInDb || blockRef.Block is null)
-                {
-                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
-                    throw new InvalidOperationException("Block processing expects only resolved blocks");
-                }
-
-                Block block = blockRef.Block;
-
-                if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
-                _stats.Start();
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
-
-                if (processedBlock is null)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
-                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
-                }
-                else
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
-                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success));
-                }
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Processing block failed. Block: {blockRef}, Exception: {exception}");
-                BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
+                ProcessBlocks();
             }
             finally
             {
-                _isProcessingBlock = false;
-                Interlocked.Decrement(ref _queueCount);
+                IsProcessingBlock = false;
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Reader.Count} blocks waiting in the queue.");
+            if (_logger.IsTrace) Trace();
             FireProcessingQueueEmpty();
 
             GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);
         }
 
         if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void Trace() => _logger.Trace($"Now {_blockQueue.Reader.Count} blocks waiting in the queue.");
+    }
+
+    private void ProcessBlocks()
+    {
+        bool isTrace = _logger.IsTrace;
+        while (_blockQueue.Reader.TryRead(out BlockRef blockRef))
+        {
+            try
+            {
+                if (blockRef.IsInDb || blockRef.Block is null)
+                {
+                    ThrowIncorrectBlockReference(blockRef);
+                }
+
+                Block block = blockRef.Block;
+                if (isTrace) TraceProcessing(block);
+
+                _stats.Start();
+                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
+
+                if (processedBlock is null)
+                {
+                    NotifyFailedOrSkipped(blockRef, block, error);
+                }
+                else
+                {
+                    if (isTrace) TraceProcessed(block);
+                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success));
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                NotifyException(blockRef, exception);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _queueCount);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void NotifyException(BlockRef blockRef, Exception exception)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Processing block failed. Block: {blockRef}, Exception: {exception}");
+            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void NotifyFailedOrSkipped(BlockRef blockRef, Block block, string error)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
+            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
+        }
+
+        [DoesNotReturn]
+        void ThrowIncorrectBlockReference(BlockRef blockRef)
+        {
+            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
+            throw new InvalidOperationException("Block processing expects only resolved blocks");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceProcessing(Block block) => _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceProcessed(Block block) => _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
     }
 
     private void FireProcessingQueueEmpty()
@@ -413,9 +478,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
             Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
             int blockQueueCount = _blockQueue.Reader.Count;
-            Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (_isProcessingBlock ? 1 : 0), 0);
+            Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (IsProcessingBlock ? 1 : 0), 0);
             Metrics.ProcessingQueueSize = blockQueueCount;
-            _stats.UpdateStats(lastProcessed, processingBranch.Root, blockProcessingTimeInMicrosecs);
+            _stats.UpdateStats(lastProcessed, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
         }
 
         bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
@@ -451,7 +516,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             try
             {
                 _blockProcessor.Process(
-                    processingBranch.Root,
+                    processingBranch.BaseBlock,
                     processingBranch.BlocksToProcess,
                     options,
                     blockTracer);
@@ -463,7 +528,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             catch (Exception ex)
             {
-                BlockTraceDumper.LogTraceFailure(blockTracer, processingBranch.Root, ex, _logger);
+                BlockTraceDumper.LogTraceFailure(blockTracer, processingBranch.BaseBlock, ex, _logger);
             }
         }
     }
@@ -487,7 +552,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         try
         {
             processedBlocks = _blockProcessor.Process(
-                processingBranch.Root,
+                processingBranch.BaseBlock,
                 processingBranch.BlocksToProcess,
                 options,
                 tracer,
@@ -590,7 +655,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceProcessingBlocks(ProcessingBranch processingBranch, ArrayPoolList<Block> blocksToProcess)
-            => _logger.Trace($"Processing {blocksToProcess.Count} blocks from state root {processingBranch.Root}");
+            => _logger.Trace($"Processing {blocksToProcess.Count} blocks from state root {processingBranch.BaseBlock}");
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowOrphanedBlock(Block firstBlock)
@@ -660,7 +725,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             // otherwise some nodes would be missing
             // we also need to go deeper if we already pruned state for that block
             bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
-            bool hasState = toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header);
+            bool hasState = toBeProcessed?.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header!);
             bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
             branchingCondition =
                 (notFoundTheBranchingPointYet || !hasState)
@@ -681,7 +746,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (blocksToBeAddedToMain.Count > 1)
             blocksToBeAddedToMain.Reverse();
 
-        return new ProcessingBranch(stateRoot, blocksToBeAddedToMain);
+        return new ProcessingBranch(branchingPoint, blocksToBeAddedToMain);
 
         // Uncommon logging and throws
 
@@ -800,15 +865,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public async ValueTask DisposeAsync()
     {
-        _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
-        _blockTree.NewHeadBlock -= OnNewHeadBlock;
         await StopAsync(processRemainingBlocks: false);
     }
 
     [DebuggerDisplay("Root: {Root}, Length: {BlocksToProcess.Count}")]
-    private readonly ref struct ProcessingBranch(Hash256 root, ArrayPoolList<Block> blocks)
+    private readonly ref struct ProcessingBranch(BlockHeader? baseBlock, ArrayPoolList<Block> blocks)
     {
-        public Hash256 Root { get; } = root;
+        public BlockHeader? BaseBlock { get; } = baseBlock;
         public ArrayPoolList<Block> Blocks { get; } = blocks;
         public ArrayPoolList<Block> BlocksToProcess { get; } = new(blocks.Count);
 

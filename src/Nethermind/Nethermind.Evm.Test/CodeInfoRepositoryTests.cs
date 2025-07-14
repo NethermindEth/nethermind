@@ -12,12 +12,13 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core.Test.Builders;
 using FluentAssertions;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Evm.Test;
@@ -160,7 +161,7 @@ public class CodeInfoRepositoryTests
         CodeInfoRepository sut = new();
 
         ICodeInfo result = sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>());
-        result.MachineCode.ToArray().Should().BeEquivalentTo(delegationCode);
+        result.CodeSpan.ToArray().Should().BeEquivalentTo(delegationCode);
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]
@@ -174,18 +175,5 @@ public class CodeInfoRepositoryTests
         CodeInfoRepository sut = new();
 
         sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().BeEquivalentTo(new CodeInfo(code));
-    }
-
-    private static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
-    {
-        AuthorizationTupleDecoder decoder = new();
-        using NettyRlpStream rlp = decoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
-        Span<byte> code = stackalloc byte[rlp.Length + 1];
-        code[0] = Eip7702Constants.Magic;
-        rlp.AsSpan().CopyTo(code[1..]);
-        EthereumEcdsa ecdsa = new(1);
-        Signature sig = ecdsa.Sign(signer, Keccak.Compute(code));
-
-        return new AuthorizationTuple(chainId, codeAddress, nonce, sig, signer.Address);
     }
 }

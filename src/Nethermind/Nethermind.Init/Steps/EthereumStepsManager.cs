@@ -9,7 +9,10 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Api.Steps;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
@@ -61,11 +64,7 @@ namespace Nethermind.Init.Steps
 
                 Func<IStep> stepFactory = () =>
                 {
-                    IStep? step = CreateStepInstance(stepInfo);
-                    if (step is null)
-                        throw new StepDependencyException(
-                            $"A step {stepInfo} could not be created and initialization cannot proceed.");
-                    return step;
+                    return CreateStepInstance(stepInfo);
                 };
 
                 Debug.Assert(!stepInfoMap.ContainsKey(stepInfo.StepBaseType), "Resolve steps implementations should have deduplicated step by base type");
@@ -89,6 +88,7 @@ namespace Nethermind.Init.Steps
                 }
             }
 
+            if (_logger.IsDebug) _logger.Debug($"Ethereum steps dependency tree:\n{BuildStepDependencyTree(stepInfoMap)}");
             List<Task> allRequiredSteps = new();
             foreach (StepWrapper stepWrapper in stepInfoMap.Values)
             {
@@ -141,25 +141,131 @@ namespace Nethermind.Init.Steps
             }
         }
 
-        private IStep? CreateStepInstance(StepInfo stepInfo)
+        private IStep CreateStepInstance(StepInfo stepInfo)
         {
-            IStep? step = null;
             try
             {
-                step = _ctx.Resolve(stepInfo.StepType) as IStep;
+                return (_ctx.Resolve(stepInfo.StepType) as IStep)!;
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error($"Failed to create instance of Ethereum runner step {stepInfo}", e);
+                if (TryUnwrapException(e, out Exception? unwrappedException))
+                {
+                    ExceptionDispatchInfo.Capture(unwrappedException!).Throw();
+                    throw;
+                }
+
+                throw new StepDependencyException($"A step {stepInfo} could not be created and initialization cannot proceed.", e);
+            }
+        }
+
+        private bool TryUnwrapException(Exception exception, out Exception? unwrapped)
+        {
+            unwrapped = exception;
+            while (unwrapped is DependencyResolutionException resolutionException)
+            {
+                unwrapped = resolutionException.InnerException;
             }
 
-            return step;
+            if (unwrapped is InvalidConfigurationException)
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private void ReviewFailedAndThrow(Task task)
         {
             if (task?.IsFaulted == true && task?.Exception is not null)
                 ExceptionDispatchInfo.Capture(task.Exception.GetBaseException()).Throw();
+        }
+
+        /// <summary>
+        /// Recursively prints roots (steps with no dependencies) and their dependents.
+        /// </summary>
+        private string BuildStepDependencyTree(Dictionary<Type, StepWrapper> stepInfoMap)
+        {
+            // Map each step to its direct dependencies
+            var depsMap = stepInfoMap.ToDictionary(
+                kv => kv.Key.Name,
+                kv => kv.Value.Dependencies.Select(d => d.Name).ToList()
+            );
+
+            // Build children map for topological sorting (parent -> children)
+            var dependentsMap = stepInfoMap.Keys.ToDictionary(t => t.Name, t => new List<string>());
+            foreach (var kv in stepInfoMap)
+            {
+                var node = kv.Key.Name;
+                foreach (var dependency in kv.Value.Dependencies)
+                {
+                    if (dependentsMap.ContainsKey(dependency.Name))
+                        dependentsMap[dependency.Name].Add(node);
+                }
+            }
+
+            // Kahn's algorithm to compute topological order
+            var inDegree = depsMap.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
+            var queue = new Queue<string>(inDegree.Where(kv => kv.Value == 0).Select(kv => kv.Key).OrderBy((c) => dependentsMap[c].Count));
+            var sorted = new List<string>();
+            var degree = new Dictionary<string, int>(inDegree);
+            while (queue.Count > 0)
+            {
+                var n = queue.Dequeue();
+                sorted.Add(n);
+                foreach (var dependent in dependentsMap[n].OrderBy((c) => dependentsMap[c].Count))
+                {
+                    degree[dependent]--;
+                    if (degree[dependent] == 0)
+                        queue.Enqueue(dependent);
+                }
+            }
+            if (sorted.Count != depsMap.Count)
+                sorted = depsMap.Keys.OrderBy(n => n).ToList();
+
+            // Compute max dependency depth for indentation
+            var depth = new Dictionary<string, int>();
+            var allCombinedDeps = new Dictionary<string, HashSet<string>>();
+            foreach (var node in sorted)
+            {
+                var deps = depsMap[node];
+                depth[node] = deps.Count == 0
+                    ? 0
+                    : deps.Select(d => depth.GetValueOrDefault(d, 0)).Max() + 1;
+
+                allCombinedDeps[node] = depsMap[node].SelectMany((d) => allCombinedDeps[d]).ToHashSet();
+                allCombinedDeps[node].AddRange(depsMap[node]);
+            }
+
+            var deduplicatedDependency = new Dictionary<string, List<string>>();
+            foreach (var node in sorted)
+            {
+                HashSet<string> childOnlyAllCombinedDeps = depsMap[node].SelectMany((d) => allCombinedDeps[d]).ToHashSet();
+                deduplicatedDependency[node] = depsMap[node].Where((d) => !childOnlyAllCombinedDeps.Contains(d)).ToList();
+            }
+
+            // Build the indented output using reversed indentation
+            var sb = new System.Text.StringBuilder();
+            foreach (var node in sorted)
+            {
+                int lvl = depth[node];
+                sb.Append(new string(' ', lvl * 2));
+                var deps = deduplicatedDependency[node];
+                if (dependentsMap[node].Count == 0)
+                {
+                    sb.Append("● ");
+                }
+                else
+                {
+                    sb.Append("○ ");
+                }
+
+                if (deps.Count == 0)
+                    sb.AppendLine($"{node}");
+                else
+                    sb.AppendLine($"{node} (depends on {string.Join(", ", deps)})");
+            }
+            return sb.ToString();
         }
 
         private class StepWrapper(Func<IStep> stepFactory, StepInfo stepInfo)
