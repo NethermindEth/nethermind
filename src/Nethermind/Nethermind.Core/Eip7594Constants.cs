@@ -3,7 +3,10 @@
 
 namespace Nethermind.Core;
 
-public class Eip7594Constants
+/// <summary>
+/// See <see href="https://eips.ethereum.org/EIPS/eip-7594">EIP-7594</see>
+/// </summary>
+public static class Eip7594Constants
 {
     public const int MaxBlobsPerTx = 6;
 }

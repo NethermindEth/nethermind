@@ -1053,5 +1053,22 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
         }
+
+        [Test]
+        public void max_blobs_per_tx_should_not_exceed_max_blobs_per_block()
+        {
+            const ulong regularMaxBlobCount = Eip7594Constants.MaxBlobsPerTx - 1;
+
+            TestSpecProvider provider = new(new ReleaseSpec
+            {
+                IsEip4844Enabled = true,
+                IsEip7594Enabled = true,
+                MaxBlobCount = regularMaxBlobCount,
+            });
+
+            ulong maxBlobsPerTx = provider.GetSpec(_blockTree.Head!.Header).MaxBlobsPerTx;
+
+            Assert.That(maxBlobsPerTx, Is.EqualTo(regularMaxBlobCount));
+        }
     }
 }

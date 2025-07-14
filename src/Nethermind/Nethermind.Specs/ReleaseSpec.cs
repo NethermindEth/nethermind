@@ -105,7 +105,7 @@ namespace Nethermind.Specs
 
         public ulong TargetBlobCount { get; set; }
         public ulong MaxBlobCount { get; set; }
-        public ulong MaxBlobsPerTx => IsEip7594Enabled ? Eip7594Constants.MaxBlobsPerTx : MaxBlobCount;
+        public ulong MaxBlobsPerTx => IsEip7594Enabled ? Math.Min(Eip7594Constants.MaxBlobsPerTx, MaxBlobCount) : MaxBlobCount;
         public UInt256 BlobBaseFeeUpdateFraction { get; set; }
 
 
