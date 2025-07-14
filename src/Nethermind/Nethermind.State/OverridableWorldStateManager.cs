@@ -24,7 +24,7 @@ public class OverridableWorldStateManager : IOverridableWorldScope
         WorldState = new WorldState(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager, null, true);
     }
 
-    public IVisitingWorldState WorldState { get; }
+    public IWorldState WorldState { get; }
     public IDisposable BeginScope(BlockHeader? header)
     {
         WorldState.SetBaseBlock(header);
