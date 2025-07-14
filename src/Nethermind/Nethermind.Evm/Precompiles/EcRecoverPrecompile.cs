@@ -21,6 +21,8 @@ namespace Nethermind.Evm.Precompiles
 
         public static Address Address { get; } = Address.FromNumber(1);
 
+        public static string Name => "ECREC";
+
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 3000L;

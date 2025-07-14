@@ -17,6 +17,8 @@ namespace Nethermind.Evm.Precompiles
 
         public static Address Address { get; } = Address.FromNumber(4);
 
+        public static string Name => "ID";
+        
         public long BaseGasCost(IReleaseSpec releaseSpec) => 15L;
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 3L * EvmInstructions.Div32Ceiling((ulong)inputData.Length);

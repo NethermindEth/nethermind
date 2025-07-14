@@ -10,6 +10,7 @@ namespace Nethermind.Evm.Precompiles
     public interface IPrecompile
     {
         static virtual Address Address => Address.Zero;
+        static abstract string Name { get; }
 
         long BaseGasCost(IReleaseSpec releaseSpec);
 

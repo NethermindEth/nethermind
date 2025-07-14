@@ -215,6 +215,8 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         public static Address Address => Address.Zero;
 
+        public static string Name  => "";
+
         public long BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);

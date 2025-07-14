@@ -19,6 +19,8 @@ namespace Nethermind.Evm.Precompiles
 
         public static Address Address { get; } = Address.FromNumber(9);
 
+        public static string Name => "BLAKE2F";
+
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

@@ -17,6 +17,8 @@ namespace Nethermind.Evm.Precompiles
 
         public static Address Address { get; } = Address.FromNumber(2);
 
+        public static string Name => "SHA256";
+
         public long BaseGasCost(IReleaseSpec releaseSpec) => 60L;
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 12L * EvmInstructions.Div32Ceiling((ulong)inputData.Length);

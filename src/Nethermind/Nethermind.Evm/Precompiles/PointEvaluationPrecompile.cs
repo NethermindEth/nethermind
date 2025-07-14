@@ -23,6 +23,8 @@ public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(0x0a);
 
+    public static string Name => "KZG_POINT_EVALUATION";
+
     public long BaseGasCost(IReleaseSpec releaseSpec) => 50000L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;

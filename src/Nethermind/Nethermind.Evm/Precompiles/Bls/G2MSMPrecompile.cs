@@ -25,6 +25,8 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(0xe);
 
+    public static string Name => "BLS12_G2MSM";
+
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

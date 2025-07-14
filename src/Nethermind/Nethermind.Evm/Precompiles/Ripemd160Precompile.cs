@@ -25,6 +25,8 @@ namespace Nethermind.Evm.Precompiles
 
         public static Address Address { get; } = Address.FromNumber(3);
 
+        public static string Name => "RIPEMD160";
+
         public long BaseGasCost(IReleaseSpec releaseSpec) => 600L;
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 120L * EvmInstructions.Div32Ceiling((ulong)inputData.Length);

@@ -25,6 +25,8 @@ namespace Nethermind.Evm.Precompiles
 
         public static Address Address { get; } = Address.FromNumber(5);
 
+        public static string Name => "MODEXP";
+
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
         public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

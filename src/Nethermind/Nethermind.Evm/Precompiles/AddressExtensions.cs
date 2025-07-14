@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Precompiles.Bls;
+using Nethermind.Evm.Precompiles.Snarks;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -45,5 +48,70 @@ public static class AddressExtensions
                 },
                 _ => false
             };
+    }
+
+    public static Dictionary<Address, string> ListPrecompiles(this IReleaseSpec spec)
+    {
+        Dictionary<Address, string> precompiles = new();
+
+        AddPrecompile<EcRecoverPrecompile>();
+        AddPrecompile<Sha256Precompile>();
+        AddPrecompile<Ripemd160Precompile>();
+        AddPrecompile<IdentityPrecompile>();
+
+        if (spec.ModExpEnabled)
+        {
+            AddPrecompile<ModExpPrecompile>();
+        }
+
+        if (spec.Bn128Enabled)
+        {
+            AddPrecompile<Bn254AddPrecompile>();
+            AddPrecompile<Bn254MulPrecompile>();
+            AddPrecompile<Bn254PairingPrecompile>();
+        }
+
+        if (spec.BlakeEnabled)
+        {
+            AddPrecompile<Blake2FPrecompile>();
+        }
+
+        if (spec.IsEip4844Enabled)
+        {
+            AddPrecompile<PointEvaluationPrecompile>();
+        }
+
+        if (spec.Bls381Enabled)
+        {
+            AddPrecompile<G1AddPrecompile>();
+            AddPrecompile<G1MSMPrecompile>();
+            AddPrecompile<G2AddPrecompile>();
+            AddPrecompile<G2MSMPrecompile>();
+            AddPrecompile<PairingCheckPrecompile>();
+            AddPrecompile<MapFpToG1Precompile>();
+            AddPrecompile<MapFp2ToG2Precompile>();
+        }
+
+        if (spec.IsEip7951Enabled)
+        {
+            AddPrecompile<Secp256r1Precompile>();
+        }
+
+        return precompiles;
+
+        void AddPrecompile<T>() where T : IPrecompile<T> => precompiles[T.Address] = T.Name;
+    }
+
+    public static Dictionary<string, Address> ListSystemContracts(this IReleaseSpec spec)
+    {
+        Dictionary<string, Address> systemContracts = new();
+
+        if (spec.IsBeaconBlockRootAvailable) systemContracts["BEACON_ROOTS_ADDRESS"] = Eip4788Constants.BeaconRootsAddress;
+        if (spec.ConsolidationRequestsEnabled) systemContracts["CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS"] = Eip7251Constants.ConsolidationRequestPredeployAddress;
+        if (spec.DepositsEnabled) systemContracts["DEPOSIT_CONTRACT_ADDRESS"] = spec.DepositContractAddress;
+        if (spec.IsEip2935Enabled) systemContracts["HISTORY_STORAGE_ADDRESS"] = Eip2935Constants.BlockHashHistoryAddress;
+        if (spec.WithdrawalRequestsEnabled) systemContracts["WITHDRAWAL_REQUEST_PREDEPLOY_ADDRESS"] = Eip7002Constants.WithdrawalRequestPredeployAddress;
+
+        return systemContracts;
     }
 }
