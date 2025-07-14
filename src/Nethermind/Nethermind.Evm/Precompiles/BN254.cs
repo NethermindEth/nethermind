@@ -22,10 +22,6 @@ internal static unsafe class BN254
 
     internal static bool Add(Span<byte> input, Span<byte> output)
     {
-        //ArgumentOutOfRangeException.ThrowIfLessThan(output.Length, 64);
-
-        //output.Clear();
-
         if (input.Length != 128)
             return false;
 
@@ -43,10 +39,6 @@ internal static unsafe class BN254
 
     internal static bool Mul(Span<byte> input, Span<byte> output)
     {
-        //ArgumentOutOfRangeException.ThrowIfLessThan(output.Length, 64);
-
-        //output.Clear();
-
         if (input.Length != 96)
             return false;
 
@@ -72,10 +64,6 @@ internal static unsafe class BN254
 
     internal static bool Pairing(Span<byte> input, Span<byte> output)
     {
-        //ArgumentOutOfRangeException.ThrowIfLessThan(output.Length, 32);
-
-        //output.Clear();
-
         if (input.Length == 0)
         {
             output[31] = 1;
