@@ -44,10 +44,10 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
+        public bool IsProcessingBlock => _processor.IsProcessingBlock;
+
         public bool IsProcessingBlocks(ulong? maxProcessingInterval)
-        {
-            return _processor.IsProcessingBlocks(maxProcessingInterval);
-        }
+            => _processor.IsProcessingBlocks(maxProcessingInterval);
 
 #pragma warning disable 67
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
