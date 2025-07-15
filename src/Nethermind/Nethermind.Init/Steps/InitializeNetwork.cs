@@ -276,6 +276,7 @@ public class InitializeNetwork : IStep
             _networkConfig,
             _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>(), _api.SpecProvider);
+        _api.DisposeStack.Push(pooledTxsRequestor);
 
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
