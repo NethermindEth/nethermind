@@ -51,7 +51,7 @@ public class SyncStatusListTests
         blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(new BlockInfo(TestItem.KeccakA, 0));
         SyncStatusList syncStatusList = new(blockTree, 1000, null, 900);
 
-        syncStatusList.TryGetInfosForBatch(500, new NoDownloadStrategy(), out BlockInfo?[] infos);
+        syncStatusList.TryGetInfosForBatch(500, new AlwaysDownloadStrategy(), out BlockInfo?[] infos);
 
         infos.Count(static (it) => it is not null).Should().Be(101);
     }
@@ -179,9 +179,9 @@ public class SyncStatusListTests
     }
 
     private static FastBlockStatusList CreateFastBlockStatusList(int length, bool parallel = true) =>
-        new(Enumerable.Range(0, length).Select(static i => (FastBlockStatus)(i % 3)).ToList(), parallel);
+        new([.. Enumerable.Range(0, length).Select(static i => (FastBlockStatus)(i % 3))], parallel);
 
-    private class NoDownloadStrategy : IBlockDownloadStrategy
+    private class AlwaysDownloadStrategy : IBlockDownloadStrategy
     {
         public bool ShouldDownloadBlock(BlockInfo info) => true;
     }
