@@ -6,12 +6,12 @@ using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Precompiles.Benchmark;
 
-public class Bn254AddBenchmark1 : PrecompileBenchmarkBase
+public class BN254PairingBenchmark : PrecompileBenchmarkBase
 {
     protected override IEnumerable<IPrecompile> Precompiles => new[]
     {
-        BN254AddPrecompile.Instance
+        BN254PairingPrecompile.Instance
     };
 
-    protected override string InputsDirectory => "bnadd";
+    protected override string InputsDirectory => "bnpair";
 }

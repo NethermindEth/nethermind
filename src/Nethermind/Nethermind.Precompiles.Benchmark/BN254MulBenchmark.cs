@@ -6,7 +6,7 @@ using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Precompiles.Benchmark;
 
-public class Bn254MulBenchmark1 : PrecompileBenchmarkBase
+public class BN254MulBenchmark : PrecompileBenchmarkBase
 {
     protected override IEnumerable<IPrecompile> Precompiles => new[]
     {
