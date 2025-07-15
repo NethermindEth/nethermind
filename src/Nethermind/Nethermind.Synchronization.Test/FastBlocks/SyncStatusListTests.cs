@@ -49,10 +49,9 @@ public class SyncStatusListTests
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(new BlockInfo(TestItem.KeccakA, 0));
-        SyncStatusList syncStatusList = new SyncStatusList(blockTree, 1000, null, 900);
+        SyncStatusList syncStatusList = new(blockTree, 1000, null, 900);
 
-        BlockInfo?[] infos;
-        syncStatusList.TryGetInfosForBatch(500, new NoDownloadStrategy(), out infos);
+        syncStatusList.TryGetInfosForBatch(500, new NoDownloadStrategy(), out BlockInfo?[] infos);
 
         infos.Count(static (it) => it is not null).Should().Be(101);
     }
@@ -184,12 +183,12 @@ public class SyncStatusListTests
 
     private class NoDownloadStrategy : IBlockDownloadStrategy
     {
-        public bool ShouldDownloadBlock(BlockInfo info) => false;
+        public bool ShouldDownloadBlock(BlockInfo info) => true;
     }
 
     private class ConstantDownloadStrategy(HashSet<long> needToFetchBlocks) : IBlockDownloadStrategy
     {
         public bool ShouldDownloadBlock(BlockInfo info)
-            => !needToFetchBlocks.Contains(info.BlockNumber);
+            => needToFetchBlocks.Contains(info.BlockNumber);
     }
 }
