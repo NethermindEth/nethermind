@@ -97,16 +97,8 @@ namespace Nethermind.Serialization.Rlp
         private static FrozenDictionary<RlpDecoderKey, IRlpDecoder> CreateDecoders()
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
-
-            FrozenDictionary<RlpDecoderKey, IRlpDecoder> decoders = _decoders;
-            if (decoders is not null)
-            {
-                // Already been recreated
-                return decoders;
-            }
-
-            // Recreate
-            return _decoders = _decoderBuilder.ToFrozenDictionary();
+            // Recreate, if not already recreated
+            return _decoders ??= _decoderBuilder.ToFrozenDictionary();
         }
 
         public static void ResetDecoders()
