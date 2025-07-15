@@ -53,6 +53,12 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             // Osaka
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV5)] = (spec.IsEip7594Enabled, spec.IsEip7594Enabled);
             _capabilities[nameof(IEngineRpcModule.engine_getBlobsV2)] = (spec.IsEip7594Enabled, false);
+
+            // Fork 7805
+            _capabilities[nameof(IEngineRpcModule.engine_getInclusionListV1)] = (spec.IsEip7805Enabled, spec.IsEip7805Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV5)] = (spec.IsEip7805Enabled, spec.IsEip7805Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_updatePayloadWithInclusionListV1)] = (spec.IsEip7805Enabled, spec.IsEip7805Enabled);
+
         }
 
         return _capabilities;

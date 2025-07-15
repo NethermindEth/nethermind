@@ -291,6 +291,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithInclusionListTransactions(params Transaction[]? inclusionListTransactions)
+        {
+            TestObjectInternal.InclusionListTransactions = inclusionListTransactions;
+            return this;
+        }
+
         public BlockBuilder WithEncodedSize(int? encodedSize)
         {
             TestObjectInternal.EncodedSize = encodedSize;

@@ -100,6 +100,7 @@ namespace Nethermind.Specs
         public bool IsEip7251Enabled { get; set; }
         public bool IsEip7825Enabled { get; set; }
         public bool IsEip7918Enabled { get; set; }
+        public bool IsEip7805Enabled { get; set; }
         public bool IsEip7934Enabled { get; set; }
         public int Eip7934MaxRlpBlockSize { get; set; }
         public bool IsEip7907Enabled { get; set; }

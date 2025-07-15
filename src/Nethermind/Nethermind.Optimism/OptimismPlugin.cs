@@ -129,6 +129,95 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         ArgumentNullException.ThrowIfNull(_blockFinalizationManager);
 
+        // // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
+        // // Then we will wait 5s more to ensure everything is processed
+        // while (!_api.BlockProcessingQueue.IsEmpty)
+        //     await Task.Delay(100);
+        // await Task.Delay(5000);
+
+        // // Single block shouldn't take a full slot to run
+        // // We can improve the blocks until requested, but the single block still needs to be run in a timely manner
+        // double maxSingleImprovementTimePerSlot = _blocksConfig.SecondsPerSlot * _blocksConfig.SingleBlockImprovementOfSlot;
+        // BlockImprovementContextFactory improvementContextFactory = new(
+        //     _api.BlockProducer,
+        //     TimeSpan.FromSeconds(maxSingleImprovementTimePerSlot));
+
+        // OptimismPayloadPreparationService payloadPreparationService = new(
+        //     _api.SpecProvider,
+        //     (PostMergeBlockProducer)_api.BlockProducer,
+        //     improvementContextFactory,
+        //     _api.TimerFactory,
+        //     _api.LogManager,
+        //     TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+        // _payloadPreparationService = payloadPreparationService;
+
+        // _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
+
+        // var posSwitcher = _api.Context.Resolve<IPoSSwitcher>();
+        // var beaconPivot = _api.Context.Resolve<IBeaconPivot>();
+        // var beaconSync = _api.Context.Resolve<BeaconSync>();
+
+        // IPeerRefresher peerRefresher = _api.Context.Resolve<IPeerRefresher>();
+        // IInitConfig initConfig = _api.Config<IInitConfig>();
+
+        // NewPayloadHandler newPayloadHandler = new(
+        //         _api.BlockValidator,
+        //         _api.BlockTree,
+        //         posSwitcher,
+        //         beaconSync,
+        //         beaconPivot,
+        //         _blockCacheService,
+        //         _api.BlockProcessingQueue,
+        //         _invalidChainTracker,
+        //         beaconSync,
+        //         _api.LogManager,
+        //         _api.SpecProvider.ChainId,
+        //         TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
+        //         _api.Config<IReceiptConfig>().StoreReceipts);
+
+        // bool simulateBlockProduction = _api.Config<IMergeConfig>().SimulateBlockProduction;
+        // if (simulateBlockProduction)
+        // {
+        //     newPayloadHandler.NewPayloadForParentReceived += payloadPreparationService.CancelBlockProductionForParent;
+        // }
+
+        // IEngineRpcModule engineRpcModule = new EngineRpcModule(
+        //     new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+        //     new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+        //     new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+        //     new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+        //     new GetPayloadV5Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+        //     newPayloadHandler,
+        //     new ForkchoiceUpdatedHandler(
+        //         _api.BlockTree,
+        //         _blockFinalizationManager,
+        //         posSwitcher,
+        //         payloadPreparationService,
+        //         _api.BlockProcessingQueue,
+        //         _blockCacheService,
+        //         _invalidChainTracker,
+        //         beaconSync,
+        //         beaconPivot,
+        //         peerRefresher,
+        //         _api.SpecProvider,
+        //         _api.SyncPeerPool!,
+        //         _api.LogManager,
+        //         simulateBlockProduction),
+        //     new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
+        //     new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
+        //     new ExchangeTransitionConfigurationV1Handler(posSwitcher, _api.LogManager),
+        //     new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
+        //     new GetBlobsHandler(_api.TxPool),
+        //     new GetInclusionListTransactionsHandler(null),
+        //     new UpdatePayloadWithInclusionListHandler(payloadPreparationService, null, _api.SpecProvider),
+        //     new GetBlobsHandlerV2(_api.TxPool),
+        //     _api.EngineRequestsTracker,
+        //     _api.SpecProvider,
+        //     new GCKeeper(
+        //         initConfig.DisableGcOnNewPayload
+        //             ? NoGCStrategy.Instance
+        //             : new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
+        //     _api.LogManager);
         IEngineRpcModule engineRpcModule = _api.Context.Resolve<IEngineRpcModule>();
 
         IOptimismSignalSuperchainV1Handler signalHandler = new LoggingOptimismSignalSuperchainV1Handler(
