@@ -91,10 +91,17 @@ public class HistoryPruner : IHistoryPruner
     {
         get
         {
-            ulong cutoffTimestamp = CalculateCutoffTimestamp();
-            long? cutoffBlockNumber = null;
-            IEnumerable<Block> block = GetBlocksByNumber(_deletePointer, b =>
+            ulong cutoffTimestamp = CalculateCutoffTimestamp(); // cache for unchanged timestamp
+
+            if (_lastCutoffTimestamp is not null && cutoffTimestamp == _lastCutoffTimestamp)
             {
+                return _lastCutoffBlockNumber;
+            }
+
+            long? cutoffBlockNumber = null;
+            GetBlocksByNumber(_deletePointer, b =>
+            {
+                // end search when we find a block after the cutoff
                 bool afterCutoff = b.Timestamp >= cutoffTimestamp;
                 if (afterCutoff)
                 {
@@ -102,9 +109,16 @@ public class HistoryPruner : IHistoryPruner
                 }
                 return afterCutoff;
             }, _ => { });
+
+            _lastCutoffTimestamp = cutoffTimestamp;
+            _lastCutoffBlockNumber = cutoffBlockNumber;
+
             return cutoffBlockNumber;
         }
     }
+
+    private ulong? _lastCutoffTimestamp;
+    private long? _lastCutoffBlockNumber;
 
     private void CheckConfig()
     {
