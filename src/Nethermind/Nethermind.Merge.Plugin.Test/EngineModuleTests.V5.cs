@@ -41,7 +41,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(Fork7805.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Hash256 expectedBlockHash = new(blockHash);
 
@@ -117,7 +117,7 @@ public partial class EngineModuleTests
     public async Task Can_get_inclusion_list_V5()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Fork7805.Instance);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
 
         Transaction tx1 = Build.A.Transaction
             .WithNonce(0)
@@ -160,7 +160,7 @@ public partial class EngineModuleTests
         string stateRoot)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Fork7805.Instance);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 prevRandao = Keccak.Zero;
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
@@ -226,7 +226,7 @@ public partial class EngineModuleTests
         string gasUsed)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Fork7805.Instance);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
 
         Transaction tx = Build.A.Transaction
             .WithNonce(0)
@@ -436,8 +436,11 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV2_should_throw_if_more_than_128_requested_blobs([Values(128, 129)] int requestSize)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
+        {
+            NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
+        });
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         List<byte[]> request = new List<byte[]>(requestSize);
         for (int i = 0; i < requestSize; i++)
@@ -462,8 +465,11 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV2_should_handle_empty_request()
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
+        {
+            NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
+        });
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         ResultWrapper<IEnumerable<BlobAndProofV2>?> result = await rpcModule.engine_getBlobsV2([]);
 
@@ -474,8 +480,11 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV2_should_return_requested_blobs([Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
+        {
+            NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
+        });
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)
@@ -499,8 +508,11 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV2_should_return_empty_array_when_blobs_not_found([Values(1, 2, 3, 4, 5, 6)] int numberOfRequestedBlobs)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
+        {
+            NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
+        });
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         // we are not adding this tx
         Transaction blobTx = Build.A.Transaction
@@ -522,8 +534,11 @@ public partial class EngineModuleTests
     {
         int requestSize = multiplier * numberOfBlobs;
 
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
-        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, mergeConfig: new MergeConfig()
+        {
+            NewPayloadTimeout = TimeSpan.FromDays(1).TotalSeconds
+        });
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)

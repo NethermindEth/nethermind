@@ -21,15 +21,14 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
@@ -54,9 +53,8 @@ namespace Nethermind.TxPool.Test
             _logManager = LimboLogs.Instance;
             _specProvider = MainnetSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
-            var trieStore = TestTrieStoreFactory.Build(new MemDb(), _logManager);
-            var codeDb = new MemDb();
-            _stateProvider = new WorldState(trieStore, codeDb, _logManager);
+            IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+            _stateProvider = worldStateManager.GlobalWorldState;
             _blockTree = Substitute.For<IBlockTree>();
             Block block = Build.A.Block.WithNumber(10000000 - 1).TestObject;
             _blockTree.Head.Returns(block);
@@ -1837,13 +1835,14 @@ namespace Nethermind.TxPool.Test
         }
 
 
-        private static object[] NonceAndRemovedCases =
+        private static readonly object[] NonceAndRemovedCases =
         {
             new object[]{ true, 1, AcceptTxResult.Accepted },
             new object[]{ true, 0, AcceptTxResult.Accepted},
             new object[]{ false, 0, AcceptTxResult.Accepted},
             new object[]{ false, 1, AcceptTxResult.NotCurrentNonceForDelegation},
         };
+
         [TestCaseSource(nameof(NonceAndRemovedCases))]
         public void Tx_with_conflicting_pending_delegation_is_rejected_then_is_accepted_after_delegation_removal(bool withRemoval, int secondNonce, AcceptTxResult expected)
         {

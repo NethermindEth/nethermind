@@ -17,6 +17,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
@@ -34,13 +35,11 @@ public class PsudoNetworkModule() : Module
 
         builder
             .AddSingleton<IFullStateFinder, FullStateFinder>()
-            .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
             .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
 
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
             .AddSingleton<IPooledTxsRequestor, PooledTxsRequestor>()
-            .AddSingleton<IForkInfo, ForkInfo>()
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
 

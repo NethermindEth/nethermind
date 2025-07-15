@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json;
 
-public class BlobScheduleSettings : IComparable<BlobScheduleSettings>
+public record class BlobScheduleSettings : IComparable<BlobScheduleSettings>
 {
     public ulong Timestamp { get; set; }
 

@@ -24,14 +24,18 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
@@ -42,8 +46,10 @@ using Nethermind.Era1;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Flashbots;
+using Nethermind.HealthChecks;
 using Nethermind.Hive;
 using Nethermind.Init.Steps;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -55,7 +61,7 @@ using Nethermind.Runner.Ethereum;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Synchronization;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.TxPool;
@@ -81,14 +87,18 @@ public class EthereumRunnerTests
         _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters) };
 
         // by pre-caching configs providers we make the tests do lot less work
-        ConcurrentQueue<(string, ConfigProvider)> result = new();
+        ConcurrentQueue<(string, ConfigProvider)> resultQueue = new();
         Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
         {
             var configProvider = new ConfigProvider();
             configProvider.AddSource(new JsonConfigSource(configFile));
             configProvider.Initialize();
-            result.Enqueue((configFile, configProvider));
+            resultQueue.Enqueue((configFile, configProvider));
         });
+
+        // Sort so that is is consistent so that its easy to run via Rider.
+        List<(string, ConfigProvider)> result = new List<(string, ConfigProvider)>(resultQueue);
+        result.Sort();
 
         {
             // Special case for verify trie on state sync finished
@@ -96,7 +106,7 @@ public class EthereumRunnerTests
             configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
             configProvider.Initialize();
             configProvider.GetConfig<ISyncConfig>().VerifyTrieOnStateSyncFinished = true;
-            result.Enqueue(("mainnet-verify-trie-starter", configProvider));
+            result.Add(("mainnet-verify-trie-starter", configProvider));
         }
 
         {
@@ -105,7 +115,7 @@ public class EthereumRunnerTests
             configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
             configProvider.Initialize();
             configProvider.GetConfig<IFlashbotsConfig>().Enabled = true;
-            result.Enqueue(("flashbots", configProvider));
+            result.Add(("flashbots", configProvider));
         }
 
         return result;
@@ -136,7 +146,7 @@ public class EthereumRunnerTests
     }
 
     [TestCaseSource(nameof(ChainSpecRunnerTests))]
-    [MaxTime(300000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
+    [MaxTime(20000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
     public async Task Smoke((string file, ConfigProvider configProvider) testCase, int testIndex)
     {
         if (testCase.configProvider is null)
@@ -144,6 +154,9 @@ public class EthereumRunnerTests
             // some weird thing, not worth investigating
             return;
         }
+
+        if (testCase.file.Contains("none.json")) Assert.Ignore("engine port missing");
+        if (testCase.file.Contains("radius_testnet-sepolia.json")) Assert.Ignore("sequencer url not specified");
 
         await SmokeTest(testCase.configProvider, testIndex, 30330);
     }
@@ -180,6 +193,7 @@ public class EthereumRunnerTests
 
         ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), testCase.configProvider, LimboLogs.Instance);
         IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(testCase.configProvider, builder.ChainSpec);
+        plugins.Add(new RunnerTestPlugin(true));
         EthereumRunner runner = builder.CreateEthereumRunner(plugins);
 
         INethermindApi api = runner.Api;
@@ -189,17 +203,20 @@ public class EthereumRunnerTests
 
         api.Config<INetworkConfig>().LocalIp = "127.0.0.1";
         api.Config<INetworkConfig>().ExternalIp = "127.0.0.1";
-        var ipResolver = Substitute.For<IIPResolver>();
-        ipResolver.ExternalIp.Returns(IPAddress.Parse("127.0.0.1"));
-        api.IpResolver = ipResolver;
+        _ = api.Config<IHealthChecksConfig>(); // Randomly fail type disccovery if not resolved early.
 
         api.NodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyA);
         api.FileSystem = Substitute.For<IFileSystem>();
         api.BlockTree = Substitute.For<IBlockTree>();
         api.ReceiptStorage = Substitute.For<IReceiptStorage>();
-        api.ReceiptFinder = Substitute.For<IReceiptFinder>();
+        api.DbFactory = new MemDbFactory();
         api.DbProvider = await TestMemDbProvider.InitAsync();
-        api.EthereumEcdsa = new EthereumEcdsa(runner.LifetimeScope.Resolve<ISpecProvider>());
+        api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
+
+        if (api is AuRaNethermindApi auRaNethermindApi)
+        {
+            auRaNethermindApi.FinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
+        }
 
         try
         {
@@ -252,6 +269,7 @@ public class EthereumRunnerTests
             api.Context.Resolve<IUnclesValidator>();
             api.Context.Resolve<ITxValidator>();
             api.Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
+            api.Context.Resolve<IBlockProducerEnvFactory>().Create();
 
             // A root registration should not have both keyed and unkeyed registration. This is confusing and may
             // cause unexpected registration. Either have a single non-keyed registration or all keyed-registration,
@@ -284,6 +302,7 @@ public class EthereumRunnerTests
                 typeof(IProtectedPrivateKey),
                 typeof(PublicKey),
                 typeof(IPrivateKeyGenerator),
+                typeof(ITracer), // Completely different construction on every case
                 typeof(string),
             ];
 
@@ -317,6 +336,8 @@ public class EthereumRunnerTests
         // An ugly hack to keep unused types
         Console.WriteLine(typeof(IHiveConfig));
 
+        Rlp.ResetDecoders(); // One day this will be fix. But that day is not today, because it is seriously difficult.
+        configProvider.GetConfig<IInitConfig>().DiagnosticMode = DiagnosticMode.MemDb;
         var tempPath = TempPath.GetTempDirectory();
         Directory.CreateDirectory(tempPath.Path);
 
@@ -344,6 +365,7 @@ public class EthereumRunnerTests
 
             ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
             IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
+            plugins.Add(new RunnerTestPlugin());
             EthereumRunner runner = builder.CreateEthereumRunner(plugins);
 
             using CancellationTokenSource cts = new();
@@ -357,10 +379,6 @@ public class EthereumRunnerTests
                 }
 
                 await task;
-            }
-            catch (Exception e)
-            {
-                exception = e;
             }
             finally
             {
@@ -387,9 +405,9 @@ public class EthereumRunnerTests
             {
                 tempPath.Dispose();
             }
-            catch
+            catch (Exception disposeException)
             {
-                if (exception is not null)
+                if (disposeException is not null)
                 {
                     // just swallow this exception as otherwise this is recognized as a pattern byt GitHub
                     // await TestContext.Error.WriteLineAsync(e.ToString());
@@ -398,6 +416,55 @@ public class EthereumRunnerTests
                 {
                     throw;
                 }
+            }
+        }
+    }
+
+    private class RunnerTestPlugin(bool forStepTest = false) : INethermindPlugin
+    {
+        public string Name { get; } = "Runner test plugin";
+        public string Description { get; } = "A plugin to pass runner test and make it faster";
+        public string Author { get; } = "";
+        public bool Enabled { get; } = true;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        public IModule Module => new RunnerTestModule(forStepTest);
+
+        private class RunnerTestModule(bool forStepTest) : Autofac.Module
+        {
+            protected override void Load(ContainerBuilder builder)
+            {
+                base.Load(builder);
+
+                var ipResolver = Substitute.For<IIPResolver>();
+                ipResolver.ExternalIp.Returns(IPAddress.Parse("127.0.0.1"));
+                ipResolver.LocalIp.Returns(IPAddress.Parse("127.0.0.1"));
+
+                builder
+                    .AddSingleton(ipResolver)
+                    .AddDecorator<IInitConfig>((ctx, initConfig) =>
+                    {
+                        initConfig.DiagnosticMode = DiagnosticMode.MemDb;
+                        initConfig.InRunnerTest = true;
+                        return initConfig;
+                    })
+                    .AddDecorator<IJsonRpcConfig>((ctx, jsonRpcConfig) =>
+                    {
+                        jsonRpcConfig.PreloadRpcModules = true; // So that rpc is resolved early so that we know if something is wrong in test
+                        return jsonRpcConfig;
+                    });
+
+                if (forStepTest)
+                {
+                    // Special case for aura where by default it try to cast the main blockchain processor
+                    // to extract the reporting validator. The blockchain processor is not DI so it fail in step test but
+                    // pass in runner test.
+                    builder
+                        .AddSingleton(Substitute.For<IReportingValidator>())
+                        ;
+                }
+
             }
         }
     }

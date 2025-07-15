@@ -13,11 +13,10 @@ namespace Nethermind.Consensus.Decoders;
 
 public class InclusionListDecoder(
     IEthereumEcdsa? ecdsa,
-    TxPool.ITxPool? txPool,
     ISpecProvider? specProvider,
     Logging.ILogManager? logManager)
 {
-    private readonly RecoverSignatures _recoverSignatures = new(ecdsa, txPool, specProvider, logManager);
+    private readonly RecoverSignatures _recoverSignatures = new(ecdsa, specProvider, logManager);
 
     public IEnumerable<Transaction> DecodeAndRecover(byte[][] txBytes, IReleaseSpec spec)
     {

@@ -127,6 +127,11 @@ public class Block
 
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
+
+    [JsonIgnore]
+    public int? EncodedSize { get; set; }
+
+
     [JsonIgnore]
     internal volatile int TransactionProcessed;
 

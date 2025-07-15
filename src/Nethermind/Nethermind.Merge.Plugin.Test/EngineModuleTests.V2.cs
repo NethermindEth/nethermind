@@ -33,7 +33,7 @@ public partial class EngineModuleTests
 {
     [TestCase(
         "0x73b538422b679dae9148c7de383813d96182bcdf2636955096a19da1ffe97967",
-        "0x43b85f31b7441048476f2dd80f7d58486a0ca37b7f421e5107e6cbf26032b74b",
+        "0xe89937a887c84cf0422c4445780f573929fa8bdec06eaac39be91cd428a9c249",
         "0x0cb5b20122ce36c5d13058d8d6ec33b9fee729730f41a3adeacfb76dd8116ab7",
         "0x0c26dbd2461b7b5d")]
     public virtual async Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash,
@@ -41,7 +41,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(Shanghai.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
@@ -172,7 +172,7 @@ public partial class EngineModuleTests
     public virtual async Task forkchoiceUpdatedV1_should_fail_with_withdrawals()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "0" });
-        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
         var fcuState = new
         {
             headBlockHash = chain.BlockTree.HeadHash.ToString(),
@@ -211,7 +211,7 @@ public partial class EngineModuleTests
         ) input)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(input.Spec);
-        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
         var fcuState = new
         {
             headBlockHash = chain.BlockTree.HeadHash.ToString(),
@@ -244,7 +244,7 @@ public partial class EngineModuleTests
     public virtual async Task getPayloadV2_empty_block_should_have_zero_value()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
 
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
@@ -269,7 +269,7 @@ public partial class EngineModuleTests
     public virtual async Task getPayloadV2_received_fees_should_be_equal_to_block_value_in_result()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
 
         Address feeRecipient = TestItem.AddressA;
 
@@ -302,7 +302,8 @@ public partial class EngineModuleTests
             await rpc.engine_newPayloadV1(getPayloadResult.ExecutionPayload);
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
 
-        UInt256 finalBalance = chain.StateReader.GetBalance(getPayloadResult.ExecutionPayload.StateRoot, feeRecipient);
+        BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(getPayloadResult.ExecutionPayload.BlockHash);
+        UInt256 finalBalance = chain.StateReader.GetBalance(payloadBlock, feeRecipient);
 
         (finalBalance - startingBalance).Should().Be(getPayloadResult.BlockValue);
     }
@@ -312,7 +313,7 @@ public partial class EngineModuleTests
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
 
         byte[] payloadId = Bytes.FromHexString("0x0");
         ResultWrapper<GetPayloadV2Result?> responseFirst = await rpc.engine_getPayloadV2(payloadId);
@@ -327,7 +328,7 @@ public partial class EngineModuleTests
             Withdrawal[] withdrawals)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload executionPayload1 = await SendNewBlockV2(rpc, chain, withdrawals);
         Transaction[] txs = BuildTransactions(
             chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
@@ -354,7 +355,7 @@ public partial class EngineModuleTests
             Withdrawal[] withdrawals)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload executionPayload1 = await SendNewBlockV2(rpc, chain, withdrawals);
         Transaction[] txs = BuildTransactions(
             chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
@@ -378,7 +379,7 @@ public partial class EngineModuleTests
     public async Task getPayloadBodiesByRangeV1_empty_response()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 1).Result.Data;
         ExecutionPayloadBodyV1Result?[] expected = [];
@@ -390,7 +391,7 @@ public partial class EngineModuleTests
     public async Task getPayloadBodiesByRangeV1_should_fail_when_too_many_payloads_requested()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> result =
             rpc.engine_getPayloadBodiesByRangeV1(1, 1025);
 
@@ -401,7 +402,7 @@ public partial class EngineModuleTests
     public async Task getPayloadBodiesByHashV1_should_fail_when_too_many_payloads_requested()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256[] hashes = Enumerable.Repeat(TestItem.KeccakA, 1025).ToArray();
         Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> result =
             rpc.engine_getPayloadBodiesByHashV1(hashes);
@@ -413,7 +414,7 @@ public partial class EngineModuleTests
     public async Task getPayloadBodiesByRangeV1_should_fail_when_params_below_1()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> result =
             rpc.engine_getPayloadBodiesByRangeV1(0, 1);
 
@@ -428,7 +429,7 @@ public partial class EngineModuleTests
     public virtual async Task getPayloadBodiesByRangeV1_should_return_canonical(Withdrawal[] withdrawals)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload executionPayload1 = await SendNewBlockV2(rpc, chain, withdrawals);
 
         await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(executionPayload1.BlockHash!,
@@ -512,7 +513,7 @@ public partial class EngineModuleTests
                     SuggestGenesisOnStart = false,
                 }));
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 5).Result.Data;
 
@@ -535,7 +536,7 @@ public partial class EngineModuleTests
                 SuggestGenesisOnStart = false,
             }));
 
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 7).Result.Data;
 
@@ -546,7 +547,7 @@ public partial class EngineModuleTests
     public virtual async Task newPayloadV1_should_fail_with_withdrawals()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "0" });
-        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
         ExecutionPayload expectedPayload = new()
         {
             BaseFeePerGas = 0,
@@ -586,7 +587,7 @@ public partial class EngineModuleTests
         ) input)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(input.Spec);
-        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
         Hash256 blockHash = new(input.BlockHash);
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Hash256 prevRandao = Keccak.Zero;
@@ -650,7 +651,7 @@ public partial class EngineModuleTests
         bool IsValid) input)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(input.ReleaseSpec);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload executionPayload = CreateBlockRequest(chain,
             CreateParentBlockRequestOnHead(chain.BlockTree),
             TestItem.AddressD, input.Withdrawals);
@@ -667,14 +668,14 @@ public partial class EngineModuleTests
         (Withdrawal[][] Withdrawals, (Address Account, UInt256 BalanceIncrease)[] ExpectedAccountIncrease) input)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
 
         // get initial balances
         List<UInt256> initialBalances = new();
         foreach ((Address Account, UInt256 BalanceIncrease) accountIncrease in input.ExpectedAccountIncrease)
         {
             UInt256 initialBalance =
-                chain.StateReader.GetBalance(chain.BlockTree.Head!.StateRoot!, accountIncrease.Account);
+                chain.StateReader.GetBalance(chain.BlockTree.Head!.Header, accountIncrease.Account);
             initialBalances.Add(initialBalance);
         }
 
@@ -701,7 +702,7 @@ public partial class EngineModuleTests
         {
             (Address Account, UInt256 BalanceIncrease) accountIncrease = input.ExpectedAccountIncrease[index];
             UInt256 currentBalance =
-                chain.StateReader.GetBalance(chain.BlockTree.Head!.StateRoot!, accountIncrease.Account);
+                chain.StateReader.GetBalance(chain.BlockTree.Head!.Header!, accountIncrease.Account);
             currentBalance.Should().Be(accountIncrease.BalanceIncrease + initialBalances[index]);
         }
     }
@@ -717,7 +718,7 @@ public partial class EngineModuleTests
 
         // Genesis, Timestamp = 1
         using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
 
         // Block without withdrawals, Timestamp = 2
         ExecutionPayload executionPayload =

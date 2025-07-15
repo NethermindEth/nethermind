@@ -5,23 +5,17 @@ using System.Collections.Generic;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
+using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
 
@@ -46,29 +40,10 @@ public class TestBlockProcessingModule : Module
                 PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
                 return new CodeInfoRepository(preBlockCaches?.PrecompileCache);
             })
-            .AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
-            {
-                ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
-                IBlockTree blockTree = ctx.Resolve<IBlockTree>();
-                IStateReader stateReader = ctx.Resolve<IStateReader>();
-                // need this to be the right one.
-                ICodeInfoRepository codeInfoRepository = ctx.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
-                return new ChainHeadInfoProvider(specProvider, blockTree, stateReader, codeInfoRepository);
-            })
 
             .AddSingleton<ITxPool, TxPool.TxPool>()
+            .AddSingleton<CompositeTxGossipPolicy>()
             .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
-
-            // These are common between processing and production and worldstate-ful, so they should be scoped instead
-            // of singleton.
-            .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
-            .AddScoped<IBlockProcessor, BlockProcessor>()
-            .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardCalculatorSource, txProcessor) => rewardCalculatorSource.Get(txProcessor))
-            .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
-            .AddScoped<IBlockhashStore, BlockhashStore>()
-            .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
-            .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
-            .AddScoped<BlockchainProcessor>()
 
             // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
             // in a `MainBlockProcessingContext`.
@@ -80,20 +55,16 @@ public class TestBlockProcessingModule : Module
 
             // Seems to be only used by block producer.
             .AddScoped<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
-            .AddScoped<ITxSource, TxPoolTxSource>()
-            .AddScoped<ITxFilterPipeline, ILogManager, ISpecProvider, IBlocksConfig>(TxFilterPipelineBuilder.CreateStandardFilteringPipeline)
             .AddScoped<IComparer<Transaction>, ITransactionComparerProvider>(txComparer => txComparer.GetDefaultComparer())
-            .AddScoped<BlockProducerEnvFactory>()
 
-            // Much like block validation, anything that require the use of IWorldState in block producer, is wrapped in
-            // a `BlockProducerContext`.
-            .AddSingleton<BlockProducerContext, ILifetimeScope>(ConfigureBlockProducerContext)
-            // And then we extract it back out.
-            .Map<IBlockProducerRunner, BlockProducerContext>(ctx => ctx.BlockProducerRunner)
-            .Bind<IBlockProductionTrigger, IManualBlockProductionTrigger>()
+            .AddSingleton<IBlockProductionPolicy, BlockProductionPolicy>()
+            .AddSingleton<IBlockProducerFactory, AutoBlockProducerFactory<TestBlockProducer>>()
+            .AddSingleton<IBlockProducer, IBlockProducerFactory>((factory) => factory.InitBlockProducer())
 
             // Something else entirely. Just some wrapper over things.
             .AddSingleton<IManualBlockProductionTrigger, BuildBlocksWhenRequested>()
+            .Bind<IBlockProductionTrigger, IManualBlockProductionTrigger>()
+            .AddSingleton<IBlockProducerRunner, StandardBlockProducerRunner>()
             .AddSingleton<ProducedBlockSuggester>()
             .ResolveOnServiceActivation<ProducedBlockSuggester, IBlockProducerRunner>()
 
@@ -107,7 +78,7 @@ public class TestBlockProcessingModule : Module
         IReceiptConfig receiptConfig = ctx.Resolve<IReceiptConfig>();
         IInitConfig initConfig = ctx.Resolve<IInitConfig>();
         IBlocksConfig blocksConfig = ctx.Resolve<IBlocksConfig>();
-        IWorldState mainWorldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
+        var mainWorldState = ctx.Resolve<IWorldStateManager>().GlobalWorldState;
         ICodeInfoRepository mainCodeInfoRepository =
             ctx.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
 
@@ -116,9 +87,9 @@ public class TestBlockProcessingModule : Module
             processingCtxBuilder
                 // These are main block processing specific
                 .AddScoped<ICodeInfoRepository>(mainCodeInfoRepository)
-                .AddScoped(mainWorldState)
-                .AddScoped<IBlockProcessor.IBlockTransactionsExecutor,
-                    BlockProcessor.BlockValidationTransactionsExecutor>()
+                .AddSingleton<IWorldState>(mainWorldState)
+                .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
+                .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 .AddScoped(new BlockchainProcessor.Options
                 {
                     StoreReceiptsByDefault = receiptConfig.StoreReceipts,
@@ -144,30 +115,21 @@ public class TestBlockProcessingModule : Module
         return innerScope.Resolve<MainBlockProcessingContext>();
     }
 
-    private BlockProducerContext ConfigureBlockProducerContext(ILifetimeScope ctx)
+    private class AutoBlockProducerFactory<T>(ILifetimeScope rootLifetime, IBlockProducerEnvFactory producerEnvFactory) : IBlockProducerFactory where T : IBlockProducer
     {
-        // Note: This is modelled after TestBlockchain, not prod
-        IWorldState thisBlockProducerWorldState = ctx.Resolve<IWorldStateManager>().CreateResettableWorldState();
-        ILifetimeScope innerScope = ctx.BeginLifetimeScope((producerCtx) =>
+        public IBlockProducer InitBlockProducer()
         {
-            producerCtx
-                .AddScoped<IWorldState>(thisBlockProducerWorldState)
+            IBlockProducerEnv env = producerEnvFactory.Create();
+            ILifetimeScope innerScope = rootLifetime.BeginLifetimeScope((builder) => builder
+                // Block producer specific things is in `IBlockProducerEnvFactory`.
+                // Yea, it can be added as `AddScoped` too and then mapped out, but its clearer this way.
+                .AddScoped<IWorldState>(env.ReadOnlyStateProvider)
+                .AddScoped<IBlockchainProcessor>(env.ChainProcessor)
+                .AddScoped<ITxSource>(env.TxSource)
 
-                // Block producer specific
-                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-                .AddScoped(BlockchainProcessor.Options.NoReceipts)
-                .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
-                .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
+                .AddScoped<IBlockProducer, T>());
 
-                .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
-
-                // TODO: What is this suppose to be?
-                .AddScoped<IBlockProducer, TestBlockProducer>()
-
-                .AddScoped<IBlockProducerRunner, StandardBlockProducerRunner>()
-                .AddScoped<BlockProducerContext>();
-        });
-
-        return innerScope.Resolve<BlockProducerContext>();
+            return innerScope.Resolve<IBlockProducer>();
+        }
     }
 }

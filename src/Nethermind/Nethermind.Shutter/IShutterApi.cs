@@ -12,7 +12,7 @@ namespace Nethermind.Shutter;
 public interface IShutterApi
 {
     ShutterTxSource TxSource { get; }
-    Task StartP2P(IEnumerable<Multiaddress> bootnodeP2PAddresses, CancellationTokenSource? cancellationTokenSource = null);
+    Task StartP2P(IEnumerable<Multiaddress> bootnodeP2PAddresses, CancellationToken cancellationToken);
     ShutterBlockImprovementContextFactory GetBlockImprovementContextFactory(IBlockProducer blockProducer);
     ValueTask DisposeAsync();
 }

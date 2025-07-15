@@ -3,11 +3,8 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.State;
-
-using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm
 {
@@ -15,5 +12,9 @@ namespace Nethermind.Evm
     {
         TransactionSubstate ExecuteTransaction<TTracingInst>(EvmState state, IWorldState worldState, ITxTracer txTracer)
             where TTracingInst : struct, IFlag;
+        ref readonly BlockExecutionContext BlockExecutionContext { get; }
+        ref readonly TxExecutionContext TxExecutionContext { get; }
+        void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
+        void SetTxExecutionContext(in TxExecutionContext txExecutionContext);
     }
 }

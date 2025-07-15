@@ -24,8 +24,8 @@ using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Producers;
@@ -48,15 +48,9 @@ public class DevBlockProducerTests
             .WithoutSettingHead
             .TestObject;
 
-        TrieStore trieStore = TestTrieStoreFactory.Build(dbProvider.RegisteredDbs[DbNames.State],
-            NoPruning.Instance,
-            Archive.Instance,
-            LimboLogs.Instance);
-        WorldState stateProvider = new(
-            trieStore,
-            dbProvider.RegisteredDbs[DbNames.Code],
-            LimboLogs.Instance);
-        StateReader stateReader = new(trieStore, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest(dbProvider, LimboLogs.Instance);
+        IWorldState stateProvider = worldStateManager.GlobalWorldState;
+        IStateReader stateReader = worldStateManager.GlobalStateReader;
         BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(
@@ -73,7 +67,7 @@ public class DevBlockProducerTests
             specProvider,
             Always.Valid,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(txProcessor), stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(txProcessor, stateProvider),

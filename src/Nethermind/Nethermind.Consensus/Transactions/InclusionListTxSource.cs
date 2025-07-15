@@ -12,12 +12,11 @@ namespace Nethermind.Consensus.Transactions;
 
 public class InclusionListTxSource(
     IEthereumEcdsa? ecdsa,
-    TxPool.ITxPool? txPool,
     ISpecProvider? specProvider,
     Logging.ILogManager? logManager) : ITxSource
 {
     private IEnumerable<Transaction> _inclusionListTransactions = [];
-    private readonly InclusionListDecoder _inclusionListDecoder = new(ecdsa, txPool, specProvider, logManager);
+    private readonly InclusionListDecoder _inclusionListDecoder = new(ecdsa, specProvider, logManager);
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         => _inclusionListTransactions;

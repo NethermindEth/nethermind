@@ -31,14 +31,14 @@ public partial class EngineRpcModule : IEngineRpcModule
     public ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
         TransitionConfigurationV1 beaconTransitionConfiguration) => _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);
 
-    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => await ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Paris);
+    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
+        => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Paris);
 
     public Task<ResultWrapper<ExecutionPayload?>> engine_getPayloadV1(byte[] payloadId) =>
         _getPayloadHandlerV1.HandleAsync(payloadId);
 
-    public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
-        => await NewPayload(executionPayload, EngineApiVersions.Paris);
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
+        => NewPayload(executionPayload, EngineApiVersions.Paris);
 
     protected async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {

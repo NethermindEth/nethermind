@@ -55,12 +55,11 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
                 TrieNode currentNode = nodeCommitInfo.Node;
                 currentNode.IsPersisted = true;
-                _writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp, writeFlags);
+                _writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp.Span, writeFlags);
             }
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
     }
 }

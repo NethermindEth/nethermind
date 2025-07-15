@@ -4,11 +4,11 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -57,7 +57,7 @@ public partial class EngineModuleTests
             CancellationToken cancellationToken)
         {
             await Task.Delay(delay, cancellationToken);
-            Block? block = await blockProducer.BuildBlock(parentHeader, NullBlockTracer.Instance, payloadAttributes, cancellationToken);
+            Block? block = await blockProducer.BuildBlock(parentHeader, NullBlockTracer.Instance, payloadAttributes, IBlockProducer.Flags.None, cancellationToken);
             if (block is not null)
             {
                 CurrentBestBlock = block;

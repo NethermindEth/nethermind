@@ -171,6 +171,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Enable storage range split.", DefaultValue = "false", HiddenFromDocs = true)]
     bool EnableSnapSyncStorageRangeSplit { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Max tx in forward sync buffer.", DefaultValue = "200000", HiddenFromDocs = true)]
-    int MaxTxInForwardSyncBuffer { get; set; }
+    [ConfigItem(Description = "_Technical._ Estimated size of memory for storing blocks during download.", DefaultValue = "200000000", HiddenFromDocs = true)]
+    long ForwardSyncDownloadBufferMemoryBudget { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Estimated max size of blocks in block processing queue before stop downloading.", DefaultValue = "200000000", HiddenFromDocs = true)]
+    long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; }
 }

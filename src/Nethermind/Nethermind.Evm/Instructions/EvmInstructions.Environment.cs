@@ -7,7 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.EvmObjectFormat;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 using static Nethermind.Evm.VirtualMachine;
 
@@ -18,6 +18,40 @@ internal static partial class EvmInstructions
 {
     /// <summary>
     /// Defines an environment introspection operation that returns a byte span.
+    /// Implementations should provide a static gas cost and a static Operation method.
+    /// </summary>
+    public interface IOpBlkAddress
+    {
+        /// <summary>
+        /// The gas cost for the operation.
+        /// </summary>
+        virtual static long GasCost => GasCostOf.Base;
+        /// <summary>
+        /// Executes the operation and returns the result as address.
+        /// </summary>
+        /// <param name="vmState">The current virtual machine state.</param>
+        abstract static Address Operation(VirtualMachine vm);
+    }
+
+    /// <summary>
+    /// Defines an environment introspection operation that returns a big endian word.
+    /// Implementations should provide a static gas cost and a static Operation method.
+    /// </summary>
+    public interface IOpEnv32Bytes
+    {
+        /// <summary>
+        /// The gas cost for the operation.
+        /// </summary>
+        virtual static long GasCost => GasCostOf.Base;
+        /// <summary>
+        /// Executes the operation and returns the result as ref to big endian word.
+        /// </summary>
+        /// <param name="vmState">The current virtual machine state.</param>
+        abstract static ref readonly ValueHash256 Operation(VirtualMachine vm);
+    }
+
+    /// <summary>
+    /// Defines an environment introspection operation that returns an Address.
     /// Implementations should provide a static gas cost and a static Operation method.
     /// </summary>
     public interface IOpEnvAddress
@@ -48,6 +82,20 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
+    /// Defines an environment introspection operation that returns a 256-bit unsigned integer.
+    /// </summary>
+    public interface IOpBlkUInt256
+    {
+        virtual static long GasCost => GasCostOf.Base;
+        /// <summary>
+        /// Executes the operation and returns the result as a UInt256.
+        /// </summary>
+        /// <param name="vmState">The current virtual machine state.</param>
+        /// <param name="result">The resulting 256-bit unsigned integer.</param>
+        abstract static ref readonly UInt256 Operation(VirtualMachine vm);
+    }
+
+    /// <summary>
     /// Defines an environment introspection operation that returns a 32-bit unsigned integer.
     /// </summary>
     public interface IOpEnvUInt32
@@ -71,6 +119,19 @@ internal static partial class EvmInstructions
         /// </summary>
         /// <param name="vmState">The current virtual machine state.</param>
         abstract static ulong Operation(EvmState vmState);
+    }
+
+    /// <summary>
+    /// Defines an environment introspection operation that returns a 64-bit unsigned integer.
+    /// </summary>
+    public interface IOpBlkUInt64
+    {
+        virtual static long GasCost => GasCostOf.Base;
+        /// <summary>
+        /// Executes the operation and returns the result as a UInt64.
+        /// </summary>
+        /// <param name="vmState">The current virtual machine state.</param>
+        abstract static ulong Operation(VirtualMachine vm);
     }
 
     /// <summary>
@@ -101,6 +162,33 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
+    /// Executes an block introspection opcode that returns an Address.
+    /// Generic parameter TOpEnv defines the concrete operation.
+    /// </summary>
+    /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The execution stack.</param>
+    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="programCounter">The program counter.</param>
+    /// <returns>An EVM exception type if an error occurs.</returns>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionBlkAddress<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TOpEnv : struct, IOpBlkAddress
+        where TTracingInst : struct, IFlag
+    {
+        // Deduct the gas cost as defined by the operation implementation.
+        gasAvailable -= TOpEnv.GasCost;
+
+        // Execute the operation and retrieve the result.
+        Address result = TOpEnv.Operation(vm);
+
+        // Push the resulting bytes onto the EVM stack.
+        stack.PushAddress<TTracingInst>(result);
+
+        return EvmExceptionType.None;
+    }
+
+    /// <summary>
     /// Executes an environment introspection opcode that returns a UInt256 value.
     /// </summary>
     /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
@@ -117,6 +205,29 @@ internal static partial class EvmInstructions
         gasAvailable -= TOpEnv.GasCost;
 
         ref readonly UInt256 result = ref TOpEnv.Operation(vm.EvmState);
+
+        stack.PushUInt256<TTracingInst>(in result);
+
+        return EvmExceptionType.None;
+    }
+
+    /// <summary>
+    /// Executes an environment introspection opcode that returns a UInt256 value.
+    /// </summary>
+    /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The execution stack.</param>
+    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="programCounter">The program counter.</param>
+    /// <returns>An EVM exception type if an error occurs.</returns>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionBlkUInt256<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TOpEnv : struct, IOpBlkUInt256
+        where TTracingInst : struct, IFlag
+    {
+        gasAvailable -= TOpEnv.GasCost;
+
+        ref readonly UInt256 result = ref TOpEnv.Operation(vm);
 
         stack.PushUInt256<TTracingInst>(in result);
 
@@ -170,6 +281,52 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
+    /// Executes an environment introspection opcode that returns a UInt64 value.
+    /// </summary>
+    /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The execution stack.</param>
+    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="programCounter">The program counter.</param>
+    /// <returns>An EVM exception type if an error occurs.</returns>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionBlkUInt64<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TOpEnv : struct, IOpBlkUInt64
+        where TTracingInst : struct, IFlag
+    {
+        gasAvailable -= TOpEnv.GasCost;
+
+        ulong result = TOpEnv.Operation(vm);
+
+        stack.PushUInt64<TTracingInst>(result);
+
+        return EvmExceptionType.None;
+    }
+
+    /// <summary>
+    /// Executes an environment introspection opcode that returns a UInt64 value.
+    /// </summary>
+    /// <typeparam name="TOpEnv">The specific operation implementation.</typeparam>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The execution stack.</param>
+    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="programCounter">The program counter.</param>
+    /// <returns>An EVM exception type if an error occurs.</returns>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionEnv32Bytes<TOpEnv, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+        where TOpEnv : struct, IOpEnv32Bytes
+        where TTracingInst : struct, IFlag
+    {
+        gasAvailable -= TOpEnv.GasCost;
+
+        ref readonly ValueHash256 result = ref TOpEnv.Operation(vm);
+
+        stack.Push32Bytes<TTracingInst>(in result);
+
+        return EvmExceptionType.None;
+    }
+
+    /// <summary>
     /// Returns the size of the transaction call data.
     /// </summary>
     public struct OpCallDataSize : IOpEnvUInt32
@@ -184,34 +341,34 @@ internal static partial class EvmInstructions
     public struct OpCodeSize : IOpEnvUInt32
     {
         public static uint Operation(EvmState vmState)
-            => (uint)vmState.Env.CodeInfo.MachineCode.Length;
+            => (uint)vmState.Env.CodeInfo.CodeSpan.Length;
     }
 
     /// <summary>
     /// Returns the timestamp of the current block.
     /// </summary>
-    public struct OpTimestamp : IOpEnvUInt64
+    public struct OpTimestamp : IOpBlkUInt64
     {
-        public static ulong Operation(EvmState vmState)
-            => vmState.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp;
+        public static ulong Operation(VirtualMachine vm)
+            => vm.BlockExecutionContext.Header.Timestamp;
     }
 
     /// <summary>
     /// Returns the block number of the current block.
     /// </summary>
-    public struct OpNumber : IOpEnvUInt64
+    public struct OpNumber : IOpBlkUInt64
     {
-        public static ulong Operation(EvmState vmState)
-            => vmState.Env.TxExecutionContext.BlockExecutionContext.Number;
+        public static ulong Operation(VirtualMachine vm)
+            => vm.BlockExecutionContext.Number;
     }
 
     /// <summary>
     /// Returns the gas limit of the current block.
     /// </summary>
-    public struct OpGasLimit : IOpEnvUInt64
+    public struct OpGasLimit : IOpBlkUInt64
     {
-        public static ulong Operation(EvmState vmState)
-            => vmState.Env.TxExecutionContext.BlockExecutionContext.GasLimit;
+        public static ulong Operation(VirtualMachine vm)
+            => vm.BlockExecutionContext.GasLimit;
     }
 
     /// <summary>
@@ -226,10 +383,10 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Returns the base fee per gas for the current block.
     /// </summary>
-    public struct OpBaseFee : IOpEnvUInt256
+    public struct OpBaseFee : IOpBlkUInt256
     {
-        public static ref readonly UInt256 Operation(EvmState vmState)
-            => ref vmState.Env.TxExecutionContext.BlockExecutionContext.Header.BaseFeePerGas;
+        public static ref readonly UInt256 Operation(VirtualMachine vm)
+            => ref vm.BlockExecutionContext.Header.BaseFeePerGas;
     }
 
     /// <summary>
@@ -246,7 +403,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionBlobBaseFee<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
-        ref readonly BlockExecutionContext context = ref vm.EvmState.Env.TxExecutionContext.BlockExecutionContext;
+        ref readonly BlockExecutionContext context = ref vm.BlockExecutionContext;
         // If the blob base fee is missing (no ExcessBlobGas set), this opcode is invalid.
         if (!context.Header.ExcessBlobGas.HasValue) goto BadInstruction;
 
@@ -263,10 +420,10 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Returns the gas price for the transaction.
     /// </summary>
-    public struct OpGasPrice : IOpEnvUInt256
+    public struct OpGasPrice : IOpBlkUInt256
     {
-        public static ref readonly UInt256 Operation(EvmState vmState)
-            => ref vmState.Env.TxExecutionContext.GasPrice;
+        public static ref readonly UInt256 Operation(VirtualMachine vm)
+            => ref vm.TxExecutionContext.GasPrice;
     }
 
     /// <summary>
@@ -299,40 +456,28 @@ internal static partial class EvmInstructions
     /// <summary>
     /// Returns the origin address of the transaction.
     /// </summary>
-    public struct OpOrigin : IOpEnvAddress
+    public struct OpOrigin : IOpEnv32Bytes
     {
-        public static Address Operation(EvmState vmState)
-            => vmState.Env.TxExecutionContext.Origin;
+        public static ref readonly ValueHash256 Operation(VirtualMachine vm)
+            => ref vm.TxExecutionContext.Origin;
     }
 
     /// <summary>
     /// Returns the coinbase (beneficiary) address for the current block.
     /// </summary>
-    public struct OpCoinbase : IOpEnvAddress
+    public struct OpCoinbase : IOpBlkAddress
     {
-        public static Address Operation(EvmState vmState)
-            => vmState.Env.TxExecutionContext.BlockExecutionContext.Coinbase;
+        public static Address Operation(VirtualMachine vm)
+            => vm.BlockExecutionContext.Coinbase;
     }
 
     /// <summary>
-    /// Pushes the chain identifier onto the stack.
+    /// Returns the chain identifier.
     /// </summary>
-    /// <returns>
-    /// <param name="vm">The virtual machine instance.</param>
-    /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
-    /// <param name="programCounter">The program counter.</param>
-    /// <see cref="EvmExceptionType.None"/>
-    /// </returns>
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionChainId<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInst : struct, IFlag
+    public struct OpChainId : IOpEnv32Bytes
     {
-        gasAvailable -= GasCostOf.Base;
-        // The chain ID is stored as a byte array in the VM
-        stack.Push32Bytes<TTracingInst>(in vm.ChainId);
-
-        return EvmExceptionType.None;
+        public static ref readonly ValueHash256 Operation(VirtualMachine vm)
+            => ref vm.ChainId;
     }
 
     /// <summary>
@@ -511,7 +656,7 @@ internal static partial class EvmInstructions
     {
         // Charge the base gas cost for this opcode.
         gasAvailable -= GasCostOf.Base;
-        stack.Push32Bytes<TTracingInst>(in vm.EvmState.Env.TxExecutionContext.BlockExecutionContext.PrevRandao);
+        stack.Push32Bytes<TTracingInst>(in vm.BlockExecutionContext.PrevRandao);
         return EvmExceptionType.None;
     }
 
@@ -562,8 +707,6 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionBlobHash<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TTracingInst : struct, IFlag
     {
-        IReleaseSpec spec = vm.Spec;
-
         // Deduct the gas cost for blob hash operation.
         gasAvailable -= GasCostOf.BlobHash;
 
@@ -571,7 +714,7 @@ internal static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 
         // Retrieve the array of versioned blob hashes from the execution context.
-        byte[][] versionedHashes = vm.EvmState.Env.TxExecutionContext.BlobVersionedHashes;
+        byte[][] versionedHashes = vm.TxExecutionContext.BlobVersionedHashes;
 
         // If versioned hashes are available and the index is within range, push the corresponding blob hash.
         // Otherwise, push zero.
@@ -618,7 +761,10 @@ internal static partial class EvmInstructions
         long number = a > long.MaxValue ? long.MaxValue : (long)a.u0;
 
         // Retrieve the block hash for the given block number.
-        Hash256? blockHash = vm.BlockHashProvider.GetBlockhash(vm.EvmState.Env.TxExecutionContext.BlockExecutionContext.Header, number);
+        BlockHeader header = vm.BlockExecutionContext.Header;
+        Hash256? blockHash = number >= header.Number ?
+            null : // Current block or higher is null, don't bother looking up
+            vm.BlockHashProvider.GetBlockhash(header, number, vm.Spec);
 
         // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
         stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);

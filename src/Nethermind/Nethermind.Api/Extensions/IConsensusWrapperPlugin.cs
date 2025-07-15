@@ -8,7 +8,7 @@ namespace Nethermind.Api.Extensions
 {
     public interface IConsensusWrapperPlugin : INethermindPlugin
     {
-        IBlockProducer InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, ITxSource? txSource);
+        IBlockProducer InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory);
 
         /// <summary>
         /// Initializes the <see cref="IBlockProducerRunner"/>.

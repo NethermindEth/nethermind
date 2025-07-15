@@ -14,6 +14,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
@@ -83,6 +84,20 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
+        public async Task Should_Unwrap_InvalidConfigurationException()
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                new StepInfo(typeof(FailedConstructorWithInvalidConfigurationStep))
+            );
+
+            EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+
+            Func<Task> act = () => stepsManager.InitializeAll(source.Token);
+            await act.Should().ThrowAsync<InvalidConfigurationException>();
+        }
+
+        [Test]
         public async Task With_constructor_without_nethermind_api()
         {
             await using IContainer container = CreateNethermindEnvironment(
@@ -108,6 +123,28 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             var act = async () => await stepsManager.InitializeAll(source.Token);
             await act.Should().ThrowAsync<StepDependencyException>();
+        }
+
+        [Test]
+        [CancelAfter(1000)]
+        public async Task With_dependent_step(CancellationToken cancellationToken)
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                new StepInfo(typeof(StepB)),
+                new StepInfo(typeof(StepCStandard)),
+                new StepInfo(typeof(StepE))
+            );
+
+            EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
+            Task initTask = stepsManager.InitializeAll(cancellationToken);
+            await Task.Delay(100, cancellationToken);
+            initTask.IsCompleted.Should().BeFalse();
+
+            container.Resolve<StepB>().WasExecuted.Should().BeFalse();
+            container.Resolve<StepE>().Waiter.SetResult();
+            await initTask;
+
+            container.Resolve<StepB>().WasExecuted.Should().BeTrue();
         }
 
         private static IContainer CreateNethermindEnvironment(params IEnumerable<StepInfo> stepInfos)
@@ -224,8 +261,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     [RunnerStepDependencies(typeof(StepC))]
     public class StepB : IStep
     {
+        public bool WasExecuted = false;
+
         public Task Execute(CancellationToken cancellationToken)
         {
+            WasExecuted = true;
             return Task.CompletedTask;
         }
 
@@ -250,6 +290,17 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
     }
 
+    [RunnerStepDependencies(dependencies: [], dependents: [typeof(StepB)])]
+    public class StepE : IStep
+    {
+        public TaskCompletionSource Waiter = new TaskCompletionSource();
+
+        public virtual Task Execute(CancellationToken cancellationToken)
+        {
+            return Waiter.Task;
+        }
+    }
+
     /// <summary>
     /// Designed to fail
     /// </summary>
@@ -269,6 +320,14 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     {
         public StepCStandard(NethermindApi runnerContext)
         {
+        }
+    }
+
+    public class FailedConstructorWithInvalidConfigurationStep : StepC
+    {
+        public FailedConstructorWithInvalidConfigurationStep()
+        {
+            throw new InvalidConfigurationException("Invalid config", -1);
         }
     }
 

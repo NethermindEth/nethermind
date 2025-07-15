@@ -5,16 +5,17 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 
 namespace Nethermind.Taiko;
 
@@ -39,11 +40,11 @@ public class TaikoPayloadPreparationService(
 
         string payloadId = payloadAttributes.GetPayloadId(parentHeader);
 
-        _payloadStorage.AddOrUpdate(payloadId, (payloadId) =>
+        _payloadStorage.AddOrUpdate(payloadId, payloadId =>
             {
                 Block block = BuildBlock(parentHeader, attrs);
-                Hash256 parentStateRoot = parentHeader.StateRoot ?? throw new InvalidOperationException("Parent state root is null");
-                block = ProcessBlock(block, parentStateRoot);
+                if (parentHeader.StateRoot is null) throw new InvalidOperationException("Parent state root is null");
+                block = ProcessBlock(block, parentHeader);
 
                 // L1Origin **MUST NOT** be null, it's a required field in PayloadAttributes.
                 L1Origin l1Origin = attrs.L1Origin ?? throw new InvalidOperationException("L1Origin is required");
@@ -53,8 +54,12 @@ public class TaikoPayloadPreparationService(
 
                 // Write L1Origin.
                 l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
-                // Write the head L1Origin.
-                l1OriginStore.WriteHeadL1Origin(l1Origin.BlockId);
+
+                // Write the head L1Origin, only when it's not a preconfirmation block.
+                if (!l1Origin.IsPreconfBlock)
+                {
+                    l1OriginStore.WriteHeadL1Origin(l1Origin.BlockId);
+                }
 
                 // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
                 return new NoBlockProductionContext(block, UInt256.Zero);
@@ -68,15 +73,15 @@ public class TaikoPayloadPreparationService(
         return payloadId;
     }
 
-    private Block ProcessBlock(Block block, Hash256 parentStateRoot, CancellationToken token = default)
+    private Block ProcessBlock(Block block, BlockHeader? parent, CancellationToken token = default)
     {
         if (_worldStateLock.Wait(_emptyBlockProcessingTimeout))
         {
             try
             {
-                if (worldState.HasStateForRoot(parentStateRoot))
+                if (worldState.HasStateForBlock(parent))
                 {
-                    worldState.StateRoot = parentStateRoot;
+                    worldState.SetBaseBlock(parent);
 
                     return processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, token)
                         ?? throw new InvalidOperationException("Block processing failed");
@@ -127,7 +132,7 @@ public class TaikoPayloadPreparationService(
 
         while (rlpStream.Position < transactionsCheck)
         {
-            transactions[txIndex++] = txDecoder.Decode(rlpStream, RlpBehaviors.None)!;
+            transactions[txIndex++] = txDecoder.Decode(rlpStream)!;
         }
 
         rlpStream.Check(transactionsCheck);
@@ -160,6 +165,11 @@ public class TaikoPayloadPreparationService(
     {
         throw new NotImplementedException();
     }
+    public void CancelBlockProduction(string payloadId)
+    {
+        _ = GetPayload(payloadId);
+    }
+
 
     public event EventHandler<BlockEventArgs>? BlockImproved { add { } remove { } }
 }

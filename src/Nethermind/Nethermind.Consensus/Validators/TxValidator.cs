@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -205,8 +205,8 @@ public sealed class BlobFieldsTxValidator : ITxValidator
     {
         int blobCount = transaction.BlobVersionedHashes!.Length;
         ulong totalDataGas = BlobGasCalculator.CalculateBlobGas(blobCount);
-        var maxBlobGasPerTxn = spec.GetMaxBlobGasPerBlock();
-        return totalDataGas > maxBlobGasPerTxn ? TxErrorMessages.BlobTxGasLimitExceeded(totalDataGas, maxBlobGasPerTxn)
+        var maxBlobGasPerTx = spec.GetMaxBlobGasPerTx();
+        return totalDataGas > maxBlobGasPerTx ? TxErrorMessages.BlobTxGasLimitExceeded(totalDataGas, maxBlobGasPerTx)
             : blobCount < Eip4844Constants.MinBlobsPerTransaction ? TxErrorMessages.BlobTxMissingBlobs
             : ValidateBlobVersionedHashes();
 

@@ -10,17 +10,13 @@ using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Discovery;
-using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Subprotocols.Eth;
-using Nethermind.Network.Rlpx;
-using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -51,7 +47,6 @@ public static class NettyMemoryEstimator
     typeof(SetupKeyStore),
     typeof(ResolveIps),
     typeof(InitializePlugins),
-    typeof(EraStep),
     typeof(InitializeBlockchain))]
 public class InitializeNetwork : IStep
 {
@@ -59,6 +54,7 @@ public class InitializeNetwork : IStep
     private readonly INodeStatsManager _nodeStatsManager;
     private readonly ISynchronizer _synchronizer;
     private readonly ISyncPeerPool _syncPeerPool;
+    private readonly IForkInfo _forkInfo;
     private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly INetworkStorage _peerStorage;
     private readonly IDiscoveryApp _discoveryApp;
@@ -79,6 +75,7 @@ public class InitializeNetwork : IStep
         NodeSourceToDiscV4Feeder enrDiscoveryAppFeeder,
         IDiscoveryApp discoveryApp,
         Lazy<IPeerPool> peerPool, // Require IRlpxPeer to be created first, hence, lazy.
+        IForkInfo forkInfo,
         [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
@@ -93,6 +90,7 @@ public class InitializeNetwork : IStep
         _enrDiscoveryAppFeeder = enrDiscoveryAppFeeder;
         _discoveryApp = discoveryApp;
         _peerPool = peerPool;
+        _forkInfo = forkInfo;
         _peerStorage = peerStorage;
         _networkConfig = networkConfig;
         _syncConfig = syncConfig;
@@ -269,12 +267,11 @@ public class InitializeNetwork : IStep
         await _api.TrustedNodesManager.InitAsync();
 
         ISyncServer syncServer = _api.SyncServer!;
-        ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
 
         ProtocolValidator protocolValidator = new(
             _nodeStatsManager!,
             _api.BlockTree,
-            forkInfo,
+            _forkInfo,
             _api.PeerManager!,
             _networkConfig,
             _api.LogManager);
@@ -292,7 +289,7 @@ public class InitializeNetwork : IStep
             _nodeStatsManager,
             protocolValidator,
             _peerStorage,
-            forkInfo,
+            _forkInfo,
             _api.GossipPolicy,
             _api.WorldStateManager!,
             _api.LogManager,

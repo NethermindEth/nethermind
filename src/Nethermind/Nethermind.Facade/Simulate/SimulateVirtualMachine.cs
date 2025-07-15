@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.State;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -36,4 +37,14 @@ public class SimulateVirtualMachine(IVirtualMachine virtualMachine) : IVirtualMa
                 return false;
         }
     }
+
+    public ref readonly BlockExecutionContext BlockExecutionContext => ref virtualMachine.BlockExecutionContext;
+
+    public ref readonly TxExecutionContext TxExecutionContext => ref virtualMachine.TxExecutionContext;
+
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        => virtualMachine.SetBlockExecutionContext(blockExecutionContext);
+
+    public void SetTxExecutionContext(in TxExecutionContext txExecutionContext)
+        => virtualMachine.SetTxExecutionContext(txExecutionContext);
 }

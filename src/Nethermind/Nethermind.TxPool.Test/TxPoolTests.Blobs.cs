@@ -12,7 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -26,6 +26,7 @@ using NUnit.Framework;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.State;
 
 namespace Nethermind.TxPool.Test
 {
@@ -1020,39 +1021,54 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_evict_with_too_many_blobs()
+        public async Task should_evict_txs_with_too_many_blobs_after_fork()
         {
-            ChainSpecBasedSpecProvider provider = new(new ChainSpec
+            const int regularMaxBlobCount = 9;
+
+            TestSpecProvider provider = new(new ReleaseSpec
             {
-                Parameters = new ChainParameters
+                IsEip4844Enabled = true,
+                MaxBlobCount = regularMaxBlobCount,
+            })
+            {
+                SpecToReturn = new ReleaseSpec
                 {
-                    Eip4844TransitionTimestamp = 0,
-                    BlobSchedule = {
-                        { new BlobScheduleSettings { Max = 5, Timestamp = _blockTree.Head.Timestamp  } },
-                        { new BlobScheduleSettings { Max = 3, Timestamp = _blockTree.Head.Timestamp + 1  } },
-                    },
+                    IsEip4844Enabled = true,
+                    IsEip7594Enabled = true,
+                    MaxBlobCount = regularMaxBlobCount,
                 },
-                EngineChainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>()
-            });
+                ForkOnBlockNumber = _blockTree.Head.Number + 1,
+            };
 
             Block head = _blockTree.Head;
             _blockTree.FindBestSuggestedHeader().Returns(head.Header);
 
-            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, Size = 10 };
-            _txPool = CreatePool(txPoolConfig, provider);
+            _txPool = CreatePool(specProvider: provider);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            UInt256 nonce = 0;
-
-            _txPool.SubmitTx(CreateBlobTx(TestItem.PrivateKeyA, nonce++, 3), TxHandlingOptions.None);
-            _txPool.SubmitTx(CreateBlobTx(TestItem.PrivateKeyA, nonce++, 5), TxHandlingOptions.None);
-            _txPool.SubmitTx(CreateBlobTx(TestItem.PrivateKeyA, nonce++, 3), TxHandlingOptions.None);
-
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(3));
+            _txPool.SubmitTx(CreateBlobTx(TestItem.PrivateKeyA, 0, regularMaxBlobCount), TxHandlingOptions.None);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
 
             await AddBlock();
 
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
+        }
+
+        [Test]
+        public void max_blobs_per_tx_should_not_exceed_max_blobs_per_block()
+        {
+            const ulong regularMaxBlobCount = Eip7594Constants.MaxBlobsPerTx - 1;
+
+            TestSpecProvider provider = new(new ReleaseSpec
+            {
+                IsEip4844Enabled = true,
+                IsEip7594Enabled = true,
+                MaxBlobCount = regularMaxBlobCount,
+            });
+
+            ulong maxBlobsPerTx = provider.GetSpec(_blockTree.Head!.Header).MaxBlobsPerTx;
+
+            Assert.That(maxBlobsPerTx, Is.EqualTo(regularMaxBlobCount));
         }
     }
 }

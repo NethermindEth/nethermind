@@ -38,7 +38,7 @@ public class SnapServerTest
     {
         MemDb stateDbServer = new();
         MemDb codeDbServer = new();
-        TrieStore store = TestTrieStoreFactory.Build(stateDbServer, LimboLogs.Instance);
+        TestRawTrieStore store = new TestRawTrieStore(stateDbServer);
         StateTree tree = new(store, LimboLogs.Instance);
         SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance, lastNStateRootTracker);
 
@@ -263,7 +263,7 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        TrieStore store = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
 
         (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store);
 
@@ -303,7 +303,7 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        TrieStore store = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
 
         (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store);
 
@@ -333,7 +333,7 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        TrieStore store = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
 
         (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 _) = TestItem.Tree.GetTrees(store, 10000);
 
@@ -383,7 +383,7 @@ public class SnapServerTest
     {
         MemDb stateDb = new MemDb();
         MemDb codeDb = new MemDb();
-        TrieStore store = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
+        TestRawTrieStore store = new TestRawTrieStore(stateDb);
 
         StateTree stateTree = new(store, LimboLogs.Instance);
 
@@ -492,7 +492,7 @@ public class SnapServerTest
     private IStateReader CreateConstantStateRootTracker(bool available)
     {
         IStateReader tracker = Substitute.For<IStateReader>();
-        tracker.HasStateForRoot(Arg.Any<Hash256>()).Returns(available);
+        tracker.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(available);
         return tracker;
     }
 }

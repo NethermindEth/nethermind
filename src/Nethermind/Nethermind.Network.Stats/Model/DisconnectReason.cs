@@ -52,6 +52,7 @@ public enum DisconnectReason : byte
     InvalidHeader,
     InvalidReceiptRoot,
     EthSyncException,
+    InvalidBlockRangeUpdate,
 
     // These are from EthDisconnectReason which does not necessarily used in Nethermind.
     EthDisconnectRequested,

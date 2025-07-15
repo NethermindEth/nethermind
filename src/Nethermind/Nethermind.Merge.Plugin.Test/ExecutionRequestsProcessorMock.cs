@@ -9,7 +9,7 @@ using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -45,7 +45,7 @@ public class ExecutionRequestsProcessorMock : IExecutionRequestsProcessor
         }
     }
 
-    public void ProcessExecutionRequests(Block block, IWorldState state, in BlockExecutionContext blkCtx, TxReceipt[] receipts, IReleaseSpec spec)
+    public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
     {
         if (block.IsGenesis)
             return;

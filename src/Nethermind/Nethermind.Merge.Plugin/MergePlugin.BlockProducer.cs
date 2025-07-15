@@ -11,42 +11,33 @@ namespace Nethermind.Merge.Plugin
 {
     public partial class MergePlugin
     {
-        protected PostMergeBlockProducer _postMergeBlockProducer = null!;
         protected ManualTimestamper? _manualTimestamper;
 
         protected virtual PostMergeBlockProducerFactory CreateBlockProducerFactory()
             => new(_api.SpecProvider!, _api.SealEngine, _manualTimestamper!, _blocksConfig, _api.LogManager);
 
-        public virtual IBlockProducer InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, ITxSource? txSource)
+        public virtual IBlockProducer InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory)
         {
             if (MergeEnabled)
             {
-                ArgumentNullException.ThrowIfNull(_api.EngineSigner);
-                ArgumentNullException.ThrowIfNull(_api.ChainSpec);
                 ArgumentNullException.ThrowIfNull(_api.BlockTree);
-                ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
                 ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-                ArgumentNullException.ThrowIfNull(_api.BlockValidator);
-                ArgumentNullException.ThrowIfNull(_api.RewardCalculatorSource);
-                ArgumentNullException.ThrowIfNull(_api.ReceiptStorage);
-                ArgumentNullException.ThrowIfNull(_api.TxPool);
-                ArgumentNullException.ThrowIfNull(_api.DbProvider);
-                ArgumentNullException.ThrowIfNull(_api.HeaderValidator);
                 ArgumentNullException.ThrowIfNull(_mergeBlockProductionPolicy);
-                ArgumentNullException.ThrowIfNull(_api.SealValidator);
                 ArgumentNullException.ThrowIfNull(_api.BlockProducerEnvFactory);
 
                 if (_logger.IsInfo) _logger.Info("Starting Merge block producer & sealer");
 
                 IBlockProducer? blockProducer = _mergeBlockProductionPolicy.ShouldInitPreMergeBlockProduction()
-                    ? baseBlockProducerFactory.InitBlockProducer(txSource)
+                    ? baseBlockProducerFactory.InitBlockProducer()
                     : null;
                 _manualTimestamper ??= new ManualTimestamper();
 
-                BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create(txSource.Then(_inclusionListTxSource));
+                // todo: pass in IL tx source
+                // BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create(txSource.Then(_inclusionListTxSource));
+                IBlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create();
 
-                _postMergeBlockProducer = CreateBlockProducerFactory().Create(blockProducerEnv);
-                _api.BlockProducer = new MergeBlockProducer(blockProducer, _postMergeBlockProducer, _poSSwitcher);
+                PostMergeBlockProducer postMergeBlockProducer = CreateBlockProducerFactory().Create(blockProducerEnv);
+                _api.BlockProducer = new MergeBlockProducer(blockProducer, postMergeBlockProducer, _poSSwitcher);
             }
 
             return _api.BlockProducer!;
@@ -64,8 +55,6 @@ namespace Nethermind.Merge.Plugin
                     ? baseRunnerFactory.InitBlockProducerRunner(preMergeBlockProducer)
                     : null;
 
-                // IBlockProducer postMergeBlockProducer = mergeBlockProducer.PostMergeBlockProducer;
-                // TODO: Why is mergeBlockProducer used instead of postMergeBlockProducer?
                 StandardBlockProducerRunner postMergeRunner = new StandardBlockProducerRunner(
                     _api.ManualBlockProductionTrigger, _api.BlockTree!, mergeBlockProducer);
 

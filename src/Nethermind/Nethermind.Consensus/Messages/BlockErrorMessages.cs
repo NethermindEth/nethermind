@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Messages;
+
 public static class BlockErrorMessages
 {
     public static string ExceededUncleLimit(int maxUncleCount) =>
@@ -55,6 +56,9 @@ public static class BlockErrorMessages
 
     public const string InvalidGenesisBlock =
         "InvalidGenesisBlock: Genesis block could not be validated.";
+
+    public static string MismatchedParent(Hash256 hash, Hash256 expectedParent, Hash256 givenParent) =>
+        $"Mismatched parent: Hash {hash}, expected parent hash {expectedParent}, given parent hash {givenParent}";
 
     public const string InvalidAncestor =
         "InvalidAncestor: No valid ancestors could be found.";
@@ -143,4 +147,7 @@ public static class BlockErrorMessages
 
     public static string InvalidDepositEventLayout(string error) =>
         $"DepositsInvalid: Invalid deposit event layout: {error}";
+
+    public static string ExceededBlockSizeLimit(int limit) =>
+        $"ExceededBlockSizeLimit: Exceeded block size limit of {limit} bytes.";
 }

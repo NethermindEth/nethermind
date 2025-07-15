@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
-using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
+using Nethermind.Api;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Synchronization;
@@ -35,6 +36,30 @@ namespace Nethermind.HealthChecks
         private readonly UInt256? _terminalTotalDifficulty;
         private readonly IDriveInfo[] _drives;
         private readonly bool _isMining;
+
+        public NodeHealthService(
+            ISyncServer syncServer,
+            IMainProcessingContext mainProcessingContext,
+            IBlockProducerRunner blockProducerRunner,
+            IHealthChecksConfig healthChecksConfig,
+            IHealthHintService healthHintService,
+            IEthSyncingInfo ethSyncingInfo,
+            IClHealthTracker clHealthTracker,
+            ISpecProvider specProvider,
+            [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives,
+            IInitConfig initConfig) : this(
+            syncServer,
+            mainProcessingContext.BlockchainProcessor,
+            blockProducerRunner,
+            healthChecksConfig,
+            healthHintService,
+            ethSyncingInfo,
+            clHealthTracker,
+            specProvider.TerminalTotalDifficulty,
+            drives,
+            initConfig.IsMining)
+        {
+        }
 
         public NodeHealthService(ISyncServer syncServer,
             IBlockchainProcessor blockchainProcessor,

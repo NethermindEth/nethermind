@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using static System.Runtime.CompilerServices.Unsafe;
 using static Nethermind.Evm.VirtualMachine;
@@ -90,6 +92,18 @@ internal static partial class EvmInstructions
         public static Word Operation(Word value) => value == default ? OpBitwiseEq.One : default;
     }
 
+    /// <summary>
+    /// Implements the CLZ opcode.
+    /// Counts leading 0's of 256‐bit vector
+    /// </summary>
+    public struct OpCLZ : IOpMath1Param
+    {
+        static long GasCost => GasCostOf.Low;
+
+        public static Word Operation(Word value) => value == default
+            ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
+            : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();
+    }
 
     /// <summary>
     /// Implements the BYTE opcode.

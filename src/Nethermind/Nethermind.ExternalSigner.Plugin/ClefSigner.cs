@@ -38,10 +38,8 @@ public class ClefSigner : IHeaderSigner, ISignerStore
     /// </summary>
     /// <param name="message">Message to be signed.</param>
     /// <returns><see cref="Signature"/> of <paramref name="message"/>.</returns>
-    public Signature Sign(Hash256 message)
-    {
-        return _clefWallet.Sign(message, Address);
-    }
+    public Signature Sign(in ValueHash256 message)
+        => _clefWallet.Sign(new Hash256(message), Address);
 
     /// <summary>
     /// Used to sign a clique header. The full Rlp of the header has to be sent,

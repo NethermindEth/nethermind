@@ -66,7 +66,6 @@ namespace Nethermind.Runner.Test.Ethereum
 
             var api = new NethermindApi(apiDependencies);
             MockOutNethermindApi(api);
-            api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
             return api;
         }
 
@@ -113,18 +112,11 @@ namespace Nethermind.Runner.Test.Ethereum
             api.Wallet = Substitute.For<IWallet>();
             api.BlockTree = Substitute.For<IBlockTree>();
             api.DbProvider = TestMemDbProvider.Init();
-            api.EthereumEcdsa = Substitute.For<IEthereumEcdsa>();
             api.ReceiptStorage = Substitute.For<IReceiptStorage>();
-            api.ReceiptFinder = Substitute.For<IReceiptFinder>();
-            api.TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
             api.BloomStorage = Substitute.For<IBloomStorage>();
             api.BlockProducer = Substitute.For<IBlockProducer>();
             api.EngineSigner = Substitute.For<ISigner>();
             api.FileSystem = Substitute.For<IFileSystem>();
-            api.FilterManager = Substitute.For<IFilterManager>();
-            api.FilterStore = Substitute.For<IFilterStore>();
-            api.GrpcServer = Substitute.For<IGrpcServer>();
-            api.IpResolver = Substitute.For<IIPResolver>();
             api.KeyStore = Substitute.For<IKeyStore>();
             api.LogFinder = Substitute.For<ILogFinder>();
             api.ProtocolsManager = Substitute.For<IProtocolsManager>();
@@ -133,16 +125,10 @@ namespace Nethermind.Runner.Test.Ethereum
             api.TxSender = Substitute.For<ITxSender>();
             api.BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
             api.EngineSignerStore = Substitute.For<ISignerStore>();
-            api.WebSocketsManager = Substitute.For<IWebSocketsManager>();
             api.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
-            api.BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
             api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();
-            api.HealthHintService = Substitute.For<IHealthHintService>();
             api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
-            api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();
             api.BadBlocksStore = Substitute.For<IBadBlockStore>();
-
-            api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
         }
     }
 }

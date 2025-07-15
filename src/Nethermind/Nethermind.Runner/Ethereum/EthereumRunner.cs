@@ -48,20 +48,6 @@ public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManage
         }
     }
 
-    private void Stop(Action stopAction, string description)
-    {
-        try
-        {
-            if (_logger.IsInfo) _logger.Info(description);
-
-            stopAction();
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsError) _logger.Error($"{description} shutdown error.", e);
-        }
-    }
-
     private Task Stop(Func<Task?> stopAction, string description)
     {
         try

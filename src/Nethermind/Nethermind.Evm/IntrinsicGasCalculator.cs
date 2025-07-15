@@ -39,7 +39,7 @@ public static class IntrinsicGasCalculator
     private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
         long baseDataCost = transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
-            ? EvmPooledMemory.Div32Ceiling((UInt256)transaction.Data.GetValueOrDefault().Length) *
+            ? EvmInstructions.Div32Ceiling((UInt256)transaction.Data.Length) *
               GasCostOf.InitCodeWord
             : 0;
 
@@ -64,8 +64,7 @@ public static class IntrinsicGasCalculator
 
         return 0;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidDataException(IReleaseSpec releaseSpec)
         {
             throw new InvalidDataException($"Transaction with an access list received within the context of {releaseSpec.Name}. EIP-2930 is not enabled.");
@@ -88,8 +87,7 @@ public static class IntrinsicGasCalculator
 
         return 0;
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidDataException(IReleaseSpec releaseSpec)
         {
             throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. EIP-7702 is not enabled.");
@@ -101,7 +99,7 @@ public static class IntrinsicGasCalculator
         long txDataNonZeroMultiplier = releaseSpec.IsEip2028Enabled
             ? GasCostOf.TxDataNonZeroMultiplierEip2028
             : GasCostOf.TxDataNonZeroMultiplier;
-        Span<byte> data = transaction.Data.GetValueOrDefault().Span;
+        ReadOnlySpan<byte> data = transaction.Data.Span;
 
         int totalZeros = data.CountZeros();
 

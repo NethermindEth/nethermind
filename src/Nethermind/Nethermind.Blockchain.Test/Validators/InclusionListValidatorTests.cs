@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -29,9 +30,11 @@ public class InclusionListValidatorTests
     {
         _specProvider = new CustomSpecProvider(((ForkActivation)0, Fork7805.Instance));
 
-        MemDb stateDb = new();
-        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        // MemDb stateDb = new();
+        // TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
+        // _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        WorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
         _stateProvider.CreateAccount(TestItem.AddressA, 10.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);

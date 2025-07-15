@@ -290,6 +290,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         {
             if (_logger.IsWarn) _logger.Warn($"Corrupted DB detected on path {_fullPath}. Please restart Nethermind to attempt repair.");
             _fileSystem.File.WriteAllText(CorruptMarkerPath, "marker");
+
+            // Don't kill tests checking corruption response
+            if (!rocksDbException.Message.Equals("Corruption: test corruption", StringComparison.Ordinal))
+            {
+                Environment.FailFast("Fast shutdown due to DB corruption. Please restart.");
+            }
         }
     }
 
@@ -696,8 +702,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             Native.Instance.rocksdb_pinnableslice_destroy(handle);
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static unsafe void ThrowRocksDbException(nint errPtr)
         {
             throw new RocksDbException(errPtr);
@@ -923,8 +928,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             throw;
         }
 
-        [DoesNotReturn]
-        [StackTraceHidden]
+        [DoesNotReturn, StackTraceHidden]
         static unsafe void ThrowRocksDbException(nint errPtr)
         {
             throw new RocksDbException(errPtr);

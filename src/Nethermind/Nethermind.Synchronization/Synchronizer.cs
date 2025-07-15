@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -370,6 +369,15 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
                 // Move to clique plugin?
                 if (ctx.ResolveOptional<ChainSpec>()?.SealEngineType == SealEngineType.Clique)
                     syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
+
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+                ILogger logger = logManager.GetClassLogger<SynchronizerModule>();
+
+                if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
+                {
+                    if (logger.IsWarn) logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
+                    syncConfig.DownloadBodiesInFastSync = true;
+                }
 
                 return syncConfig;
             });

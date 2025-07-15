@@ -19,13 +19,15 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Test;
 
@@ -33,7 +35,7 @@ public class ExecutionProcessorTests
 {
     private ISpecProvider _specProvider;
     private ITransactionProcessor _transactionProcessor;
-    private WorldState _stateProvider;
+    private IWorldState _stateProvider;
     private IReleaseSpec _spec;
     private static readonly UInt256 AccountBalance = 1.Ether();
     private static readonly Address DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
@@ -68,10 +70,8 @@ public class ExecutionProcessorTests
     public void Setup()
     {
         _specProvider = MainnetSpecProvider.Instance;
-        MemDb stateDb = new();
-        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance);
-
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        IWorldStateManager worldStateManager = TestWorldStateFactory.CreateForTest();
+        _stateProvider = worldStateManager.GlobalWorldState;
         _stateProvider.CreateAccount(eip7002Account, AccountBalance);
         _stateProvider.CreateAccount(eip7251Account, AccountBalance);
 
@@ -93,7 +93,7 @@ public class ExecutionProcessorTests
 
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
 
-        _transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<CallOutputTracer>())
+        _transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<CallOutputTracer>())
             .Returns(ci =>
             {
                 Transaction transaction = ci.Arg<Transaction>();
@@ -144,7 +144,8 @@ public class ExecutionProcessorTests
                 CreateLogEntry(TestItem.ExecutionRequestA.RequestDataParts)
             ).TestObject
         ];
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, new BlockExecutionContext(block.Header, _spec), txReceipts, _spec);
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
 
         Assert.That(block.Header.RequestsHash, Is.Null);
     }
@@ -162,7 +163,8 @@ public class ExecutionProcessorTests
                 CreateLogEntry(TestItem.ExecutionRequestC.RequestDataParts)
             ).TestObject
         ];
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, new BlockExecutionContext(block.Header, _spec), txReceipts, _spec);
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
 
         Assert.That(block.Header.RequestsHash, Is.EqualTo(
            CalculateHash(_executionDepositRequests, _executionWithdrawalRequests, _executionConsolidationRequests)

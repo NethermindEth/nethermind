@@ -31,9 +31,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         public TxAuRaFilterBuilders TxAuRaFilterBuilders => Context.Resolve<TxAuRaFilterBuilders>();
         public IValidatorStore ValidatorStore => Context.Resolve<IValidatorStore>();
-        public AuRaContractGasLimitOverride.Cache GasLimitCalculatorCache => Context.Resolve<AuRaContractGasLimitOverride.Cache>();
         public AuraStatefulComponents AuraStatefulComponents => Context.Resolve<AuraStatefulComponents>();
-        public IReportingValidator ReportingValidator => Context.Resolve<IReportingValidator>();
         public ReportingContractBasedValidator.Cache ReportingContractValidatorCache => Context.Resolve<ReportingContractBasedValidator.Cache>();
         public StartBlockProducerAuRa CreateStartBlockProducer() => Context.Resolve<StartBlockProducerAuRa>();
     }

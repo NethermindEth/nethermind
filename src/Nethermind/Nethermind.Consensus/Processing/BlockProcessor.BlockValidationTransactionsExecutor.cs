@@ -8,10 +8,12 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
@@ -25,22 +27,27 @@ namespace Nethermind.Consensus.Processing
         public class BlockValidationTransactionsExecutor(
             ITransactionProcessorAdapter transactionProcessor,
             IWorldState stateProvider)
-            : IBlockProcessor.IBlockTransactionsExecutor
+            : IValidationTransactionExecutor
         {
             private readonly HashSet<Transaction> _transactionsInBlock = new(ByHashTxComparer.Instance);
 
-            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider)
-                : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
-            {
-            }
+            // public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider)
+            //     : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
+            // {
+            // }
 
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
-            public TxReceipt[] ProcessTransactions(Block block, in BlockExecutionContext blkCtx, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token)
+            public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+            {
+                transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+            }
+
+            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
             {
                 Metrics.ResetBlockStats();
 
-                var enhanced = EnhanceBlockExecutionContext(blkCtx);
+                // var enhanced = EnhanceBlockExecutionContext(blkCtx);
 
                 _transactionsInBlock.Clear();
                 _transactionsInBlock.AddRange(block.Transactions);
@@ -49,7 +56,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     block.TransactionProcessed = i;
                     Transaction currentTx = block.Transactions[i];
-                    ProcessTransaction(in enhanced, currentTx, i, receiptsTracer, processingOptions);
+                    ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
                 }
                 return receiptsTracer.TxReceipts.ToArray();
             }
@@ -57,18 +64,18 @@ namespace Nethermind.Consensus.Processing
             public bool IsTransactionInBlock(Transaction tx)
                 => _transactionsInBlock.Contains(tx);
 
-            protected virtual BlockExecutionContext EnhanceBlockExecutionContext(in BlockExecutionContext blkCtx) => blkCtx;
+            // protected virtual BlockExecutionContext EnhanceBlockExecutionContext(in BlockExecutionContext blkCtx) => blkCtx;
 
-            protected virtual void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+            // protected virtual void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+            protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
-                TransactionResult result = transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, stateProvider);
-                if (!result) ThrowInvalidBlockException(result, blkCtx.Header, currentTx, index);
+                TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
+                if (!result) ThrowInvalidBlockException(result, block.Header, currentTx, index);
                 TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
             }
 
-            [DoesNotReturn]
-            [StackTraceHidden]
-            private void ThrowInvalidBlockException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
+            [DoesNotReturn, StackTraceHidden]
+            private static void ThrowInvalidBlockException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
             {
                 throw new InvalidBlockException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.Error}");
             }

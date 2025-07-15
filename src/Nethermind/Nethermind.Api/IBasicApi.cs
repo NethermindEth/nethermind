@@ -24,7 +24,6 @@ namespace Nethermind.Api
     {
         IDisposableStack DisposeStack { get; }
 
-        IAbiEncoder AbiEncoder { get; }
         [SkipServiceCollection]
         ChainSpec ChainSpec { get; }
 
@@ -33,7 +32,7 @@ namespace Nethermind.Api
         ICryptoRandom CryptoRandom { get; }
         IDbProvider? DbProvider { get; set; }
         IDbFactory? DbFactory { get; set; }
-        IEthereumEcdsa? EthereumEcdsa { get; set; }
+        IEthereumEcdsa EthereumEcdsa { get; }
         [SkipServiceCollection]
         IJsonSerializer EthereumJsonSerializer { get; }
         IFileSystem FileSystem { get; set; }
