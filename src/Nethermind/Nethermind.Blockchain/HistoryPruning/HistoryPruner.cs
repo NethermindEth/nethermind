@@ -91,7 +91,7 @@ public class HistoryPruner : IHistoryPruner
     {
         get
         {
-            ulong cutoffTimestamp = CalculateCutoffTimestamp(); // cache for unchanged timestamp
+            ulong cutoffTimestamp = CalculateCutoffTimestamp();
 
             if (_lastCutoffTimestamp is not null && cutoffTimestamp == _lastCutoffTimestamp)
             {
