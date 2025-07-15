@@ -617,7 +617,7 @@ public class BlockchainBridgeTests
         try
         {
             blockchainBridge.Simulate(Build.A.EmptyBlockHeader, new SimulatePayload<TransactionWithSourceDetails>(),
-                Substitute.For<ISimulateBlockTracerFactory<GethStyleTracer>>(), default);
+                Substitute.For<ISimulateBlockTracerFactory<GethStyleTracer>>(), 10_000_000, default);
         }
         catch (Exception)
         {
