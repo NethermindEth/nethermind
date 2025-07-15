@@ -158,8 +158,6 @@ namespace Nethermind.Blockchain
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
         void DeleteInvalidBlock(Block invalidBlock);
-        // public BatchWrite CreateBatch();
-        // public IEnumerable<Block> GetBlocksOlderThan(ulong cutoffTimestamp);
         void DeleteBlock(long currentNumber, Hash256 currentHash, Hash256 nextHash, BatchWrite batch, ChainLevelInfo? currentLevel = null, bool isOldBlock = false);
 
         void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);
@@ -190,8 +188,6 @@ namespace Nethermind.Blockchain
         void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint);
 
         void RecalculateTreeLevels();
-
-        // IEnumerable<Block> DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken);
 
         /// <summary>
         /// Sync pivot is mainly concerned with old blocks and receipts.

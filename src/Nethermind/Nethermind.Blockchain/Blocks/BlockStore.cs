@@ -19,7 +19,6 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     public const int CacheSize = 128 + 32;
 
     private readonly ClockCache<ValueHash256, Block> _blockCache = new(CacheSize);
-    private const int MaxBlockSearch = 100;
 
     public void SetMetadata(byte[] key, byte[] value)
         => blockDb.Set(key, value);

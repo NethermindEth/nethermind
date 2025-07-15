@@ -17,14 +17,9 @@ namespace Nethermind.Blockchain
     /// <summary>
     /// Safe to be reused for all classes reading the same wrapped block tree.
     /// </summary>
-    public class ReadOnlyBlockTree : IReadOnlyBlockTree
+    public class ReadOnlyBlockTree(IBlockTree wrapped) : IReadOnlyBlockTree
     {
-        private readonly IBlockTree _wrapped;
-
-        public ReadOnlyBlockTree(IBlockTree wrapped)
-        {
-            _wrapped = wrapped;
-        }
+        private readonly IBlockTree _wrapped = wrapped;
 
         public ulong NetworkId => _wrapped.NetworkId;
         public ulong ChainId => _wrapped.ChainId;
@@ -189,9 +184,6 @@ namespace Nethermind.Blockchain
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteChainSlice)} calls with {nameof(endNumber)} other than {nameof(BestKnownNumber)} specified.");
 
         }
-
-        public IEnumerable<Block> DeleteBlocksBeforeTimestamp(ulong cutoffTimestamp, CancellationToken cancellationToken)
-            => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteBlocksBeforeTimestamp)} calls");
 
         public bool IsBetterThanHead(BlockHeader? header) => _wrapped.IsBetterThanHead(header);
         public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateBeaconMainChain)} calls");

@@ -66,9 +66,7 @@ public class HistoryPruner : IHistoryPruner
     }
 
     public void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
-    {
-        _ = TryPruneHistory(CancellationToken.None);
-    }
+        => _ = TryPruneHistory(CancellationToken.None);
 
     public async Task TryPruneHistory(CancellationToken cancellationToken)
     {

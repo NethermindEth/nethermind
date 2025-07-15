@@ -61,7 +61,7 @@ public class SyncStatusListTests
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindCanonicalBlockInfo(Arg.Any<long>())
-            .Returns((ci) =>
+            .Returns(ci =>
             {
                 long blockNumber = (long)ci[0];
                 return new BlockInfo(TestItem.KeccakA, 0)
