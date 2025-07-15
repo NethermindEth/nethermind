@@ -25,7 +25,7 @@ public class SimulateReadOnlyBlocksProcessingEnv(
     IBlockTree blockTree,
     IOverridableCodeInfoRepository codeInfoRepository,
     SimulateRequestState simulateState,
-    IBranchProcessor branchProcessor,
+    IBlockProcessor blockProcessor,
     BlockTreeOverlay blockTreeOverlay,
     IOverridableEnv overridableEnv,
     IReadOnlyDbProvider readOnlyDbProvider
@@ -36,7 +36,7 @@ public class SimulateReadOnlyBlocksProcessingEnv(
         blockTreeOverlay.ResetMainChain();
         IDisposable envDisposer = overridableEnv.BuildAndOverride(baseBlock, null);
         return new SimulateReadOnlyBlocksProcessingScope(
-            worldState, specProvider, blockTree, codeInfoRepository, simulateState, branchProcessor, readOnlyDbProvider, envDisposer
+            worldState, specProvider, blockTree, codeInfoRepository, simulateState, blockProcessor, readOnlyDbProvider, envDisposer
         );
     }
 }
@@ -47,7 +47,7 @@ public class SimulateReadOnlyBlocksProcessingScope(
     IBlockTree blockTree,
     IOverridableCodeInfoRepository codeInfoRepository,
     SimulateRequestState simulateState,
-    IBranchProcessor branchProcessor,
+    IBlockProcessor blockProcessor,
     IReadOnlyDbProvider readOnlyDbProvider,
     IDisposable overridableWorldStateCloser
 ) : IDisposable
@@ -57,7 +57,7 @@ public class SimulateReadOnlyBlocksProcessingScope(
     public IBlockTree BlockTree => blockTree;
     public IOverridableCodeInfoRepository CodeInfoRepository => codeInfoRepository;
     public SimulateRequestState SimulateRequestState => simulateState;
-    public IBranchProcessor BranchProcessor => branchProcessor;
+    public IBlockProcessor BlockProcessor => blockProcessor;
 
     public void Dispose()
     {
