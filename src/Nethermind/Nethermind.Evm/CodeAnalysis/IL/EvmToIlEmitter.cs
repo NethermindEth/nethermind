@@ -1628,16 +1628,19 @@ internal static class OpcodeEmitters
         method.CallSetter(Word.SetInt0, BitConverter.IsLittleEndian);
     }
 
-    private static void EmitGetCachedCodeInfo<TDelegateType>(Emit<TDelegateType> method, EnvirementLoader envLoader, Locals<TDelegateType> locals)
+
+    private static void EmitGetCachedCodeInfo<TDelegateType>(Emit<TDelegateType> method, EnvirementLoader envLoader, Locals<TDelegateType> locals, bool followDelegation = false)
     {
         envLoader.LoadCodeInfoRepository(method, locals);
         envLoader.LoadWorldState(method, locals);
         method.LoadLocal(locals.address);
+        method.LoadConstant(followDelegation ? (int)1 : (int)0);
         envLoader.LoadSpec(method, locals);
-        method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
-    }
+        method.LoadLocalAddress(locals.lbool);
+        method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.GetCachedCodeInfo), [ typeof(IWorldState), typeof(Address), typeof(bool), typeof(IReleaseSpec), typeof(Address).MakeByRefType()]));
+     }
 
-    internal static Label EmitExtcodeCopyInstruction<TDelegateType>(
+    internal static void EmitExtcodeCopyInstruction<TDelegateType>(
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
         Label endOfOpcode = method.DefineLabel(locals.GetLabelName());
@@ -1703,7 +1706,6 @@ internal static class OpcodeEmitters
         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Save), [typeof(UInt256).MakeByRefType(), typeof(ZeroPaddedSpan).MakeByRefType()]));
 
         method.MarkLabel(endOfOpcode);
-        return endOfOpcode;
     }
 
     internal static void EmitExtcodeHashInstruction<TDelegateType>(
