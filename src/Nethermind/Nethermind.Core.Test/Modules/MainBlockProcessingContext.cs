@@ -7,6 +7,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
@@ -23,7 +24,7 @@ public record MainBlockProcessingContext(
     ILifetimeScope LifetimeScope,
     IBlockProcessingQueue BlockProcessingQueue,
     IBlockchainProcessor BlockchainProcessor,
-    IVisitingWorldState WorldState,
+    IWorldState WorldState,
     IBlockProcessor BlockProcessor,
     ITransactionProcessor TransactionProcessor,
     GenesisLoader GenesisLoader) : IMainProcessingContext, IAsyncDisposable

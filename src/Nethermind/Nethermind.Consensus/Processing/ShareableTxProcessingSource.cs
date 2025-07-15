@@ -62,6 +62,6 @@ public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFact
 
         public ITransactionProcessor TransactionProcessor => _scope.TransactionProcessor;
 
-        public IVisitingWorldState WorldState => _scope.WorldState;
+        public IWorldState WorldState => _scope.WorldState;
     }
 }
