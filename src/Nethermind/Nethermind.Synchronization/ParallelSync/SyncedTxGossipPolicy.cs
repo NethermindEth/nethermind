@@ -9,13 +9,13 @@ namespace Nethermind.Synchronization.ParallelSync;
 public class SyncedTxGossipPolicy : ITxGossipPolicy
 {
     private readonly ISyncModeSelector _syncModeSelector;
-    private readonly Func<bool> _isProcessing;
+    private readonly Func<bool> _isProcessingBlock;
 
-    public SyncedTxGossipPolicy(ISyncModeSelector syncModeSelector, Func<bool> isProcessing)
+    public SyncedTxGossipPolicy(ISyncModeSelector syncModeSelector, Func<bool> isProcessingBlock)
     {
         _syncModeSelector = syncModeSelector;
-        _isProcessing = isProcessing;
+        _isProcessingBlock = isProcessingBlock;
     }
 
-    public bool ShouldListenToGossipedTransactions => (_syncModeSelector.Current & SyncMode.WaitingForBlock) != 0 && !_isProcessing();
+    public bool ShouldListenToGossipedTransactions => (_syncModeSelector.Current & SyncMode.WaitingForBlock) != 0 && !_isProcessingBlock();
 }
