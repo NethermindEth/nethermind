@@ -12,6 +12,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -77,10 +78,32 @@ namespace Nethermind.Serialization.Rlp
 
         private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
         private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decoders;
-        public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders => _decoders ??= _decoderBuilder.ToFrozenDictionary();
+        private static readonly Lock _decoderLock = new();
+        public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders
+        {
+            get
+            {
+                FrozenDictionary<RlpDecoderKey, IRlpDecoder> decoders = _decoders;
+                if (decoders is not null)
+                {
+                    // Already exists no need for lock
+                    return decoders;
+                }
+
+                return CreateDecoders();
+            }
+        }
+
+        private static FrozenDictionary<RlpDecoderKey, IRlpDecoder> CreateDecoders()
+        {
+            using Lock.Scope _ = _decoderLock.EnterScope();
+            // Recreate, if not already recreated
+            return _decoders ??= _decoderBuilder.ToFrozenDictionary();
+        }
 
         public static void RegisterDecoder(RlpDecoderKey key, IRlpDecoder decoder)
         {
+            using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder[key] = decoder;
             // Mark FrozenDictionary as null to force re-creation
             _decoders = null;
@@ -129,6 +152,7 @@ namespace Nethermind.Serialization.Rlp
 
                         void AddEncoder(RlpDecoderKey key)
                         {
+                            using Lock.Scope _ = _decoderLock.EnterScope();
                             if (!_decoderBuilder.TryGetValue(key, out IRlpDecoder? value) || canOverrideExistingDecoders)
                             {
                                 try
@@ -1911,7 +1935,9 @@ namespace Nethermind.Serialization.Rlp
 
         public bool Equals(RlpDecoderKey other) => _type.Equals(other._type) && _key.Equals(other._key);
 
-        public override int GetHashCode() => HashCode.Combine(_type, _key);
+        public override int GetHashCode() => (int)BitOperations.Crc32C(
+            (uint)_type.GetHashCode(),
+            (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash());
 
         public override bool Equals(object obj) => obj is RlpDecoderKey key && Equals(key);
 
