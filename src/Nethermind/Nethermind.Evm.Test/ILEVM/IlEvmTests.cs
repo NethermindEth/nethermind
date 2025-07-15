@@ -1894,7 +1894,11 @@ namespace Nethermind.Evm.Test.ILEVM
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
         public void ILVM_AOT_Execution_Equivalence_Tests((string msg, Instruction[] opcode, byte[] bytecode, EvmExceptionType, IReleaseSpec spec) testcase)
         {
-            IlVirtualMachineTestsBase standardChain = new IlVirtualMachineTestsBase(new VMConfig(), testcase.spec);
+            IlVirtualMachineTestsBase standardChain = new IlVirtualMachineTestsBase(new VMConfig
+            {
+                IlEvmEnabledMode = ILMode.NO_ILVM,
+                IsILEvmEnabled = false,
+            }, testcase.spec);
 
             IlVirtualMachineTestsBase enhancedChain = new IlVirtualMachineTestsBase(new VMConfig
             {
