@@ -3,16 +3,15 @@
 
 using System.Collections.Generic;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Snarks;
 
 namespace Nethermind.Precompiles.Benchmark;
 
-public class Bn254AddBenchmark : PrecompileBenchmarkBase
+public class Bn254PairingBenchmark1 : PrecompileBenchmarkBase
 {
     protected override IEnumerable<IPrecompile> Precompiles => new[]
     {
-        Bn254AddPrecompile.Instance
+        BN254PairingPrecompile.Instance
     };
 
-    protected override string InputsDirectory => "bnadd";
+    protected override string InputsDirectory => "bnpair";
 }
