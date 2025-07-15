@@ -284,5 +284,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves Accounts via Address and Blocknumber", IsSharable = true)]
         ResultWrapper<AccountForRpc?> eth_getAccount([JsonRpcParameter(ExampleValue = "[\"0xaa00000000000000000000000000000000000000\", \"latest\"]")] Address accountAddress, BlockParameter? blockParameter = null);
+
+        [JsonRpcMethod(IsImplemented = true, 
+            Description = "Submit a bundle of transactions",
+            IsSharable = false,
+            ExampleResponse = "{\"bundleHash\":\"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef\"}")]
+        Task<ResultWrapper<BundleResponseForRpc>> eth_sendBundle([JsonRpcParameter(ExampleValue = "[{\"txs\":[\"0xf86c80850ba43b7400825208942a24f3ff88ad25d8a1e4b27d37f8e1b1b4a234567880de0b6b3a764000080\"],\"blockNumber\":\"0x5bffff\"}]")] BundleRequestForRpc request);
     }
 }
