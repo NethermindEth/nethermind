@@ -88,7 +88,7 @@ public class TestBlockProcessingModule : Module
             processingCtxBuilder
                 // These are main block processing specific
                 .AddScoped<ICodeInfoRepository>(mainCodeInfoRepository)
-                .AddSingleton<IVisitingWorldState>(mainWorldState).AddSingleton<IWorldState>(mainWorldState)
+                .AddSingleton<IWorldState>(mainWorldState)
                 .Bind<IBlockProcessor.IBlockTransactionsExecutor, IValidationTransactionExecutor>()
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 .AddScoped(new BlockchainProcessor.Options

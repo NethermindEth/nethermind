@@ -67,7 +67,7 @@ namespace Nethermind.Init.Steps
                 "- binary data -");
 
             IStateReader stateReader = setApi.StateReader!;
-            IVisitingWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
+            IWorldState mainWorldState = _api.WorldStateManager!.GlobalWorldState;
             PreBlockCaches? preBlockCaches = (mainWorldState as IPreBlockCaches)?.Caches;
             EthereumCodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
             IChainHeadInfoProvider chainHeadInfoProvider =
@@ -133,6 +133,7 @@ namespace Nethermind.Init.Steps
 
             BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
                 mainBlockProcessor,
+                chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
                 _api.LogManager);

@@ -365,10 +365,9 @@ public static unsafe partial class EvmInstructions
             }
 
             // If the account is cold (and not a precompile), charge the cold access cost.
-            if (vmState.AccessTracker.IsCold(address) && !vm.CodeInfoRepository.IsPrecompile(address, spec))
+            if (!vm.CodeInfoRepository.IsPrecompile(address, spec) && vmState.AccessTracker.WarmUp(address))
             {
                 result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
-                vmState.AccessTracker.WarmUp(address);
             }
             else if (chargeForWarm)
             {
@@ -414,10 +413,9 @@ public static unsafe partial class EvmInstructions
             }
 
             // If the storage cell is still cold, apply the higher cold access cost and mark it as warm.
-            if (accessTracker.IsCold(in storageCell))
+            if (accessTracker.WarmUp(in storageCell))
             {
                 result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
-                accessTracker.WarmUp(in storageCell);
             }
             // For SLOAD operations on already warmed-up storage, apply a lower warm-read cost.
             else if (storageAccessType == StorageAccessType.SLOAD)

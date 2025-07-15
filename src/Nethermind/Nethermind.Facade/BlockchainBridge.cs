@@ -80,9 +80,13 @@ namespace Nethermind.Facade
                 if (block is not null)
                 {
                     receipts = receiptStorage.Get(block);
-                    receipt = receipts.ForTransaction(txHash);
-                    transaction = block.Transactions[receipt.Index];
-                    return true;
+                    int txIndex = block.GetTransactionIndex(txHash.ValueHash256);
+                    if (txIndex != -1)
+                    {
+                        transaction = block.Transactions[txIndex];
+                        receipt = receipts.Length > txIndex && receipts[txIndex].TxHash == txHash ? receipts[txIndex] : null;
+                        return true;
+                    }
                 }
             }
 
