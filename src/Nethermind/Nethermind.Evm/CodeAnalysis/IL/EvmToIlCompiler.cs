@@ -293,7 +293,7 @@ public static class Precompiler
 
         foreach (var (programCounter, currentSubsegment) in contractMetadata.SubSegments)
         {
-            if(!currentSubsegment.IsReachable)
+            if (!currentSubsegment.IsReachable)
             {
                 continue; // skip unreachable segments
             }

@@ -1637,8 +1637,8 @@ internal static class OpcodeEmitters
         method.LoadConstant(followDelegation ? (int)1 : (int)0);
         envLoader.LoadSpec(method, locals);
         method.LoadLocalAddress(locals.lbool);
-        method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.GetCachedCodeInfo), [ typeof(IWorldState), typeof(Address), typeof(bool), typeof(IReleaseSpec), typeof(Address).MakeByRefType()]));
-     }
+        method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.GetCachedCodeInfo), [typeof(IWorldState), typeof(Address), typeof(bool), typeof(IReleaseSpec), typeof(Address).MakeByRefType()]));
+    }
 
     internal static void EmitExtcodeCopyInstruction<TDelegateType>(
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)

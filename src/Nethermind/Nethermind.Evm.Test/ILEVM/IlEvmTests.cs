@@ -1819,7 +1819,7 @@ namespace Nethermind.Evm.Test.ILEVM
             List<Instruction> notCovered = new List<Instruction>();
             foreach (var opcode in instructions)
             {
-                if(!EofInstructionExtensions.IsValid(opcode, false))
+                if (!EofInstructionExtensions.IsValid(opcode, false))
                 {
                     continue; // skip invalid opcodes
                 }
