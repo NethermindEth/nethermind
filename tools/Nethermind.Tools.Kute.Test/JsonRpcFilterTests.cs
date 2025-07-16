@@ -1,4 +1,5 @@
 ﻿using FluentAssertions;
+using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using NUnit.Framework;
 
@@ -95,6 +96,43 @@ public class JsonRpcFilterTests
         foreach (string methodName in methodsNames)
         {
             filter.ShouldSubmit(methodName).Should().BeTrue();
+        }
+    }
+
+    private static IEnumerable<TestCaseData> MethodPatternNegativeTestCases()
+    {
+        yield return new TestCaseData(
+            new List<string> { "engine_newPayloadV2" },
+            new List<string> { "eth_getBlockByNumber", "eth_sendTransaction" }
+        ).SetName("Non-matching method");
+
+        yield return new TestCaseData(
+            new List<string> { "engine_newPayloadV[23]" },
+            new List<string> { "engine_newPayloadV1", "engine_newPayloadV4" }
+        ).SetName("Non-matching regex method");
+
+        yield return new TestCaseData(
+            new List<string> { "eth_*" },
+            new List<string> { "engine_newPayloadV2", "engine_sendTransaction" }
+        ).SetName("Wildcard non-matching method");
+
+        yield return new TestCaseData(
+            new List<string> { "engine_*", "eth_*" },
+            new List<string> { "net_version", "web3_clientVersion" }
+        ).SetName("Multiple patterns with no matches");
+    }
+
+    [TestCaseSource(nameof(MethodPatternNegativeTestCases))]
+    public void RejectsMethodsByNamespace(List<string> patterns, List<string> methodsNames)
+    {
+        var filter = new ComposedJsonRpcMethodFilter(
+            patterns
+                .Select(pattern => new PatternJsonRpcMethodFilter(pattern) as IJsonRpcMethodFilter)
+                .ToList());
+
+        foreach (string methodName in methodsNames)
+        {
+            filter.ShouldSubmit(methodName).Should().BeFalse();
         }
     }
 }
