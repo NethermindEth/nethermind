@@ -35,6 +35,8 @@ public class HistoryPruner : IHistoryPruner
     private readonly long _epochLength;
     private readonly long _minHistoryRetentionEpochs;
     private long _deletePointer = 1;
+    private long _cutoffPointer = 1;
+    private ulong? _cutoffTimestamp;
 
     public class HistoryPrunerException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -98,13 +100,13 @@ public class HistoryPruner : IHistoryPruner
 
             ulong cutoffTimestamp = CalculateCutoffTimestamp();
 
-            if (_lastCutoffTimestamp is not null && cutoffTimestamp == _lastCutoffTimestamp)
+            if (_cutoffTimestamp is not null && cutoffTimestamp == _cutoffTimestamp)
             {
-                return _lastCutoffBlockNumber;
+                return _cutoffPointer;
             }
 
             long? cutoffBlockNumber = null;
-            GetBlocksByNumber(_deletePointer, b =>
+            GetBlocksByNumber(_cutoffPointer, b =>
             {
                 // end search when we find a block after the cutoff
                 bool afterCutoff = b.Timestamp >= cutoffTimestamp;
@@ -115,15 +117,12 @@ public class HistoryPruner : IHistoryPruner
                 return afterCutoff;
             }, _ => { });
 
-            _lastCutoffTimestamp = cutoffTimestamp;
-            _lastCutoffBlockNumber = cutoffBlockNumber;
+            _cutoffTimestamp = cutoffTimestamp;
+            _cutoffPointer = cutoffBlockNumber ?? _cutoffPointer;
 
             return cutoffBlockNumber;
         }
     }
-
-    private ulong? _lastCutoffTimestamp;
-    private long? _lastCutoffBlockNumber;
 
     private void CheckConfig()
     {
