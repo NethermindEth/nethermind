@@ -13,7 +13,7 @@ namespace Nethermind.Tools.Kute.Test;
 public class AuthTests
 {
     [Test]
-    public void CanCreate_ValidJWT()
+    public void CreateValidJWT()
     {
         var clock = Substitute.For<ISystemClock>();
         clock.UtcNow.Returns(DateTimeOffset.UnixEpoch);
@@ -24,5 +24,25 @@ public class AuthTests
         string token = auth.AuthToken;
 
         token.Should().BeEquivalentTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjB9.tWzIC8uadmVRHxZrv1TK57PyW95hmGrS0PgsV7FiFvw");
+    }
+
+    [Test]
+    public void RefreshAuthAfterTTL()
+    {
+        var clock = Substitute.For<ISystemClock>();
+        clock.UtcNow.Returns(DateTimeOffset.UnixEpoch);
+        var secretProvider = Substitute.For<ISecretProvider>();
+        secretProvider.Secret.Returns("11ade2f6d95da8d71515d8c446d2a9cfbaefd1de40d78ccbea5c49315dc30237");
+
+        var ttl = 10; // seconds
+        var auth = new TtlAuth(new JwtAuth(clock, secretProvider), clock, ttl);
+
+        string token = auth.AuthToken;
+        token.Should().BeEquivalentTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjB9.tWzIC8uadmVRHxZrv1TK57PyW95hmGrS0PgsV7FiFvw");
+
+        clock.UtcNow.Returns(DateTimeOffset.UnixEpoch.AddSeconds(ttl + 1));
+
+        string newToken = auth.AuthToken;
+        newToken.Should().BeEquivalentTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjExfQ.kg4Imo7m_nRxPK38abKL50WfC5HY1L31jPef9wEFeJA");
     }
 }
