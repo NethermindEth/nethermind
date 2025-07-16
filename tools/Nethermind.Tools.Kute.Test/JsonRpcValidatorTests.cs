@@ -16,16 +16,7 @@ public class JsonRpcValidatorTests
         private static readonly NewPayloadJsonRpcValidator _validator = new();
 
         [Test]
-        public void IsValid_When_MethodIsNull()
-        {
-            var response = CreateResponse(isValid: true);
-            bool result = _validator.IsValid(CreateSingleRequest(null), response);
-
-            result.Should().BeTrue();
-        }
-
-        [Test]
-        public void IsValid_When_MethodIsBatch()
+        public void IsValid_When_RequestIsBatch()
         {
             var response = CreateResponse(isValid: true);
             bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload")), response);
@@ -34,7 +25,16 @@ public class JsonRpcValidatorTests
         }
 
         [Test]
-        public void IsValid_When_MethodIsUnexpected()
+        public void IsValid_When_MethodNameIsNull()
+        {
+            var response = CreateResponse(isValid: true);
+            bool result = _validator.IsValid(CreateSingleRequest(null), response);
+
+            result.Should().BeTrue();
+        }
+
+        [Test]
+        public void IsValid_When_MethodNameIsUnexpected()
         {
             var response = CreateResponse(isValid: true);
             bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
@@ -43,12 +43,28 @@ public class JsonRpcValidatorTests
         }
 
         [Test]
+        // TODO: Are we sure that this is the correct behavior?
         public void IsValid_When_ResposeIsNull()
         {
             JsonDocument? response = null;
             bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
 
             result.Should().BeTrue();
+        }
+
+        [Test]
+        public void Validates_When_ResponseIsNotNull()
+        {
+            foreach (var isValid in new[] { true, false })
+            {
+                foreach (var methodName in new[] { "engine_newPayloadV2", "engine_newPayloadV3", "engine_newPayloadV4" })
+                {
+                    var response = CreateResponse(isValid);
+                    bool result = _validator.IsValid(CreateSingleRequest(methodName), response);
+
+                    result.Should().Be(isValid);
+                }
+            }
         }
     }
 
