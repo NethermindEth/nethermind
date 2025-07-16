@@ -1076,7 +1076,7 @@ public sealed unsafe partial class VirtualMachine(
             }
 
 
-            if (_vmConfig.IlEvmEnabledMode is ILMode.AOT_MODE && _txTracer.IsTracingIlEvmCompatable && env.CodeInfo.CodeSpan.Length > 0 && env.CodeInfo.CodeHash is not null)
+            if (_vmConfig.IlEvmEnabledMode is ILMode.AOT_MODE && _txTracer.IsTracingIlEvmCompatible && env.CodeInfo.CodeSpan.Length > 0 && env.CodeInfo.CodeHash is not null)
             {
                 // IlAnalyzer.Analyse(env.CodeInfo as CodeInfo, ILMode.AOT_MODE, _vmConfig, _logger);
                 env.CodeInfo.NoticeExecution(_vmConfig, _logger, Spec);
