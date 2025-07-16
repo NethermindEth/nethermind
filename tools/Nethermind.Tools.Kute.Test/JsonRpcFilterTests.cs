@@ -1,5 +1,7 @@
-﻿using FluentAssertions;
-using Microsoft.VisualStudio.TestPlatform.ObjectModel;
+﻿// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using FluentAssertions;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using NUnit.Framework;
 
