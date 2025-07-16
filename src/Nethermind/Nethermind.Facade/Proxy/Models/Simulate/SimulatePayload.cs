@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Facade.Proxy.Models.Simulate;
 
@@ -22,6 +23,12 @@ public class SimulatePayload<T>
     ///     checks. When false, multicall behaves like eth_call.
     /// </summary>
     public bool Validation { get; set; } = false;
+
+    public bool ReturnFullTransactions
+    {
+        set => ReturnFullTransactionObjects = value;
+        get => ReturnFullTransactionObjects;
+    }
 
     /// <summary>
     /// When true, the simulate returns Full Tx Objects
