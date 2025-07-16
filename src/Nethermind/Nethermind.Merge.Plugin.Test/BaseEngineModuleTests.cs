@@ -47,6 +47,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using k8s.KubeConfigModels;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -261,16 +262,18 @@ public abstract partial class BaseEngineModuleTests
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             BlockProducer = postMergeBlockProducer;
 
-            HistoryPruner = new HistoryPruner(
-                BlockTree,
-                ReceiptStorage,
-                SpecProvider,
-                BlockStore,
-                ChainLevelInfoRepository,
-                DbProvider.MetadataDb,
-                new HistoryConfig(),
-                (long)MergeConfig.SecondsPerSlot,
-                LogManager);
+            // need to resolve here?
+            // HistoryPruner = new HistoryPruner(
+            //     BlockTree,
+            //     ReceiptStorage,
+            //     SpecProvider,
+            //     BlockStore,
+            //     ChainLevelInfoRepository,
+            //     DbProvider.MetadataDb,
+            //     new HistoryConfig(),
+            //     (long)MergeConfig.SecondsPerSlot,
+            //     LogManager);
+
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 

@@ -85,8 +85,8 @@ namespace Nethermind.Api
         public IEnode? Enode { get; set; }
         public IEthereumEcdsa EthereumEcdsa => Context.Resolve<IEthereumEcdsa>();
         public IFileSystem FileSystem { get; set; } = new FileSystem();
-        public IHistoryPruner? HistoryPruner { get; set; }
-        // public IHistoryPruner? HistoryPruner => Context.Resolve<IHistoryPruner>();
+        // public IHistoryPruner? HistoryPruner { get; set; }
+        public IHistoryPruner? HistoryPruner => Context.Resolve<IHistoryPruner>();
         public IEngineRequestsTracker EngineRequestsTracker => Context.Resolve<IEngineRequestsTracker>();
 
         public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =

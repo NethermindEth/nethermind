@@ -5,7 +5,9 @@ using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Config;
@@ -21,6 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
@@ -62,6 +65,18 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
             .AddSingleton<IEthereumEcdsa, ISpecProvider>((specProvider) => new EthereumEcdsa(specProvider.ChainId))
             .Bind<IEcdsa, IEthereumEcdsa>()
+
+            .AddSingleton<IHistoryPruner, IBlockTree, IReceiptStorage, ISpecProvider, IBlockStore, IChainLevelInfoRepository, IDbProvider>(
+                (blockTree, receiptStorage, specProvider, blockStore, chainLevelInfoRepository, dbProvider) => new HistoryPruner(
+                blockTree,
+                receiptStorage,
+                specProvider,
+                blockStore,
+                chainLevelInfoRepository,
+                dbProvider.MetadataDb,
+                configProvider.GetConfig<IHistoryConfig>(),
+                (long)configProvider.GetConfig<IBlocksConfig>().SecondsPerSlot,
+                logManager))
 
             .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
             .AddSingleton<IChainHeadInfoProvider, ChainHeadInfoProvider>()

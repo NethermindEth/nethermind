@@ -31,6 +31,6 @@ namespace Nethermind.Api
         IReceiptFinder ReceiptFinder { get; }
         IWallet? Wallet { get; set; }
         IBadBlockStore? BadBlocksStore { get; set; }
-        IHistoryPruner? HistoryPruner { get; set; }
+        IHistoryPruner? HistoryPruner { get; }
     }
 }
