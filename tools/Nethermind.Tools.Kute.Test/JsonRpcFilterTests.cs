@@ -9,44 +9,6 @@ namespace Nethermind.Tools.Kute.Test;
 
 public class JsonRpcFilterTests
 {
-    /*
-    ### Use all messages in the folder `/rpc-logs`
-
-    ```
-    -i /rpc-logs -s keystore/jwt-secret
-    ```
-
-    ### Use a single messages file and emit results as JSON
-
-    ```
-    -i /rpc.0 -s keystore/jwt-secret -o Json
-    ```
-
-    ### Use a single messages file and record all responses into a new file
-
-    ```
-    -i /rpc.0 -s keystore/jwt-secret -r rpc.responses.txt
-    ```
-
-    ### Use a single message file, using only `engine` and `eth` methods
-
-    ```
-    -i /rpc.0 -s keystore/jwt-secret -f engine, eth
-    ```
-
-    ### Connect to a Nethermind Client running in a specific address and TTL
-
-    ```
-    -i /rpc.0 -s keystore/jwt-secret -a http://192.168.1.100:8551 --ttl 30
-    ```
-
-    ### Run in "dry" mode (no communication with the Nethermind Client)
-
-    ```
-    -i /rpc.0 -s keystore/jwt-secret -d
-    ```
-    */
-
     [SetUp]
     public void Setup()
     {
