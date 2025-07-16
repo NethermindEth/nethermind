@@ -91,6 +91,11 @@ public class HistoryPruner : IHistoryPruner
     {
         get
         {
+            if (!_enabled)
+            {
+                return null;
+            }
+
             ulong cutoffTimestamp = CalculateCutoffTimestamp();
 
             if (_lastCutoffTimestamp is not null && cutoffTimestamp == _lastCutoffTimestamp)
