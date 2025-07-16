@@ -1,0 +1,100 @@
+﻿using FluentAssertions;
+using Nethermind.Tools.Kute.JsonRpcMethodFilter;
+using NUnit.Framework;
+
+namespace Nethermind.Tools.Kute.Test;
+
+public class JsonRpcFilterTests
+{
+    /*
+    ### Use all messages in the folder `/rpc-logs`
+
+    ```
+    -i /rpc-logs -s keystore/jwt-secret
+    ```
+
+    ### Use a single messages file and emit results as JSON
+
+    ```
+    -i /rpc.0 -s keystore/jwt-secret -o Json
+    ```
+
+    ### Use a single messages file and record all responses into a new file
+
+    ```
+    -i /rpc.0 -s keystore/jwt-secret -r rpc.responses.txt
+    ```
+
+    ### Use a single message file, using only `engine` and `eth` methods
+
+    ```
+    -i /rpc.0 -s keystore/jwt-secret -f engine, eth
+    ```
+
+    ### Use a single message file, using only the first 100 methods
+
+    ```
+    -i /rpc.0 -s keystore/jwt-secret -f .*=100
+    ```
+
+    ### Use a single message file, using only the first 50 `engine_newPayloadV2` or `engine_newPayloadV3` methods
+
+    ```
+    -i /rpc.0 -s keystore/jwt-secret -f engine_newPayloadV[23]=50
+    ```
+
+    ### Connect to a Nethermind Client running in a specific address and TTL
+
+    ```
+    -i /rpc.0 -s keystore/jwt-secret -a http://192.168.1.100:8551 --ttl 30
+    ```
+
+    ### Run in "dry" mode (no communication with the Nethermind Client)
+
+    ```
+    -i /rpc.0 -s keystore/jwt-secret -d
+    ```
+    */
+
+    [SetUp]
+    public void Setup()
+    {
+    }
+
+    private static IEnumerable<TestCaseData> MethodPatternTestCases()
+    {
+        yield return new TestCaseData(
+            new List<string> { "engine_newPayloadV2" },
+            new List<string> { "engine_newPayloadV2" }
+        ).SetName("Exact method match");
+
+        yield return new TestCaseData(
+            new List<string> { "engine_newPayloadV[23]" },
+            new List<string> { "engine_newPayloadV2", "engine_newPayloadV3" }
+        ).SetName("Multiple methods match with regex");
+
+        yield return new TestCaseData(
+            new List<string> { "eth_*" },
+            new List<string> { "eth_getBlockByNumber", "eth_sendTransaction" }
+        ).SetName("Wildcard match for eth methods");
+
+        yield return new TestCaseData(
+            new List<string> { "engine_*", "eth_*" },
+            new List<string> { "engine_newPayloadV2", "eth_getBlockByNumber", "eth_sendTransaction" }
+        ).SetName("Multiple patterns match");
+    }
+
+    [TestCaseSource(nameof(MethodPatternTestCases))]
+    public void AcceptsMethodsByNamespace(List<string> patterns, List<string> methodsNames)
+    {
+        var filter = new ComposedJsonRpcMethodFilter(
+            patterns
+                .Select(pattern => new PatternJsonRpcMethodFilter(pattern) as IJsonRpcMethodFilter)
+                .ToList());
+
+        foreach (string methodName in methodsNames)
+        {
+            filter.ShouldSubmit(methodName).Should().BeTrue();
+        }
+    }
+}
