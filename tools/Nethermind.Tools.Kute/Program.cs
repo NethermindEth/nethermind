@@ -69,7 +69,7 @@ static class Program
                     provider.GetRequiredService<ISecretProvider>()
                 ),
                 provider.GetRequiredService<ISystemClock>(),
-                parseResult.GetValue(Config.AuthTtl)
+                TimeSpan.FromSeconds(parseResult.GetValue(Config.AuthTtl))
             )
         );
         collection.AddSingleton<IMessageProvider<string>>(new FileMessageProvider(parseResult.GetValue(Config.MessagesFilePath)!));

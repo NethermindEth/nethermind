@@ -13,13 +13,6 @@ public sealed class TtlAuth : IAuth
 
     private LastAuth? _lastAuth;
 
-    public TtlAuth(IAuth auth, ISystemClock clock, int ttl)
-    {
-        _auth = auth;
-        _clock = clock;
-        _ttl = TimeSpan.FromSeconds(ttl);
-    }
-
     public TtlAuth(IAuth auth, ISystemClock clock, TimeSpan ttl)
     {
         _auth = auth;
