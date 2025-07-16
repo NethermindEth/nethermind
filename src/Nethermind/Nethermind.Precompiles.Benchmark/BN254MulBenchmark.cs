@@ -3,15 +3,14 @@
 
 using System.Collections.Generic;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Snarks;
 
 namespace Nethermind.Precompiles.Benchmark;
 
-public class Bn254MulBenchmark : PrecompileBenchmarkBase
+public class BN254MulBenchmark : PrecompileBenchmarkBase
 {
     protected override IEnumerable<IPrecompile> Precompiles => new[]
     {
-        Bn254MulPrecompile.Instance
+        BN254MulPrecompile.Instance
     };
 
     protected override string InputsDirectory => "bnmul";
