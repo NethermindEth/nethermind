@@ -66,11 +66,6 @@ public class HistoryPruner : IHistoryPruner
 
         CheckConfig();
         LoadDeletePointer();
-
-        if (historyConfig.Enabled)
-        {
-            FindCutoffBlockNumber();
-        }
     }
 
     public void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
@@ -133,7 +128,12 @@ public class HistoryPruner : IHistoryPruner
             return _specProvider.MergeBlockNumber?.BlockNumber;
         }
 
-        ulong cutoffTimestamp = CalculateCutoffTimestamp();
+        ulong? cutoffTimestamp = CalculateCutoffTimestamp();
+
+        if (cutoffTimestamp is null)
+        {
+            return null;
+        }
 
         long? cutoffBlockNumber = null;
         lock (_searchLock)
@@ -198,8 +198,8 @@ public class HistoryPruner : IHistoryPruner
             return false;
         }
 
-        ulong cutoffTimestamp = CalculateCutoffTimestamp();
-        return cutoffTimestamp > _lastPrunedTimestamp;
+        ulong? cutoffTimestamp = CalculateCutoffTimestamp();
+        return cutoffTimestamp is not null && cutoffTimestamp > _lastPrunedTimestamp;
     }
 
     private async Task PruneHistory(CancellationToken cancellationToken)
@@ -209,18 +209,18 @@ public class HistoryPruner : IHistoryPruner
             return;
         }
 
-        ulong cutoffTimestamp = CalculateCutoffTimestamp();
+        ulong? cutoffTimestamp = CalculateCutoffTimestamp();
 
-        if (cutoffTimestamp <= _lastPrunedTimestamp)
+        if (cutoffTimestamp is null || cutoffTimestamp <= _lastPrunedTimestamp)
         {
             return;
         }
 
         if (_logger.IsInfo) _logger.Info($"Pruning historical blocks up to timestamp {cutoffTimestamp}");
 
-        await Task.Run(() => PruneBlocksAndReceipts(cutoffTimestamp, cancellationToken), cancellationToken);
+        await Task.Run(() => PruneBlocksAndReceipts(cutoffTimestamp.Value, cancellationToken), cancellationToken);
 
-        _lastPrunedTimestamp = cutoffTimestamp;
+        _lastPrunedTimestamp = cutoffTimestamp.Value;
         if (_logger.IsInfo) _logger.Info($"Pruned historical blocks up to timestamp {cutoffTimestamp}");
     }
 
@@ -310,11 +310,11 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    private ulong CalculateCutoffTimestamp()
+    private ulong? CalculateCutoffTimestamp()
     {
-        ulong cutoffTimestamp = 0;
+        ulong? cutoffTimestamp = null;
 
-        if (_historyConfig.HistoryRetentionEpochs.HasValue)
+        if (_historyConfig.HistoryRetentionEpochs.HasValue && _blockTree.Head is not null)
         {
             cutoffTimestamp = _blockTree.Head!.Timestamp - (ulong)(_historyConfig.HistoryRetentionEpochs.Value * _epochLength);
         }
@@ -322,7 +322,7 @@ public class HistoryPruner : IHistoryPruner
         if (_historyConfig.DropPreMerge)
         {
             ulong? beaconGenesisTimestamp = _specProvider.BeaconChainGenesisTimestamp;
-            if (beaconGenesisTimestamp.HasValue && beaconGenesisTimestamp.Value > cutoffTimestamp)
+            if (beaconGenesisTimestamp.HasValue && (cutoffTimestamp is null || beaconGenesisTimestamp.Value > cutoffTimestamp))
             {
                 cutoffTimestamp = beaconGenesisTimestamp.Value;
             }
