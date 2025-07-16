@@ -1131,7 +1131,7 @@ public sealed unsafe partial class VirtualMachine(
             vmState.Memory.Save(in localPreviousDest, previousCallOutput);
         }
 
-        if (env.CodeInfo.IlMetadata.IsPrecompiled && !_txTracer.IsTracing)
+        if (env.CodeInfo.IlMetadata.IsPrecompiled && _txTracer.IsTracingIlEvmCompatable)
         {
             Metrics.IlvmAotPrecompiledCalls++; // this will treat continuations as new calls
 
