@@ -22,6 +22,8 @@ public class Bn254PairingPrecompile : IPrecompile<Bn254PairingPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(8);
 
+    public static string Name => "BN256_PAIRING";
+
     public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 45000L : 100000L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => (releaseSpec.IsEip1108Enabled ? 34000L : 80000L) * (inputData.Length / PairSize);

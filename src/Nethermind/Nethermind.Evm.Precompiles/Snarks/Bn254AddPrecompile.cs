@@ -18,6 +18,8 @@ public class Bn254AddPrecompile : IPrecompile<Bn254AddPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(6);
 
+    public static string Name => "BN256_ADD";
+
     public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 150L : 500L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;

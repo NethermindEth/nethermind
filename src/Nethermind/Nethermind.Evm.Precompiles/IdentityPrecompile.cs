@@ -19,6 +19,8 @@ public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(4);
 
+    public static string Name => "ID";
+
     public long BaseGasCost(IReleaseSpec releaseSpec) => 15L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
