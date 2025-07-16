@@ -3,10 +3,11 @@
 
 using System;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.GmpBindings;
 using Nethermind.Int256;
 
