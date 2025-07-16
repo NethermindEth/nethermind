@@ -47,6 +47,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
         _l1RpcClient = l1RpcClient;
         _surgeConfig = surgeConfig;
         _gasUsageBuffer = new GasUsageRingBuffer(_surgeConfig.L2GasUsageWindowSize);
+        _gasUsageBuffer.Add(_surgeConfig.L2GasPerL2Batch);
     }
 
     private UInt256 FallbackGasPrice() => _gasPriceEstimation.LastPrice ?? _minGasPrice;
@@ -102,6 +103,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         UInt256 proofPostingCost = _surgeConfig.ProofPostingGas * UInt256.Max(l1BaseFee, l1AverageBaseFee);
 
+        averageGasUsage *= 80 / 100; // Reduce the average gas usage by 20% to prevent upward trend
         UInt256 gasPriceEstimate = (minProposingCost + proofPostingCost + _surgeConfig.ProvingCostPerL2Batch) /
                                    Math.Max(averageGasUsage, _surgeConfig.L2GasPerL2Batch);
 
