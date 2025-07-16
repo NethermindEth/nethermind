@@ -26,6 +26,8 @@ public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565
 
     public static Address Address { get; } = Address.FromNumber(5);
 
+    public static string Name => "MODEXP";
+
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

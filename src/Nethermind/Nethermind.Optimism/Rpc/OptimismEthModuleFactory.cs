@@ -43,6 +43,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly IReceiptFinder _receiptFinder;
     private readonly IOptimismSpecHelper _opSpecHelper;
     private readonly IProtocolsManager _protocolsManager;
+    private readonly IForkInfo _forkInfo;
     private readonly ulong? _secondsPerSlot;
     private readonly IJsonRpcClient? _sequencerRpcClient;
 
@@ -60,6 +61,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
         IProtocolsManager protocolsManager,
+        IForkInfo forkInfo,
         IBlocksConfig blocksConfig,
         IEthereumEcdsa ecdsa,
         IOptimismSpecHelper opSpecHelper,
@@ -85,7 +87,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         _receiptFinder = receiptFinder;
         _opSpecHelper = opSpecHelper;
         _protocolsManager = protocolsManager;
-
+        _forkInfo = forkInfo;
         ILogger logger = logManager.GetClassLogger<OptimismEthModuleFactory>();
         if (config.SequencerUrl is null && logger.IsWarn)
         {
@@ -119,6 +121,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _ethSyncingInfo,
             _feeHistoryOracle,
             _protocolsManager,
+            _forkInfo,
             _secondsPerSlot,
 
             _sequencerRpcClient,
