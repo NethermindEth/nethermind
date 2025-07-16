@@ -144,13 +144,13 @@ public class HistoryPruner : IHistoryPruner
                 return _cutoffPointer;
             }
 
-            // optimisticly search ahead two epochs from previous pointer
+            // optimisticly search a few blocks from old pointer
             if (_cutoffPointer is not null)
             {
                 int attempts = 0;
                 GetBlocksByNumber(_cutoffPointer.Value, b =>
                 {
-                    if (attempts >= 64)
+                    if (attempts >= 5)
                     {
                         return true;
                     }
@@ -243,6 +243,7 @@ public class HistoryPruner : IHistoryPruner
                     break;
                 }
 
+                // should never happen
                 if (number == 0 || number >= _blockTree.SyncPivot.BlockNumber)
                 {
                     continue;
@@ -258,6 +259,11 @@ public class HistoryPruner : IHistoryPruner
         }
         finally
         {
+            if (_cutoffPointer < _deletePointer)
+            {
+                _cutoffPointer = _deletePointer;
+                _cutoffTimestamp = cutoffTimestamp;
+            }
             SaveDeletePointer();
             if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks up to #{_deletePointer}.");
         }

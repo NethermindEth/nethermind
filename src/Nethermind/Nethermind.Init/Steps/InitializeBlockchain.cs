@@ -157,8 +157,6 @@ namespace Nethermind.Init.Steps
             if (historyConfig.Enabled)
             {
                 blockchainProcessor.ProcessingQueueEmpty += _api.HistoryPruner!.OnBlockProcessorQueueEmpty;
-                // precalculate cutoff
-                Task.Run(() => _api.HistoryPruner.CutoffBlockNumber);
             }
 
             return Task.CompletedTask;
