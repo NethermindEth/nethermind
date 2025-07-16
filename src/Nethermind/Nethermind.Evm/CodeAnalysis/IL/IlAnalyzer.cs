@@ -223,7 +223,7 @@ public static class IlAnalyzer
             switch (op)
             {
                 case Instruction.JUMPDEST:
-                    if(resolvePreviousSegment)
+                    if (resolvePreviousSegment)
                     {
                         subSegment.Start = subsegmentStart;
                         subSegment.RequiredStack = -subSegment.RequiredStack;

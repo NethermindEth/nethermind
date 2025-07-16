@@ -182,7 +182,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL
             // For non-delegate calls, the transfer value is the call value.
             UInt256 transferValue = instruction is Instruction.DELEGATECALL ? UInt256.Zero : callValue;
             // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
-            if (vmState.IsStatic && !transferValue.IsZero && instruction is Instruction.CALL)
+            if (vmState.IsStatic && !transferValue.IsZero && instruction is not Instruction.CALLCODE)
                 return EvmExceptionType.StaticCallViolation;
 
             // Determine caller and target based on the call type.
