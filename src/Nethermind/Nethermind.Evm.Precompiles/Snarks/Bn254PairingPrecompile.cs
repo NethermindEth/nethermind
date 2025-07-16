@@ -6,6 +6,7 @@ using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.Precompiles.Snarks;
 
