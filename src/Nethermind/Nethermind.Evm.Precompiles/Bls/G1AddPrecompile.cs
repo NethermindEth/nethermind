@@ -5,44 +5,44 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-
-using G2 = Nethermind.Crypto.Bls.P2;
+using Nethermind.Evm.Precompiles;
+using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-2537
 /// </summary>
-public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
+public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 {
-    public static readonly G2AddPrecompile Instance = new();
+    public static readonly G1AddPrecompile Instance = new();
 
-    private G2AddPrecompile()
+    private G1AddPrecompile()
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x0d);
+    public static Address Address { get; } = Address.FromNumber(0x0b);
 
-    public static string Name => "BLS12_G2ADD";
+    public static string Name => "BLS12_G1ADD";
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 600L;
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 375L;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     [SkipLocalsInit]
     public (byte[], bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Metrics.BlsG2AddPrecompile++;
+        Metrics.BlsG1AddPrecompile++;
 
-        const int expectedInputLength = 2 * BlsConst.LenG2;
+        const int expectedInputLength = 2 * BlsConst.LenG1;
         if (inputData.Length != expectedInputLength)
         {
             return IPrecompile.Failure;
         }
 
-        G2 x = new(stackalloc long[G2.Sz]);
-        G2 y = new(stackalloc long[G2.Sz]);
-        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span) || !y.TryDecodeRaw(inputData[BlsConst.LenG2..].Span))
+        G1 x = new(stackalloc long[G1.Sz]);
+        G1 y = new(stackalloc long[G1.Sz]);
+        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) || !y.TryDecodeRaw(inputData[BlsConst.LenG1..].Span))
         {
             return IPrecompile.Failure;
         }
@@ -50,15 +50,15 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
         // adding to infinity point has no effect
         if (x.IsInf())
         {
-            return (inputData[BlsConst.LenG2..].ToArray(), true);
+            return (inputData[BlsConst.LenG1..].ToArray(), true);
         }
 
         if (y.IsInf())
         {
-            return (inputData[..BlsConst.LenG2].ToArray(), true);
+            return (inputData[..BlsConst.LenG1].ToArray(), true);
         }
 
-        G2 res = x.Add(y);
+        G1 res = x.Add(y);
         return (res.EncodeRaw(), true);
     }
 }

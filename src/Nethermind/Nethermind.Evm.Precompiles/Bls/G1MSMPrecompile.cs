@@ -9,6 +9,7 @@ using Nethermind.Core.Collections;
 
 using G1 = Nethermind.Crypto.Bls.P1;
 using System.Runtime.CompilerServices;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
