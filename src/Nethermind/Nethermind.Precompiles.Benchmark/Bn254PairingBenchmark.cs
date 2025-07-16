@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Blockchain.Precompiles.Snarks;
+using Nethermind.Evm.Precompiles.Snarks;
 
 namespace Nethermind.Precompiles.Benchmark;
 

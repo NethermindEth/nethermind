@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Blockchain.Precompiles;
 
 namespace Nethermind.Precompiles.Benchmark;
 
