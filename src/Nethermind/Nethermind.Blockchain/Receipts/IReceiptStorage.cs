@@ -16,6 +16,7 @@ namespace Nethermind.Blockchain.Receipts
         long MigratedBlockNumber { get; set; }
         bool HasBlock(long blockNumber, Hash256 hash);
         void EnsureCanonical(Block block);
+        void RemoveReceipts(Block block);
 
         /// <summary>
         /// Receipts for a block are inserted

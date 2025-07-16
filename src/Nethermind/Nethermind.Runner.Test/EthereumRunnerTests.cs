@@ -22,6 +22,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.HistoryPruning;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -212,6 +213,7 @@ public class EthereumRunnerTests
         api.DbFactory = new MemDbFactory();
         api.DbProvider = await TestMemDbProvider.InitAsync();
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
+        api.HistoryPruner = Substitute.For<IHistoryPruner>();
 
         if (api is AuRaNethermindApi auRaNethermindApi)
         {
