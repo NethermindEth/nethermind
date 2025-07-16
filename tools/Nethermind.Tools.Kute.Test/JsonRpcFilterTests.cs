@@ -32,18 +32,6 @@ public class JsonRpcFilterTests
     -i /rpc.0 -s keystore/jwt-secret -f engine, eth
     ```
 
-    ### Use a single message file, using only the first 100 methods
-
-    ```
-    -i /rpc.0 -s keystore/jwt-secret -f .*=100
-    ```
-
-    ### Use a single message file, using only the first 50 `engine_newPayloadV2` or `engine_newPayloadV3` methods
-
-    ```
-    -i /rpc.0 -s keystore/jwt-secret -f engine_newPayloadV[23]=50
-    ```
-
     ### Connect to a Nethermind Client running in a specific address and TTL
 
     ```
@@ -62,7 +50,7 @@ public class JsonRpcFilterTests
     {
     }
 
-    private static IEnumerable<TestCaseData> MethodPatternTestCases()
+    private static IEnumerable<TestCaseData> UnlimitedMethodTestCases()
     {
         yield return new TestCaseData(
             new List<string> { "engine_newPayloadV2" },
@@ -85,8 +73,8 @@ public class JsonRpcFilterTests
         ).SetName("Multiple patterns match");
     }
 
-    [TestCaseSource(nameof(MethodPatternTestCases))]
-    public void AcceptsMethodsByNamespace(List<string> patterns, List<string> methodsNames)
+    [TestCaseSource(nameof(UnlimitedMethodTestCases))]
+    public void AcceptsUnlimitedMethods(List<string> patterns, List<string> methodsNames)
     {
         var filter = new ComposedJsonRpcMethodFilter(
             patterns
@@ -99,7 +87,7 @@ public class JsonRpcFilterTests
         }
     }
 
-    private static IEnumerable<TestCaseData> MethodPatternNegativeTestCases()
+    private static IEnumerable<TestCaseData> UnlimitedMethodNegativeTestCases()
     {
         yield return new TestCaseData(
             new List<string> { "engine_newPayloadV2" },
@@ -122,8 +110,8 @@ public class JsonRpcFilterTests
         ).SetName("Multiple patterns with no matches");
     }
 
-    [TestCaseSource(nameof(MethodPatternNegativeTestCases))]
-    public void RejectsMethodsByNamespace(List<string> patterns, List<string> methodsNames)
+    [TestCaseSource(nameof(UnlimitedMethodNegativeTestCases))]
+    public void RejectsUnlimitedMethods(List<string> patterns, List<string> methodsNames)
     {
         var filter = new ComposedJsonRpcMethodFilter(
             patterns
@@ -133,6 +121,47 @@ public class JsonRpcFilterTests
         foreach (string methodName in methodsNames)
         {
             filter.ShouldSubmit(methodName).Should().BeFalse();
+        }
+    }
+
+    private static IEnumerable<TestCaseData> LimitedMethodTestCases()
+    {
+        yield return new TestCaseData(
+            new List<string> { "engine_newPayloadV2=1" },
+            "engine_newPayloadV2",
+            1
+        ).SetName("Exact method with count");
+
+        yield return new TestCaseData(
+            new List<string> { "engine_newPayloadV[23]=2" },
+            "engine_newPayloadV2",
+            2
+        ).SetName("Regex method with count");
+
+        yield return new TestCaseData(
+            new List<string> { ".*=3" },
+            "web3_clientVersion",
+            3
+        ).SetName("Any method with count");
+
+        yield return new TestCaseData(
+            new List<string> { "engine_*=5", "eth_*=5" },
+            "engine_newPayloadV2",
+            5
+        ).SetName("Multiple patterns with counts");
+    }
+
+    [TestCaseSource(nameof(LimitedMethodTestCases))]
+    public void AcceptsLimitedMethods(List<string> patterns, string methodName, int count)
+    {
+        var filter = new ComposedJsonRpcMethodFilter(
+            patterns
+                .Select(pattern => new PatternJsonRpcMethodFilter(pattern) as IJsonRpcMethodFilter)
+                .ToList());
+
+        for (int i = 0; i < count; i++)
+        {
+            filter.ShouldSubmit(methodName).Should().BeTrue();
         }
     }
 }
