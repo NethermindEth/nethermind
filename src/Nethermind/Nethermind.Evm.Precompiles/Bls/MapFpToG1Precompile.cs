@@ -8,7 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using G1 = Nethermind.Crypto.Bls.P1;
 
-namespace Nethermind.Blockchain.Precompiles.Bls;
+namespace Nethermind.Evm.Precompiles.Bls;
 
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-2537

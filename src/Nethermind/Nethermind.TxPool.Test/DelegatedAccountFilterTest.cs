@@ -16,7 +16,6 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Precompiles;
 using Nethermind.Core.Test;
 using Nethermind.State;
 

@@ -7,7 +7,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 
-namespace Nethermind.Blockchain.Precompiles;
+namespace Nethermind.Evm.Precompiles;
 
 public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
 {

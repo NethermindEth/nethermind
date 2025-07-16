@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using NUnit.Framework;
-using Nethermind.Blockchain.Precompiles.Bls;
+using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs;
 

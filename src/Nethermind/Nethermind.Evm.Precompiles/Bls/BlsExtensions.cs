@@ -5,7 +5,7 @@ using System;
 using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;
 
-namespace Nethermind.Blockchain.Precompiles.Bls;
+namespace Nethermind.Evm.Precompiles.Bls;
 
 public static class BlsExtensions
 {

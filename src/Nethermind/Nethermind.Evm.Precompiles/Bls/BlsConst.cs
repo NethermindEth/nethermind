@@ -3,7 +3,7 @@
 
 using System.Linq;
 
-namespace Nethermind.Blockchain.Precompiles.Bls;
+namespace Nethermind.Evm.Precompiles.Bls;
 
 public static class BlsConst
 {

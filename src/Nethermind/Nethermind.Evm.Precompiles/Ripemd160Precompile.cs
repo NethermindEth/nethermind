@@ -9,7 +9,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 
-namespace Nethermind.Blockchain.Precompiles;
+namespace Nethermind.Evm.Precompiles;
 
 public class Ripemd160Precompile : IPrecompile<Ripemd160Precompile>
 {

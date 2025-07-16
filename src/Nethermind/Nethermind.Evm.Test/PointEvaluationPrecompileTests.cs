@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Blockchain.Precompiles;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 

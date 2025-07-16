@@ -4,11 +4,11 @@
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using Nethermind.Blockchain.Precompiles;
-using Nethermind.Blockchain.Precompiles.Bls;
-using Nethermind.Blockchain.Precompiles.Snarks;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.Precompiles.Bls;
+using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain;
@@ -21,29 +21,29 @@ public class EthereumCodeInfoRepository(
     {
         get => new Dictionary<AddressAsKey, PrecompileInfo>
         {
-            [EcRecoverPrecompile.Address] = new PrecompileInfo(EcRecoverPrecompile.Instance),
-            [Sha256Precompile.Address] = new PrecompileInfo(Sha256Precompile.Instance),
-            [Ripemd160Precompile.Address] = new PrecompileInfo(Ripemd160Precompile.Instance),
-            [IdentityPrecompile.Address] = new PrecompileInfo(IdentityPrecompile.Instance),
+            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
+            [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
+            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
+            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
 
-            [Bn254AddPrecompile.Address] = new PrecompileInfo(Bn254AddPrecompile.Instance),
-            [Bn254MulPrecompile.Address] = new PrecompileInfo(Bn254MulPrecompile.Instance),
-            [Bn254PairingPrecompile.Address] = new PrecompileInfo(Bn254PairingPrecompile.Instance),
-            [ModExpPrecompile.Address] = new PrecompileInfo(ModExpPrecompile.Instance),
+            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
+            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
+            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
+            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
 
-            [Blake2FPrecompile.Address] = new PrecompileInfo(Blake2FPrecompile.Instance),
+            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
 
-            [G1AddPrecompile.Address] = new PrecompileInfo(G1AddPrecompile.Instance),
-            [G1MSMPrecompile.Address] = new PrecompileInfo(G1MSMPrecompile.Instance),
-            [G2AddPrecompile.Address] = new PrecompileInfo(G2AddPrecompile.Instance),
-            [G2MSMPrecompile.Address] = new PrecompileInfo(G2MSMPrecompile.Instance),
-            [PairingCheckPrecompile.Address] = new PrecompileInfo(PairingCheckPrecompile.Instance),
-            [MapFpToG1Precompile.Address] = new PrecompileInfo(MapFpToG1Precompile.Instance),
-            [MapFp2ToG2Precompile.Address] = new PrecompileInfo(MapFp2ToG2Precompile.Instance),
+            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
+            [G1MSMPrecompile.Address] = new(G1MSMPrecompile.Instance),
+            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
+            [G2MSMPrecompile.Address] = new(G2MSMPrecompile.Instance),
+            [PairingCheckPrecompile.Address] = new(PairingCheckPrecompile.Instance),
+            [MapFpToG1Precompile.Address] = new(MapFpToG1Precompile.Instance),
+            [MapFp2ToG2Precompile.Address] = new(MapFp2ToG2Precompile.Instance),
 
-            [PointEvaluationPrecompile.Address] = new PrecompileInfo(PointEvaluationPrecompile.Instance),
+            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
 
-            [Secp256r1Precompile.Address] = new PrecompileInfo(Secp256r1Precompile.Instance),
+            [Secp256r1Precompile.Address] = new(Secp256r1Precompile.Instance),
         }.ToFrozenDictionary();
     }
 }

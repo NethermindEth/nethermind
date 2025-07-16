@@ -8,7 +8,7 @@ using static System.Runtime.CompilerServices.Unsafe;
 namespace Nethermind.Evm;
 using Int256;
 
-public static partial class EvmInstructions
+internal static partial class EvmInstructions
 {
     /// <summary>
     /// Interface for shift operations.

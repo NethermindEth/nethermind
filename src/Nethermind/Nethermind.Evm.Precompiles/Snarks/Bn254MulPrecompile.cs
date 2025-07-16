@@ -7,7 +7,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
 
-namespace Nethermind.Blockchain.Precompiles.Snarks;
+namespace Nethermind.Evm.Precompiles.Snarks;
 
 /// <summary>
 /// https://github.com/herumi/mcl/blob/master/api.md

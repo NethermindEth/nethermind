@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Precompiles;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;

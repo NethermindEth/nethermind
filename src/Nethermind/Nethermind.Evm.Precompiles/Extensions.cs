@@ -3,7 +3,7 @@
 
 using System;
 
-namespace Nethermind.Blockchain.Precompiles;
+namespace Nethermind.Evm.Precompiles;
 
 public static class Extensions
 {

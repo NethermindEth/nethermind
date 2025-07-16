@@ -11,7 +11,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 
-namespace Nethermind.Blockchain.Precompiles;
+namespace Nethermind.Evm.Precompiles;
 
 public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
 {

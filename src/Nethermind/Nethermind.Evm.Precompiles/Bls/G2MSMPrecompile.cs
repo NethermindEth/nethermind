@@ -11,7 +11,7 @@ using G2 = Nethermind.Crypto.Bls.P2;
 using System.Runtime.CompilerServices;
 using Nethermind.Evm.Precompiles;
 
-namespace Nethermind.Blockchain.Precompiles.Bls;
+namespace Nethermind.Evm.Precompiles.Bls;
 
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-2537

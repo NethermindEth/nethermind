@@ -11,7 +11,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.GmpBindings;
 using Nethermind.Int256;
 
-namespace Nethermind.Blockchain.Precompiles;
+namespace Nethermind.Evm.Precompiles;
 
 /// <summary>
 ///     https://github.com/ethereum/EIPs/blob/vbuterin-patch-2/EIPS/bigint_modexp.md

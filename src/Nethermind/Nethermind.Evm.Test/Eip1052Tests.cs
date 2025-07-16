@@ -7,7 +7,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.Blockchain.Precompiles;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;

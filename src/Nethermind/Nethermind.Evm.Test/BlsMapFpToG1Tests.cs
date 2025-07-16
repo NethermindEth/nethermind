@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Blockchain.Precompiles.Bls;
+using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 

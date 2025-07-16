@@ -34,8 +34,6 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System;
-using Nethermind.Blockchain.Precompiles;
-using Nethermind.Evm;
 using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules

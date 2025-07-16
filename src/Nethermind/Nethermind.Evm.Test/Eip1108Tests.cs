@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Specs;
-using Nethermind.Blockchain.Precompiles.Snarks;
+using Nethermind.Evm.Precompiles.Snarks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;

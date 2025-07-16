@@ -11,7 +11,7 @@ using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;
 using GT = Nethermind.Crypto.Bls.PT;
 
-namespace Nethermind.Blockchain.Precompiles.Bls;
+namespace Nethermind.Evm.Precompiles.Bls;
 
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-2537

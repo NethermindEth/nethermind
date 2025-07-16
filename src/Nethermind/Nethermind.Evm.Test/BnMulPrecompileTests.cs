@@ -3,7 +3,7 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Blockchain.Precompiles.Snarks;
+using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 

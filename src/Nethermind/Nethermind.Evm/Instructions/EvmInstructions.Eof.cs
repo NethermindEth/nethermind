@@ -17,7 +17,7 @@ using static Nethermind.Evm.VirtualMachine;
 namespace Nethermind.Evm;
 using Int256;
 
-public static partial class EvmInstructions
+internal static partial class EvmInstructions
 {
     /// <summary>
     /// Interface defining properties for an EOF call instruction.

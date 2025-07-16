@@ -8,7 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto.Blake2;
 using Nethermind.Evm.Precompiles;
 
-namespace Nethermind.Blockchain.Precompiles;
+namespace Nethermind.Evm.Precompiles;
 
 public class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
 {

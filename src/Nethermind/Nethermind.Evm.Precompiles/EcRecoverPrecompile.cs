@@ -10,7 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
 
-namespace Nethermind.Blockchain.Precompiles;
+namespace Nethermind.Evm.Precompiles;
 
 public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
 {
