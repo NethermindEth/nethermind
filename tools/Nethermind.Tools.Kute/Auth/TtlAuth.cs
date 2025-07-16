@@ -9,11 +9,18 @@ public sealed class TtlAuth : IAuth
 {
     private readonly IAuth _auth;
     private readonly ISystemClock _clock;
-    private readonly int _ttl;
+    private readonly TimeSpan _ttl;
 
     private LastAuth? _lastAuth;
 
     public TtlAuth(IAuth auth, ISystemClock clock, int ttl)
+    {
+        _auth = auth;
+        _clock = clock;
+        _ttl = TimeSpan.FromSeconds(ttl);
+    }
+
+    public TtlAuth(IAuth auth, ISystemClock clock, TimeSpan ttl)
     {
         _auth = auth;
         _clock = clock;
@@ -24,8 +31,8 @@ public sealed class TtlAuth : IAuth
     {
         get
         {
-            long currentTime = _clock.UtcNow.ToUnixTimeSeconds();
-            if (_lastAuth is null || Math.Abs(_lastAuth.GeneratedAt - currentTime) >= _ttl)
+            DateTimeOffset currentTime = _clock.UtcNow;
+            if (_lastAuth is null || (currentTime - _lastAuth.GeneratedAt) >= _ttl)
             {
                 _lastAuth = new(currentTime, _auth.AuthToken);
             }
@@ -34,5 +41,5 @@ public sealed class TtlAuth : IAuth
         }
     }
 
-    private record LastAuth(long GeneratedAt, string Token);
+    private record LastAuth(DateTimeOffset GeneratedAt, string Token);
 }
