@@ -1730,6 +1730,26 @@ namespace Nethermind.Evm.Test.ILEVM
                     .Create2(Prepare.EvmCode.STOP().Done, [1, 2, 3], 0)
                     .Done, EvmExceptionType.None);
 
+                yield return ([Instruction.CLZ], Prepare.EvmCode
+                    .PushData(1)
+                    .Op(Instruction.CLZ)
+                    .Done, EvmExceptionType.None);
+
+                yield return ([Instruction.CLZ], Prepare.EvmCode
+                    .PushData(UInt256.MaxValue)
+                    .Op(Instruction.CLZ)
+                    .Done, EvmExceptionType.None);
+
+                yield return ([Instruction.CLZ], Prepare.EvmCode
+                    .PushData(UInt256.MinValue)
+                    .Op(Instruction.CLZ)
+                    .Done, EvmExceptionType.None);
+
+                yield return ([Instruction.CLZ], Prepare.EvmCode
+                    .PushData(TestItem.AddressA)
+                    .Op(Instruction.CLZ)
+                    .Done, EvmExceptionType.None);
+
                 yield return ([Instruction.INVALID], Prepare.EvmCode
                     .JUMPDEST()
                     .MUL(23, 3)
