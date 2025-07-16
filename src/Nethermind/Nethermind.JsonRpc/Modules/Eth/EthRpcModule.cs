@@ -36,6 +36,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Security;
 using System.Text;
@@ -789,24 +790,25 @@ public partial class EthRpcModule(
         ForkConfig? last = GetForkConfig(forks.Last, _specProvider);
 
         string serializedCurrent = JsonSerializer.Serialize(current, UnchangedDictionaryKeyOptions);
-        string? serializedNext = JsonSerializer.Serialize(next, UnchangedDictionaryKeyOptions);
-        string? serializedLast = JsonSerializer.Serialize(last, UnchangedDictionaryKeyOptions);
+        string? serializedNext = next is null ? null : JsonSerializer.Serialize(next, UnchangedDictionaryKeyOptions);
+        string? serializedLast = last is null ? null :JsonSerializer.Serialize(last, UnchangedDictionaryKeyOptions);
 
         return ResultWrapper<EthConfig>.Success(new EthConfig
         {
-            Current = JsonNode.Parse(serializedCurrent),
+            Current = JsonNode.Parse(serializedCurrent)!,
             CurrentHash = GetCrc32FromJson(serializedCurrent).Value,
             CurrentForkId = forks.CurrentForkId.HashBytes,
 
-            Next = JsonNode.Parse(serializedNext),
+            Next = serializedNext is null ? null : JsonNode.Parse(serializedNext),
             NextHash = GetCrc32FromJson(serializedNext),
             NextForkId = forks.NextForkId?.HashBytes,
 
-            Last = JsonNode.Parse(serializedLast),
+            Last = serializedLast is null ? null : JsonNode.Parse(serializedLast),
             LastHash = GetCrc32FromJson(serializedLast),
             LastForkId = forks.LastForkId?.HashBytes,
         });
 
+        [return: NotNullIfNotNull(nameof(json))]
         static uint? GetCrc32FromJson(string? json) => json is null ? null : Crc32Algorithm.Compute(Encoding.UTF8.GetBytes(RemoveWhitespace().Replace(json, "")));
 
         static ForkConfig? GetForkConfig(ForkActivation? forkActivation, ISpecProvider specProvider)
