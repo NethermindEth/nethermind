@@ -242,6 +242,8 @@ public struct OpcodeMetadata(long gasCost, byte additionalBytes, byte stackBehav
             [Instruction.STOP] = new(FREE, 0, 0, 0),
             [Instruction.PC] = new(GasCostOf.Base, 0, 0, 1),
 
+            [Instruction.CLZ] = new(GasCostOf.Base, 0, 1, 1),
+
             [Instruction.PUSH0] = new(GasCostOf.Base, 0, 0, 1),
             [Instruction.PUSH1] = new(GasCostOf.VeryLow, 1, 0, 1),
             [Instruction.PUSH2] = new(GasCostOf.VeryLow, 2, 0, 1),
@@ -543,6 +545,8 @@ public static class EofInstructionExtensions
             case Instruction.DUPN:
             case Instruction.EXCHANGE:
                 return (0, 0, 1);
+            case Instruction.CLZ:
+                return (1, 1, 0);
             default:
                 return Enum.IsDefined(instruction) ? ((ushort)2, (ushort)1, (ushort)0) : ThrowNotImplemented(instruction);
         }

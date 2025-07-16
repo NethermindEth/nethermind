@@ -48,7 +48,10 @@ public sealed class CodeInfo(ReadOnlyMemory<byte> code, ValueHash256? codeHash =
     private int _callCount;
     public void NoticeExecution(IVMConfig vmConfig, ILogger logger, IReleaseSpec spec)
     {
-        if (CodeHash is null || vmConfig.IlEvmEnabledMode == ILMode.NO_ILVM || !IlMetadata.IsNotProcessed)
+        if (   CodeHash is null
+            || vmConfig.IlEvmEnabledMode == ILMode.NO_ILVM
+            || !IlMetadata.IsNotProcessed
+            || Code.Length == 0)
             return;
 
         if (AotContractsRepository.IsWhitelisted(CodeHash.Value))

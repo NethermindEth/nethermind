@@ -339,6 +339,9 @@ internal static class OpcodeEmitter
             case Instruction.CREATE2:
                 EmitCreateInstructions(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
                 return;
+            case Instruction.CLZ:
+                EmitClzInstruction(method, codeinfo, op, ilCompilerConfig, contractMetadata, currentSubSegment, pc, opcodeMetadata, envirementLoader, locals, evmExceptionLabels, escapeLabels);
+                return;
             default:
                 method.FakeBranch(method.AddExceptionLabel(evmExceptionLabels, EvmExceptionType.BadInstruction));
                 return;
@@ -348,6 +351,30 @@ internal static class OpcodeEmitter
 }
 internal static class OpcodeEmitters
 {
+    internal static void EmitClzInstruction<TDelegateType>(Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envirementLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
+    {
+        Label argIsZero = method.DefineLabel();
+        Label endOfOpcode = method.DefineLabel();
+
+        method.StackLoadPrevious(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.Duplicate();
+        method.EmitCheck(nameof(Word.IsZero));
+        method.BranchIfTrue(argIsZero);
+
+        method.Call(Word.LeadingZeroProp);
+        method.StoreLocal(locals.uint32A);
+        method.CleanAndLoadWord(locals.stackHeadRef, contractMetadata.StackOffsets.GetValueOrDefault(pc, (short)0), 1);
+        method.LoadLocal(locals.uint32A);
+        method.Call(Word.SetUInt0);
+        method.Branch(endOfOpcode);
+
+        method.MarkLabel(argIsZero);
+        method.InitializeObject(typeof(Word));
+        method.LoadConstant(256);
+        method.Call(Word.SetUInt0);
+
+        method.MarkLabel(endOfOpcode);
+    }
     internal static void EmitChainIdInstruction<TDelegateType>(
         Emit<TDelegateType> method, ICodeInfo codeinfo, Instruction op, IVMConfig ilCompilerConfig, ContractCompilerMetadata contractMetadata, SubSegmentMetadata currentSubSegment, int pc, OpcodeMetadata opcodeMetadata, EnvirementLoader envLoader, Locals<TDelegateType> locals, Dictionary<EvmExceptionType, Label> evmExceptionLabels, (Label returnLabel, Label exitLabel) escapeLabels)
     {
