@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace Nethermind.Tools.Kute.ResponseTracer;
 
-public class NullResponseTracer : IResponseTracer
+public sealed class NullResponseTracer : IResponseTracer
 {
     public Task TraceResponse(JsonDocument? response) => Task.CompletedTask;
 }

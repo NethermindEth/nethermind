@@ -3,7 +3,7 @@
 
 namespace Nethermind.Tools.Kute.Auth;
 
-interface IAuth
+public interface IAuth
 {
     string AuthToken { get; }
 }

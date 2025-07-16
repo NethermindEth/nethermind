@@ -3,7 +3,7 @@
 
 namespace Nethermind.Tools.Kute.JsonRpcMethodFilter;
 
-public class PatternJsonRpcMethodFilter : IJsonRpcMethodFilter
+public sealed class PatternJsonRpcMethodFilter : IJsonRpcMethodFilter
 {
     private const char PatternSeparator = '=';
 

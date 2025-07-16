@@ -3,7 +3,7 @@
 
 namespace Nethermind.Tools.Kute.SystemClock;
 
-interface ISystemClock
+public interface ISystemClock
 {
     DateTimeOffset UtcNow { get; }
 }

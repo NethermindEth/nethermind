@@ -3,7 +3,7 @@
 
 namespace Nethermind.Tools.Kute.JsonRpcMethodFilter;
 
-class LimitedJsonRpcMethodFilter : IJsonRpcMethodFilter
+public sealed class LimitedJsonRpcMethodFilter : IJsonRpcMethodFilter
 {
     private readonly IJsonRpcMethodFilter _filter;
 

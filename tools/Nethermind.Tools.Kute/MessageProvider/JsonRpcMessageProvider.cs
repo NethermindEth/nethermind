@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace Nethermind.Tools.Kute.MessageProvider;
 
-public class JsonRpcMessageProvider : IMessageProvider<JsonRpc?>
+public sealed class JsonRpcMessageProvider : IMessageProvider<JsonRpc?>
 {
     private readonly IMessageProvider<string> _provider;
 

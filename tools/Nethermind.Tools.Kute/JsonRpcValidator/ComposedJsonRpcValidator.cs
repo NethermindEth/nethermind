@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace Nethermind.Tools.Kute.JsonRpcValidator;
 
-public class ComposedJsonRpcValidator : IJsonRpcValidator
+public sealed class ComposedJsonRpcValidator : IJsonRpcValidator
 {
     private readonly IEnumerable<IJsonRpcValidator> _validators;
 

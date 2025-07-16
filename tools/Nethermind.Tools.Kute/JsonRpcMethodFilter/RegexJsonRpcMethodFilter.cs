@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace Nethermind.Tools.Kute.JsonRpcMethodFilter;
 
-class RegexJsonRpcMethodFilter : IJsonRpcMethodFilter
+public sealed class RegexJsonRpcMethodFilter : IJsonRpcMethodFilter
 {
     private readonly Regex _pattern;
 

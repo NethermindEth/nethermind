@@ -1,16 +1,14 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Mime;
 using System.Text;
-using System.Text.Json;
 using Nethermind.Tools.Kute.Auth;
 
 namespace Nethermind.Tools.Kute.JsonRpcSubmitter;
 
-class HttpJsonRpcSubmitter : IJsonRpcSubmitter
+public sealed class HttpJsonRpcSubmitter : IJsonRpcSubmitter
 {
     private readonly Uri _uri;
     private readonly HttpClient _httpClient;

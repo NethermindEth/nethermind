@@ -5,7 +5,7 @@ using Nethermind.Tools.Kute.SystemClock;
 
 namespace Nethermind.Tools.Kute.Auth;
 
-class TtlAuth : IAuth
+public sealed class TtlAuth : IAuth
 {
     private readonly IAuth _auth;
     private readonly ISystemClock _clock;

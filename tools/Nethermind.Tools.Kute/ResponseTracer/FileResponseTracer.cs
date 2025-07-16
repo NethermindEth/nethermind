@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace Nethermind.Tools.Kute.ResponseTracer;
 
-public class FileResponseTracer : IResponseTracer
+public sealed class FileResponseTracer : IResponseTracer
 {
     private readonly string _tracesFilePath;
 

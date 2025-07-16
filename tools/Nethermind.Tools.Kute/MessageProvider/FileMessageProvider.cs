@@ -3,7 +3,7 @@
 
 namespace Nethermind.Tools.Kute.MessageProvider;
 
-public class FileMessageProvider : IMessageProvider<string>
+public sealed class FileMessageProvider : IMessageProvider<string>
 {
     private readonly string _filePath;
 

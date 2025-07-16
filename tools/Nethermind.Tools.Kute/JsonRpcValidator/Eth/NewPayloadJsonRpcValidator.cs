@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 
 namespace Nethermind.Tools.Kute.JsonRpcValidator.Eth;
 
-public class NewPayloadJsonRpcValidator : IJsonRpcValidator
+public sealed class NewPayloadJsonRpcValidator : IJsonRpcValidator
 {
     private readonly Regex _pattern = new Regex("engine_newPayload", RegexOptions.Compiled);
 

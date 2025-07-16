@@ -3,7 +3,7 @@
 
 namespace Nethermind.Tools.Kute.SecretProvider;
 
-public class FileSecretProvider : ISecretProvider
+public sealed class FileSecretProvider : ISecretProvider
 {
     private readonly string _filePath;
 

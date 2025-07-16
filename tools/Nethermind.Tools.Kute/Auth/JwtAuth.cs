@@ -8,7 +8,7 @@ using Nethermind.Tools.Kute.SystemClock;
 
 namespace Nethermind.Tools.Kute.Auth;
 
-class JwtAuth : IAuth
+public sealed class JwtAuth : IAuth
 {
     private readonly SymmetricSecurityKey _key;
     private readonly ISystemClock _clock;

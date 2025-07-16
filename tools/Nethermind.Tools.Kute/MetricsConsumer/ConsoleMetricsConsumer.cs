@@ -5,7 +5,7 @@ using App.Metrics.Formatters;
 
 namespace Nethermind.Tools.Kute.MetricsConsumer;
 
-public class ConsoleMetricsConsumer : IMetricsConsumer
+public sealed class ConsoleMetricsConsumer : IMetricsConsumer
 {
 
     private readonly IMetricsOutputFormatter _formatter;

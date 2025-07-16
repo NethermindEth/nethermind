@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace Nethermind.Tools.Kute.JsonRpcValidator;
 
-public class NullJsonRpcValidator : IJsonRpcValidator
+public sealed class NullJsonRpcValidator : IJsonRpcValidator
 {
     public bool IsValid(JsonRpc request, JsonDocument? response) => true;
 }

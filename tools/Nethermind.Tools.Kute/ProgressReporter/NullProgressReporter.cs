@@ -3,7 +3,7 @@
 
 namespace Nethermind.Tools.Kute.ProgressReporter;
 
-public class NullProgressReporter : IProgressReporter
+public sealed class NullProgressReporter : IProgressReporter
 {
 
     public void ReportStart()

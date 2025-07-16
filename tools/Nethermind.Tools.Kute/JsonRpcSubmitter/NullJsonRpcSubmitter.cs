@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace Nethermind.Tools.Kute.JsonRpcSubmitter;
 
-class NullJsonRpcSubmitter : IJsonRpcSubmitter
+public sealed class NullJsonRpcSubmitter : IJsonRpcSubmitter
 {
     public Task<HttpResponseMessage?> Submit(JsonRpc rpc) => Task.FromResult<HttpResponseMessage?>(null);
 }

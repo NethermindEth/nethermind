@@ -3,7 +3,7 @@
 
 namespace Nethermind.Tools.Kute.MessageProvider;
 
-public class UnwrapBatchJsonRpcMessageProvider : IMessageProvider<JsonRpc?>
+public sealed class UnwrapBatchJsonRpcMessageProvider : IMessageProvider<JsonRpc?>
 {
     private readonly IMessageProvider<JsonRpc?> _provider;
 

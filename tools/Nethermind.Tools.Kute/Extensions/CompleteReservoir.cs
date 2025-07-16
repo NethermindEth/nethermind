@@ -7,7 +7,7 @@ using App.Metrics.ReservoirSampling.Uniform;
 
 namespace Nethermind.Tools.Kute.Extensions;
 
-public class CompleteReservoir : IReservoir
+public sealed class CompleteReservoir : IReservoir
 {
     private const int DefaultSize = 10_000;
 

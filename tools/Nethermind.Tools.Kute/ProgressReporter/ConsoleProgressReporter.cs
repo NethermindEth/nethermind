@@ -5,7 +5,7 @@ using System.Text;
 
 namespace Nethermind.Tools.Kute.ProgressReporter;
 
-public class ConsoleProgressReporter : IProgressReporter
+public sealed class ConsoleProgressReporter : IProgressReporter
 {
     private readonly string _suffix;
 
