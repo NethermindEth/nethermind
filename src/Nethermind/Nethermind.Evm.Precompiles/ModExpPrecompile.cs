@@ -3,10 +3,11 @@
 
 using System;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.GmpBindings;
 using Nethermind.Int256;
 
@@ -30,6 +31,8 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     }
 
     public static Address Address { get; } = Address.FromNumber(5);
+
+    public static string Name => "MODEXP";
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 

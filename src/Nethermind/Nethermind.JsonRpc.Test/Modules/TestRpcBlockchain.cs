@@ -202,6 +202,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
             @this.ProtocolsManager,
+            @this.ForkInfo,
             @this.BlocksConfig.SecondsPerSlot);
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)

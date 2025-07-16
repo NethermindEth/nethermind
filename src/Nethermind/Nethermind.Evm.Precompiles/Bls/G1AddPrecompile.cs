@@ -5,7 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-
+using Nethermind.Evm.Precompiles;
 using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
@@ -22,6 +22,8 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
     }
 
     public static Address Address { get; } = Address.FromNumber(0x0b);
+
+    public static string Name => "BLS12_G1ADD";
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 375L;
 

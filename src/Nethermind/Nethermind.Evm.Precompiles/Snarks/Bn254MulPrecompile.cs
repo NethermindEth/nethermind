@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.Precompiles.Snarks;
 
@@ -16,6 +17,8 @@ public class Bn254MulPrecompile : IPrecompile<Bn254MulPrecompile>
     public static readonly Bn254MulPrecompile Instance = new();
 
     public static Address Address { get; } = Address.FromNumber(7);
+
+    public static string Name => "BN256_MUL";
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 6000L : 40000L;
 

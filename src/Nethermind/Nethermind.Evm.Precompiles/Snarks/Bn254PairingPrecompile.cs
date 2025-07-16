@@ -6,6 +6,7 @@ using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.Precompiles.Snarks;
 
@@ -20,6 +21,8 @@ public class Bn254PairingPrecompile : IPrecompile<Bn254PairingPrecompile>
     public static readonly Bn254PairingPrecompile Instance = new();
 
     public static Address Address { get; } = Address.FromNumber(8);
+
+    public static string Name => "BN256_PAIRING";
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 45000L : 100000L;
 

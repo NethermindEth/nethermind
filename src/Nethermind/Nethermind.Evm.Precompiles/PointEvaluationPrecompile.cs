@@ -8,6 +8,7 @@ using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Precompiles;
@@ -22,6 +23,8 @@ public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
         .ToArray();
 
     public static Address Address { get; } = Address.FromNumber(0x0a);
+
+    public static string Name => "KZG_POINT_EVALUATION";
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 50000L;
 

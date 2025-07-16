@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
-
+using Nethermind.Evm.Precompiles;
 using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;
 using GT = Nethermind.Crypto.Bls.PT;
@@ -24,6 +24,8 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
     private PairingCheckPrecompile() { }
 
     public static Address Address { get; } = Address.FromNumber(0xf);
+
+    public static string Name => "BLS12_PAIRING_CHECK";
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 37700L;
 

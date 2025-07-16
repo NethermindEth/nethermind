@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Precompiles;
 using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
@@ -21,6 +22,8 @@ public class MapFpToG1Precompile : IPrecompile<MapFpToG1Precompile>
     }
 
     public static Address Address { get; } = Address.FromNumber(0x10);
+
+    public static string Name => "BLS12_MAP_FP_TO_G1";
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 5500L;
 
