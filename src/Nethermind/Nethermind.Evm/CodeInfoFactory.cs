@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.EvmObjectFormat;
 
@@ -10,15 +11,15 @@ namespace Nethermind.Evm.CodeAnalysis;
 
 public static class CodeInfoFactory
 {
-    public static ICodeInfo CreateCodeInfo(ReadOnlyMemory<byte> code, IReleaseSpec spec, ValidationStrategy validationRules = ValidationStrategy.ExtractHeader)
+    public static ICodeInfo CreateCodeInfo(ReadOnlyMemory<byte> code, IReleaseSpec spec, ValidationStrategy validationRules = ValidationStrategy.ExtractHeader, ValueHash256? codeHash = null)
     {
         if (spec.IsEofEnabled
             && code.Span.StartsWith(EofValidator.MAGIC)
             && EofValidator.IsValidEof(code, validationRules, out EofContainer? container))
         {
-            return new EofCodeInfo(container.Value);
+            return new EofCodeInfo(container.Value, codeHash);
         }
-        CodeInfo codeInfo = new(code);
+        CodeInfo codeInfo = new(code, codeHash);
         codeInfo.AnalyzeInBackgroundIfRequired();
         return codeInfo;
     }

@@ -13,7 +13,7 @@ using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Interface defining the properties for a call-like opcode.

@@ -1159,7 +1159,7 @@ internal class Eof1 : IEofVersionHandler
                 return false;
             }
 
-            if (!opcode.IsTerminating())
+            if (!EofInstructionExtensions.IsTerminating(opcode))
             {
                 if (Logger.IsTrace)
                     Logger.Trace($"EOF: Eof{VERSION}, Code section {sectionId} ends with a non-terminating opcode");
@@ -1571,7 +1571,7 @@ internal class Eof1 : IEofVersionHandler
                 }
 
                 // For non-terminating instructions, adjust the current stack bounds.
-                if (!opcode.IsTerminating())
+                if (!IlvmInstructionExtensions.IsTerminating(opcode))
                 {
                     short delta = (short)(outputCount - inputCount);
                     currentStackBounds = new((short)(currentStackBounds.Min + delta), (short)(currentStackBounds.Max + delta));
@@ -1601,7 +1601,7 @@ internal class Eof1 : IEofVersionHandler
                 if (programCounter < code.Length)
                 {
                     // Propagate recorded stack bounds for subsequent instructions.
-                    if (opcode.IsTerminating())
+                    if (IlvmInstructionExtensions.IsTerminating(opcode))
                     {
                         ref StackBounds recordedBounds = ref recordedStackHeight[programCounter];
                         if (recordedBounds.Max < 0)

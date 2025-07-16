@@ -16,6 +16,8 @@
     <PackageReference Include="Microsoft.ClearScript.V8.Native.win-x64" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="TestableIO.System.IO.Abstractions.TestingHelpers" />
+    <PackageReference Include="Verify" />
+    <PackageReference Include="Verify.NUnit" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
