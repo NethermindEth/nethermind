@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using MathNet.Numerics.Optimization.TrustRegion;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -35,7 +36,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly long _epochLength;
     private readonly long _minHistoryRetentionEpochs;
     private long _deletePointer = 1;
-    private long _cutoffPointer = 1;
+    private long? _cutoffPointer;
     private ulong? _cutoffTimestamp;
 
     public class HistoryPrunerException(string message, Exception? innerException = null) : Exception(message, innerException);
@@ -65,6 +66,11 @@ public class HistoryPruner : IHistoryPruner
 
         CheckConfig();
         LoadDeletePointer();
+
+        if (historyConfig.Enabled)
+        {
+            FindCutoffBlockNumber();
+        }
     }
 
     public void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
@@ -91,37 +97,98 @@ public class HistoryPruner : IHistoryPruner
 
     public long? CutoffBlockNumber
     {
-        get
+        get => FindCutoffBlockNumber();
+    }
+
+    public void FindOldestBlock()
+    {
+        long? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(1L, _blockTree.SyncPivot.BlockNumber, (n, _) =>
         {
-            if (!_enabled)
+            ChainLevelInfo? levelInfo = _chainLevelInfoRepository.LoadLevel(n);
+            ChainLevelInfo? previousLevelInfo = _chainLevelInfoRepository.LoadLevel(n - 1);
+
+            // find oldest level
+            if (levelInfo is not null && previousLevelInfo is null)
             {
-                return null;
+                return true;
             }
 
-            ulong cutoffTimestamp = CalculateCutoffTimestamp();
+            return false;
+        });
 
-            if (_cutoffTimestamp is not null && cutoffTimestamp == _cutoffTimestamp)
-            {
-                return _cutoffPointer;
-            }
+        if (oldestBlockNumber is not null)
+        {
+            _deletePointer = oldestBlockNumber.Value;
+        }
 
-            long? cutoffBlockNumber = null;
-            GetBlocksByNumber(_cutoffPointer, b =>
+        SaveDeletePointer();
+    }
+
+    private long? FindCutoffBlockNumber()
+    {
+        if (!_enabled)
+        {
+            return null;
+        }
+
+        if (_historyConfig.DropPreMerge && _historyConfig.HistoryRetentionEpochs is null)
+        {
+            return _specProvider.MergeBlockNumber?.BlockNumber;
+        }
+
+        ulong cutoffTimestamp = CalculateCutoffTimestamp();
+
+        // cutoff is unchanged, can reuse
+        if (_cutoffTimestamp is not null && cutoffTimestamp == _cutoffTimestamp)
+        {
+            return _cutoffPointer;
+        }
+
+        long? cutoffBlockNumber = null;
+
+        // optimisticly search ahead two epochs from previous pointer
+        if (_cutoffPointer is not null)
+        {
+            int attempts = 0;
+            GetBlocksByNumber(_cutoffPointer.Value, b =>
             {
-                // end search when we find a block after the cutoff
+                if (attempts >= 64)
+                {
+                    return true;
+                }
+
                 bool afterCutoff = b.Timestamp >= cutoffTimestamp;
                 if (afterCutoff)
                 {
                     cutoffBlockNumber = b.Number;
                 }
+                attempts++;
                 return afterCutoff;
             }, _ => { });
-
-            _cutoffTimestamp = cutoffTimestamp;
-            _cutoffPointer = cutoffBlockNumber ?? _cutoffPointer;
-
-            return cutoffBlockNumber;
         }
+
+        // if linear search fails fallback to  binary search
+        cutoffBlockNumber ??= BlockTree.BinarySearchBlockNumber(_deletePointer, _blockTree.SyncPivot.BlockNumber, (n, _) =>
+        {
+            BlockInfo? blockInfo = _chainLevelInfoRepository.LoadLevel(n).MainChainBlock;
+            BlockInfo? previousBlockInfo = _chainLevelInfoRepository.LoadLevel(n - 1).MainChainBlock;
+
+            Block? block = blockInfo is null ? null : _blockStore.Get(blockInfo.BlockNumber, blockInfo.BlockHash);
+            Block? previousBlock = previousBlockInfo is null ? null : _blockStore.Get(previousBlockInfo.BlockNumber, previousBlockInfo.BlockHash);
+
+            // find cutoff point
+            if (block.Timestamp >= cutoffTimestamp && (previousBlock is null || previousBlock.Timestamp < cutoffTimestamp))
+            {
+                return true;
+            }
+
+            return false;
+        });
+
+        _cutoffTimestamp = cutoffTimestamp;
+        _cutoffPointer = cutoffBlockNumber ?? _cutoffPointer;
+
+        return cutoffBlockNumber;
     }
 
     private void CheckConfig()
@@ -276,7 +343,11 @@ public class HistoryPruner : IHistoryPruner
     private void LoadDeletePointer()
     {
         byte[]? val = _metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer);
-        if (val is not null)
+        if (val is null)
+        {
+            FindOldestBlock();
+        }
+        else
         {
             _deletePointer = val.AsRlpStream().DecodeLong();
         }
