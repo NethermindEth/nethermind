@@ -1,0 +1,28 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using FluentAssertions;
+using Nethermind.Tools.Kute.Auth;
+using Nethermind.Tools.Kute.SecretProvider;
+using Nethermind.Tools.Kute.SystemClock;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.Tools.Kute.Test;
+
+public class AuthTests
+{
+    [Test]
+    public void CanCreate_ValidJWT()
+    {
+        var clock = Substitute.For<ISystemClock>();
+        clock.UtcNow.Returns(DateTimeOffset.UnixEpoch);
+        var secretProvider = Substitute.For<ISecretProvider>();
+        secretProvider.Secret.Returns("11ade2f6d95da8d71515d8c446d2a9cfbaefd1de40d78ccbea5c49315dc30237");
+
+        var auth = new JwtAuth(clock, secretProvider);
+        string token = auth.AuthToken;
+
+        token.Should().BeEquivalentTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjB9.tWzIC8uadmVRHxZrv1TK57PyW95hmGrS0PgsV7FiFvw");
+    }
+}
